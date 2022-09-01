@@ -29,6 +29,7 @@ func (self *DB) Close() {
 
 // --------------------------------------------------
 
+// Use is a method to select the namespace and table to use.
 func (self *DB) Use(ns string, db string) (any, error) {
 	return self.send("use", ns, db)
 }
@@ -37,10 +38,12 @@ func (self *DB) Info() (any, error) {
 	return self.send("info")
 }
 
+// SignUp is a helper method for signing up a new user.
 func (self *DB) Signup(vars map[string]any) (any, error) {
 	return self.send("signup", vars)
 }
 
+// Signin is a helper method for signing in a user.
 func (self *DB) Signin(vars map[string]any) (any, error) {
 	return self.send("signin", vars)
 }
