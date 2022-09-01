@@ -4,10 +4,12 @@ import (
 	"strings"
 )
 
+// DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
 	ws *WS
 }
 
+// New Creates a new DB instance given a WebSocket URL.
 func New(url string) (*DB, error) {
 	ws, err := NewWebsocket(url)
 	if err != nil {
@@ -20,6 +22,7 @@ func New(url string) (*DB, error) {
 // Public methods
 // --------------------------------------------------
 
+// Close closes the underlying WebSocket connection.
 func (self *DB) Close() {
 	self.ws.Close()
 }
@@ -35,11 +38,11 @@ func (self *DB) Info() (any, error) {
 }
 
 func (self *DB) Signup(vars map[string]any) (any, error) {
-	return self.send("signup")
+	return self.send("signup", vars)
 }
 
 func (self *DB) Signin(vars map[string]any) (any, error) {
-	return self.send("signin")
+	return self.send("signin", vars)
 }
 
 func (self *DB) Invalidate() (any, error) {
@@ -64,30 +67,37 @@ func (self *DB) Let(key string, val any) (any, error) {
 	return self.send("let", key, val)
 }
 
+// Query is a convenient method for sending a query to the database.
 func (self *DB) Query(sql string, vars map[string]any) (any, error) {
 	return self.send("query", sql, vars)
 }
 
+// Select a table or record from the database.
 func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
+// Creates a table or thing in the database like a POST request.
 func (self *DB) Create(thing string, data map[string]any) (any, error) {
 	return self.send("create", thing, data)
 }
 
+// Update a table or record in the database like a PUT request.
 func (self *DB) Update(what string, data map[string]any) (any, error) {
 	return self.send("update", what, data)
 }
 
+// Change a table or record in the database like a PATCH request.
 func (self *DB) Change(what string, data map[string]any) (any, error) {
 	return self.send("change", what, data)
 }
 
+// Modify applies a series of JSONPatches to a table or record.
 func (self *DB) Modify(what string, data map[string]any) (any, error) {
 	return self.send("modify", what, data)
 }
 
+// Delete a table or a row from the database like a DELETE request.
 func (self *DB) Delete(what string) (any, error) {
 	return self.send("delete", what)
 }
@@ -96,6 +106,7 @@ func (self *DB) Delete(what string) (any, error) {
 // Private methods
 // --------------------------------------------------
 
+// send is a helper method for sending a query to the database.
 func (self *DB) send(method string, params ...any) (any, error) {
 
 	id := xid(16)
@@ -131,6 +142,7 @@ func (self *DB) send(method string, params ...any) (any, error) {
 
 }
 
+// resp is a helper method for parsing the response from a query.
 func (self *DB) resp(method string, params []any, res any) (any, error) {
 
 	arg, ok := params[0].(string)
