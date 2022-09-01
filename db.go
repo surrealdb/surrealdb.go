@@ -77,7 +77,7 @@ func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
-// Creates a table or thing in the database like a POST request.
+// Creates a table or record in the database like a POST request.
 func (self *DB) Create(thing string, data map[string]any) (any, error) {
 	return self.send("create", thing, data)
 }
