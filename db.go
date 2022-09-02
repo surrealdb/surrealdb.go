@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"encoding/json"
 	"strings"
 )
 
@@ -16,6 +17,17 @@ func New(url string) (*DB, error) {
 		return nil, err
 	}
 	return &DB{ws}, nil
+}
+
+func Unmarshal(data any, v any) error {
+	structObject := v
+	jsonString, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(jsonString, &structObject)
+
+	return err
 }
 
 // --------------------------------------------------

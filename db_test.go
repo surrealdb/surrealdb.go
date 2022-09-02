@@ -1,7 +1,6 @@
 package surrealdb_test
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/surrealdb/surrealdb.go"
@@ -17,9 +16,11 @@ type testUser struct {
 // an example test for creating a new entry in surrealdb
 func ExampleNew() {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
+
 	if err != nil {
 		panic(err)
 	}
+
 	defer db.Close()
 
 	// Output:
@@ -39,12 +40,13 @@ func ExampleDB_Create() {
 		"pass": "root",
 	})
 
-	if err != nil || signin == nil {
+	if err != nil {
 		panic(err)
 	}
 
 	_, err = db.Use("test", "test")
-	if err != nil {
+
+	if err != nil || signin == nil {
 		panic(err)
 	}
 
@@ -62,13 +64,8 @@ func ExampleDB_Create() {
 		Password: "123",
 	})
 
-	// marshal the data into a JSON string
-	jsonString, err := json.Marshal(userData)
-
-	// unmarshal the data into a user struct
 	var user testUser
-	err = json.Unmarshal(jsonString, &user)
-
+	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
 		panic(err)
 	}
@@ -109,21 +106,14 @@ func ExampleDB_Select() {
 
 	userData, err := db.Select("users") // TODO: should let users specify a selector other than '*'
 
-	// marshal createdUser into a JSON string
-	jsonString, err := json.Marshal(userData)
-
-	// unmarshal the data into a user struct
-	var selectedTestUsers []testUser
-	err = json.Unmarshal(jsonString, &selectedTestUsers)
-
+	// unmarshal the data into a user slice
+	users := []testUser{}
+	err = surrealdb.Unmarshal(userData, &users)
 	if err != nil {
 		panic(err)
 	}
 
-	if err != nil {
-		panic(err)
-	}
-	for _, user := range selectedTestUsers {
+	for _, user := range users {
 		if user.Username == "johnnyjohn" {
 			fmt.Println(user.Username)
 			break
@@ -159,16 +149,15 @@ func ExampleDB_Update() {
 		Password: "123",
 	})
 
-	jsonString, err := json.Marshal(userData)
-
 	// unmarshal the data into a user struct
 	var user testUser
-	err = json.Unmarshal(jsonString, &user)
-
+	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
 		panic(err)
 	}
+
 	user.Password = "456"
+
 	// Update the user
 	userData, err = db.Update("users", user)
 
@@ -176,20 +165,15 @@ func ExampleDB_Update() {
 		panic(err)
 	}
 
-	// marshal the data into a JSON string
-	jsonString, err = json.Marshal(userData)
-
 	// unmarshal the data into a user struct
 	var updatedUser []testUser
-	err = json.Unmarshal(jsonString, &updatedUser)
-
-	// marshal the data into a JSON string
+	err = surrealdb.Unmarshal(userData, &updatedUser)
 
 	if err != nil {
 		panic(err)
 	}
 
-	// TODO: this needs to simplified for the end user somehow
+	// TODO: check if this updates only the user with the same ID or all users
 	fmt.Println(updatedUser[0].Password)
 
 	// Output: 456
@@ -222,17 +206,14 @@ func ExampleDB_Delete() {
 		Password: "123",
 	})
 
-	jsonString, err := json.Marshal(userData)
-
 	// unmarshal the data into a user struct
 	var user testUser
-	err = json.Unmarshal(jsonString, &user)
-
+	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
 		panic(err)
 	}
 
-	// Delete the user
+	// Delete the users... TODO: should let users specify a selector other than '*'
 	_, err = db.Delete("users")
 
 	if err != nil {
