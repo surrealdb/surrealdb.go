@@ -80,7 +80,7 @@ func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
-// Creates a table or thing in the database like a POST request.
+// Creates a table or record in the database like a POST request.
 func (self *DB) Create(thing string, data any) (any, error) {
 	return self.send("create", thing, data)
 }
@@ -111,41 +111,6 @@ func (self *DB) Delete(what string) (any, error) {
 
 // send is a helper method for sending a query to the database.
 func (self *DB) send(method string, params ...any) (any, error) {
-
-	id := xid(16)
-
-	chn, err := self.ws.Once(id, method)
-
-	self.ws.Send(id, method, params)
-
-	for {
-		select {
-		default:
-		case e := <-err:
-			return nil, e
-		case r := <-chn:
-			switch method {
-			case "delete":
-				return nil, nil
-			case "select":
-				return self.resp(method, params, r)
-			case "create":
-				return self.resp(method, params, r)
-			case "update":
-				return self.resp(method, params, r)
-			case "change":
-				return self.resp(method, params, r)
-			case "modify":
-				return self.resp(method, params, r)
-			default:
-				return r, nil
-			}
-		}
-	}
-
-}
-
-func (self *DB) create(method string, params ...any) (any, error) {
 
 	id := xid(16)
 
