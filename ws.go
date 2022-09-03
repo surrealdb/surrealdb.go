@@ -2,8 +2,9 @@ package surrealdb
 
 import (
 	"encoding/json"
-	"github.com/gorilla/websocket"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type WS struct {

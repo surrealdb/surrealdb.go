@@ -1,6 +1,8 @@
 package surrealdb
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -16,6 +18,28 @@ func New(url string) (*DB, error) {
 		return nil, err
 	}
 	return &DB{ws}, nil
+}
+
+// Unmarshal unmarshals a SurrealDB response into a struct.
+func Unmarshal(data any, v any) error {
+	assertedData := data.([]interface{})
+	sliceFlag := isSlice(v)
+	structObject := v
+
+	var jsonBytes []byte
+	var err error
+	if !sliceFlag {
+		jsonBytes, err = json.Marshal(assertedData[0])
+	} else {
+		jsonBytes, err = json.Marshal(assertedData)
+	}
+
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(jsonBytes, &structObject)
+
+	return err
 }
 
 // --------------------------------------------------
@@ -39,12 +63,12 @@ func (self *DB) Info() (any, error) {
 }
 
 // SignUp is a helper method for signing up a new user.
-func (self *DB) Signup(vars map[string]any) (any, error) {
+func (self *DB) Signup(vars any) (any, error) {
 	return self.send("signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (self *DB) Signin(vars map[string]any) (any, error) {
+func (self *DB) Signin(vars any) (any, error) {
 	return self.send("signin", vars)
 }
 
@@ -71,7 +95,7 @@ func (self *DB) Let(key string, val any) (any, error) {
 }
 
 // Query is a convenient method for sending a query to the database.
-func (self *DB) Query(sql string, vars map[string]any) (any, error) {
+func (self *DB) Query(sql string, vars any) (any, error) {
 	return self.send("query", sql, vars)
 }
 
@@ -80,24 +104,23 @@ func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
-
 // Creates a table or record in the database like a POST request.
-func (self *DB) Create(thing string, data map[string]any) (any, error) {
+func (self *DB) Create(thing string, data any) (any, error) {
 	return self.send("create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (self *DB) Update(what string, data map[string]any) (any, error) {
+func (self *DB) Update(what string, data any) (any, error) {
 	return self.send("update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (self *DB) Change(what string, data map[string]any) (any, error) {
+func (self *DB) Change(what string, data any) (any, error) {
 	return self.send("change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data map[string]any) (any, error) {
+func (self *DB) Modify(what string, data any) (any, error) {
 	return self.send("modify", what, data)
 }
 
@@ -173,4 +196,21 @@ func (self *DB) resp(method string, params []any, res any) (any, error) {
 
 	return res, nil
 
+}
+
+func isSlice(possibleSlice any) bool {
+
+	var x interface{} = possibleSlice
+
+	slice := false
+
+	switch v := x.(type) {
+	default:
+		res := fmt.Sprintf("%s", v)
+		if res == "[]" || res == "&[]" || res == "*[]" {
+			slice = true
+		}
+	}
+
+	return slice
 }
