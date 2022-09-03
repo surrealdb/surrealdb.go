@@ -207,7 +207,7 @@ func isSlice(possibleSlice any) bool {
 	switch v := x.(type) {
 	default:
 		res := fmt.Sprintf("%s", v)
-		if res == "[]" || res == "&[]" {
+		if res == "[]" || res == "&[]" || res == "*[]" {
 			slice = true
 		}
 	}
