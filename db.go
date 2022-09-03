@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -19,13 +20,24 @@ func New(url string) (*DB, error) {
 	return &DB{ws}, nil
 }
 
+// Unmarshal unmarshals a SurrealDB response into a struct.
 func Unmarshal(data any, v any) error {
+	assertedData := data.([]interface{})
+	sliceFlag := isSlice(v)
 	structObject := v
-	jsonString, err := json.Marshal(data)
+
+	var jsonBytes []byte
+	var err error
+	if !sliceFlag {
+		jsonBytes, err = json.Marshal(assertedData[0])
+	} else {
+		jsonBytes, err = json.Marshal(assertedData)
+	}
+
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(jsonString, &structObject)
+	err = json.Unmarshal(jsonBytes, &structObject)
 
 	return err
 }
@@ -162,16 +174,6 @@ func (self *DB) resp(method string, params []any, res any) (any, error) {
 
 	arg, ok := params[0].(string)
 
-	peeledResponse := res.([]interface{})
-
-	if len(peeledResponse) == 0 {
-		return nil, nil
-	} else if len(peeledResponse) == 1 {
-		return peeledResponse[0], nil
-	} else if len(peeledResponse) > 1 {
-		return peeledResponse, nil
-	}
-
 	if !ok {
 		return res, nil
 	}
@@ -194,4 +196,21 @@ func (self *DB) resp(method string, params []any, res any) (any, error) {
 
 	return res, nil
 
+}
+
+func isSlice(possibleSlice any) bool {
+
+	var x interface{} = possibleSlice
+
+	slice := false
+
+	switch v := x.(type) {
+	default:
+		res := fmt.Sprintf("%s", v)
+		if res == "[]" || res == "&[]" {
+			slice = true
+		}
+	}
+
+	return slice
 }
