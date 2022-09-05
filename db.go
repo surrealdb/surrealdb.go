@@ -28,7 +28,7 @@ func Unmarshal(data any, v any) error {
 
 	var jsonBytes []byte
 	var err error
-	if !sliceFlag {
+	if !sliceFlag && len(assertedData) > 0 {
 		jsonBytes, err = json.Marshal(assertedData[0])
 	} else {
 		jsonBytes, err = json.Marshal(assertedData)
