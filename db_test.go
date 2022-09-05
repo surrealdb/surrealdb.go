@@ -3,7 +3,7 @@ package surrealdb_test
 import (
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go"
+	"github.com/TimothyStiles/surrealdb.go"
 )
 
 // a simple user struct for testing
