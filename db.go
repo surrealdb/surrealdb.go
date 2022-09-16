@@ -75,11 +75,25 @@ func (self *DB) Query(sql string, vars map[string]any) (any, error) {
 	return self.send("query", sql, vars)
 }
 
+func (self *DB) SchemalessSelect(what string) ([]map[string]interface{}, error) {
+	output, err := self.Select(what)
+	if err != nil {
+		return make([]map[string]interface{}, 0), err
+	}
+
+	returnArray := make([]map[string]interface{}, 0)
+	rows := (output).([]interface{})
+	for _, row := range rows {
+		mapValue := (row).(map[string]interface{})
+		returnArray = append(returnArray, mapValue)
+	}
+	return returnArray, nil
+}
+
 // Select a table or record from the database.
 func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
-
 
 // Creates a table or record in the database like a POST request.
 func (self *DB) Create(thing string, data map[string]any) (any, error) {

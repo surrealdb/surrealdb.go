@@ -6,6 +6,7 @@
 .DS_Store
 .AppleDouble
 .LSOverride
+.idea/
 
 # Thumbnail files
 ._*
