@@ -1,4 +1,4 @@
-module github.com/TimothyStiles/surrealdb.go
+module github.com/garrison-henkle/surrealdb.go
 
 go 1.18
 
