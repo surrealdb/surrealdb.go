@@ -2,8 +2,17 @@ package surrealdb
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+)
+
+const statusOK = "OK"
+
+var (
+	InvalidResponse = errors.New("invalid response")
+	UnableToParse   = errors.New("unable to parse the response")
+	QueryError      = errors.New("error occurred processing the query")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -20,7 +29,7 @@ func New(url string) (*DB, error) {
 	return &DB{ws}, nil
 }
 
-// Unmarshal unmarshals a SurrealDB response into a struct.
+// Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data any, v any) error {
 	assertedData := data.([]interface{})
 	sliceFlag := isSlice(v)
@@ -42,13 +51,44 @@ func Unmarshal(data any, v any) error {
 	return err
 }
 
+// UnmarshalRaw loads a raw SurrealQL response into a struct. Use to unmarshal data returned from Query.
+func UnmarshalRaw[T any](rawData any, response *T) error {
+	var ok bool
+
+	var data []any
+	if data, ok = rawData.([]any); !ok {
+		return InvalidResponse
+	}
+
+	var responseObj map[string]any
+	if responseObj, ok = data[0].(map[string]any); !ok {
+		return InvalidResponse
+	}
+
+	var status string
+	if status, ok = responseObj["status"].(string); !ok {
+		return InvalidResponse
+	}
+	if status != statusOK {
+		return QueryError
+	}
+
+	result := responseObj["result"]
+	err := Unmarshal(result, response)
+	if err != nil {
+		return UnableToParse
+	}
+
+	return nil
+}
+
 // --------------------------------------------------
 // Public methods
 // --------------------------------------------------
 
 // Close closes the underlying WebSocket connection.
 func (self *DB) Close() {
-	self.ws.Close()
+	_ = self.ws.Close()
 }
 
 // --------------------------------------------------
@@ -62,7 +102,7 @@ func (self *DB) Info() (any, error) {
 	return self.send("info")
 }
 
-// SignUp is a helper method for signing up a new user.
+// Signup is a helper method for signing up a new user.
 func (self *DB) Signup(vars any) (any, error) {
 	return self.send("signup", vars)
 }
@@ -104,7 +144,7 @@ func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
-// Creates a table or record in the database like a POST request.
+// Create a table or record in the database like a POST request.
 func (self *DB) Create(thing string, data any) (any, error) {
 	return self.send("create", thing, data)
 }
@@ -170,7 +210,7 @@ func (self *DB) send(method string, params ...any) (any, error) {
 }
 
 // resp is a helper method for parsing the response from a query.
-func (self *DB) resp(method string, params []any, res any) (any, error) {
+func (self *DB) resp(_ string, params []any, res any) (any, error) {
 
 	arg, ok := params[0].(string)
 
@@ -200,7 +240,7 @@ func (self *DB) resp(method string, params []any, res any) (any, error) {
 
 func isSlice(possibleSlice any) bool {
 
-	var x interface{} = possibleSlice
+	var x = possibleSlice
 
 	slice := false
 
