@@ -52,7 +52,7 @@ func Unmarshal(data any, v any) error {
 }
 
 // UnmarshalRaw loads a raw SurrealQL response into a struct. Use to unmarshal data returned from Query.
-func UnmarshalRaw[T any](rawData any, response *T) error {
+func UnmarshalRaw(rawData any, response *any) error {
 	var ok bool
 
 	var data []any
