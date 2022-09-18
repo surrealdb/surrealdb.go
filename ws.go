@@ -2,8 +2,9 @@ package surrealdb
 
 import (
 	"encoding/json"
-	"github.com/gorilla/websocket"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type WS struct {
@@ -134,22 +135,42 @@ func (self *WS) when(id any, fn func(error, any)) {
 
 func (self *WS) done(id any, err error, res any) {
 
+	// pauses traffic in others threads, so we can modify listeners without conflicts
 	self.emit.lock.Lock()
 	defer self.emit.lock.Unlock()
 
+	// if our events map exist
 	if self.emit.when != nil {
+
+		// if theres some listener aiming to this id response
 		if _, ok := self.emit.when[id]; ok {
+
+			// dispatch the event, starting from the end, so we prioritize the new ones
 			for i := len(self.emit.when[id]) - 1; i >= 0; i-- {
+
+				// invoke callback
 				self.emit.when[id][i](err, res)
+
 			}
 		}
 	}
 
+	// if our events map exist
 	if self.emit.once != nil {
+
+		// if theres some listener aiming to this id response
 		if _, ok := self.emit.once[id]; ok {
+
+			// dispatch the event, starting from the end, so we prioritize the new ones
 			for i := len(self.emit.once[id]) - 1; i >= 0; i-- {
+
+				// invoke callback
 				self.emit.once[id][i](err, res)
+
+				// erase this listener
 				self.emit.once[id][i] = nil
+
+				// remove this listener from the list
 				self.emit.once[id] = self.emit.once[id][:i]
 			}
 		}
@@ -188,7 +209,7 @@ func (self *WS) initialise() {
 	send := make(chan *RPCRequest)
 	recv := make(chan *RPCResponse)
 	quit := make(chan error, 1) // stops: MAIN LOOP
-	exit := make(chan int, 1) // stops: RECEIVER LOOP, SENDER LOOP
+	exit := make(chan int, 1)   // stops: RECEIVER LOOP, SENDER LOOP
 
 	// RECEIVER LOOP
 
@@ -206,8 +227,8 @@ func (self *WS) initialise() {
 				if err != nil {
 					self.Close()
 					quit <- err // stops: MAIN LOOP
-					exit <- 0 // stops: RECEIVER LOOP, SENDER LOOP
-					break loop // stops: THIS LOOP
+					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
+					break loop  // stops: THIS LOOP
 				}
 
 				recv <- &res // redirect response to: MAIN LOOP
@@ -231,8 +252,8 @@ func (self *WS) initialise() {
 				if err != nil {
 					self.Close()
 					quit <- err // stops: MAIN LOOP
-					exit <- 0 // stops: RECEIVER LOOP, SENDER LOOP
-					break loop // stops: THIS LOOP
+					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
+					break loop  // stops: THIS LOOP
 				}
 
 			}
