@@ -29,16 +29,14 @@ func New(url string) (*DB, error) {
 }
 
 // Unmarshal loads a SurrealDB response into a struct.
-func Unmarshal[T any](data any) (*T, error) {
-	var response T
+func Unmarshal(data any, v any) error {
 	var ok bool
 
 	assertedData, ok := data.([]any)
 	if !ok {
-		return nil, InvalidResponse
+		return InvalidResponse
 	}
-	sliceFlag := isSlice(&response)
-	structObject := &response
+	sliceFlag := isSlice(v)
 
 	var jsonBytes []byte
 	var err error
@@ -48,50 +46,48 @@ func Unmarshal[T any](data any) (*T, error) {
 		jsonBytes, err = json.Marshal(assertedData)
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	err = json.Unmarshal(jsonBytes, &structObject)
+	err = json.Unmarshal(jsonBytes, v)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &response, err
+	return err
 }
 
-// UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. nil will be returned if the query is
-// successful but returns no data
-func UnmarshalRaw[T any](rawData any) (*T, error) {
-	var ok bool
-
+// UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
+// return ok = true, and queries that return with no results will return ok = false.
+func UnmarshalRaw(rawData any, v any) (ok bool, err error) {
 	var data []any
 	if data, ok = rawData.([]any); !ok {
-		return nil, InvalidResponse
+		return false, InvalidResponse
 	}
 
 	var responseObj map[string]any
 	if responseObj, ok = data[0].(map[string]any); !ok {
-		return nil, InvalidResponse
+		return false, InvalidResponse
 	}
 
 	var status string
 	if status, ok = responseObj["status"].(string); !ok {
-		return nil, InvalidResponse
+		return false, InvalidResponse
 	}
 	if status != statusOK {
-		return nil, QueryError
+		return false, QueryError
 	}
 
 	result := responseObj["result"]
 	if len(result.([]any)) == 0 {
-		return nil, nil
+		return false, nil
 	}
-	response, err := Unmarshal[T](result)
+	err = Unmarshal(result, v)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	return response, nil
+	return true, nil
 }
 
 // --------------------------------------------------
