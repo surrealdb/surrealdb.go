@@ -121,7 +121,7 @@ func (self *WS) once(id any, fn func(error, any)) {
 
 }
 
-// WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS "NOTIFIER"
+// WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS AND/OR REAL TIME stuffs.
 
 func (self *WS) when(id any, fn func(error, any)) {
 
