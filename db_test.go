@@ -64,7 +64,8 @@ func ExampleDB_Create() {
 		Password: "123",
 	})
 
-	user, err := surrealdb.Unmarshal[testUser](userData)
+	var user testUser
+	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
 		panic(err)
 	}
@@ -106,12 +107,13 @@ func ExampleDB_Select() {
 	userData, err := db.Select("users") // TODO: should let users specify a selector other than '*'
 
 	// unmarshal the data into a user slice
-	users, err := surrealdb.Unmarshal[[]testUser](userData)
+	var users []testUser
+	err = surrealdb.Unmarshal(userData, &users)
 	if err != nil {
 		panic(err)
 	}
 
-	for _, user := range *users {
+	for _, user := range users {
 		if user.Username == "johnnyjohn" {
 			fmt.Println(user.Username)
 			break
@@ -148,7 +150,8 @@ func ExampleDB_Update() {
 	})
 
 	// unmarshal the data into a user struct
-	user, err := surrealdb.Unmarshal[testUser](userData)
+	var user testUser
+	err = surrealdb.Unmarshal(userData, &testUser{})
 	if err != nil {
 		panic(err)
 	}
@@ -163,14 +166,15 @@ func ExampleDB_Update() {
 	}
 
 	// unmarshal the data into a user struct
-	updatedUser, err := surrealdb.Unmarshal[[]testUser](userData)
+	var updatedUser []testUser
+	err = surrealdb.Unmarshal(userData, &updatedUser)
 
 	if err != nil {
 		panic(err)
 	}
 
 	// TODO: check if this updates only the user with the same ID or all users
-	fmt.Println((*updatedUser)[0].Password)
+	fmt.Println(updatedUser[0].Password)
 
 	// Output: 456
 }
@@ -203,13 +207,10 @@ func ExampleDB_Delete() {
 	})
 
 	// unmarshal the data into a user struct
-	user, err := surrealdb.Unmarshal[testUser](userData)
+	var user testUser
+	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
 		panic(err)
-	}
-
-	if user == nil {
-		panic("user is nil")
 	}
 
 	// Delete the users... TODO: should let users specify a selector other than '*'
@@ -267,11 +268,12 @@ func TestUnmarshalRaw(t *testing.T) {
 		panic(err)
 	}
 
-	user, err := surrealdb.UnmarshalRaw[testUser](userData)
+	var user testUser
+	ok, err := surrealdb.UnmarshalRaw(userData, &user)
 	if err != nil {
 		panic(err)
 	}
-	if user.Username != username || user.Password != password {
+	if !ok || user.Username != username || user.Password != password {
 		panic("response does not match the request")
 	}
 
@@ -284,11 +286,11 @@ func TestUnmarshalRaw(t *testing.T) {
 		panic(err)
 	}
 
-	user, err = surrealdb.UnmarshalRaw[testUser](userData)
+	ok, err = surrealdb.UnmarshalRaw(userData, &user)
 	if err != nil {
 		panic(err)
 	}
-	if user != nil {
+	if ok {
 		panic("select should return an empty result")
 	}
 
