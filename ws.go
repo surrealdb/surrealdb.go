@@ -8,14 +8,14 @@ import (
 )
 
 type WS struct {
-	ws   *websocket.Conn
-	quit chan error
-	send chan<- *RPCRequest
-	recv <-chan *RPCResponse
+	ws   *websocket.Conn // websocket connection
+	quit chan error // stops: MAIN LOOP
+	send chan<- *RPCRequest // sender channel
+	recv <-chan *RPCResponse // receive channel
 	emit struct {
-		lock sync.Mutex
-		once map[any][]func(error, any)
-		when map[any][]func(error, any)
+		lock sync.Mutex // pause threads to avoid conflicts
+		once map[any][]func(error, any) // once listeners
+		when map[any][]func(error, any) // when listeners
 	}
 }
 
@@ -30,6 +30,7 @@ func NewWebsocket(url string) (*WS, error) {
 	}
 
 	ws := &WS{ws: so}
+	// setup loops and channels
 	ws.initialise()
 
 	return ws, nil
@@ -59,6 +60,7 @@ func (self *WS) Send(id string, method string, params []any) {
 
 }
 
+// Subscribe to once()
 func (self *WS) Once(id, method string) (<-chan any, <-chan error) {
 
 	err := make(chan error)
@@ -81,6 +83,7 @@ func (self *WS) Once(id, method string) (<-chan any, <-chan error) {
 
 }
 
+// Subscribe to when()
 func (self *WS) When(id, method string) (<-chan any, <-chan error) {
 
 	err := make(chan error)
@@ -117,6 +120,8 @@ func (self *WS) once(id any, fn func(error, any)) {
 	self.emit.once[id] = append(self.emit.once[id], fn)
 
 }
+
+// WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS "NOTIFIER"
 
 func (self *WS) when(id any, fn func(error, any)) {
 
@@ -280,5 +285,5 @@ func (self *WS) initialise() {
 
 	self.send = send
 	self.recv = recv
-	self.quit = quit
+	self.quit = quit // stops: MAIN LOOP
 }
