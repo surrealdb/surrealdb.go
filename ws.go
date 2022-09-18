@@ -19,18 +19,16 @@ type WS struct {
 }
 
 func NewWebsocket(url string) (*WS, error) {
-
 	dialer := websocket.DefaultDialer
-
 	dialer.EnableCompression = true
 
+	// stablish connection
 	so, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	ws := &WS{ws: so}
-
 	ws.initialise()
 
 	return ws, nil
@@ -44,10 +42,7 @@ func NewWebsocket(url string) (*WS, error) {
 func (self *WS) Close() error {
 
 	msg := websocket.FormatCloseMessage(1000, "")
-
-	err := self.ws.WriteMessage(websocket.CloseMessage, msg)
-
-	return err
+	return self.ws.WriteMessage(websocket.CloseMessage, msg)
 
 }
 
@@ -109,9 +104,11 @@ func (self *WS) When(id, method string) (<-chan any, <-chan error) {
 
 func (self *WS) once(id any, fn func(error, any)) {
 
+	// pauses traffic in others threads, so we can add the new listener without conflicts
 	self.emit.lock.Lock()
 	defer self.emit.lock.Unlock()
 
+	// if its our first listener, we need to setup the map
 	if self.emit.once == nil {
 		self.emit.once = make(map[any][]func(error, any))
 	}
@@ -122,9 +119,11 @@ func (self *WS) once(id any, fn func(error, any)) {
 
 func (self *WS) when(id any, fn func(error, any)) {
 
+	// pauses traffic in others threads, so we can add the new listener without conflicts
 	self.emit.lock.Lock()
 	defer self.emit.lock.Unlock()
 
+	// if its our first listener, we need to setup the map
 	if self.emit.when == nil {
 		self.emit.when = make(map[any][]func(error, any))
 	}
@@ -186,57 +185,61 @@ func (self *WS) write(v any) (err error) {
 }
 
 func (self *WS) initialise() {
-
 	send := make(chan *RPCRequest)
 	recv := make(chan *RPCResponse)
-	quit := make(chan error, 1)
-	exit := make(chan int, 1)
+	quit := make(chan error, 1) // stops: MAIN LOOP
+	exit := make(chan int, 1) // stops: RECEIVER LOOP, SENDER LOOP
+
+	// RECEIVER LOOP
 
 	go func() {
 	loop:
 		for {
 			select {
 			case <-exit:
-				break loop
+				break loop // stops: THIS LOOP
 			default:
 
 				var res RPCResponse
-
-				err := self.read(&res)
+				err := self.read(&res) // wait and unmarshal UPCOMING response
 
 				if err != nil {
 					self.Close()
-					quit <- err
-					exit <- 0
-					break loop
+					quit <- err // stops: MAIN LOOP
+					exit <- 0 // stops: RECEIVER LOOP, SENDER LOOP
+					break loop // stops: THIS LOOP
 				}
 
-				recv <- &res
+				recv <- &res // redirect response to: MAIN LOOP
 
 			}
 		}
 	}()
+
+	// SENDER LOOP
 
 	go func() {
 	loop:
 		for {
 			select {
 			case <-exit:
-				break loop
+				break loop // stops: THIS LOOP
 			case res := <-send:
 
-				err := self.write(res)
+				err := self.write(res) // marshal and send
 
 				if err != nil {
 					self.Close()
-					quit <- err
-					exit <- 0
-					break loop
+					quit <- err // stops: MAIN LOOP
+					exit <- 0 // stops: RECEIVER LOOP, SENDER LOOP
+					break loop // stops: THIS LOOP
 				}
 
 			}
 		}
 	}()
+
+	// MAIN LOOP
 
 	go func() {
 		for {
@@ -257,5 +260,4 @@ func (self *WS) initialise() {
 	self.send = send
 	self.recv = recv
 	self.quit = quit
-
 }

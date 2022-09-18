@@ -113,34 +113,35 @@ func (self *DB) Delete(what string) (any, error) {
 // send is a helper method for sending a query to the database.
 func (self *DB) send(method string, params ...any) (any, error) {
 
+	// generate an id for the action, this is used to distinguish its response
 	id := xid(16)
-
+	// chn: the channel where the server response will arrive, err: the channel where errors will come
 	chn, err := self.ws.Once(id, method)
-
+	// here we send the args through our websocket connection
 	self.ws.Send(id, method, params)
 
 	for {
 		select {
-		default:
-		case e := <-err:
-			return nil, e
-		case r := <-chn:
-			switch method {
-			case "delete":
-				return nil, nil
-			case "select":
-				return self.resp(method, params, r)
-			case "create":
-				return self.resp(method, params, r)
-			case "update":
-				return self.resp(method, params, r)
-			case "change":
-				return self.resp(method, params, r)
-			case "modify":
-				return self.resp(method, params, r)
 			default:
-				return r, nil
-			}
+			case e := <-err:
+				return nil, e
+			case r := <-chn:
+				switch method {
+					case "delete":
+						return nil, nil
+					case "select":
+						return self.resp(method, params, r)
+					case "create":
+						return self.resp(method, params, r)
+					case "update":
+						return self.resp(method, params, r)
+					case "change":
+						return self.resp(method, params, r)
+					case "modify":
+						return self.resp(method, params, r)
+					default:
+						return r, nil
+				}
 		}
 	}
 
