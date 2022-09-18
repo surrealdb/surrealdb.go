@@ -1,8 +1,0 @@
-#V2
-select * from volume;
-create series:kumo set name = "Kumo Desu Ga";
-create volume:kumo1 set name = "Kumo Desu Ga 1"
-create upload:kumoCover set relations = [series:kumo, volume:kumo1]
-select * from upload
-select * from upload fetch series;
-select * from upload fetch relations;
