@@ -2,8 +2,8 @@ package surrealdb_test
 
 import (
 	"fmt"
-
-	"github.com/TimothyStiles/surrealdb.go"
+	"github.com/garrison-henkle/surrealdb.go"
+	"testing"
 )
 
 // a simple user struct for testing
@@ -64,8 +64,7 @@ func ExampleDB_Create() {
 		Password: "123",
 	})
 
-	var user testUser
-	err = surrealdb.Unmarshal(userData, &user)
+	user, err := surrealdb.Unmarshal[testUser](userData)
 	if err != nil {
 		panic(err)
 	}
@@ -107,13 +106,12 @@ func ExampleDB_Select() {
 	userData, err := db.Select("users") // TODO: should let users specify a selector other than '*'
 
 	// unmarshal the data into a user slice
-	users := []testUser{}
-	err = surrealdb.Unmarshal(userData, &users)
+	users, err := surrealdb.Unmarshal[[]testUser](userData)
 	if err != nil {
 		panic(err)
 	}
 
-	for _, user := range users {
+	for _, user := range *users {
 		if user.Username == "johnnyjohn" {
 			fmt.Println(user.Username)
 			break
@@ -150,8 +148,7 @@ func ExampleDB_Update() {
 	})
 
 	// unmarshal the data into a user struct
-	var user testUser
-	err = surrealdb.Unmarshal(userData, &user)
+	user, err := surrealdb.Unmarshal[testUser](userData)
 	if err != nil {
 		panic(err)
 	}
@@ -166,15 +163,14 @@ func ExampleDB_Update() {
 	}
 
 	// unmarshal the data into a user struct
-	var updatedUser []testUser
-	err = surrealdb.Unmarshal(userData, &updatedUser)
+	updatedUser, err := surrealdb.Unmarshal[[]testUser](userData)
 
 	if err != nil {
 		panic(err)
 	}
 
 	// TODO: check if this updates only the user with the same ID or all users
-	fmt.Println(updatedUser[0].Password)
+	fmt.Println((*updatedUser)[0].Password)
 
 	// Output: 456
 }
@@ -207,10 +203,13 @@ func ExampleDB_Delete() {
 	})
 
 	// unmarshal the data into a user struct
-	var user testUser
-	err = surrealdb.Unmarshal(userData, &user)
+	user, err := surrealdb.Unmarshal[testUser](userData)
 	if err != nil {
 		panic(err)
+	}
+
+	if user == nil {
+		panic("user is nil")
 	}
 
 	// Delete the users... TODO: should let users specify a selector other than '*'
@@ -218,6 +217,79 @@ func ExampleDB_Delete() {
 
 	if err != nil {
 		panic(err)
+	}
+
+	// Output:
+}
+
+func TestUnmarshalRaw(t *testing.T) {
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Signin(map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Use("test", "test")
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, _ = db.Create("users", testUser{
+		Username: "johnny",
+		Password: "123",
+	})
+
+	username := "johnny"
+	password := "123"
+
+	_, err = db.Delete("users")
+	if err != nil {
+		panic(err)
+	}
+
+	//create test user with raw SurrealQL and unmarshal
+
+	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]any{
+		"user": username,
+		"pass": password,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	user, err := surrealdb.UnmarshalRaw[testUser](userData)
+	if err != nil {
+		panic(err)
+	}
+	if user.Username != username || user.Password != password {
+		panic("response does not match the request")
+	}
+
+	//send query with empty result and unmarshal
+
+	userData, err = db.Query("select * from users where id = $id", map[string]any{
+		"id": "users:jim",
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	user, err = surrealdb.UnmarshalRaw[testUser](userData)
+	if err != nil {
+		panic(err)
+	}
+	if user != nil {
+		panic("select should return an empty result")
 	}
 
 	// Output:

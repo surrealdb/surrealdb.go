@@ -10,9 +10,8 @@ import (
 const statusOK = "OK"
 
 var (
-	InvalidResponse = errors.New("invalid response")
-	UnableToParse   = errors.New("unable to parse the response")
-	QueryError      = errors.New("error occurred processing the query")
+	InvalidResponse = errors.New("invalid SurrealQL response")
+	QueryError      = errors.New("error occurred processing the SurrealDB query")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -30,10 +29,16 @@ func New(url string) (*DB, error) {
 }
 
 // Unmarshal loads a SurrealDB response into a struct.
-func Unmarshal(data any, v any) error {
-	assertedData := data.([]interface{})
-	sliceFlag := isSlice(v)
-	structObject := v
+func Unmarshal[T any](data any) (*T, error) {
+	var response T
+	var ok bool
+
+	assertedData, ok := data.([]any)
+	if !ok {
+		return nil, InvalidResponse
+	}
+	sliceFlag := isSlice(&response)
+	structObject := &response
 
 	var jsonBytes []byte
 	var err error
@@ -42,44 +47,51 @@ func Unmarshal(data any, v any) error {
 	} else {
 		jsonBytes, err = json.Marshal(assertedData)
 	}
-
 	if err != nil {
-		return err
+		return nil, err
 	}
-	err = json.Unmarshal(jsonBytes, &structObject)
 
-	return err
+	err = json.Unmarshal(jsonBytes, &structObject)
+	if err != nil {
+		return nil, err
+	}
+
+	return &response, err
 }
 
-// UnmarshalRaw loads a raw SurrealQL response into a struct. Use to unmarshal data returned from Query.
-func UnmarshalRaw(rawData any, response any) error {
+// UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. nil will be returned if the query is
+// successful but returns no data
+func UnmarshalRaw[T any](rawData any) (*T, error) {
 	var ok bool
 
 	var data []any
 	if data, ok = rawData.([]any); !ok {
-		return InvalidResponse
+		return nil, InvalidResponse
 	}
 
 	var responseObj map[string]any
 	if responseObj, ok = data[0].(map[string]any); !ok {
-		return InvalidResponse
+		return nil, InvalidResponse
 	}
 
 	var status string
 	if status, ok = responseObj["status"].(string); !ok {
-		return InvalidResponse
+		return nil, InvalidResponse
 	}
 	if status != statusOK {
-		return QueryError
+		return nil, QueryError
 	}
 
 	result := responseObj["result"]
-	err := Unmarshal(result, response)
+	if len(result.([]any)) == 0 {
+		return nil, nil
+	}
+	response, err := Unmarshal[T](result)
 	if err != nil {
-		return UnableToParse
+		return nil, err
 	}
 
-	return nil
+	return response, nil
 }
 
 // --------------------------------------------------
@@ -239,12 +251,9 @@ func (self *DB) resp(_ string, params []any, res any) (any, error) {
 }
 
 func isSlice(possibleSlice any) bool {
-
-	var x = possibleSlice
-
 	slice := false
 
-	switch v := x.(type) {
+	switch v := possibleSlice.(type) {
 	default:
 		res := fmt.Sprintf("%s", v)
 		if res == "[]" || res == "&[]" || res == "*[]" {
