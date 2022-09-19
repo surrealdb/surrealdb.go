@@ -13,6 +13,27 @@ func ExampleNew() {
 	// Output:
 }
 
+func ExampleDB_Delete() {
+	db, err := New("ws://localhost:8000/rpc")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Signin(map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+	_, err = db.Use("test", "test")
+
+	_, err = db.Delete("users")
+	if err != nil {
+		panic(err)
+	}
+
+	// Output:
+}
+
 func ExampleDB_Create() {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
@@ -31,7 +52,7 @@ func ExampleDB_Create() {
 		"password": "123",
 	})
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 
 	// Output:
@@ -94,7 +115,7 @@ func ExampleDB_Update() {
 	}
 
 	// Update the user
-	_, err = db.Update("users", map[string]interface{}{
+	user, err = db.Update("users", map[string]interface{}{
 		"username": "john",
 		"password": "1234",
 	})
