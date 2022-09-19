@@ -14,8 +14,8 @@ type WS struct {
 	recv <-chan *RPCResponse // receive channel
 	emit struct {
 		lock sync.Mutex // pause threads to avoid conflicts
-		once map[any][]func(error, any) // once listeners
-		when map[any][]func(error, any) // when listeners
+		once map[interface{}][]func(error, interface{}) // once listeners
+		when map[interface{}][]func(error, interface{}) // when listeners
 	}
 }
 
@@ -48,7 +48,7 @@ func (self *WS) Close() error {
 
 }
 
-func (self *WS) Send(id string, method string, params []any) {
+func (self *WS) Send(id string, method string, params []interface{}) {
 
 	go func() {
 		self.send <- &RPCRequest{
@@ -61,12 +61,12 @@ func (self *WS) Send(id string, method string, params []any) {
 }
 
 // Subscribe to once()
-func (self *WS) Once(id, method string) (<-chan any, <-chan error) {
+func (self *WS) Once(id, method string) (<-chan interface{}, <-chan error) {
 
 	err := make(chan error)
-	res := make(chan any)
+	res := make(chan interface{})
 
-	self.once(id, func(e error, r any) {
+	self.once(id, func(e error, r interface{}) {
 		switch {
 		case e != nil:
 			err <- e
@@ -84,12 +84,12 @@ func (self *WS) Once(id, method string) (<-chan any, <-chan error) {
 }
 
 // Subscribe to when()
-func (self *WS) When(id, method string) (<-chan any, <-chan error) {
+func (self *WS) When(id, method string) (<-chan interface{}, <-chan error) {
 
 	err := make(chan error)
-	res := make(chan any)
+	res := make(chan interface{})
 
-	self.when(id, func(e error, r any) {
+	self.when(id, func(e error, r interface{}) {
 		switch {
 		case e != nil:
 			err <- e
@@ -106,7 +106,7 @@ func (self *WS) When(id, method string) (<-chan any, <-chan error) {
 // Private methods
 // --------------------------------------------------
 
-func (self *WS) once(id any, fn func(error, any)) {
+func (self *WS) once(id interface{}, fn func(error, interface{})) {
 
 	// pauses traffic in others threads, so we can add the new listener without conflicts
 	self.emit.lock.Lock()
@@ -114,7 +114,7 @@ func (self *WS) once(id any, fn func(error, any)) {
 
 	// if its our first listener, we need to setup the map
 	if self.emit.once == nil {
-		self.emit.once = make(map[any][]func(error, any))
+		self.emit.once = make(map[interface{}][]func(error, interface{}))
 	}
 
 	self.emit.once[id] = append(self.emit.once[id], fn)
@@ -123,7 +123,7 @@ func (self *WS) once(id any, fn func(error, any)) {
 
 // WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS AND/OR REAL TIME stuffs.
 
-func (self *WS) when(id any, fn func(error, any)) {
+func (self *WS) when(id interface{}, fn func(error, interface{})) {
 
 	// pauses traffic in others threads, so we can add the new listener without conflicts
 	self.emit.lock.Lock()
@@ -131,14 +131,14 @@ func (self *WS) when(id any, fn func(error, any)) {
 
 	// if its our first listener, we need to setup the map
 	if self.emit.when == nil {
-		self.emit.when = make(map[any][]func(error, any))
+		self.emit.when = make(map[interface{}][]func(error, interface{}))
 	}
 
 	self.emit.when[id] = append(self.emit.when[id], fn)
 
 }
 
-func (self *WS) done(id any, err error, res any) {
+func (self *WS) done(id interface{}, err error, res interface{}) {
 
 	// pauses traffic in others threads, so we can modify listeners without conflicts
 	self.emit.lock.Lock()
@@ -183,7 +183,7 @@ func (self *WS) done(id any, err error, res any) {
 
 }
 
-func (self *WS) read(v any) (err error) {
+func (self *WS) read(v interface{}) (err error) {
 
 	_, r, err := self.ws.NextReader()
 	if err != nil {
@@ -194,7 +194,7 @@ func (self *WS) read(v any) (err error) {
 
 }
 
-func (self *WS) write(v any) (err error) {
+func (self *WS) write(v interface{}) (err error) {
 
 	w, err := self.ws.NextWriter(websocket.TextMessage)
 	if err != nil {
