@@ -128,13 +128,13 @@ func ExampleDB_Modify() {
 		panic(err)
 	}
 
-	patch := []map[string]interface{}{
-		{"op": "add", "path": "nickname", "value": "johnny"},
-		{"op": "add", "path": "age", "value": 44},
+	patches := []Patch{
+		{Op: "add", Path: "nickname", Value: "johnny"},
+		{Op: "add", Path: "age", Value: 44},
 	}
 
 	// Update the user
-	_, err = db.Modify("users:999", patch)
+	_, err = db.Modify("users:999", patches)
 	if err != nil {
 		panic(err)
 	}

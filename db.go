@@ -96,7 +96,7 @@ func (self *DB) Change(what string, data map[string]any) (any, error) {
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data []map[string]any) (any, error) {
+func (self *DB) Modify(what string, data []Patch) (any, error) {
 	return self.send("modify", what, data)
 }
 
