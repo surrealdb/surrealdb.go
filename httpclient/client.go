@@ -2,6 +2,7 @@ package httpclient
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -19,6 +20,12 @@ type SurrealClient struct {
 	Password string
 }
 
+type Response struct {
+	Time   string `json:"time"`
+	Status string `json:"status"`
+	Result any    `json:"result"`
+}
+
 // New creates a new instance of a SurrealClient
 func New(url, db, ns, user, password string) SurrealClient {
 	return SurrealClient{
@@ -30,51 +37,77 @@ func New(url, db, ns, user, password string) SurrealClient {
 	}
 }
 
-// Execute executes a POST with the given query, returning the raw JSON response as a string
-// TODO: marshal the response into something nicer, depending on what the community decides
-func (sc SurrealClient) Execute(query string) ([]byte, error) {
+// Execute calls the endpoint POST /sql, executing whatever given statement
+func (sc SurrealClient) Execute(query string) (Response, error) {
 	return sc.Request("/sql", "POST", query)
 }
 
-func (sc SurrealClient) CreateOne(table, id, query string) ([]byte, error) {
+// CreateOne calls the endpoint POST /key/:table/:id, executing the statement
+//
+// CREATE type::table($table) CONTENT $body;
+func (sc SurrealClient) CreateOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "POST", query)
 }
 
-func (sc SurrealClient) CreateAll(table string, query string) ([]byte, error) {
+// CreateAll calls the endpoint POST /key/:table, executing the statement
+//
+// CREATE type::thing($table, $id) CONTENT $body;
+func (sc SurrealClient) CreateAll(table string, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "POST", query)
 }
 
-func (sc SurrealClient) SelectAll(table string) ([]byte, error) {
+// SelectAll calls the endpoint GET /key/:table, executing the statement
+//
+// SELECT * FROM type::table($table);
+func (sc SurrealClient) SelectAll(table string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "GET", "")
 }
 
-func (sc SurrealClient) SelectOne(table string, id string) ([]byte, error) {
+// SelectOne calls the endpoint GET /key/:table/:id, executing the statement
+//
+// SELECT * FROM type::thing(:table, :id);
+func (sc SurrealClient) SelectOne(table string, id string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "GET", "")
 }
 
-func (sc SurrealClient) ReplaceOne(table, id, query string) ([]byte, error) {
+// ReplaceOne calls the endpoint PUT /key/:table/:id, executing the statement
+//
+// UPDATE type::thing($table, $id) CONTENT $body;
+func (sc SurrealClient) ReplaceOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PUT", query)
 }
 
-func (sc SurrealClient) UpsertOne(table, id, query string) ([]byte, error) {
+// UpsertOne calls the endpoint PUT /key/:table/:id, executing the statement
+//
+// UPDATE type::thing($table, $id) MERGE $body;
+func (sc SurrealClient) UpsertOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PATCH", query)
 }
 
-func (sc SurrealClient) DeleteOne(table, id string) ([]byte, error) {
+// DeleteOne calls the endpoint DELETE /key/:table/:id, executing the statement
+//
+// DELETE FROM type::thing($table, $id);
+func (sc SurrealClient) DeleteOne(table, id string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "DELETE", "")
 }
 
-func (sc SurrealClient) DeleteAll(table string) ([]byte, error) {
+// DeleteAll calls the endpoint DELETE /key/:table/, executing the statement
+//
+// DELETE FROM type::table($table);
+func (sc SurrealClient) DeleteAll(table string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "DELETE", "")
 }
 
-func (sc SurrealClient) Request(endpoint string, requestType string, body string) ([]byte, error) {
+// Request makes a request to surrealdb to the given endpoint, with the given data. Responses returned from
+// surrealdb vary, and this function will only return the first response
+// TODO: have it return the array, or some other data type that more properly reflects the responses
+func (sc SurrealClient) Request(endpoint string, requestType string, body string) (Response, error) {
 	client := &http.Client{}
 
 	// TODO: verify its a valid requesttype
 	req, err := http.NewRequest(requestType, sc.URL+endpoint, bytes.NewBufferString(body))
 	if err != nil {
-		return []byte{}, err
+		return Response{}, err
 	}
 	req.Header.Set("NS", sc.NS)
 	req.Header.Set("DB", sc.DB)
@@ -83,9 +116,20 @@ func (sc SurrealClient) Request(endpoint string, requestType string, body string
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return []byte{}, err
+		return Response{}, err
 	}
 	defer resp.Body.Close()
 
-	return ioutil.ReadAll(resp.Body)
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return Response{}, err
+	}
+
+	var realResp []Response
+	err = json.Unmarshal(data, &realResp)
+	if err != nil {
+		return Response{}, err
+	}
+
+	return realResp[0], err
 }
