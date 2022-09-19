@@ -1,6 +1,8 @@
 package surrealdb
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // an example test for creating a new entry in surrealdb
 func ExampleNew() {
@@ -81,26 +83,69 @@ func ExampleDB_Update() {
 	})
 	_, err = db.Use("test", "test")
 
-	_, err = db.Create("users", map[string]interface{}{
+	_, err = db.Create("users:123", map[string]interface{}{
 		"username": "john",
 		"password": "123",
 	})
 	if err != nil {
 		panic(err)
 	}
-	user, err := db.Select("users") // // TODO: should let users specify a selector other than '*'
-	if err != nil {
-		panic(err)
-	}
 
 	// Update the user
-	_, err = db.Update("users", map[string]interface{}{
+	user, err := db.Update("users:123", map[string]interface{}{
 		"username": "john",
 		"password": "1234",
 	})
 
+	if err != nil {
+		panic(err)
+	}
+
 	// TODO: this needs to simplified for the end user somehow
-	fmt.Println((user).([]interface{})[0].(map[string]interface{})["password"])
+	fmt.Println((user).(map[string]interface{})["password"])
 
 	// Output: 1234
+}
+
+func ExampleDB_Modify() {
+	db, err := New("ws://localhost:8000/rpc")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Signin(map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+	_, err = db.Use("test", "test")
+
+	_, err = db.Create("users:999", map[string]interface{}{
+		"username": "john999",
+		"password": "123",
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	patch := []map[string]interface{}{
+		{"op": "add", "path": "nickname", "value": "johnny"},
+		{"op": "add", "path": "age", "value": 44},
+	}
+
+	// Update the user
+	_, err = db.Modify("users:999", patch)
+	if err != nil {
+		panic(err)
+	}
+
+	user2, err := db.Select("users:999")
+	if err != nil {
+		panic(err)
+	}
+
+	// // TODO: this needs to simplified for the end user somehow
+	fmt.Println((user2).(map[string]interface{})["age"])
+	//
+	// Output: 44
 }

@@ -80,7 +80,6 @@ func (self *DB) Select(what string) (any, error) {
 	return self.send("select", what)
 }
 
-
 // Creates a table or record in the database like a POST request.
 func (self *DB) Create(thing string, data map[string]any) (any, error) {
 	return self.send("create", thing, data)
@@ -97,7 +96,7 @@ func (self *DB) Change(what string, data map[string]any) (any, error) {
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data map[string]any) (any, error) {
+func (self *DB) Modify(what string, data []map[string]any) (any, error) {
 	return self.send("modify", what, data)
 }
 
