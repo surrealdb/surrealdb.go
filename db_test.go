@@ -245,18 +245,13 @@ func TestUnmarshalRaw(t *testing.T) {
 		panic(err)
 	}
 
-	_, _ = db.Create("users", testUser{
-		Username: "johnny",
-		Password: "123",
-	})
-
-	username := "johnny"
-	password := "123"
-
 	_, err = db.Delete("users")
 	if err != nil {
 		panic(err)
 	}
+
+	username := "johnny"
+	password := "123"
 
 	//create test user with raw SurrealQL and unmarshal
 
