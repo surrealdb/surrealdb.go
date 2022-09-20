@@ -69,3 +69,46 @@ can be found [here](https://github.com/surrealdb/surrealdb).
 <h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/documentation.svg">&nbsp;&nbsp;Documentation</h2>
 
 The complete and detailed documentation for this library is located [here](https://surrealdb.com/docs/integration/libraries/golang).
+
+<br>
+
+<h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/gettingstarted.svg">&nbsp;&nbsp;Quick start</h2>
+
+First we install the library with `go get`
+```cli
+go get github.com/surrealdb/surrealdb.go
+```
+
+Once you have installed it, you can now import to your project
+```go
+import (
+	"github.com/surrealdb/surrealdb.go"
+)
+```
+
+Connecting to a database.
+```go
+db, err := surrealdb.New("ws://localhost:8000/rpc")
+if err != nil {
+    panic(err)
+}
+```
+
+Authenticating...
+```go
+_, err = db.Signin(map[string]interface{}{
+    "user": "root",
+    "pass": "root",
+})
+if err != nil {
+    panic(err)
+}
+```
+
+Then we need to specify in which `Namespace` and `Database` we intend to operate on.
+```go
+_, err = db.Use("test", "test")
+if err != nil {
+    panic(err)
+}
+```
