@@ -86,56 +86,56 @@ Basic usage.
 package main
 
 import (
-    "fmt"
-    "github.com/surrealdb/surrealdb.go"
+	"fmt"
+	"github.com/surrealdb/surrealdb.go"
 )
 
 func main() {
-    // Connecting with the Surreal Server.
-    db, err := surrealdb.New("ws://localhost:8000/rpc")
+	// Connecting with the Surreal Server.
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
 
-    // Authenticating...
-    _, err = db.Signin(map[string]interface{}{
+	// Authenticating...
+	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-    if err != nil {
-		panic(err)
-	}
-
-    // Specifying in which Namespace and Database
-    // we intend to operate on.
-    _, err = db.Use("test", "test")
 	if err != nil {
 		panic(err)
 	}
 
-    // Creating tobie...
-    _, err = db.Create("users:tobie", map[string]interface{}{
+	// Specifying in which Namespace and Database
+	// we intend to operate on.
+	_, err = db.Use("test", "test")
+	if err != nil {
+		panic(err)
+	}
+
+	// Creating tobie...
+	_, err = db.Create("users:tobie", map[string]interface{}{
 		"name": "Tobie Some",
 		"food": "Pineapple Pizza",
-        "age": 32,
+		"age":  32,
 	})
-    if err != nil {
-		panic(err)
-	}
-
-    // Fetching tobie later on...
-    user, err := db.Select("users:tobie")
 	if err != nil {
 		panic(err)
 	}
 
-    converted_user, ok := user.(map[string]interface{})
-    if ok {
-        fmt.Println(converted_user["food"])
-    }
+	// Fetching tobie later on...
+	user, err := db.Select("users:tobie")
+	if err != nil {
+		panic(err)
+	}
 
-    // Deleting tobie...
-    _, err = db.Delete("users:tobie")
+	converted_user, ok := user.(map[string]interface{})
+	if ok {
+		fmt.Println(converted_user["food"])
+	}
+
+	// Deleting tobie...
+	_, err = db.Delete("users:tobie")
 	if err != nil {
 		panic(err)
 	}
