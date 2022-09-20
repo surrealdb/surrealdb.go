@@ -62,4 +62,10 @@ Built in `Rust` the core source code for
 <a href="https://surrealdb.com#gh-light-mode-only" target="_blank">
 <img src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/black/text.svg" height="15" alt="SurrealDB">
 </a>
-can be found [here](https://github.com/surrealdb/surrealdb)
+can be found [here](https://github.com/surrealdb/surrealdb).
+
+<br>
+
+<h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/documentation.svg">&nbsp;&nbsp;Documentation</h2>
+
+The complete and detailed documentation for this library is located [here](https://surrealdb.com/docs/integration/libraries/golang).
