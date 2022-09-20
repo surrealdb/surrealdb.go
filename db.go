@@ -10,7 +10,7 @@ import (
 const statusOK = "OK"
 
 var (
-	InvalidResponse = errors.New("invalid SurrealQL response")
+	InvalidResponse = errors.New("invalid SurrealDB response")
 	QueryError      = errors.New("error occurred processing the SurrealDB query")
 )
 
