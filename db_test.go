@@ -1,22 +1,25 @@
 package surrealdb
 
-import "fmt"
+import (
+	"fmt"
+	"testing"
+)
 
 // an example test for creating a new entry in surrealdb
-func ExampleNew() {
+func Test_New(t *testing.T) {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	defer db.Close()
 
 	// Output:
 }
 
-func ExampleDB_Delete() {
+func TestDB_Delete(t *testing.T) {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	defer db.Close()
 
@@ -28,16 +31,16 @@ func ExampleDB_Delete() {
 
 	_, err = db.Delete("users")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 
 	// Output:
 }
 
-func ExampleDB_Create() {
+func TestDB_Create(t *testing.T) {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	defer db.Close()
 
@@ -52,16 +55,16 @@ func ExampleDB_Create() {
 		"password": "123",
 	})
 	if err != nil {
-		fmt.Println(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 
 	// Output:
 }
 
-func ExampleDB_Select() {
+func TestDB_Select(t *testing.T) {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	defer db.Close()
 
@@ -76,11 +79,11 @@ func ExampleDB_Select() {
 		"password": "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	user, err := db.Select("users") // TODO: should let users specify a selector other than '*'
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 
 	// TODO: this needs to simplified for the end user somehow
@@ -89,10 +92,10 @@ func ExampleDB_Select() {
 	// Output: john
 }
 
-func ExampleDB_Update() {
+func TestDB_Update(t *testing.T) {
 	db, err := New("ws://localhost:8000/rpc")
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	defer db.Close()
 
@@ -107,11 +110,11 @@ func ExampleDB_Update() {
 		"password": "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 	user, err := db.Select("users") // // TODO: should let users specify a selector other than '*'
 	if err != nil {
-		panic(err)
+		t.Errorf("Unexpected error: %s", err.Error())
 	}
 
 	// Update the user
