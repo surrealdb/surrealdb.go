@@ -1,9 +1,3 @@
-# surrealdb.go
-
-The official SurrealDB library for Golang.
-
-[![](https://img.shields.io/badge/status-beta-ff00bb.svg?style=flat-square)](https://github.com/surrealdb/surrealdb.go) [![](https://img.shields.io/badge/docs-view-44cc11.svg?style=flat-square)](https://surrealdb.com/docs/integration/libraries/golang) [![Go Reference](https://pkg.go.dev/badge/github.com/surrealdb/surrealdb.go.svg)](https://pkg.go.dev/github.com/surrealdb/surrealdb.go) [![](https://img.shields.io/badge/license-Apache_License_2.0-00bfff.svg?style=flat-square)](https://github.com/surrealdb/surrealdb.go)
-
 <br>
 
 <p align="center">
@@ -16,13 +10,14 @@ The official SurrealDB library for Golang.
 </p>
 
 <h3 align="center">
-    Official GO library for
+    The official
     <a href="https://surrealdb.com#gh-dark-mode-only" target="_blank">
         <img src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/white/text.svg" height="15" alt="SurrealDB">
     </a>
     <a href="https://surrealdb.com#gh-light-mode-only" target="_blank">
         <img src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/black/text.svg" height="15" alt="SurrealDB">
     </a>
+    library for GO.
 </h3>
 
 <br>
@@ -57,3 +52,14 @@ The official SurrealDB library for Golang.
 </p>
 
 <br>
+
+<h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/whatissurreal.svg">&nbsp;&nbsp;Want to check the core code?</h2>
+
+Built in `Rust` the core source code for
+<a href="https://surrealdb.com#gh-dark-mode-only" target="_blank">
+<img src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/white/text.svg" height="15" alt="SurrealDB">
+</a>
+<a href="https://surrealdb.com#gh-light-mode-only" target="_blank">
+<img src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/black/text.svg" height="15" alt="SurrealDB">
+</a>
+can be found [here](https://github.com/surrealdb/surrealdb)
