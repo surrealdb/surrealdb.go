@@ -1,10 +1,14 @@
-package surrealdb
+package surrealdb_test
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/surrealdb/surrealdb.go"
+)
 
 // an example test for creating a new entry in surrealdb
 func ExampleNew() {
-	db, err := New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
@@ -14,7 +18,7 @@ func ExampleNew() {
 }
 
 func ExampleDB_Delete() {
-	db, err := New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
@@ -35,7 +39,7 @@ func ExampleDB_Delete() {
 }
 
 func ExampleDB_Create() {
-	db, err := New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
@@ -59,7 +63,7 @@ func ExampleDB_Create() {
 }
 
 func ExampleDB_Select() {
-	db, err := New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
@@ -90,7 +94,7 @@ func ExampleDB_Select() {
 }
 
 func ExampleDB_Update() {
-	db, err := New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
