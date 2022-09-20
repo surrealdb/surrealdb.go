@@ -75,11 +75,13 @@ The complete and detailed documentation for this library is located [here](https
 <h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/gettingstarted.svg">&nbsp;&nbsp;Quick start</h2>
 
 Installing the library.
+
 ```cli
 go get github.com/surrealdb/surrealdb.go
 ```
 
 Basic usage.
+
 ```go
 package main
 
