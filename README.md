@@ -74,41 +74,65 @@ The complete and detailed documentation for this library is located [here](https
 
 <h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/gettingstarted.svg">&nbsp;&nbsp;Quick start</h2>
 
-First we install the library with `go get`
+Installing the library.
 ```cli
 go get github.com/surrealdb/surrealdb.go
 ```
 
-Once you have installed it, you can now import to your project
+Basic usage.
 ```go
+package main
+
 import (
+    "fmt"
 	"github.com/surrealdb/surrealdb.go"
 )
-```
 
-Connecting to a database.
-```go
-db, err := surrealdb.New("ws://localhost:8000/rpc")
-if err != nil {
-    panic(err)
-}
-```
+func main() {
 
-Authenticating...
-```go
-_, err = db.Signin(map[string]interface{}{
-    "user": "root",
-    "pass": "root",
-})
-if err != nil {
-    panic(err)
-}
-```
+    // Connecting with the Surreal Server.
+    db, err := surrealdb.New("ws://localhost:8000/rpc")
+	if err != nil {
+		panic(err)
+	}
 
-Then we need to specify in which `Namespace` and `Database` we intend to operate on.
-```go
-_, err = db.Use("test", "test")
-if err != nil {
-    panic(err)
+    // Authenticating...
+    _, err = db.Signin(map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+    if err != nil {
+		panic(err)
+	}
+
+    // Specifying in which Namespace and Database
+    // we intend to operate on.
+    _, err = db.Use("test", "test")
+	if err != nil {
+		panic(err)
+	}
+
+    // Creating a new user...
+    _, err = db.Create("users:tobie", map[string]interface{}{
+		"name": "Tobie Some",
+		"food": "Pineapple Pizza",
+        "age": 32,
+	})
+    if err != nil {
+		panic(err)
+	}
+
+    // Fetching that user later on...
+    user, err := db.Select("users:tobie")
+	if err != nil {
+		panic(err)
+	}
+    fmt.Println(user.(map[string]interface{})["food"])
+
+    // Deleting tobie...
+    _, err = db.Delete("users:tobie")
+	if err != nil {
+		panic(err)
+	}
 }
 ```
