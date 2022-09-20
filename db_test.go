@@ -81,7 +81,6 @@ func ExampleDB_Select() {
 	if err != nil {
 		panic(err)
 	}
-
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
