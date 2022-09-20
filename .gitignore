@@ -21,6 +21,8 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+.idea
+
 # -----------------------------------
 # Files
 # -----------------------------------
@@ -28,3 +30,4 @@ Temporary Items
 *.db
 *.test
 *.cover
+
