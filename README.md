@@ -53,7 +53,7 @@
 
 <br>
 
-<h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/whatissurreal.svg">&nbsp;&nbsp;Want to check the core code?</h2>
+<h2><img height="20" src="https://raw.githubusercontent.com/surrealdb/surrealdb/main/img/whatissurreal.svg">&nbsp;&nbsp;Looking for the core code?</h2>
 
 Built in `Rust` the core source code for
 <a href="https://surrealdb.com#gh-dark-mode-only" target="_blank">
