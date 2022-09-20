@@ -78,7 +78,7 @@ func (self *DB) Query(sql string, vars map[string]any) (any, error) {
 func (self *DB) SchemalessSelect(what string) ([]map[string]interface{}, error) {
 	output, err := self.Select(what)
 	if err != nil {
-		return make([]map[string]interface{}, 0), err
+		return nil, err
 	}
 
 	returnArray := make([]map[string]interface{}, 0)
