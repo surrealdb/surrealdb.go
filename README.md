@@ -87,11 +87,10 @@ package main
 
 import (
     "fmt"
-	"github.com/surrealdb/surrealdb.go"
+    "github.com/surrealdb/surrealdb.go"
 )
 
 func main() {
-
     // Connecting with the Surreal Server.
     db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
@@ -114,7 +113,7 @@ func main() {
 		panic(err)
 	}
 
-    // Creating a new user...
+    // Creating tobie...
     _, err = db.Create("users:tobie", map[string]interface{}{
 		"name": "Tobie Some",
 		"food": "Pineapple Pizza",
@@ -124,12 +123,16 @@ func main() {
 		panic(err)
 	}
 
-    // Fetching that user later on...
+    // Fetching tobie later on...
     user, err := db.Select("users:tobie")
 	if err != nil {
 		panic(err)
 	}
-    fmt.Println(user.(map[string]interface{})["food"])
+
+    converted_user, ok := user.(map[string]interface{})
+    if ok {
+        fmt.Println(converted_user["food"])
+    }
 
     // Deleting tobie...
     _, err = db.Delete("users:tobie")
