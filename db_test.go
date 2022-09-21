@@ -158,7 +158,7 @@ func ExampleDB_Update() {
 	user.Password = "456"
 
 	// Update the user
-	userData, err = db.Update("users", user)
+	userData, err = db.Update("users", &user)
 
 	if err != nil {
 		panic(err)
@@ -254,7 +254,7 @@ func TestUnmarshalRaw(t *testing.T) {
 
 	//create test user with raw SurrealQL and unmarshal
 
-	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]any{
+	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
 		"user": username,
 		"pass": password,
 	})
@@ -273,7 +273,7 @@ func TestUnmarshalRaw(t *testing.T) {
 
 	//send query with empty result and unmarshal
 
-	userData, err = db.Query("select * from users where id = $id", map[string]any{
+	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
 	if err != nil {

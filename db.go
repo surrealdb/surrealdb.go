@@ -29,10 +29,10 @@ func New(url string) (*DB, error) {
 }
 
 // Unmarshal loads a SurrealDB response into a struct.
-func Unmarshal(data any, v any) error {
+func Unmarshal(data interface{}, v interface{}) error {
 	var ok bool
 
-	assertedData, ok := data.([]any)
+	assertedData, ok := data.([]interface{})
 	if !ok {
 		return InvalidResponse
 	}
@@ -59,14 +59,14 @@ func Unmarshal(data any, v any) error {
 
 // UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
 // return ok = true, and queries that return with no results will return ok = false.
-func UnmarshalRaw(rawData any, v any) (ok bool, err error) {
-	var data []any
-	if data, ok = rawData.([]any); !ok {
+func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
+	var data []interface{}
+	if data, ok = rawData.([]interface{}); !ok {
 		return false, InvalidResponse
 	}
 
-	var responseObj map[string]any
-	if responseObj, ok = data[0].(map[string]any); !ok {
+	var responseObj map[string]interface{}
+	if responseObj, ok = data[0].(map[string]interface{}); !ok {
 		return false, InvalidResponse
 	}
 
@@ -79,7 +79,7 @@ func UnmarshalRaw(rawData any, v any) (ok bool, err error) {
 	}
 
 	result := responseObj["result"]
-	if len(result.([]any)) == 0 {
+	if len(result.([]interface{})) == 0 {
 		return false, nil
 	}
 	err = Unmarshal(result, v)
@@ -111,12 +111,12 @@ func (self *DB) Info() (interface{}, error) {
 }
 
 // Signup is a helper method for signing up a new user.
-func (self *DB) Signup(vars map[string]interface{}) (interface{}, error) {
+func (self *DB) Signup(vars interface{}) (interface{}, error) {
 	return self.send("signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (self *DB) Signin(vars map[string]interface{}) (interface{}, error) {
+func (self *DB) Signin(vars interface{}) (interface{}, error) {
 	return self.send("signin", vars)
 }
 
@@ -143,7 +143,7 @@ func (self *DB) Let(key string, val interface{}) (interface{}, error) {
 }
 
 // Query is a convenient method for sending a query to the database.
-func (self *DB) Query(sql string, vars map[string]interface{}) (interface{}, error) {
+func (self *DB) Query(sql string, vars interface{}) (interface{}, error) {
 	return self.send("query", sql, vars)
 }
 
@@ -152,24 +152,23 @@ func (self *DB) Select(what string) (interface{}, error) {
 	return self.send("select", what)
 }
 
-
 // Creates a table or record in the database like a POST request.
-func (self *DB) Create(thing string, data map[string]interface{}) (interface{}, error) {
+func (self *DB) Create(thing string, data interface{}) (interface{}, error) {
 	return self.send("create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (self *DB) Update(what string, data map[string]interface{}) (interface{}, error) {
+func (self *DB) Update(what string, data interface{}) (interface{}, error) {
 	return self.send("update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (self *DB) Change(what string, data map[string]interface{}) (interface{}, error) {
+func (self *DB) Change(what string, data interface{}) (interface{}, error) {
 	return self.send("change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data map[string]interface{}) (interface{}, error) {
+func (self *DB) Modify(what string, data interface{}) (interface{}, error) {
 	return self.send("modify", what, data)
 }
 
@@ -194,26 +193,26 @@ func (self *DB) send(method string, params ...interface{}) (interface{}, error) 
 
 	for {
 		select {
+		default:
+		case e := <-err:
+			return nil, e
+		case r := <-chn:
+			switch method {
+			case "delete":
+				return nil, nil
+			case "select":
+				return self.resp(method, params, r)
+			case "create":
+				return self.resp(method, params, r)
+			case "update":
+				return self.resp(method, params, r)
+			case "change":
+				return self.resp(method, params, r)
+			case "modify":
+				return self.resp(method, params, r)
 			default:
-			case e := <-err:
-				return nil, e
-			case r := <-chn:
-				switch method {
-					case "delete":
-						return nil, nil
-					case "select":
-						return self.resp(method, params, r)
-					case "create":
-						return self.resp(method, params, r)
-					case "update":
-						return self.resp(method, params, r)
-					case "change":
-						return self.resp(method, params, r)
-					case "modify":
-						return self.resp(method, params, r)
-					default:
-						return r, nil
-				}
+				return r, nil
+			}
 		}
 	}
 
@@ -248,7 +247,7 @@ func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface
 
 }
 
-func isSlice(possibleSlice any) bool {
+func isSlice(possibleSlice interface{}) bool {
 	slice := false
 
 	switch v := possibleSlice.(type) {
