@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/test-go/testify/assert"
-	"github.com/test-go/testify/require"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Nominal(t *testing.T) {
