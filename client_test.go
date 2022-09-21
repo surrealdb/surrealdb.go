@@ -1,4 +1,4 @@
-package httpclient
+package surrealdb
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 )
 
 func Test_Nominal(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.Execute("INFO FOR DB;")
 	require.Nil(t, err)
@@ -17,7 +17,7 @@ func Test_Nominal(t *testing.T) {
 }
 
 func Test_CreateAll(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.CreateAll("person", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -27,7 +27,7 @@ func Test_CreateAll(t *testing.T) {
 }
 
 func Test_CreateOne(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.CreateOne("person", "surrealcreate", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -36,7 +36,7 @@ func Test_CreateOne(t *testing.T) {
 }
 
 func Test_SelectAll(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.SelectAll("person")
 	require.Nil(t, err)
@@ -45,7 +45,7 @@ func Test_SelectAll(t *testing.T) {
 }
 
 func Test_SelectOne(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.CreateOne("person", "surreal", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -58,7 +58,7 @@ func Test_SelectOne(t *testing.T) {
 }
 
 func Test_ReplaceOne(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	resp, err := client.CreateOne("personreplace", "surreal", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -71,7 +71,7 @@ func Test_ReplaceOne(t *testing.T) {
 }
 
 func Test_UpsertOne(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	_, err := client.CreateOne("person", "surrealupsert", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -82,7 +82,7 @@ func Test_UpsertOne(t *testing.T) {
 }
 
 func Test_DeleteOne(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	_, err := client.CreateOne("person", "surrealdelete", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)
@@ -97,7 +97,7 @@ func Test_DeleteOne(t *testing.T) {
 }
 
 func Test_DeleteAll(t *testing.T) {
-	client := New("http://localhost:8000", "test", "test", "root", "root")
+	client := NewClient("http://localhost:8000", "test", "test", "root", "root")
 
 	_, err := client.CreateOne("person", "surrealdeleteall1", `{child: null, name: "FooBar"}`)
 	require.Nil(t, err)

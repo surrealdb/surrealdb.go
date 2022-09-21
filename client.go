@@ -1,4 +1,4 @@
-package httpclient
+package surrealdb
 
 import (
 	"bytes"
@@ -8,100 +8,102 @@ import (
 	"net/http"
 )
 
-// SurrealClient is a wrapper to more easily make HTTP calls to the SurrealDB engine
-type SurrealClient struct {
+// Client is a wrapper to more easily make HTTP calls to the SurrealDB engine
+type Client struct {
 	// URL is the base URL in SurrealDB to be called
 	URL string
-	// DB that you want to connect to
-	DB string
 	// Namespace that you want to connect to
-	NS       string
-	User     string
-	Password string
+	NS string
+	// Database that you want to connect to
+	DB string
+	// The user to authenticate as
+	User string
+	// The password to authenticate with
+	Pass string
 }
 
 type Response struct {
-	Time   string `json:"time"`
-	Status string `json:"status"`
-	Result any    `json:"result"`
+	Time   string      `json:"time"`
+	Status string      `json:"status"`
+	Result interface{} `json:"result"`
 }
 
-// New creates a new instance of a SurrealClient
-func New(url, db, ns, user, password string) SurrealClient {
-	return SurrealClient{
-		URL:      url,
-		DB:       db,
-		NS:       ns,
-		User:     user,
-		Password: password,
+// New creates a new instance of a Client
+func NewClient(url, ns, db, user, pass string) Client {
+	return Client{
+		URL:  url,
+		NS:   ns,
+		DB:   db,
+		User: user,
+		Pass: pass,
 	}
 }
 
 // Execute calls the endpoint POST /sql, executing whatever given statement
-func (sc SurrealClient) Execute(query string) (Response, error) {
+func (sc Client) Execute(query string) (Response, error) {
 	return sc.Request("/sql", "POST", query)
 }
 
 // CreateOne calls the endpoint POST /key/:table/:id, executing the statement
 //
 // CREATE type::table($table) CONTENT $body;
-func (sc SurrealClient) CreateOne(table, id, query string) (Response, error) {
+func (sc Client) CreateOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "POST", query)
 }
 
 // CreateAll calls the endpoint POST /key/:table, executing the statement
 //
 // CREATE type::thing($table, $id) CONTENT $body;
-func (sc SurrealClient) CreateAll(table string, query string) (Response, error) {
+func (sc Client) CreateAll(table string, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "POST", query)
 }
 
 // SelectAll calls the endpoint GET /key/:table, executing the statement
 //
 // SELECT * FROM type::table($table);
-func (sc SurrealClient) SelectAll(table string) (Response, error) {
+func (sc Client) SelectAll(table string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "GET", "")
 }
 
 // SelectOne calls the endpoint GET /key/:table/:id, executing the statement
 //
 // SELECT * FROM type::thing(:table, :id);
-func (sc SurrealClient) SelectOne(table string, id string) (Response, error) {
+func (sc Client) SelectOne(table string, id string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "GET", "")
 }
 
 // ReplaceOne calls the endpoint PUT /key/:table/:id, executing the statement
 //
 // UPDATE type::thing($table, $id) CONTENT $body;
-func (sc SurrealClient) ReplaceOne(table, id, query string) (Response, error) {
+func (sc Client) ReplaceOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PUT", query)
 }
 
 // UpsertOne calls the endpoint PUT /key/:table/:id, executing the statement
 //
 // UPDATE type::thing($table, $id) MERGE $body;
-func (sc SurrealClient) UpsertOne(table, id, query string) (Response, error) {
+func (sc Client) UpsertOne(table, id, query string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PATCH", query)
 }
 
 // DeleteOne calls the endpoint DELETE /key/:table/:id, executing the statement
 //
 // DELETE FROM type::thing($table, $id);
-func (sc SurrealClient) DeleteOne(table, id string) (Response, error) {
+func (sc Client) DeleteOne(table, id string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "DELETE", "")
 }
 
 // DeleteAll calls the endpoint DELETE /key/:table/, executing the statement
 //
 // DELETE FROM type::table($table);
-func (sc SurrealClient) DeleteAll(table string) (Response, error) {
+func (sc Client) DeleteAll(table string) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "DELETE", "")
 }
 
 // Request makes a request to surrealdb to the given endpoint, with the given data. Responses returned from
 // surrealdb vary, and this function will only return the first response
 // TODO: have it return the array, or some other data type that more properly reflects the responses
-func (sc SurrealClient) Request(endpoint string, requestType string, body string) (Response, error) {
+func (sc Client) Request(endpoint string, requestType string, body string) (Response, error) {
 	client := &http.Client{}
 
 	// TODO: verify its a valid requesttype
@@ -112,7 +114,7 @@ func (sc SurrealClient) Request(endpoint string, requestType string, body string
 	req.Header.Set("NS", sc.NS)
 	req.Header.Set("DB", sc.DB)
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(sc.User, sc.Password)
+	req.SetBasicAuth(sc.User, sc.Pass)
 
 	resp, err := client.Do(req)
 	if err != nil {
