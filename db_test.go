@@ -26,6 +26,50 @@ func ExampleNew() {
 	// Output:
 }
 
+func ExampleDB_Delete() {
+	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	_, err = db.Signin(map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Use("test", "test")
+
+	if err != nil {
+		panic(err)
+	}
+
+	userData, err := db.Create("users", testUser{
+		Username: "johnny",
+		Password: "123",
+	})
+
+	// unmarshal the data into a user struct
+	var user testUser
+	err = surrealdb.Unmarshal(userData, &user)
+	if err != nil {
+		panic(err)
+	}
+
+	// Delete the users...
+	_, err = db.Delete("users")
+
+	if err != nil {
+		panic(err)
+	}
+
+	// Output:
+}
+
 func ExampleDB_Create() {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
 
@@ -103,7 +147,7 @@ func ExampleDB_Select() {
 		Password: "123",
 	})
 
-	userData, err := db.Select("users") // TODO: should let users specify a selector other than '*'
+	userData, err := db.Select("users")
 
 	// unmarshal the data into a user slice
 	var users []testUser
@@ -176,50 +220,6 @@ func ExampleDB_Update() {
 	fmt.Println(updatedUser[0].Password)
 
 	// Output: 456
-}
-
-func ExampleDB_Delete() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	_, err = db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Use("test", "test")
-
-	if err != nil {
-		panic(err)
-	}
-
-	userData, err := db.Create("users", testUser{
-		Username: "johnny",
-		Password: "123",
-	})
-
-	// unmarshal the data into a user struct
-	var user testUser
-	err = surrealdb.Unmarshal(userData, &user)
-	if err != nil {
-		panic(err)
-	}
-
-	// Delete the users... TODO: should let users specify a selector other than '*'
-	_, err = db.Delete("users")
-
-	if err != nil {
-		panic(err)
-	}
-
-	// Output:
 }
 
 func TestUnmarshalRaw(t *testing.T) {
