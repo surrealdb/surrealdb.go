@@ -25,7 +25,6 @@ Temporary Items
 # Directories
 # -----------------------------------
 .idea
-.db
 
 # -----------------------------------
 # Files
@@ -34,4 +33,3 @@ Temporary Items
 *.db
 *.test
 *.cover
-history.txt
