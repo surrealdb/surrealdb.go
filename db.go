@@ -168,7 +168,7 @@ func (self *DB) Change(what string, data interface{}) (interface{}, error) {
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data interface{}) (interface{}, error) {
+func (self *DB) Modify(what string, data []Patch) (interface{}, error) {
 	return self.send("modify", what, data)
 }
 
@@ -193,26 +193,26 @@ func (self *DB) send(method string, params ...interface{}) (interface{}, error) 
 
 	for {
 		select {
+		default:
+		case e := <-err:
+			return nil, e
+		case r := <-chn:
+			switch method {
+			case "delete":
+				return nil, nil
+			case "select":
+				return self.resp(method, params, r)
+			case "create":
+				return self.resp(method, params, r)
+			case "update":
+				return self.resp(method, params, r)
+			case "change":
+				return self.resp(method, params, r)
+			case "modify":
+				return self.resp(method, params, r)
 			default:
-			case e := <-err:
-				return nil, e
-			case r := <-chn:
-				switch method {
-					case "delete":
-						return nil, nil
-					case "select":
-						return self.resp(method, params, r)
-					case "create":
-						return self.resp(method, params, r)
-					case "update":
-						return self.resp(method, params, r)
-					case "change":
-						return self.resp(method, params, r)
-					case "modify":
-						return self.resp(method, params, r)
-					default:
-						return r, nil
-				}
+				return r, nil
+			}
 		}
 	}
 
