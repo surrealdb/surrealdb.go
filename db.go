@@ -1,7 +1,9 @@
 package surrealdb
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
