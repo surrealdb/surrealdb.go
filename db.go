@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +11,8 @@ import (
 const statusOK = "OK"
 
 var (
-	InvalidResponse = errors.New("invalid SurrealDB response")
-	QueryError      = errors.New("error occurred processing the SurrealDB query")
+	ErrInvalidResponse = errors.New("invalid SurrealDB response")
+	ErrQuery           = errors.New("error occurred processing the SurrealDB query")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -20,8 +21,8 @@ type DB struct {
 }
 
 // New Creates a new DB instance given a WebSocket URL.
-func New(url string) (*DB, error) {
-	ws, err := NewWebsocket(url)
+func New(ctx context.Context, url string) (*DB, error) {
+	ws, err := NewWebsocket(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -29,12 +30,15 @@ func New(url string) (*DB, error) {
 }
 
 // Unmarshal loads a SurrealDB response into a struct.
-func Unmarshal(data interface{}, v interface{}) error {
-	var ok bool
+func Unmarshal(data any, v any) error {
+	// TODO: make this function obsolete
+	// currently, we get JSON bytes from the connection, unmarshall them to a *any, marshall them back into
+	// JSON and then unmarshall them into the target struct
+	// This is cumbersome to use and expensive to run
 
-	assertedData, ok := data.([]interface{})
+	assertedData, ok := data.([]any)
 	if !ok {
-		return InvalidResponse
+		return ErrInvalidResponse
 	}
 	sliceFlag := isSlice(v)
 
@@ -59,27 +63,27 @@ func Unmarshal(data interface{}, v interface{}) error {
 
 // UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
 // return ok = true, and queries that return with no results will return ok = false.
-func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
-	var data []interface{}
-	if data, ok = rawData.([]interface{}); !ok {
-		return false, InvalidResponse
+func UnmarshalRaw(rawData any, v any) (ok bool, err error) {
+	data, ok := rawData.([]any)
+	if !ok {
+		return false, ErrInvalidResponse
 	}
 
-	var responseObj map[string]interface{}
-	if responseObj, ok = data[0].(map[string]interface{}); !ok {
-		return false, InvalidResponse
+	responseObj, ok := data[0].(map[string]any)
+	if !ok {
+		return false, ErrInvalidResponse
 	}
 
-	var status string
-	if status, ok = responseObj["status"].(string); !ok {
-		return false, InvalidResponse
+	status, ok := responseObj["status"].(string)
+	if !ok {
+		return false, ErrInvalidResponse
 	}
 	if status != statusOK {
-		return false, QueryError
+		return false, ErrQuery
 	}
 
 	result := responseObj["result"]
-	if len(result.([]interface{})) == 0 {
+	if len(result.([]any)) == 0 {
 		return false, nil
 	}
 	err = Unmarshal(result, v)
@@ -95,86 +99,86 @@ func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
 // --------------------------------------------------
 
 // Close closes the underlying WebSocket connection.
-func (self *DB) Close() {
-	_ = self.ws.Close()
+func (db *DB) Close() error {
+	return db.ws.Close()
 }
 
 // --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
-func (self *DB) Use(ns string, db string) (interface{}, error) {
-	return self.send("use", ns, db)
+func (db *DB) Use(ctx context.Context, ns string, dbname string) (any, error) {
+	return db.send(ctx, "use", ns, dbname)
 }
 
-func (self *DB) Info() (interface{}, error) {
-	return self.send("info")
+func (db *DB) Info(ctx context.Context) (any, error) {
+	return db.send(ctx, "info")
 }
 
 // Signup is a helper method for signing up a new user.
-func (self *DB) Signup(vars interface{}) (interface{}, error) {
-	return self.send("signup", vars)
+func (db *DB) Signup(ctx context.Context, vars any) (any, error) {
+	return db.send(ctx, "signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (self *DB) Signin(vars interface{}) (interface{}, error) {
-	return self.send("signin", vars)
+func (db *DB) Signin(ctx context.Context, vars UserInfo) (any, error) {
+	return db.send(ctx, "signin", vars)
 }
 
-func (self *DB) Invalidate() (interface{}, error) {
-	return self.send("invalidate")
+func (db *DB) Invalidate(ctx context.Context) (any, error) {
+	return db.send(ctx, "invalidate")
 }
 
-func (self *DB) Authenticate(token string) (interface{}, error) {
-	return self.send("authenticate", token)
+func (db *DB) Authenticate(ctx context.Context, token string) (any, error) {
+	return db.send(ctx, "authenticate", token)
 }
 
 // --------------------------------------------------
 
-func (self *DB) Live(table string) (interface{}, error) {
-	return self.send("live", table)
+func (db *DB) Live(ctx context.Context, table string) (any, error) {
+	return db.send(ctx, "live", table)
 }
 
-func (self *DB) Kill(query string) (interface{}, error) {
-	return self.send("kill", query)
+func (db *DB) Kill(ctx context.Context, query string) (any, error) {
+	return db.send(ctx, "kill", query)
 }
 
-func (self *DB) Let(key string, val interface{}) (interface{}, error) {
-	return self.send("let", key, val)
+func (db *DB) Let(ctx context.Context, key string, val any) (any, error) {
+	return db.send(ctx, "let", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
-func (self *DB) Query(sql string, vars interface{}) (interface{}, error) {
-	return self.send("query", sql, vars)
+func (db *DB) Query(ctx context.Context, sql string, vars any) (any, error) {
+	return db.send(ctx, "query", sql, vars)
 }
 
 // Select a table or record from the database.
-func (self *DB) Select(what string) (interface{}, error) {
-	return self.send("select", what)
+func (db *DB) Select(ctx context.Context, what string) (any, error) {
+	return db.send(ctx, "select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (self *DB) Create(thing string, data interface{}) (interface{}, error) {
-	return self.send("create", thing, data)
+func (db *DB) Create(ctx context.Context, thing string, data any) (any, error) {
+	return db.send(ctx, "create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (self *DB) Update(what string, data interface{}) (interface{}, error) {
-	return self.send("update", what, data)
+func (db *DB) Update(ctx context.Context, what string, data any) (any, error) {
+	return db.send(ctx, "update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (self *DB) Change(what string, data interface{}) (interface{}, error) {
-	return self.send("change", what, data)
+func (db *DB) Change(ctx context.Context, what string, data any) (any, error) {
+	return db.send(ctx, "change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data []Patch) (interface{}, error) {
-	return self.send("modify", what, data)
+func (db *DB) Modify(ctx context.Context, what string, data []Patch) (any, error) {
+	return db.send(ctx, "modify", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (self *DB) Delete(what string) (interface{}, error) {
-	return self.send("delete", what)
+func (db *DB) Delete(ctx context.Context, what string) (any, error) {
+	return db.send(ctx, "delete", what)
 }
 
 // --------------------------------------------------
@@ -182,44 +186,45 @@ func (self *DB) Delete(what string) (interface{}, error) {
 // --------------------------------------------------
 
 // send is a helper method for sending a query to the database.
-func (self *DB) send(method string, params ...interface{}) (interface{}, error) {
+func (db *DB) send(ctx context.Context, method string, params ...any) (any, error) {
 
 	// generate an id for the action, this is used to distinguish its response
-	id := xid(16)
+	id := xid()
 	// chn: the channel where the server response will arrive, err: the channel where errors will come
-	chn, err := self.ws.Once(id, method)
+	chn := db.ws.Once(id, method)
 	// here we send the args through our websocket connection
-	self.ws.Send(id, method, params)
+	db.ws.Send(id, method, params)
 
-	for {
-		select {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case r := <-chn:
+		if r.err != nil {
+			return nil, r.err
+		}
+		switch method {
+		case "delete":
+			return nil, nil
+		case "select":
+			return db.resp(method, params, r.value)
+		case "create":
+			return db.resp(method, params, r.value)
+		case "update":
+			return db.resp(method, params, r.value)
+		case "change":
+			return db.resp(method, params, r.value)
+		case "modify":
+			return db.resp(method, params, r.value)
 		default:
-		case e := <-err:
-			return nil, e
-		case r := <-chn:
-			switch method {
-			case "delete":
-				return nil, nil
-			case "select":
-				return self.resp(method, params, r)
-			case "create":
-				return self.resp(method, params, r)
-			case "update":
-				return self.resp(method, params, r)
-			case "change":
-				return self.resp(method, params, r)
-			case "modify":
-				return self.resp(method, params, r)
-			default:
-				return r, nil
-			}
+			return r.value, nil
 		}
 	}
 
 }
 
 // resp is a helper method for parsing the response from a query.
-func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
+func (db *DB) resp(_ string, params []any, res any) (any, error) {
 
 	arg, ok := params[0].(string)
 
@@ -227,9 +232,10 @@ func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface
 		return res, nil
 	}
 
+	// TODO: explian what that condition is for
 	if strings.Contains(arg, ":") {
 
-		arr, ok := res.([]interface{})
+		arr, ok := res.([]any)
 
 		if !ok {
 			return nil, PermissionError{what: arg}
@@ -248,15 +254,10 @@ func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface
 }
 
 func isSlice(possibleSlice interface{}) bool {
-	slice := false
-
-	switch v := possibleSlice.(type) {
-	default:
-		res := fmt.Sprintf("%s", v)
-		if res == "[]" || res == "&[]" || res == "*[]" {
-			slice = true
-		}
+	res := fmt.Sprintf("%s", possibleSlice)
+	if res == "[]" || res == "&[]" || res == "*[]" {
+		return true
 	}
 
-	return slice
+	return false
 }

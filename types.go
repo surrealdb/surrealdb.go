@@ -6,3 +6,8 @@ type Patch struct {
 	Path  string `json:"path"`
 	Value any    `json:"value"`
 }
+
+type UserInfo struct {
+	User     string `json:"user"`
+	Password string `json:"pass"`
+}
