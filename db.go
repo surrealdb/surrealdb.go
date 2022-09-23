@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"errors"
 	"strings"
 )
 
@@ -75,16 +76,22 @@ func (self *DB) Query(sql string, vars map[string]any) (any, error) {
 	return self.send("query", sql, vars)
 }
 
-func (self *DB) SchemalessSelect(what string) ([]map[string]interface{}, error) {
+// SchemalessSelect returns a list of rows from the database that have been added
+// to a table without a defined schema
+func (self *DB) SchemalessSelect(what string) ([]map[string]any, error) {
 	output, err := self.Select(what)
 	if err != nil {
 		return nil, err
 	}
 
-	returnArray := make([]map[string]interface{}, 0)
-	rows := (output).([]interface{})
+	rows, wasCastSuccessful := output.([]any)
+	if !wasCastSuccessful {
+		return nil, errors.New("unable to cast rows from database to array")
+	}
+
+	returnArray := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		mapValue := (row).(map[string]interface{})
+		mapValue := (row).(map[string]any)
 		returnArray = append(returnArray, mapValue)
 	}
 	return returnArray, nil
