@@ -8,7 +8,10 @@ import (
 	"net/http"
 )
 
-// Client is a wrapper to more easily make HTTP calls to the SurrealDB engine
+// Client is a wrapper to more easily make HTTP calls to the SurrealDB engine.
+// Any function that accepts a body of type interface{} will do one of two things depending on type.
+// If it is of type string, the body will be the plaintext string, otherwise it will attempt to marshal
+// it into JSON and send that
 type Client struct {
 	// URL is the base URL in SurrealDB to be called
 	URL string
@@ -47,15 +50,15 @@ func (sc Client) Execute(query string) (Response, error) {
 // CreateOne calls the endpoint POST /key/:table/:id, executing the statement
 //
 // CREATE type::table($table) CONTENT $body;
-func (sc Client) CreateOne(table, id, query string) (Response, error) {
-	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "POST", query)
+func (sc Client) CreateOne(table, id, body interface{}) (Response, error) {
+	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "POST", body)
 }
 
 // CreateAll calls the endpoint POST /key/:table, executing the statement
 //
 // CREATE type::thing($table, $id) CONTENT $body;
-func (sc Client) CreateAll(table string, query string) (Response, error) {
-	return sc.Request(fmt.Sprintf("/key/%s", table), "POST", query)
+func (sc Client) CreateAll(table string, body interface{}) (Response, error) {
+	return sc.Request(fmt.Sprintf("/key/%s", table), "POST", body)
 }
 
 // SelectAll calls the endpoint GET /key/:table, executing the statement
@@ -75,15 +78,15 @@ func (sc Client) SelectOne(table string, id string) (Response, error) {
 // ReplaceOne calls the endpoint PUT /key/:table/:id, executing the statement
 //
 // UPDATE type::thing($table, $id) CONTENT $body;
-func (sc Client) ReplaceOne(table, id, query string) (Response, error) {
-	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PUT", query)
+func (sc Client) ReplaceOne(table, id string, body interface{}) (Response, error) {
+	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PUT", body)
 }
 
 // UpsertOne calls the endpoint PUT /key/:table/:id, executing the statement
 //
 // UPDATE type::thing($table, $id) MERGE $body;
-func (sc Client) UpsertOne(table, id, query string) (Response, error) {
-	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PATCH", query)
+func (sc Client) UpsertOne(table, id string, body interface{}) (Response, error) {
+	return sc.Request(fmt.Sprintf("/key/%s/%s", table, id), "PATCH", body)
 }
 
 // DeleteOne calls the endpoint DELETE /key/:table/:id, executing the statement
@@ -103,11 +106,24 @@ func (sc Client) DeleteAll(table string) (Response, error) {
 // Request makes a request to surrealdb to the given endpoint, with the given data. Responses returned from
 // surrealdb vary, and this function will only return the first response
 // TODO: have it return the array, or some other data type that more properly reflects the responses
-func (sc Client) Request(endpoint string, requestType string, body string) (Response, error) {
+func (sc Client) Request(endpoint string, requestType string, body interface{}) (Response, error) {
 	client := &http.Client{}
+	var bodyBytes []byte
+	var err error
+
+	// If it is a string, send it directly though, otherwise try to unmarshal, throwing an error if it fails
+	switch v := body.(type) {
+	case string:
+		bodyBytes = []byte(v)
+	default:
+		bodyBytes, err = json.Marshal(v)
+		if err != nil {
+			return Response{}, err
+		}
+	}
 
 	// TODO: verify its a valid requesttype
-	req, err := http.NewRequest(requestType, sc.URL+endpoint, bytes.NewBufferString(body))
+	req, err := http.NewRequest(requestType, sc.URL+endpoint, bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return Response{}, err
 	}
