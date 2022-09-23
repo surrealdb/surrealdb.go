@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/test-go/testify/assert"
-	"github.com/test-go/testify/require"
 )
 
 // a simple user struct for testing
