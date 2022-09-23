@@ -1,6 +1,7 @@
 package surrealdb_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -25,7 +26,7 @@ func (t testUser) String() string {
 func setupDB(t *testing.T) *surrealdb.DB {
 	db := openConnection(t)
 	_ = signin(t, db)
-	_, err := db.Use("test", "test")
+	_, err := db.Use(context.Background(), "test", "test")
 	assert.NoError(t, err)
 	return db
 }
@@ -36,7 +37,7 @@ func openConnection(t *testing.T) *surrealdb.DB {
 		url = "ws://localhost:8000/rpc"
 	}
 
-	db, err := surrealdb.New(url)
+	db, err := surrealdb.New(context.Background(), url)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func openConnection(t *testing.T) *surrealdb.DB {
 }
 
 func signin(t *testing.T, db *surrealdb.DB) interface{} {
-	signin, err := db.Signin(map[string]interface{}{
+	signin, err := db.Signin(context.Background(), map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
@@ -58,15 +59,18 @@ func signin(t *testing.T, db *surrealdb.DB) interface{} {
 }
 
 func TestDelete(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	userData, err := db.Create("users", testUser{
+	userData, err := db.Create(ctx, "users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
@@ -78,27 +82,34 @@ func TestDelete(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Delete the users...
-	_, err = db.Delete("users")
+	_, err = db.Delete(ctx, "users")
 	assert.NoError(t, err)
 }
 
 func TestCreate(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	userMap, err := db.Create("users", map[string]interface{}{
+	userMap, err := db.Create(ctx, "users", map[string]interface{}{
 		"username": "john",
 		"password": "123",
 	})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, userMap)
 
-	userData, err := db.Create("users", testUser{
+	if err != nil || userMap == nil {
+		t.Fatal(err)
+	}
+
+	userData, err := db.Create(ctx, "users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
@@ -112,21 +123,24 @@ func TestCreate(t *testing.T) {
 }
 
 func TestSelect(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	_, err = db.Create("users", testUser{
+	_, err = db.Create(ctx, "users", testUser{
 		Username: "johnnyjohn",
 		Password: "123",
 	})
 	assert.NoError(t, err)
 
-	userData, err := db.Select("users")
+	userData, err := db.Select(ctx, "users")
 	assert.NoError(t, err)
 
 	// unmarshal the data into a user slice
@@ -140,15 +154,18 @@ func TestSelect(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	userData, err := db.Create("users", testUser{
+	userData, err := db.Create(ctx, "users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
@@ -162,7 +179,7 @@ func TestUpdate(t *testing.T) {
 	user.Password = "456"
 
 	// Update the user
-	userData, err = db.Update("users", &user)
+	userData, err = db.Update(ctx, "users", &user)
 	assert.NoError(t, err)
 
 	// unmarshal the data into a user struct
@@ -175,22 +192,27 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUnmarshalRaw(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	_, err = db.Delete("users")
-	assert.NoError(t, err)
+	_, err = db.Delete(ctx, "users")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	username := "johnny"
 	password := "123"
 
 	// create test user with raw SurrealQL and unmarshal
-	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
+	userData, err := db.Query(ctx, "create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
 		"user": username,
 		"pass": password,
 	})
@@ -204,7 +226,7 @@ func TestUnmarshalRaw(t *testing.T) {
 	assert.Equal(t, password, user.Password)
 
 	// send query with empty result and unmarshal
-	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
+	userData, err = db.Query(ctx, "select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
 	assert.NoError(t, err)
@@ -216,18 +238,21 @@ func TestUnmarshalRaw(t *testing.T) {
 
 func TestModify(t *testing.T) {
 	t.Skip("There is a permission issue with this test that may need to be solved in a different change")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := openConnection(t)
 	defer db.Close()
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use(ctx, "test", "test")
 	assert.NoError(t, err)
 
-	_, err = db.Delete("users:999") // Cleanup for reproducibility
+	_, err = db.Delete(ctx, "users:999") // Cleanup for reproducibility
 	assert.NoError(t, err)
 
-	_, err = db.Create("users:999", map[string]interface{}{
+	_, err = db.Create(ctx, "users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
@@ -239,10 +264,10 @@ func TestModify(t *testing.T) {
 	}
 
 	// Update the user
-	_, err = db.Modify("users:999", patches)
+	_, err = db.Modify(ctx, "users:999", patches)
 	assert.NoError(t, err)
 
-	user2, err := db.Select("users:999")
+	user2, err := db.Select(ctx, "users:999")
 	assert.NoError(t, err)
 
 	// // TODO: this needs to simplified for the end user somehow
@@ -250,6 +275,9 @@ func TestModify(t *testing.T) {
 }
 
 func TestSmartQuerySelect(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	db := setupDB(t)
 	defer db.Close()
 
@@ -259,12 +287,12 @@ func TestSmartQuerySelect(t *testing.T) {
 	}}
 
 	// Clean up from other tests
-	_, err := db.Delete("users")
+	_, err := db.Delete(ctx, "users")
 	assert.NoError(t, err)
 
 	t.Run("raw create query", func(t *testing.T) {
 		QueryStr := "Create users set Username = $user, Password = $pass"
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(QueryStr, map[string]interface{}{
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(ctx, QueryStr, map[string]interface{}{
 			"user": user[0].Username,
 			"pass": user[0].Password,
 		}))
@@ -275,7 +303,7 @@ func TestSmartQuerySelect(t *testing.T) {
 	})
 
 	t.Run("raw select query", func(t *testing.T) {
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Select * from $record", map[string]interface{}{
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(ctx, "Select * from $record", map[string]interface{}{
 			"record": user[0].ID,
 		}))
 
@@ -284,21 +312,21 @@ func TestSmartQuerySelect(t *testing.T) {
 	})
 
 	t.Run("select query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[testUser](db.Select(user[0].ID))
+		data, err := surrealdb.SmartUnmarshal[testUser](db.Select(ctx, user[0].ID))
 
 		assert.Equal(t, "electwix", data.Username)
 		assert.NoError(t, err)
 	})
 
 	t.Run("select array query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[[]testUser](db.Select("users"))
+		data, err := surrealdb.SmartUnmarshal[[]testUser](db.Select(ctx, "users"))
 
 		assert.Equal(t, "electwix", data[0].Username)
 		assert.NoError(t, err)
 	})
 
 	t.Run("delete record query", func(t *testing.T) {
-		nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(user[0].ID))
+		nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(ctx, user[0].ID))
 
 		assert.NoError(t, err)
 		assert.Nil(t, nulldata)

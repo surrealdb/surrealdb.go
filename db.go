@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,8 +13,8 @@ import (
 const statusOK = "OK"
 
 var (
-	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
-	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
+	ErrInvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
+	ErrQuery           = errors.New("error occurred processing the SurrealDB query")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -22,8 +23,8 @@ type DB struct {
 }
 
 // New Creates a new DB instance given a WebSocket URL.
-func New(url string) (*DB, error) {
-	ws, err := websocket.NewWebsocket(url)
+func New(ctx context.Context, url string) (*DB, error) {
+	ws, err := websocket.NewWebsocket(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -32,11 +33,15 @@ func New(url string) (*DB, error) {
 
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
+	// TODO: make this function obsolete
+	// currently, we get JSON bytes from the connection, unmarshall them to a *any, marshall them back into
+	// JSON and then unmarshall them into the target struct
+	// This is cumbersome to use and expensive to run
 	var ok bool
 
-	assertedData, ok := data.([]interface{})
+	assertedData, ok := data.([]any)
 	if !ok {
-		return InvalidResponse
+		return ErrInvalidResponse
 	}
 	sliceFlag := isSlice(v)
 
@@ -64,24 +69,24 @@ func Unmarshal(data, v interface{}) error {
 func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	var data []interface{}
 	if data, ok = rawData.([]interface{}); !ok {
-		return false, InvalidResponse
+		return false, ErrInvalidResponse
 	}
 
-	var responseObj map[string]interface{}
-	if responseObj, ok = data[0].(map[string]interface{}); !ok {
-		return false, InvalidResponse
+	responseObj, ok := data[0].(map[string]any)
+	if !ok {
+		return false, ErrInvalidResponse
 	}
 
-	var status string
-	if status, ok = responseObj["status"].(string); !ok {
-		return false, InvalidResponse
+	status, ok := responseObj["status"].(string)
+	if !ok {
+		return false, ErrInvalidResponse
 	}
 	if status != statusOK {
 		return false, ErrQuery
 	}
 
 	result := responseObj["result"]
-	if len(result.([]interface{})) == 0 {
+	if len(result.([]any)) == 0 {
 		return false, nil
 	}
 	err = Unmarshal(result, v)
@@ -134,86 +139,86 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err
 // --------------------------------------------------
 
 // Close closes the underlying WebSocket connection.
-func (db *DB) Close() {
-	_ = db.ws.Close()
+func (db *DB) Close() error {
+	return db.ws.Close()
 }
 
 // --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
-func (db *DB) Use(ns, database string) (interface{}, error) {
-	return db.send("use", ns, database)
+func (db *DB) Use(ctx context.Context, ns string, dbname string) (any, error) {
+	return db.send(ctx, "use", ns, dbname)
 }
 
-func (db *DB) Info() (interface{}, error) {
-	return db.send("info")
+func (db *DB) Info(ctx context.Context) (any, error) {
+	return db.send(ctx, "info")
 }
 
 // Signup is a helper method for signing up a new user.
-func (db *DB) Signup(vars interface{}) (interface{}, error) {
-	return db.send("signup", vars)
+func (db *DB) Signup(ctx context.Context, vars any) (any, error) {
+	return db.send(ctx, "signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (db *DB) Signin(vars interface{}) (interface{}, error) {
-	return db.send("signin", vars)
+func (db *DB) Signin(ctx context.Context, vars any) (any, error) {
+	return db.send(ctx, "signin", vars)
 }
 
-func (db *DB) Invalidate() (interface{}, error) {
-	return db.send("invalidate")
+func (db *DB) Invalidate(ctx context.Context) (any, error) {
+	return db.send(ctx, "invalidate")
 }
 
-func (db *DB) Authenticate(token string) (interface{}, error) {
-	return db.send("authenticate", token)
+func (db *DB) Authenticate(ctx context.Context, token string) (any, error) {
+	return db.send(ctx, "authenticate", token)
 }
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (interface{}, error) {
-	return db.send("live", table)
+func (db *DB) Live(ctx context.Context, table string) (any, error) {
+	return db.send(ctx, "live", table)
 }
 
-func (db *DB) Kill(query string) (interface{}, error) {
-	return db.send("kill", query)
+func (db *DB) Kill(ctx context.Context, query string) (any, error) {
+	return db.send(ctx, "kill", query)
 }
 
-func (db *DB) Let(key string, val interface{}) (interface{}, error) {
-	return db.send("let", key, val)
+func (db *DB) Let(ctx context.Context, key string, val any) (any, error) {
+	return db.send(ctx, "let", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
-func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
-	return db.send("query", sql, vars)
+func (db *DB) Query(ctx context.Context, sql string, vars any) (any, error) {
+	return db.send(ctx, "query", sql, vars)
 }
 
 // Select a table or record from the database.
-func (db *DB) Select(what string) (interface{}, error) {
-	return db.send("select", what)
+func (db *DB) Select(ctx context.Context, what string) (any, error) {
+	return db.send(ctx, "select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
-	return db.send("create", thing, data)
+func (db *DB) Create(ctx context.Context, thing string, data any) (any, error) {
+	return db.send(ctx, "create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (db *DB) Update(what string, data interface{}) (interface{}, error) {
-	return db.send("update", what, data)
+func (db *DB) Update(ctx context.Context, what string, data any) (any, error) {
+	return db.send(ctx, "update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (db *DB) Change(what string, data interface{}) (interface{}, error) {
-	return db.send("change", what, data)
+func (db *DB) Change(ctx context.Context, what string, data any) (any, error) {
+	return db.send(ctx, "change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (db *DB) Modify(what string, data []Patch) (interface{}, error) {
-	return db.send("modify", what, data)
+func (db *DB) Modify(ctx context.Context, what string, data []Patch) (any, error) {
+	return db.send(ctx, "modify", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (db *DB) Delete(what string) (interface{}, error) {
-	return db.send("delete", what)
+func (db *DB) Delete(ctx context.Context, what string) (any, error) {
+	return db.send(ctx, "delete", what)
 }
 
 // --------------------------------------------------
@@ -221,9 +226,9 @@ func (db *DB) Delete(what string) (interface{}, error) {
 // --------------------------------------------------
 
 // send is a helper method for sending a query to the database.
-func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
+func (db *DB) send(ctx context.Context, method string, params ...interface{}) (interface{}, error) {
 	// here we send the args through our websocket connection
-	resp, err := db.ws.Send(method, params)
+	resp, err := db.ws.Send(ctx, method, params)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +259,7 @@ func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}
 		return res, nil
 	}
 
+	// TODO: explian what that condition is for
 	if strings.Contains(arg, ":") {
 		arr, ok := res.([]interface{})
 		if !ok {
@@ -271,15 +277,10 @@ func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}
 }
 
 func isSlice(possibleSlice interface{}) bool {
-	slice := false
-
-	switch v := possibleSlice.(type) { //nolint:gocritic
-	default:
-		res := fmt.Sprintf("%s", v)
-		if res == "[]" || res == "&[]" || res == "*[]" {
-			slice = true
-		}
+	res := fmt.Sprintf("%s", possibleSlice)
+	if res == "[]" || res == "&[]" || res == "*[]" {
+		return true
 	}
 
-	return slice
+	return false
 }
