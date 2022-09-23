@@ -2,8 +2,11 @@ package surrealdb_test
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go"
 	"testing"
+
+	"github.com/surrealdb/surrealdb.go"
+	"github.com/test-go/testify/assert"
+	"github.com/test-go/testify/require"
 )
 
 // a simple user struct for testing
@@ -14,68 +17,49 @@ type testUser struct {
 }
 
 // an example test for creating a new entry in surrealdb
-func ExampleNew() {
+func Test_ExampleNew(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-
-	if err != nil {
-		panic(err)
-	}
-
+	require.Nil(t, err)
 	defer db.Close()
 
 	// Output:
 }
 
-func ExampleDB_Delete() {
+func Test_ExampleDB_Delete(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Use("test", "test")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	userData, err := db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
+	require.Nil(t, err)
 
 	// unmarshal the data into a user struct
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &user)
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	// Delete the users...
 	_, err = db.Delete("users")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	// Output:
 }
 
-func ExampleDB_Create() {
+func Test_ExampleDB_Create(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	defer db.Close()
 
@@ -83,78 +67,61 @@ func ExampleDB_Create() {
 		"user": "root",
 		"pass": "root",
 	})
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Use("test", "test")
-
-	if err != nil || signin == nil {
-		panic(err)
-	}
+	require.Nil(t, err)
+	assert.NotNil(t, signin)
 
 	userMap, err := db.Create("users", map[string]interface{}{
 		"username": "john",
 		"password": "123",
 	})
-
-	if err != nil || userMap == nil {
-		panic(err)
-	}
+	require.Nil(t, err)
+	assert.NotNil(t, userMap)
 
 	userData, err := db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
+	require.Nil(t, err)
 
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &user)
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	fmt.Println(user.Username)
 
 	// Output: johnny
 }
 
-func ExampleDB_Select() {
+func Test_ExampleDB_Select(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Use("test", "test")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Create("users", testUser{
 		Username: "johnnyjohn",
 		Password: "123",
 	})
+	require.Nil(t, err)
 
 	userData, err := db.Select("users")
+	require.Nil(t, err)
 
 	// unmarshal the data into a user slice
 	var users []testUser
 	err = surrealdb.Unmarshal(userData, &users)
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	for _, user := range users {
 		if user.Username == "johnnyjohn" {
@@ -165,56 +132,41 @@ func ExampleDB_Select() {
 	// Output: johnnyjohn
 }
 
-func ExampleDB_Update() {
+func Test_ExampleDB_Update(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Use("test", "test")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	userData, err := db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
+	require.Nil(t, err)
 
 	// unmarshal the data into a user struct
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &testUser{})
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	user.Password = "456"
 
 	// Update the user
 	userData, err = db.Update("users", &user)
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	// unmarshal the data into a user struct
 	var updatedUser []testUser
 	err = surrealdb.Unmarshal(userData, &updatedUser)
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	// TODO: check if this updates only the user with the same ID or all users
 	fmt.Println(updatedUser[0].Password)
@@ -222,32 +174,22 @@ func ExampleDB_Update() {
 	// Output: 456
 }
 
-func TestUnmarshalRaw(t *testing.T) {
+func Test_UnmarshalRaw(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Use("test", "test")
-
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	_, err = db.Delete("users")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	username := "johnny"
 	password := "123"
@@ -258,59 +200,47 @@ func TestUnmarshalRaw(t *testing.T) {
 		"user": username,
 		"pass": password,
 	})
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	var user testUser
 	ok, err := surrealdb.UnmarshalRaw(userData, &user)
-	if err != nil {
-		panic(err)
-	}
-	if !ok || user.Username != username || user.Password != password {
-		panic("response does not match the request")
-	}
+	require.Nil(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, username, user.Username)
+	assert.Equal(t, password, user.Password)
 
 	//send query with empty result and unmarshal
 
 	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	ok, err = surrealdb.UnmarshalRaw(userData, &user)
-	if err != nil {
-		panic(err)
-	}
-	if ok {
-		panic("select should return an empty result")
-	}
+	require.Nil(t, err)
+	assert.False(t, ok)
 
 	// Output:
 }
 
-func ExampleDB_Modify() {
+func Test_ExampleDB_Modify(t *testing.T) {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 	defer db.Close()
 
 	_, err = db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
+	require.Nil(t, err)
 	_, err = db.Use("test", "test")
+	require.Nil(t, err)
 
 	_, err = db.Create("users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	patches := []surrealdb.Patch{
 		{Op: "add", Path: "nickname", Value: "johnny"},
@@ -319,14 +249,10 @@ func ExampleDB_Modify() {
 
 	// Update the user
 	_, err = db.Modify("users:999", patches)
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	user2, err := db.Select("users:999")
-	if err != nil {
-		panic(err)
-	}
+	require.Nil(t, err)
 
 	// // TODO: this needs to simplified for the end user somehow
 	fmt.Println((user2).(map[string]interface{})["age"])
