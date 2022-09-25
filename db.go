@@ -182,6 +182,13 @@ func (db *DB) Let(ctx context.Context, key string, val any) (any, error) {
 func (db *DB) Query(ctx context.Context, sql string, vars any) (any, error) {
 	return db.send(ctx, "query", sql, vars)
 }
+func (db *DB) QueryRaw(ctx context.Context, sql string, vars any) *RPCRawResponse {
+	response, err := db.send(ctx, "query", sql, vars)
+	if err != nil {
+		panic(err)
+	}
+	return response.(*RPCRawResponse)
+}
 
 // Select a table or record from the database.
 func (db *DB) Select(ctx context.Context, what string) (any, error) {

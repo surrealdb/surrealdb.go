@@ -3,6 +3,8 @@ module github.com/surrealdb/surrealdb.go
 go 1.18
 
 require (
+	github.com/buger/jsonparser v1.1.1
+	github.com/goccy/go-json v0.9.11
 	github.com/gorilla/websocket v1.5.0
 	github.com/test-go/testify v1.1.4
 )

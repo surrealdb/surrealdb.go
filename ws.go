@@ -3,15 +3,16 @@ package surrealdb
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
 type WS struct {
-	ws   *websocket.Conn     // websocket connection
-	send chan<- *RPCRequest  // sender channel
-	recv <-chan *RPCResponse // receive channel
+	ws   *websocket.Conn        // websocket connection
+	send chan<- *RPCRequest     // sender channel
+	recv <-chan *RPCRawResponse // receive channel
 	emit struct {
 		// TODO: use the lock less, through smaller locks (separate once/when locks ?)
 		// or ideally by removing locks altogether
@@ -181,14 +182,21 @@ func (ws *WS) done(id any, err error, res any) {
 
 }
 
-func (ws *WS) read(v any) (err error) {
+func (ws *WS) read() (response *RPCRawResponse, err error) {
 
 	_, r, err := ws.ws.NextReader()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return json.NewDecoder(r).Decode(v)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RPCRawResponse{Data: raw}, nil
+
+	// return json.NewDecoder(r).Decode(v)
 
 }
 
@@ -213,7 +221,7 @@ func (ws *WS) write(v any) (err error) {
 
 func (ws *WS) initialise(ctx context.Context) {
 	send := make(chan *RPCRequest)
-	recv := make(chan *RPCResponse)
+	recv := make(chan *RPCRawResponse)
 	ctx, cancel := context.WithCancel(ctx)
 	// RECEIVER LOOP
 
@@ -224,8 +232,8 @@ func (ws *WS) initialise(ctx context.Context) {
 				return
 			default:
 
-				var res RPCResponse
-				err := ws.read(&res) // wait and unmarshal UPCOMING response
+				// var res RPCResponse
+				res, err := ws.read()
 
 				if err != nil {
 					ws.Close()
@@ -233,7 +241,7 @@ func (ws *WS) initialise(ctx context.Context) {
 					return
 				}
 
-				recv <- &res // redirect response to: MAIN LOOP
+				recv <- res // redirect response to: MAIN LOOP
 
 			}
 		}
@@ -268,12 +276,19 @@ func (ws *WS) initialise(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case res := <-ws.recv:
-				switch {
-				case res.Error == nil:
-					ws.done(res.ID, nil, res.Result)
-				case res.Error != nil:
-					ws.done(res.ID, res.Error, res.Result)
+				id, err := res.ResolveId()
+				if err != nil {
+					panic(err)
 				}
+
+				ws.done(id, res.Error(), res)
+
+				// switch {
+				// case res.HasError() == false:
+				// 	ws.done(res.ResolveId(), nil, res)
+				// case res.HasError() == true:
+				// 	ws.done(res.ResolveId(), res.Error(), res)
+				// }
 			}
 		}
 	}()
