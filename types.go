@@ -18,6 +18,8 @@ type Patch struct {
 	Value any    `json:"value"`
 }
 
+// UserInfo TODO: A way to make User and Password use different names via configuration
+// This method only works if your scope is configured with those namings also, otherwise auth will fail
 type UserInfo struct {
 	User      string `json:"user"`
 	Password  string `json:"pass"`
@@ -31,6 +33,25 @@ type AuthenticationResult struct {
 	Token   string `json:"token"`
 
 	TokenData
+}
+
+func (data *AuthenticationResult) fromQuery(result any) error {
+	if result == nil || result == "" {
+		return ErrInvalidLoginResponse
+	}
+	if _, ok := result.(string); !ok {
+		return ErrInvalidLoginResponse
+	}
+	tokenData, err := TokenData{}.FromToken(result.(string))
+	if err != nil {
+		return err
+	}
+
+	data.Success = true
+	data.Token = result.(string)
+	data.TokenData = tokenData
+
+	return nil
 }
 
 type TokenData struct {

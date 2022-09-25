@@ -11,8 +11,9 @@ import (
 const statusOK = "OK"
 
 var (
-	ErrInvalidResponse = errors.New("invalid SurrealDB response")
-	ErrQuery           = errors.New("error occurred processing the SurrealDB query")
+	ErrInvalidResponse      = errors.New("invalid SurrealDB response")
+	ErrQuery                = errors.New("error occurred processing the SurrealDB query")
+	ErrInvalidLoginResponse = errors.New("invalid login response")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -119,9 +120,40 @@ func (db *DB) Signup(ctx context.Context, vars any) (any, error) {
 	return db.send(ctx, "signup", vars)
 }
 
+// SignupUser is a helper method for signing in a user and returning a typed response
+func (db *DB) SignupUser(ctx context.Context, vars UserInfo) (*AuthenticationResult, error) {
+	authResult := &AuthenticationResult{Success: false}
+	result, err := db.send(ctx, "signup", vars)
+	if err != nil {
+		return authResult, err
+	}
+
+	err = authResult.fromQuery(result)
+
+	return authResult, err
+}
+
 // Signin is a helper method for signing in a user.
 func (db *DB) Signin(ctx context.Context, vars UserInfo) (any, error) {
 	return db.send(ctx, "signin", vars)
+}
+
+// SigninUser is a helper method for signing in a user and returning a typed response
+// Note: This will probably fail when signing in as a root user, but for
+// a regular user(via a scope for example) we get a JWT response
+func (db *DB) SigninUser(ctx context.Context, vars UserInfo) (*AuthenticationResult, error) {
+	authResult := &AuthenticationResult{Success: false}
+	result, err := db.send(ctx, "signin", vars)
+	if err != nil {
+		return authResult, err
+	}
+	if err != nil {
+		return authResult, err
+	}
+
+	err = authResult.fromQuery(result)
+
+	return authResult, err
 }
 
 func (db *DB) Invalidate(ctx context.Context) (any, error) {
