@@ -34,12 +34,12 @@ func New(ctx context.Context, url string) (*DB, error) {
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
 	// TODO: make this function obsolete
-	// currently, we get JSON bytes from the connection, unmarshall them to a *any, marshall them back into
+	// currently, we get JSON bytes from the connection, unmarshall them to a *interface{}, marshall them back into
 	// JSON and then unmarshall them into the target struct
 	// This is cumbersome to use and expensive to run
 	var ok bool
 
-	assertedData, ok := data.([]any)
+	assertedData, ok := data.([]interface{})
 	if !ok {
 		return ErrInvalidResponse
 	}
@@ -67,12 +67,12 @@ func Unmarshal(data, v interface{}) error {
 // UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
 // return ok = true, and queries that return with no results will return ok = false.
 func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
-	var data []interface{}
-	if data, ok = rawData.([]interface{}); !ok {
+	data, ok := rawData.([]interface{})
+	if !ok {
 		return false, ErrInvalidResponse
 	}
 
-	responseObj, ok := data[0].(map[string]any)
+	responseObj, ok := data[0].(map[string]interface{})
 	if !ok {
 		return false, ErrInvalidResponse
 	}
@@ -86,7 +86,7 @@ func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	}
 
 	result := responseObj["result"]
-	if len(result.([]any)) == 0 {
+	if len(result.([]interface{})) == 0 {
 		return false, nil
 	}
 	err = Unmarshal(result, v)
@@ -146,78 +146,78 @@ func (db *DB) Close() error {
 // --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
-func (db *DB) Use(ctx context.Context, ns string, dbname string) (any, error) {
+func (db *DB) Use(ctx context.Context, ns string, dbname string) (interface{}, error) {
 	return db.send(ctx, "use", ns, dbname)
 }
 
-func (db *DB) Info(ctx context.Context) (any, error) {
+func (db *DB) Info(ctx context.Context) (interface{}, error) {
 	return db.send(ctx, "info")
 }
 
 // Signup is a helper method for signing up a new user.
-func (db *DB) Signup(ctx context.Context, vars any) (any, error) {
+func (db *DB) Signup(ctx context.Context, vars interface{}) (interface{}, error) {
 	return db.send(ctx, "signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (db *DB) Signin(ctx context.Context, vars any) (any, error) {
+func (db *DB) Signin(ctx context.Context, vars interface{}) (interface{}, error) {
 	return db.send(ctx, "signin", vars)
 }
 
-func (db *DB) Invalidate(ctx context.Context) (any, error) {
+func (db *DB) Invalidate(ctx context.Context) (interface{}, error) {
 	return db.send(ctx, "invalidate")
 }
 
-func (db *DB) Authenticate(ctx context.Context, token string) (any, error) {
+func (db *DB) Authenticate(ctx context.Context, token string) (interface{}, error) {
 	return db.send(ctx, "authenticate", token)
 }
 
 // --------------------------------------------------
 
-func (db *DB) Live(ctx context.Context, table string) (any, error) {
+func (db *DB) Live(ctx context.Context, table string) (interface{}, error) {
 	return db.send(ctx, "live", table)
 }
 
-func (db *DB) Kill(ctx context.Context, query string) (any, error) {
+func (db *DB) Kill(ctx context.Context, query string) (interface{}, error) {
 	return db.send(ctx, "kill", query)
 }
 
-func (db *DB) Let(ctx context.Context, key string, val any) (any, error) {
+func (db *DB) Let(ctx context.Context, key string, val interface{}) (interface{}, error) {
 	return db.send(ctx, "let", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
-func (db *DB) Query(ctx context.Context, sql string, vars any) (any, error) {
+func (db *DB) Query(ctx context.Context, sql string, vars interface{}) (interface{}, error) {
 	return db.send(ctx, "query", sql, vars)
 }
 
 // Select a table or record from the database.
-func (db *DB) Select(ctx context.Context, what string) (any, error) {
+func (db *DB) Select(ctx context.Context, what string) (interface{}, error) {
 	return db.send(ctx, "select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Create(ctx context.Context, thing string, data any) (any, error) {
+func (db *DB) Create(ctx context.Context, thing string, data interface{}) (interface{}, error) {
 	return db.send(ctx, "create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (db *DB) Update(ctx context.Context, what string, data any) (any, error) {
+func (db *DB) Update(ctx context.Context, what string, data interface{}) (interface{}, error) {
 	return db.send(ctx, "update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (db *DB) Change(ctx context.Context, what string, data any) (any, error) {
+func (db *DB) Change(ctx context.Context, what string, data interface{}) (interface{}, error) {
 	return db.send(ctx, "change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (db *DB) Modify(ctx context.Context, what string, data []Patch) (any, error) {
+func (db *DB) Modify(ctx context.Context, what string, data []Patch) (interface{}, error) {
 	return db.send(ctx, "modify", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (db *DB) Delete(ctx context.Context, what string) (any, error) {
+func (db *DB) Delete(ctx context.Context, what string) (interface{}, error) {
 	return db.send(ctx, "delete", what)
 }
 
