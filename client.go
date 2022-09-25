@@ -57,7 +57,7 @@ func (sc Client) CreateOne(table, id, body interface{}) (Response, error) {
 // CreateAll calls the endpoint POST /key/:table, executing the statement
 //
 // CREATE type::thing($table, $id) CONTENT $body;
-func (sc Client) CreateAll(table string, body interface{}) (Response, error) {
+func (sc Client) Create(table string, body interface{}) (Response, error) {
 	return sc.Request(fmt.Sprintf("/key/%s", table), "POST", body)
 }
 
@@ -130,6 +130,7 @@ func (sc Client) Request(endpoint string, requestType string, body interface{}) 
 	req.Header.Set("NS", sc.NS)
 	req.Header.Set("DB", sc.DB)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.SetBasicAuth(sc.User, sc.Pass)
 
 	resp, err := client.Do(req)
