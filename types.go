@@ -91,3 +91,10 @@ func (token TokenData) FromToken(tokenString string) (TokenData, error) {
 
 	return data, nil
 }
+
+// ResultQuery represents the result of a .Query() call
+type ResultQuery[T any] struct {
+	Result []T    `json:"result"`
+	Status string `json:"status"`
+	Time   string `json:"time"`
+}

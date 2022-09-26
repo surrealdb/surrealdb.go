@@ -4,11 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"testing"
 
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/test-go/testify/suite"
 )
+
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+
+	return value
+}
 
 // a simple user struct for testing
 type testUser struct {
@@ -314,7 +324,7 @@ func TestUnmarshalRaw(t *testing.T) {
 	// Output:
 }
 
-func ExampleDB_Modify() {
+func Test_ExampleDB_Modify(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -373,9 +383,9 @@ func TestDatabaseSuite(t *testing.T) {
 func (suite *TestDatabaseTestSuite) SetupTest() {
 	ctx := context.Background()
 
-	rpcUrl := surrealdb.GetEnvOrDefault("SURREALDB_RPC_URL", "ws://localhost:8000/rpc")
-	user := surrealdb.GetEnvOrDefault("SURREALDB_USER", "root")
-	pass := surrealdb.GetEnvOrDefault("SURREALDB_PASS", "root")
+	rpcUrl := getEnvOrDefault("SURREALDB_RPC_URL", "ws://localhost:8000/rpc")
+	user := getEnvOrDefault("SURREALDB_USER", "root")
+	pass := getEnvOrDefault("SURREALDB_PASS", "root")
 
 	db, err := surrealdb.New(ctx, rpcUrl)
 	suite.Require().NoError(err)

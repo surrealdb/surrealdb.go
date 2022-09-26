@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -28,7 +29,7 @@ func NewWebsocket(ctx context.Context, url string) (*WS, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	// stablish connection
+	// establish connection
 	so, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
@@ -71,19 +72,21 @@ func (ws *WS) Send(id string, method string, params []any) {
 }
 
 type responseValue struct {
-	value any
-	err   error
+	value  any
+	method string
+	err    error
 }
 
-// Subscribe to once()
+// Once Subscribe to once()
 func (ws *WS) Once(id, method string) <-chan responseValue {
 
 	out := make(chan responseValue)
 
 	ws.once(id, func(e error, r any) {
 		out <- responseValue{
-			value: r,
-			err:   e,
+			value:  r,
+			method: method,
+			err:    e,
 		}
 		close(out)
 	})
@@ -92,7 +95,7 @@ func (ws *WS) Once(id, method string) <-chan responseValue {
 
 }
 
-// Subscribe to when()
+// When Subscribe to when()
 func (ws *WS) When(id, method string) <-chan responseValue {
 	// TODO: make this cancellable (use of context.Context ?)
 
@@ -100,8 +103,9 @@ func (ws *WS) When(id, method string) <-chan responseValue {
 
 	ws.when(id, func(e error, r any) {
 		out <- responseValue{
-			value: r,
-			err:   e,
+			method: method,
+			value:  r,
+			err:    e,
 		}
 	})
 
@@ -145,7 +149,7 @@ func (ws *WS) done(id any, err error, res any) {
 	// if our events map exist
 	if ws.emit.when != nil {
 
-		// if theres some listener aiming to this id response
+		// if there's some listener aiming to this id response
 		if when, ok := ws.emit.when[id]; ok {
 
 			// dispatch the event, starting from the end, so we prioritize the new ones
@@ -183,7 +187,6 @@ func (ws *WS) done(id any, err error, res any) {
 }
 
 func (ws *WS) read() (response *RPCRawResponse, err error) {
-
 	_, r, err := ws.ws.NextReader()
 	if err != nil {
 		return nil, err
@@ -194,14 +197,10 @@ func (ws *WS) read() (response *RPCRawResponse, err error) {
 		return nil, err
 	}
 
-	return &RPCRawResponse{Data: raw}, nil
-
-	// return json.NewDecoder(r).Decode(v)
-
+	return CreateRPCRawResponse(raw), nil
 }
 
 func (ws *WS) write(v any) (err error) {
-
 	w, err := ws.ws.NextWriter(websocket.TextMessage)
 	if err != nil {
 		return err
@@ -216,23 +215,20 @@ func (ws *WS) write(v any) (err error) {
 	}
 
 	return w.Close()
-
 }
 
 func (ws *WS) initialise(ctx context.Context) {
 	send := make(chan *RPCRequest)
 	recv := make(chan *RPCRawResponse)
 	ctx, cancel := context.WithCancel(ctx)
-	// RECEIVER LOOP
 
+	// RECEIVER LOOP
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-
-				// var res RPCResponse
 				res, err := ws.read()
 
 				if err != nil {
@@ -242,20 +238,17 @@ func (ws *WS) initialise(ctx context.Context) {
 				}
 
 				recv <- res // redirect response to: MAIN LOOP
-
 			}
 		}
 	}()
 
 	// SENDER LOOP
-
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return // stops: THIS LOOP
 			case res := <-send:
-
 				err := ws.write(res) // marshal and send
 
 				if err != nil {
@@ -263,32 +256,22 @@ func (ws *WS) initialise(ctx context.Context) {
 					cancel()
 					return // stops: THIS LOOP
 				}
-
 			}
 		}
 	}()
 
 	// MAIN LOOP
-
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case res := <-ws.recv:
-				id, err := res.ResolveId()
-				if err != nil {
-					panic(err)
+				if res.HasInternalError() {
+					log.Println("There was an error whilst decoding the RPC response: ", res.internalProcessingError)
 				}
 
-				ws.done(id, res.Error(), res)
-
-				// switch {
-				// case res.HasError() == false:
-				// 	ws.done(res.ResolveId(), nil, res)
-				// case res.HasError() == true:
-				// 	ws.done(res.ResolveId(), res.Error(), res)
-				// }
+				ws.done(res.Id(), res.Error(), res)
 			}
 		}
 	}()

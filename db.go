@@ -182,20 +182,13 @@ func (db *DB) Let(ctx context.Context, key string, val any) (any, error) {
 func (db *DB) Query(ctx context.Context, sql string, vars any) (any, error) {
 	return db.send(ctx, "query", sql, vars)
 }
-func (db *DB) QueryRaw(ctx context.Context, sql string, vars any) *RPCRawResponse {
-	response, err := db.send(ctx, "query", sql, vars)
-	if err != nil {
-		panic(err)
-	}
-	return response.(*RPCRawResponse)
-}
 
 // Select a table or record from the database.
 func (db *DB) Select(ctx context.Context, what string) (any, error) {
 	return db.send(ctx, "select", what)
 }
 
-// Creates a table or record in the database like a POST request.
+// Create Creates a table or record in the database like a POST request.
 func (db *DB) Create(ctx context.Context, thing string, data any) (any, error) {
 	return db.send(ctx, "create", thing, data)
 }
@@ -242,6 +235,15 @@ func (db *DB) send(ctx context.Context, method string, params ...any) (any, erro
 		if r.err != nil {
 			return nil, r.err
 		}
+
+		if r.value != nil {
+			// If our response is an RPCRawResponse, set the method used
+			if rpcRawRes, ok := r.value.(*RPCRawResponse); ok {
+				rpcRawRes.rpcMethod = method
+				return rpcRawRes, nil
+			}
+		}
+
 		switch method {
 		case "delete":
 			return nil, nil
@@ -271,7 +273,9 @@ func (db *DB) resp(_ string, params []any, res any) (any, error) {
 		return res, nil
 	}
 
-	// TODO: explian what that condition is for
+	// TODO: explain what that condition is for
+	// @iDevelopThings: From what i can tell, this was used to detect the usage of
+	// update, create etc rpc calls, then handle errors/return first item
 	if strings.Contains(arg, ":") {
 
 		arr, ok := res.([]any)
