@@ -1,37 +1,48 @@
 package surrealdb
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log"
 	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
 type WS struct {
-	ws   *websocket.Conn // websocket connection
-	quit chan error // stops: MAIN LOOP
-	send chan<- *RPCRequest // sender channel
-	recv <-chan *RPCResponse // receive channel
+	ws   *websocket.Conn        // websocket connection
+	send chan<- *RPCRequest     // sender channel
+	recv <-chan *RPCRawResponse // receive channel
 	emit struct {
+		// TODO: use the lock less, through smaller locks (separate once/when locks ?)
+		// or ideally by removing locks altogether
 		lock sync.Mutex // pause threads to avoid conflicts
-		once map[interface{}][]func(error, interface{}) // once listeners
-		when map[interface{}][]func(error, interface{}) // when listeners
+
+		// do the callbacks really need to be a list ?
+		once map[any][]func(error, any) // once listeners
+		when map[any][]func(error, any) // when listeners
 	}
 }
 
-func NewWebsocket(url string) (*WS, error) {
+func NewWebsocket(ctx context.Context, url string) (*WS, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	// stablish connection
+	// establish connection
 	so, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	ws := &WS{ws: so}
+
+	// initilialize the callback maps here so we don't need to check them at runtime
+	ws.emit.once = make(map[any][]func(error, any))
+	ws.emit.when = make(map[any][]func(error, any))
+
 	// setup loops and channels
-	ws.initialise()
+	ws.initialise(ctx)
 
 	return ws, nil
 
@@ -41,17 +52,17 @@ func NewWebsocket(url string) (*WS, error) {
 // Public methods
 // --------------------------------------------------
 
-func (self *WS) Close() error {
+func (ws *WS) Close() error {
 
 	msg := websocket.FormatCloseMessage(1000, "")
-	return self.ws.WriteMessage(websocket.CloseMessage, msg)
+	return ws.ws.WriteMessage(websocket.CloseMessage, msg)
 
 }
 
-func (self *WS) Send(id string, method string, params []interface{}) {
+func (ws *WS) Send(id string, method string, params []any) {
 
 	go func() {
-		self.send <- &RPCRequest{
+		ws.send <- &RPCRequest{
 			ID:     id,
 			Method: method,
 			Params: params,
@@ -60,45 +71,45 @@ func (self *WS) Send(id string, method string, params []interface{}) {
 
 }
 
-// Subscribe to once()
-func (self *WS) Once(id, method string) (<-chan interface{}, <-chan error) {
+type responseValue struct {
+	value  any
+	method string
+	err    error
+}
 
-	err := make(chan error)
-	res := make(chan interface{})
+// Once Subscribe to once()
+func (ws *WS) Once(id, method string) <-chan responseValue {
 
-	self.once(id, func(e error, r interface{}) {
-		switch {
-		case e != nil:
-			err <- e
-			close(err)
-			close(res)
-		case e == nil:
-			res <- r
-			close(err)
-			close(res)
+	out := make(chan responseValue)
+
+	ws.once(id, func(e error, r any) {
+		out <- responseValue{
+			value:  r,
+			method: method,
+			err:    e,
 		}
+		close(out)
 	})
 
-	return res, err
+	return out
 
 }
 
-// Subscribe to when()
-func (self *WS) When(id, method string) (<-chan interface{}, <-chan error) {
+// When Subscribe to when()
+func (ws *WS) When(id, method string) <-chan responseValue {
+	// TODO: make this cancellable (use of context.Context ?)
 
-	err := make(chan error)
-	res := make(chan interface{})
+	out := make(chan responseValue)
 
-	self.when(id, func(e error, r interface{}) {
-		switch {
-		case e != nil:
-			err <- e
-		case e == nil:
-			res <- r
+	ws.when(id, func(e error, r any) {
+		out <- responseValue{
+			method: method,
+			value:  r,
+			err:    e,
 		}
 	})
 
-	return res, err
+	return out
 
 }
 
@@ -106,184 +117,165 @@ func (self *WS) When(id, method string) (<-chan interface{}, <-chan error) {
 // Private methods
 // --------------------------------------------------
 
-func (self *WS) once(id interface{}, fn func(error, interface{})) {
+func (ws *WS) once(id any, fn func(error, any)) {
 
 	// pauses traffic in others threads, so we can add the new listener without conflicts
-	self.emit.lock.Lock()
-	defer self.emit.lock.Unlock()
 
-	// if its our first listener, we need to setup the map
-	if self.emit.once == nil {
-		self.emit.once = make(map[interface{}][]func(error, interface{}))
-	}
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
 
-	self.emit.once[id] = append(self.emit.once[id], fn)
+	ws.emit.once[id] = append(ws.emit.once[id], fn)
 
 }
 
 // WHEN SYSTEM ISN'T BEEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS AND/OR REAL TIME stuffs.
 
-func (self *WS) when(id interface{}, fn func(error, interface{})) {
+func (ws *WS) when(id any, fn func(error, any)) {
 
 	// pauses traffic in others threads, so we can add the new listener without conflicts
-	self.emit.lock.Lock()
-	defer self.emit.lock.Unlock()
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
 
-	// if its our first listener, we need to setup the map
-	if self.emit.when == nil {
-		self.emit.when = make(map[interface{}][]func(error, interface{}))
-	}
-
-	self.emit.when[id] = append(self.emit.when[id], fn)
+	ws.emit.when[id] = append(ws.emit.when[id], fn)
 
 }
 
-func (self *WS) done(id interface{}, err error, res interface{}) {
+func (ws *WS) done(id any, err error, res any) {
 
 	// pauses traffic in others threads, so we can modify listeners without conflicts
-	self.emit.lock.Lock()
-	defer self.emit.lock.Unlock()
+	ws.emit.lock.Lock()
+	defer ws.emit.lock.Unlock()
 
 	// if our events map exist
-	if self.emit.when != nil {
+	if ws.emit.when != nil {
 
-		// if theres some listener aiming to this id response
-		if _, ok := self.emit.when[id]; ok {
+		// if there's some listener aiming to this id response
+		if when, ok := ws.emit.when[id]; ok {
 
 			// dispatch the event, starting from the end, so we prioritize the new ones
-			for i := len(self.emit.when[id]) - 1; i >= 0; i-- {
+			for i := len(when) - 1; i >= 0; i-- {
 
 				// invoke callback
-				self.emit.when[id][i](err, res)
+				when[i](err, res)
 
 			}
 		}
 	}
 
 	// if our events map exist
-	if self.emit.once != nil {
+	if ws.emit.once != nil {
 
 		// if theres some listener aiming to this id response
-		if _, ok := self.emit.once[id]; ok {
+		if once, ok := ws.emit.once[id]; ok {
 
 			// dispatch the event, starting from the end, so we prioritize the new ones
-			for i := len(self.emit.once[id]) - 1; i >= 0; i-- {
+			for i := len(once) - 1; i >= 0; i-- {
 
 				// invoke callback
-				self.emit.once[id][i](err, res)
+				once[i](err, res)
 
 				// erase this listener
-				self.emit.once[id][i] = nil
+				once[i] = nil
 
-				// remove this listener from the list
-				self.emit.once[id] = self.emit.once[id][:i]
 			}
+
+			// remove all listeners
+			ws.emit.once[id] = once[0:]
 		}
 	}
 
 }
 
-func (self *WS) read(v interface{}) (err error) {
-
-	_, r, err := self.ws.NextReader()
+func (ws *WS) read() (response *RPCRawResponse, err error) {
+	_, r, err := ws.ws.NextReader()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return json.NewDecoder(r).Decode(v)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
 
+	return CreateRPCRawResponse(raw), nil
 }
 
-func (self *WS) write(v interface{}) (err error) {
-
-	w, err := self.ws.NextWriter(websocket.TextMessage)
+func (ws *WS) write(v any) (err error) {
+	w, err := ws.ws.NextWriter(websocket.TextMessage)
 	if err != nil {
 		return err
 	}
 
-	err = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	// the default HTML escaping messes with select arrows
+	enc.SetEscapeHTML(false)
+	err = enc.Encode(v)
 	if err != nil {
 		return err
 	}
 
 	return w.Close()
-
 }
 
-func (self *WS) initialise() {
+func (ws *WS) initialise(ctx context.Context) {
 	send := make(chan *RPCRequest)
-	recv := make(chan *RPCResponse)
-	quit := make(chan error, 1) // stops: MAIN LOOP
-	exit := make(chan int, 1)   // stops: RECEIVER LOOP, SENDER LOOP
+	recv := make(chan *RPCRawResponse)
+	ctx, cancel := context.WithCancel(ctx)
 
 	// RECEIVER LOOP
-
 	go func() {
-	loop:
 		for {
 			select {
-			case <-exit:
-				break loop // stops: THIS LOOP
+			case <-ctx.Done():
+				return
 			default:
-
-				var res RPCResponse
-				err := self.read(&res) // wait and unmarshal UPCOMING response
+				res, err := ws.read()
 
 				if err != nil {
-					self.Close()
-					quit <- err // stops: MAIN LOOP
-					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
-					break loop  // stops: THIS LOOP
+					ws.Close()
+					cancel()
+					return
 				}
 
-				recv <- &res // redirect response to: MAIN LOOP
-
+				recv <- res // redirect response to: MAIN LOOP
 			}
 		}
 	}()
 
 	// SENDER LOOP
-
 	go func() {
-	loop:
 		for {
 			select {
-			case <-exit:
-				break loop // stops: THIS LOOP
+			case <-ctx.Done():
+				return // stops: THIS LOOP
 			case res := <-send:
-
-				err := self.write(res) // marshal and send
+				err := ws.write(res) // marshal and send
 
 				if err != nil {
-					self.Close()
-					quit <- err // stops: MAIN LOOP
-					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
-					break loop  // stops: THIS LOOP
+					ws.Close()
+					cancel()
+					return // stops: THIS LOOP
 				}
-
 			}
 		}
 	}()
 
 	// MAIN LOOP
-
 	go func() {
 		for {
 			select {
-			case <-self.quit:
-				break
-			case res := <-self.recv:
-				switch {
-				case res.Error == nil:
-					self.done(res.ID, nil, res.Result)
-				case res.Error != nil:
-					self.done(res.ID, res.Error, res.Result)
+			case <-ctx.Done():
+				return
+			case res := <-ws.recv:
+				if res.HasInternalError() {
+					log.Println("There was an error whilst decoding the RPC response: ", res.internalProcessingError)
 				}
+
+				ws.done(res.Id(), res.Error(), res)
 			}
 		}
 	}()
 
-	self.send = send
-	self.recv = recv
-	self.quit = quit // stops: MAIN LOOP
+	ws.send = send
+	ws.recv = recv
 }
