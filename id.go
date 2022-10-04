@@ -12,7 +12,7 @@ func xid(length int) string {
 	// Create a random byte slice
 	b := make([]byte, length)
 	// Fill the byte slice with data
-	rand.Read(b)
+	rand.Read(b) //nolint:gosec
 	// Return the byte slice as a string
 	return fmt.Sprintf("%x", b)[:length]
 }

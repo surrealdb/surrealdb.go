@@ -2,8 +2,9 @@ package surrealdb_test
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go"
 	"testing"
+
+	"github.com/surrealdb/surrealdb.go"
 )
 
 // a simple user struct for testing
@@ -16,14 +17,11 @@ type testUser struct {
 // an example test for creating a new entry in surrealdb
 func ExampleNew() {
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
-
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-
-	// Output:
+	db.Close()
 }
 
 func ExampleDB_Delete() {
@@ -43,7 +41,6 @@ func ExampleDB_Delete() {
 	}
 
 	_, err = db.Use("test", "test")
-
 	if err != nil {
 		panic(err)
 	}
@@ -52,6 +49,9 @@ func ExampleDB_Delete() {
 		Username: "johnny",
 		Password: "123",
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	// unmarshal the data into a user struct
 	var user testUser
@@ -107,6 +107,9 @@ func ExampleDB_Create() {
 		Username: "johnny",
 		Password: "123",
 	})
+	if err != nil || userMap == nil {
+		panic(err)
+	}
 
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &user)
@@ -137,7 +140,6 @@ func ExampleDB_Select() {
 	}
 
 	_, err = db.Use("test", "test")
-
 	if err != nil {
 		panic(err)
 	}
@@ -146,8 +148,14 @@ func ExampleDB_Select() {
 		Username: "johnnyjohn",
 		Password: "123",
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	userData, err := db.Select("users")
+	if err != nil {
+		panic(err)
+	}
 
 	// unmarshal the data into a user slice
 	var users []testUser
@@ -176,13 +184,11 @@ func ExampleDB_Update() {
 		"user": "root",
 		"pass": "root",
 	})
-
 	if err != nil {
 		panic(err)
 	}
 
 	_, err = db.Use("test", "test")
-
 	if err != nil {
 		panic(err)
 	}
@@ -191,6 +197,9 @@ func ExampleDB_Update() {
 		Username: "johnny",
 		Password: "123",
 	})
+	if err != nil {
+		panic(err)
+	}
 
 	// unmarshal the data into a user struct
 	var user testUser
@@ -233,13 +242,11 @@ func TestUnmarshalRaw(t *testing.T) {
 		"user": "root",
 		"pass": "root",
 	})
-
 	if err != nil {
 		panic(err)
 	}
 
 	_, err = db.Use("test", "test")
-
 	if err != nil {
 		panic(err)
 	}
@@ -252,8 +259,7 @@ func TestUnmarshalRaw(t *testing.T) {
 	username := "johnny"
 	password := "123"
 
-	//create test user with raw SurrealQL and unmarshal
-
+	// create test user with raw SurrealQL and unmarshal
 	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
 		"user": username,
 		"pass": password,
@@ -271,8 +277,7 @@ func TestUnmarshalRaw(t *testing.T) {
 		panic("response does not match the request")
 	}
 
-	//send query with empty result and unmarshal
-
+	// send query with empty result and unmarshal
 	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
@@ -302,7 +307,14 @@ func ExampleDB_Modify() {
 		"user": "root",
 		"pass": "root",
 	})
+	if err != nil {
+		panic(err)
+	}
+
 	_, err = db.Use("test", "test")
+	if err != nil {
+		panic(err)
+	}
 
 	_, err = db.Create("users:999", map[string]interface{}{
 		"username": "john999",
@@ -330,6 +342,5 @@ func ExampleDB_Modify() {
 
 	// // TODO: this needs to simplified for the end user somehow
 	fmt.Println((user2).(map[string]interface{})["age"])
-	//
 	// Output: 44
 }
