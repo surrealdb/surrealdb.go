@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
 const statusOK = "OK"
@@ -16,12 +18,12 @@ var (
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws *WS
+	ws *websocket.WS
 }
 
 // New Creates a new DB instance given a WebSocket URL.
 func New(url string) (*DB, error) {
-	ws, err := NewWebsocket(url)
+	ws, err := websocket.NewWebsocket(url)
 	if err != nil {
 		return nil, err
 	}

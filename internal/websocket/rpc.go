@@ -1,4 +1,4 @@
-package surrealdb
+package websocket
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {

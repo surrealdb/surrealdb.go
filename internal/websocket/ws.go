@@ -1,4 +1,4 @@
-package surrealdb
+package websocket
 
 import (
 	"encoding/json"
