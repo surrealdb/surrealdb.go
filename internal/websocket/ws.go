@@ -2,254 +2,137 @@ package websocket
 
 import (
 	"encoding/json"
-	"sync"
+	"errors"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
-type WS struct {
-	ws   *websocket.Conn     // websocket connection
-	quit chan error          // stops: MAIN LOOP
-	send chan<- *RPCRequest  // sender channel
-	recv <-chan *RPCResponse // receive channel
-	emit struct {
-		lock sync.Mutex                                 // pause threads to avoid conflicts
-		once map[interface{}][]func(error, interface{}) // once listeners
-		when map[interface{}][]func(error, interface{}) // when listeners
-	}
+const (
+	// CloseMessageCode identifier the message id for a close request
+	CloseMessageCode = 1000
+	// DefaultTimeout timeout in seconds
+	DefaultTimeout = 30
+)
+
+type Option func(ws *WebSocket) error
+
+type WebSocket struct {
+	conn    *websocket.Conn
+	timeout time.Duration
+
+	respChan chan RPCResponse
+	close    chan int
 }
 
-func NewWebsocket(url string) (*WS, error) {
+func NewWebsocket(url string) (*WebSocket, error) {
+	return NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
+}
+
+func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	// stablish connection
-	so, _, err := dialer.Dial(url, nil)
+	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ws := &WS{ws: so}
-	// setup loops and channels
-	ws.initialize()
+	ws := &WebSocket{
+		conn:     conn,
+		respChan: make(chan RPCResponse),
+		close:    make(chan int),
+	}
 
+	for _, option := range options {
+		if err := option(ws); err != nil {
+			return nil, err
+		}
+	}
+
+	ws.initialize()
 	return ws, nil
 }
 
-// --------------------------------------------------
-// Public methods
-// --------------------------------------------------
-
-func (ws *WS) Close() error {
-	msg := websocket.FormatCloseMessage(1000, "") //nolint:gomnd
-	return ws.ws.WriteMessage(websocket.CloseMessage, msg)
+func Timeout(timeout float64) Option {
+	return func(ws *WebSocket) error {
+		ws.timeout = time.Duration(timeout) * time.Second
+		return nil
+	}
 }
 
-func (ws *WS) Send(id, method string, params []interface{}) {
-	go func() {
-		ws.send <- &RPCRequest{
-			ID:     id,
-			Method: method,
-			Params: params,
-		}
+func (ws *WebSocket) Close() error {
+	defer func() {
+		close(ws.close)
 	}()
+
+	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-// Subscribe to once()
-func (ws *WS) Once(id, method string) (<-chan interface{}, <-chan error) { //nolint:gocritic
-	err := make(chan error)
-	res := make(chan interface{})
-
-	ws.once(id, func(e error, r interface{}) {
-		switch {
-		case e != nil:
-			err <- e
-			close(err)
-			close(res)
-		case e == nil:
-			res <- r
-			close(err)
-			close(res)
-		}
-	})
-
-	return res, err
-}
-
-// Subscribe to when()
-func (ws *WS) When(id, method string) (<-chan interface{}, <-chan error) { //nolint:gocritic
-	err := make(chan error)
-	res := make(chan interface{})
-
-	ws.when(id, func(e error, r interface{}) {
-		switch {
-		case e != nil:
-			err <- e
-		case e == nil:
-			res <- r
-		}
-	})
-
-	return res, err
-}
-
-// --------------------------------------------------
-// Private methods
-// --------------------------------------------------
-
-func (ws *WS) once(id interface{}, fn func(error, interface{})) {
-	// pauses traffic in others threads, so we can add the new listener without conflicts
-	ws.emit.lock.Lock()
-	defer ws.emit.lock.Unlock()
-
-	// if its our first listener, we need to setup the map
-	if ws.emit.once == nil {
-		ws.emit.once = make(map[interface{}][]func(error, interface{}))
+func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{}, error) {
+	request := &RPCRequest{
+		ID:     id,
+		Method: method,
+		Params: params,
 	}
 
-	ws.emit.once[id] = append(ws.emit.once[id], fn)
-}
-
-// WHEN SYSTEM ISN'T BEING USED, MAYBE FOR FUTURE IN-DATABASE EVENTS AND/OR REAL TIME stuffs.
-func (ws *WS) when(id interface{}, fn func(error, interface{})) {
-	// pauses traffic in others threads, so we can add the new listener without conflicts
-	ws.emit.lock.Lock()
-	defer ws.emit.lock.Unlock()
-
-	// if its our first listener, we need to setup the map
-	if ws.emit.when == nil {
-		ws.emit.when = make(map[interface{}][]func(error, interface{}))
+	if err := ws.write(request); err != nil {
+		return nil, err
 	}
 
-	ws.emit.when[id] = append(ws.emit.when[id], fn)
-}
-
-func (ws *WS) done(id interface{}, err error, res interface{}) {
-	// pauses traffic in others threads, so we can modify listeners without conflicts
-	ws.emit.lock.Lock()
-	defer ws.emit.lock.Unlock()
-
-	// if our events map exist
-	if ws.emit.when != nil {
-		// if theres some listener aiming to this id response
-		if _, ok := ws.emit.when[id]; ok {
-			// dispatch the event, starting from the end, so we prioritize the new ones
-			for i := len(ws.emit.when[id]) - 1; i >= 0; i-- {
-				// invoke callback
-				ws.emit.when[id][i](err, res)
+	tick := time.NewTicker(ws.timeout)
+	for {
+		select {
+		case <-tick.C:
+			return nil, errors.New("timeout")
+		case res := <-ws.respChan:
+			if res.ID != id {
+				continue
 			}
-		}
-	}
 
-	// if our events map exist
-	if ws.emit.once != nil {
-		// if theres some listener aiming to this id response
-		if _, ok := ws.emit.once[id]; ok {
-			// dispatch the event, starting from the end, so we prioritize the new ones
-			for i := len(ws.emit.once[id]) - 1; i >= 0; i-- {
-				// invoke callback
-				ws.emit.once[id][i](err, res)
-				// erase this listener
-				ws.emit.once[id][i] = nil
-				// remove this listener from the list
-				ws.emit.once[id] = ws.emit.once[id][:i]
+			if res.Error != nil {
+				return nil, res.Error
 			}
+
+			return res.Result, nil
 		}
 	}
 }
 
-func (ws *WS) read(v interface{}) (err error) {
-	_, r, err := ws.ws.NextReader()
+func (ws *WebSocket) read(v interface{}) error {
+	_, data, err := ws.conn.ReadMessage()
 	if err != nil {
 		return err
 	}
 
-	return json.NewDecoder(r).Decode(v)
+	return json.Unmarshal(data, v)
 }
 
-func (ws *WS) write(v interface{}) (err error) {
-	w, err := ws.ws.NextWriter(websocket.TextMessage)
+func (ws *WebSocket) write(v interface{}) error {
+	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	err = json.NewEncoder(w).Encode(v)
-	if err != nil {
-		return err
-	}
-
-	return w.Close()
+	return ws.conn.WriteMessage(websocket.TextMessage, data)
 }
 
-func (ws *WS) initialize() {
-	send := make(chan *RPCRequest)
-	recv := make(chan *RPCResponse)
-	quit := make(chan error, 1) // stops: MAIN LOOP
-	exit := make(chan int, 1)   // stops: RECEIVER LOOP, SENDER LOOP
-
-	// RECEIVER LOOP
+func (ws *WebSocket) initialize() {
 	go func() {
-	loop:
 		for {
 			select {
-			case <-exit:
-				break loop // stops: THIS LOOP
+			case <-ws.close:
+				return
 			default:
 				var res RPCResponse
-				err := ws.read(&res) // wait and unmarshal UPCOMING response
-
+				err := ws.read(&res)
 				if err != nil {
-					ws.Close()
-					quit <- err // stops: MAIN LOOP
-					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
-					break loop  // stops: THIS LOOP
+					// TODO need to find a proper way to log this error
+					continue
 				}
 
-				recv <- &res // redirect response to: MAIN LOOP
+				ws.respChan <- res
 			}
 		}
 	}()
-
-	// SENDER LOOP
-	go func() {
-	loop:
-		for {
-			select {
-			case <-exit:
-				break loop // stops: THIS LOOP
-			case res := <-send:
-
-				err := ws.write(res) // marshal and send
-
-				if err != nil {
-					ws.Close()
-					quit <- err // stops: MAIN LOOP
-					exit <- 0   // stops: RECEIVER LOOP, SENDER LOOP
-					break loop  // stops: THIS LOOP
-				}
-			}
-		}
-	}()
-
-	// MAIN LOOP
-	go func() {
-	loop:
-		for {
-			select {
-			case <-ws.quit:
-				break loop
-			case res := <-ws.recv:
-				switch {
-				case res.Error == nil:
-					ws.done(res.ID, nil, res.Result)
-				case res.Error != nil:
-					ws.done(res.ID, res.Error, res.Result)
-				}
-			}
-		}
-	}()
-
-	ws.send = send
-	ws.recv = recv
-	ws.quit = quit // stops: MAIN LOOP
 }
