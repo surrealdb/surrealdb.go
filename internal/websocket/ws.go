@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -26,14 +27,14 @@ type WebSocket struct {
 }
 
 func NewWebsocket(url string) (*WebSocket, error) {
-	return NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
+	return NewWebsocketWithOptions(url, nil, Timeout(DefaultTimeout))
 }
 
-func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
+func NewWebsocketWithOptions(url string, header http.Header, options ...Option) (*WebSocket, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	conn, _, err := dialer.Dial(url, nil)
+	conn, _, err := dialer.Dial(url, header)
 	if err != nil {
 		return nil, err
 	}

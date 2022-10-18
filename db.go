@@ -30,6 +30,11 @@ func New(url string) (*DB, error) {
 	return &DB{ws}, nil
 }
 
+// NewWithConnection allows creating a new DB instance with a predefined websocket.WebSocket connection.
+func NewWithConnection(ws *websocket.WebSocket) (*DB, error) {
+	return &DB{ws}, nil
+}
+
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
 	var ok bool
