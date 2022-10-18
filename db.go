@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
 const statusOK = "OK"
@@ -16,12 +18,12 @@ var (
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws *WS
+	ws *websocket.WebSocket
 }
 
 // New Creates a new DB instance given a WebSocket URL.
 func New(url string) (*DB, error) {
-	ws, err := NewWebsocket(url)
+	ws, err := websocket.NewWebsocket(url)
 	if err != nil {
 		return nil, err
 	}
@@ -185,33 +187,27 @@ func (db *DB) Delete(what string) (interface{}, error) {
 func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	// generate an id for the action, this is used to distinguish its response
 	id := xid(16) //nolint:gomnd
-	// chn: the channel where the server response will arrive, err: the channel where errors will come
-	chn, err := db.ws.Once(id, method)
 	// here we send the args through our websocket connection
-	db.ws.Send(id, method, params)
+	resp, err := db.ws.Send(id, method, params)
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		select {
-		case e := <-err:
-			return nil, e
-		case r := <-chn:
-			switch method {
-			case "delete":
-				return nil, nil
-			case "select":
-				return db.resp(method, params, r)
-			case "create":
-				return db.resp(method, params, r)
-			case "update":
-				return db.resp(method, params, r)
-			case "change":
-				return db.resp(method, params, r)
-			case "modify":
-				return db.resp(method, params, r)
-			default:
-				return r, nil
-			}
-		}
+	switch method {
+	case "delete":
+		return nil, nil
+	case "select":
+		return db.resp(method, params, resp)
+	case "create":
+		return db.resp(method, params, resp)
+	case "update":
+		return db.resp(method, params, resp)
+	case "change":
+		return db.resp(method, params, resp)
+	case "modify":
+		return db.resp(method, params, resp)
+	default:
+		return resp, nil
 	}
 }
 
