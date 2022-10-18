@@ -20,9 +20,11 @@ func init() {
 }
 
 type Driver struct {
-	URL      string
-	Username string
-	Password string
+	URL       string
+	Username  string
+	Password  string
+	Namespace string
+	Database  string
 }
 
 // Open establishes a new connection to SurrealDB.
@@ -55,8 +57,14 @@ func (s *Driver) OpenConnector(name string) (driver.Connector, error) {
 		u.User = nil
 	}
 
+	// Attempt to find database/namespace values
+	queryValues := u.Query()
+	configured.Namespace = queryValues.Get("ns")
+	configured.Database = queryValues.Get("db")
+
 	// Overwrite the path, because we connect via WebSockets
 	u.Path = "/rpc"
+	u.RawQuery = ""
 
 	configured.URL = u.String()
 
@@ -65,12 +73,16 @@ func (s *Driver) OpenConnector(name string) (driver.Connector, error) {
 
 // Connect establishes a new connection to SurrealDB.
 func (s *Driver) Connect(ctx context.Context) (driver.Conn, error) {
-	fmt.Println(s.URL)
-
 	header := make(http.Header)
 	if s.Username != "" {
 		encoded := base64.StdEncoding.EncodeToString(append(append([]byte(s.Username), byte(':')), []byte(s.Password)...))
 		header.Add("Authorization", "Basic "+encoded)
+	}
+	if s.Namespace != "" {
+		header.Add("NS", s.Namespace)
+	}
+	if s.Database != "" {
+		header.Add("DB", s.Database)
 	}
 
 	// TODO: use the ctx to allow for cancels

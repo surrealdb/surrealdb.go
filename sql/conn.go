@@ -17,7 +17,8 @@ func (s *Conn) Prepare(query string) (driver.Stmt, error) {
 }
 
 func (s *Conn) Close() error {
-	return s.Close()
+	s.DB.Close()
+	return nil
 }
 
 func (s *Conn) Begin() (driver.Tx, error) {
@@ -27,7 +28,7 @@ func (s *Conn) Begin() (driver.Tx, error) {
 func (s *Conn) Ping(ctx context.Context) error {
 	// TODO: Is there something more reliable?
 	// TODO: How do we utilize context.Context ?
-	_, err := s.Info()
+	_, err := s.Select("1")
 	return err
 }
 

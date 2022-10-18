@@ -8,7 +8,7 @@ import (
 
 func main() {
 	// Connect the way you would usually
-	db, err := sql.Open("surrealdb", "ws://root:root@localhost:9091/dbname")
+	db, err := sql.Open("surrealdb", "ws://root:root@localhost:9091/?ns=my-namespace&db=dbname")
 	if err != nil {
 		panic(err)
 	}
