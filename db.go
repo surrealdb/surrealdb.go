@@ -10,8 +10,8 @@ import (
 const statusOK = "OK"
 
 var (
-	InvalidResponse = errors.New("invalid SurrealDB response")
-	QueryError      = errors.New("error occurred processing the SurrealDB query")
+	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
+	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -29,7 +29,7 @@ func New(url string) (*DB, error) {
 }
 
 // Unmarshal loads a SurrealDB response into a struct.
-func Unmarshal(data interface{}, v interface{}) error {
+func Unmarshal(data, v interface{}) error {
 	var ok bool
 
 	assertedData, ok := data.([]interface{})
@@ -59,7 +59,7 @@ func Unmarshal(data interface{}, v interface{}) error {
 
 // UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
 // return ok = true, and queries that return with no results will return ok = false.
-func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
+func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	var data []interface{}
 	if data, ok = rawData.([]interface{}); !ok {
 		return false, InvalidResponse
@@ -75,7 +75,7 @@ func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
 		return false, InvalidResponse
 	}
 	if status != statusOK {
-		return false, QueryError
+		return false, ErrQuery
 	}
 
 	result := responseObj["result"]
@@ -95,86 +95,86 @@ func UnmarshalRaw(rawData interface{}, v interface{}) (ok bool, err error) {
 // --------------------------------------------------
 
 // Close closes the underlying WebSocket connection.
-func (self *DB) Close() {
-	_ = self.ws.Close()
+func (db *DB) Close() {
+	_ = db.ws.Close()
 }
 
 // --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
-func (self *DB) Use(ns string, db string) (interface{}, error) {
-	return self.send("use", ns, db)
+func (db *DB) Use(ns, database string) (interface{}, error) {
+	return db.send("use", ns, database)
 }
 
-func (self *DB) Info() (interface{}, error) {
-	return self.send("info")
+func (db *DB) Info() (interface{}, error) {
+	return db.send("info")
 }
 
 // Signup is a helper method for signing up a new user.
-func (self *DB) Signup(vars interface{}) (interface{}, error) {
-	return self.send("signup", vars)
+func (db *DB) Signup(vars interface{}) (interface{}, error) {
+	return db.send("signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
-func (self *DB) Signin(vars interface{}) (interface{}, error) {
-	return self.send("signin", vars)
+func (db *DB) Signin(vars interface{}) (interface{}, error) {
+	return db.send("signin", vars)
 }
 
-func (self *DB) Invalidate() (interface{}, error) {
-	return self.send("invalidate")
+func (db *DB) Invalidate() (interface{}, error) {
+	return db.send("invalidate")
 }
 
-func (self *DB) Authenticate(token string) (interface{}, error) {
-	return self.send("authenticate", token)
+func (db *DB) Authenticate(token string) (interface{}, error) {
+	return db.send("authenticate", token)
 }
 
 // --------------------------------------------------
 
-func (self *DB) Live(table string) (interface{}, error) {
-	return self.send("live", table)
+func (db *DB) Live(table string) (interface{}, error) {
+	return db.send("live", table)
 }
 
-func (self *DB) Kill(query string) (interface{}, error) {
-	return self.send("kill", query)
+func (db *DB) Kill(query string) (interface{}, error) {
+	return db.send("kill", query)
 }
 
-func (self *DB) Let(key string, val interface{}) (interface{}, error) {
-	return self.send("let", key, val)
+func (db *DB) Let(key string, val interface{}) (interface{}, error) {
+	return db.send("let", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
-func (self *DB) Query(sql string, vars interface{}) (interface{}, error) {
-	return self.send("query", sql, vars)
+func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
+	return db.send("query", sql, vars)
 }
 
 // Select a table or record from the database.
-func (self *DB) Select(what string) (interface{}, error) {
-	return self.send("select", what)
+func (db *DB) Select(what string) (interface{}, error) {
+	return db.send("select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (self *DB) Create(thing string, data interface{}) (interface{}, error) {
-	return self.send("create", thing, data)
+func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
+	return db.send("create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (self *DB) Update(what string, data interface{}) (interface{}, error) {
-	return self.send("update", what, data)
+func (db *DB) Update(what string, data interface{}) (interface{}, error) {
+	return db.send("update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
-func (self *DB) Change(what string, data interface{}) (interface{}, error) {
-	return self.send("change", what, data)
+func (db *DB) Change(what string, data interface{}) (interface{}, error) {
+	return db.send("change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
-func (self *DB) Modify(what string, data []Patch) (interface{}, error) {
-	return self.send("modify", what, data)
+func (db *DB) Modify(what string, data []Patch) (interface{}, error) {
+	return db.send("modify", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (self *DB) Delete(what string) (interface{}, error) {
-	return self.send("delete", what)
+func (db *DB) Delete(what string) (interface{}, error) {
+	return db.send("delete", what)
 }
 
 // --------------------------------------------------
@@ -182,18 +182,16 @@ func (self *DB) Delete(what string) (interface{}, error) {
 // --------------------------------------------------
 
 // send is a helper method for sending a query to the database.
-func (self *DB) send(method string, params ...interface{}) (interface{}, error) {
-
+func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	// generate an id for the action, this is used to distinguish its response
-	id := xid(16)
+	id := xid(16) //nolint:gomnd
 	// chn: the channel where the server response will arrive, err: the channel where errors will come
-	chn, err := self.ws.Once(id, method)
+	chn, err := db.ws.Once(id, method)
 	// here we send the args through our websocket connection
-	self.ws.Send(id, method, params)
+	db.ws.Send(id, method, params)
 
 	for {
 		select {
-		default:
 		case e := <-err:
 			return nil, e
 		case r := <-chn:
@@ -201,26 +199,24 @@ func (self *DB) send(method string, params ...interface{}) (interface{}, error) 
 			case "delete":
 				return nil, nil
 			case "select":
-				return self.resp(method, params, r)
+				return db.resp(method, params, r)
 			case "create":
-				return self.resp(method, params, r)
+				return db.resp(method, params, r)
 			case "update":
-				return self.resp(method, params, r)
+				return db.resp(method, params, r)
 			case "change":
-				return self.resp(method, params, r)
+				return db.resp(method, params, r)
 			case "modify":
-				return self.resp(method, params, r)
+				return db.resp(method, params, r)
 			default:
 				return r, nil
 			}
 		}
 	}
-
 }
 
 // resp is a helper method for parsing the response from a query.
-func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
-
+func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
 	arg, ok := params[0].(string)
 
 	if !ok {
@@ -228,9 +224,7 @@ func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface
 	}
 
 	if strings.Contains(arg, ":") {
-
 		arr, ok := res.([]interface{})
-
 		if !ok {
 			return nil, PermissionError{what: arg}
 		}
@@ -240,17 +234,15 @@ func (self *DB) resp(_ string, params []interface{}, res interface{}) (interface
 		}
 
 		return arr[0], nil
-
 	}
 
 	return res, nil
-
 }
 
 func isSlice(possibleSlice interface{}) bool {
 	slice := false
 
-	switch v := possibleSlice.(type) {
+	switch v := possibleSlice.(type) { //nolint:gocritic
 	default:
 		res := fmt.Sprintf("%s", v)
 		if res == "[]" || res == "&[]" || res == "*[]" {
