@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/surrealdb/surrealdb.go"
@@ -14,18 +15,17 @@ type testUser struct {
 	ID       string
 }
 
-// an example test for creating a new entry in surrealdb
-func ExampleNew() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
-	if err != nil {
-		panic(err)
+func openConnection() (*surrealdb.DB, error) {
+	url := os.Getenv("SURREALDB_URL")
+	if url == "" {
+		url = "ws://localhost:8000/rpc"
 	}
 
-	db.Close()
+	return surrealdb.New(url)
 }
 
 func ExampleDB_Delete() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 	if err != nil {
 		panic(err)
 	}
@@ -71,7 +71,7 @@ func ExampleDB_Delete() {
 }
 
 func ExampleDB_Create() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 
 	if err != nil {
 		panic(err)
@@ -123,7 +123,7 @@ func ExampleDB_Create() {
 }
 
 func ExampleDB_Select() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 
 	if err != nil {
 		panic(err)
@@ -174,7 +174,7 @@ func ExampleDB_Select() {
 }
 
 func ExampleDB_Update() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 	if err != nil {
 		panic(err)
 	}
@@ -232,7 +232,7 @@ func ExampleDB_Update() {
 }
 
 func TestUnmarshalRaw(t *testing.T) {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 	if err != nil {
 		panic(err)
 	}
@@ -297,7 +297,7 @@ func TestUnmarshalRaw(t *testing.T) {
 }
 
 func ExampleDB_Modify() {
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := openConnection()
 	if err != nil {
 		panic(err)
 	}
