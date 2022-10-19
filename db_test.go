@@ -15,34 +15,42 @@ type testUser struct {
 	ID       string
 }
 
-func openConnection() (*surrealdb.DB, error) {
+func openConnection(t *testing.T) *surrealdb.DB {
 	url := os.Getenv("SURREALDB_URL")
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
 
-	return surrealdb.New(url)
+	db, err := surrealdb.New(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return db
 }
 
-func ExampleDB_Delete() {
-	db, err := openConnection()
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	_, err = db.Signin(map[string]interface{}{
+func signin(t *testing.T, db *surrealdb.DB) interface{} {
+	signin, err := db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
 
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
-	_, err = db.Use("test", "test")
+	return signin
+}
+
+func TestDelete(t *testing.T) {
+	db := openConnection(t)
+	defer db.Close()
+
+	_ = signin(t, db)
+
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	userData, err := db.Create("users", testUser{
@@ -50,48 +58,35 @@ func ExampleDB_Delete() {
 		Password: "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// unmarshal the data into a user struct
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// Delete the users...
 	_, err = db.Delete("users")
 
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// Output:
 }
 
-func ExampleDB_Create() {
-	db, err := openConnection()
-
-	if err != nil {
-		panic(err)
-	}
-
+func TestCreate(t *testing.T) {
+	db := openConnection(t)
 	defer db.Close()
 
-	signin, err := db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
+	_ = signin(t, db)
 
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Use("test", "test")
-
-	if err != nil || signin == nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	userMap, err := db.Create("users", map[string]interface{}{
@@ -100,7 +95,7 @@ func ExampleDB_Create() {
 	})
 
 	if err != nil || userMap == nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	userData, err := db.Create("users", testUser{
@@ -108,13 +103,13 @@ func ExampleDB_Create() {
 		Password: "123",
 	})
 	if err != nil || userMap == nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &user)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	fmt.Println(user.Username)
@@ -122,26 +117,15 @@ func ExampleDB_Create() {
 	// Output: johnny
 }
 
-func ExampleDB_Select() {
-	db, err := openConnection()
-
-	if err != nil {
-		panic(err)
-	}
+func TestSelect(t *testing.T) {
+	db := openConnection(t)
 	defer db.Close()
 
-	_, err = db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
+	_ = signin(t, db)
 
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Use("test", "test")
-	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	_, err = db.Create("users", testUser{
@@ -149,19 +133,19 @@ func ExampleDB_Select() {
 		Password: "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	userData, err := db.Select("users")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// unmarshal the data into a user slice
 	var users []testUser
 	err = surrealdb.Unmarshal(userData, &users)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	for _, user := range users {
@@ -173,24 +157,15 @@ func ExampleDB_Select() {
 	// Output: johnnyjohn
 }
 
-func ExampleDB_Update() {
-	db, err := openConnection()
-	if err != nil {
-		panic(err)
-	}
+func TestUpdate(t *testing.T) {
+	db := openConnection(t)
 	defer db.Close()
 
-	_, err = db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-	if err != nil {
-		panic(err)
-	}
+	_ = signin(t, db)
 
-	_, err = db.Use("test", "test")
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	userData, err := db.Create("users", testUser{
@@ -198,14 +173,14 @@ func ExampleDB_Update() {
 		Password: "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// unmarshal the data into a user struct
 	var user testUser
 	err = surrealdb.Unmarshal(userData, &testUser{})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	user.Password = "456"
@@ -214,7 +189,7 @@ func ExampleDB_Update() {
 	userData, err = db.Update("users", &user)
 
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// unmarshal the data into a user struct
@@ -222,7 +197,7 @@ func ExampleDB_Update() {
 	err = surrealdb.Unmarshal(userData, &updatedUser)
 
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// TODO: check if this updates only the user with the same ID or all users
@@ -232,28 +207,19 @@ func ExampleDB_Update() {
 }
 
 func TestUnmarshalRaw(t *testing.T) {
-	db, err := openConnection()
-	if err != nil {
-		panic(err)
-	}
+	db := openConnection(t)
 	defer db.Close()
 
-	_, err = db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-	if err != nil {
-		panic(err)
-	}
+	_ = signin(t, db)
 
-	_, err = db.Use("test", "test")
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	_, err = db.Delete("users")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	username := "johnny"
@@ -265,13 +231,13 @@ func TestUnmarshalRaw(t *testing.T) {
 		"pass": password,
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	var user testUser
 	ok, err := surrealdb.UnmarshalRaw(userData, &user)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	if !ok || user.Username != username || user.Password != password {
 		panic("response does not match the request")
@@ -282,12 +248,12 @@ func TestUnmarshalRaw(t *testing.T) {
 		"id": "users:jim",
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	ok, err = surrealdb.UnmarshalRaw(userData, &user)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	if ok {
 		panic("select should return an empty result")
@@ -296,24 +262,15 @@ func TestUnmarshalRaw(t *testing.T) {
 	// Output:
 }
 
-func ExampleDB_Modify() {
-	db, err := openConnection()
-	if err != nil {
-		panic(err)
-	}
+func TestModify(t *testing.T) {
+	db := openConnection(t)
 	defer db.Close()
 
-	_, err = db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-	if err != nil {
-		panic(err)
-	}
+	_ = signin(t, db)
 
-	_, err = db.Use("test", "test")
+	_, err := db.Use("test", "test")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	_, err = db.Create("users:999", map[string]interface{}{
@@ -321,7 +278,7 @@ func ExampleDB_Modify() {
 		"password": "123",
 	})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	patches := []surrealdb.Patch{
@@ -332,12 +289,12 @@ func ExampleDB_Modify() {
 	// Update the user
 	_, err = db.Modify("users:999", patches)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	user2, err := db.Select("users:999")
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	// // TODO: this needs to simplified for the end user somehow
