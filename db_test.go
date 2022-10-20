@@ -243,7 +243,7 @@ func TestUnmarshalRaw(t *testing.T) {
 		panic("response does not match the request")
 	}
 
-	// send query with empty result and unmarshal
+	// Send query with empty result and unmarshal
 	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})

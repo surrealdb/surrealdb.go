@@ -114,3 +114,8 @@ func (s *Driver) Connect(ctx context.Context) (driver.Conn, error) {
 func (s *Driver) Driver() driver.Driver {
 	return s
 }
+
+func (s *Driver) CheckNamedValue(value *driver.NamedValue) error {
+	fmt.Println("value", value)
+	return nil
+}

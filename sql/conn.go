@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go"
+	"strings"
 )
 
 type Conn struct {
@@ -12,8 +13,17 @@ type Conn struct {
 }
 
 func (s *Conn) Prepare(query string) (driver.Stmt, error) {
-	//TODO implement me
-	panic("implement me")
+	//method, thing, err := s.parseMethod(query)
+	//if err != nil {
+	//	return nil, fmt.Errorf("invalid rawQuery: %w", err)
+	//}
+
+	return &Stmt{
+		conn:     s,
+		rawQuery: query,
+		//method:   method,
+		//thing:    thing,
+	}, nil
 }
 
 func (s *Conn) Close() error {
@@ -38,6 +48,16 @@ func (s *Conn) ResetSession(ctx context.Context) error {
 
 func (s *Conn) IsValid() bool {
 	return true // Might change once we have something that will invalidate the connection
+}
+
+func (s *Conn) parseMethod(query string) (string, string, error) {
+	idx := strings.IndexRune(query, ' ')
+	if idx <= 0 {
+		return query, "", nil
+	}
+
+	// TODO: do we validate this?
+	return strings.ToLower(query[:idx]), query[idx+1:], nil
 }
 
 // TODO: Potentially implement: ExecerContext, QueryerContext, ConnPrepareContext, and ConnBeginTx.

@@ -110,92 +110,92 @@ func (db *DB) Close() {
 
 // Use is a method to select the namespace and table to use.
 func (db *DB) Use(ns, database string) (interface{}, error) {
-	return db.send("use", ns, database)
+	return db.Send("use", ns, database)
 }
 
 func (db *DB) Info() (interface{}, error) {
-	return db.send("info")
+	return db.Send("info")
 }
 
 // Signup is a helper method for signing up a new user.
 func (db *DB) Signup(vars interface{}) (interface{}, error) {
-	return db.send("signup", vars)
+	return db.Send("signup", vars)
 }
 
 // Signin is a helper method for signing in a user.
 func (db *DB) Signin(vars interface{}) (interface{}, error) {
-	return db.send("signin", vars)
+	return db.Send("signin", vars)
 }
 
 func (db *DB) Invalidate() (interface{}, error) {
-	return db.send("invalidate")
+	return db.Send("invalidate")
 }
 
 func (db *DB) Authenticate(token string) (interface{}, error) {
-	return db.send("authenticate", token)
+	return db.Send("authenticate", token)
 }
 
 // --------------------------------------------------
 
 func (db *DB) Live(table string) (interface{}, error) {
-	return db.send("live", table)
+	return db.Send("live", table)
 }
 
 func (db *DB) Kill(query string) (interface{}, error) {
-	return db.send("kill", query)
+	return db.Send("kill", query)
 }
 
 func (db *DB) Let(key string, val interface{}) (interface{}, error) {
-	return db.send("let", key, val)
+	return db.Send("let", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
 func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
-	return db.send("query", sql, vars)
+	return db.Send("query", sql, vars)
 }
 
 // Select a table or record from the database.
 func (db *DB) Select(what string) (interface{}, error) {
-	return db.send("select", what)
+	return db.Send("select", what)
 }
 
 // Creates a table or record in the database like a POST request.
 func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
-	return db.send("create", thing, data)
+	return db.Send("create", thing, data)
 }
 
 // Update a table or record in the database like a PUT request.
 func (db *DB) Update(what string, data interface{}) (interface{}, error) {
-	return db.send("update", what, data)
+	return db.Send("update", what, data)
 }
 
 // Change a table or record in the database like a PATCH request.
 func (db *DB) Change(what string, data interface{}) (interface{}, error) {
-	return db.send("change", what, data)
+	return db.Send("change", what, data)
 }
 
 // Modify applies a series of JSONPatches to a table or record.
 func (db *DB) Modify(what string, data []Patch) (interface{}, error) {
-	return db.send("modify", what, data)
+	return db.Send("modify", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
 func (db *DB) Delete(what string) (interface{}, error) {
-	return db.send("delete", what)
+	return db.Send("delete", what)
 }
 
 // --------------------------------------------------
 // Private methods
 // --------------------------------------------------
 
-// send is a helper method for sending a query to the database.
-func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
+// Send is a helper method for sending a query to the database.
+func (db *DB) Send(method string, params ...interface{}) (interface{}, error) {
 	// generate an id for the action, this is used to distinguish its response
 	id := xid(16) //nolint:gomnd
-	// here we send the args through our websocket connection
+	// here we Send the args through our websocket connection
 	resp, err := db.ws.Send(id, method, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to send request: %w", err)
 	}
 
 	switch method {

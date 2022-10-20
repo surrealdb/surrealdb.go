@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -78,7 +79,7 @@ func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{},
 	}
 
 	if err := ws.write(request); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to write request: %w", err)
 	}
 
 	tick := time.NewTicker(ws.timeout)
@@ -92,7 +93,7 @@ func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{},
 			}
 
 			if res.Error != nil {
-				return nil, res.Error
+				return nil, fmt.Errorf("error response: %w", res.Error)
 			}
 
 			return res.Result, nil
