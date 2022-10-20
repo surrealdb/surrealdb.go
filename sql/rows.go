@@ -32,7 +32,7 @@ func (r *Rows) Columns() []string {
 	// Because "lookup" is a map, this order is NOT guaranteed to be the order as queried by the user...
 	// So let's sort it to at least be consistent
 	sort.Strings(r.detectedColumns)
-	
+
 	return r.detectedColumns
 }
 
