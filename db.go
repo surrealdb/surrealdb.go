@@ -185,10 +185,8 @@ func (db *DB) Delete(what string) (interface{}, error) {
 
 // send is a helper method for sending a query to the database.
 func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
-	// generate an id for the action, this is used to distinguish its response
-	id := xid(16) //nolint:gomnd
 	// here we send the args through our websocket connection
-	resp, err := db.ws.Send(id, method, params)
+	resp, err := db.ws.Send(method, params)
 	if err != nil {
 		return nil, err
 	}
