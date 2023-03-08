@@ -204,9 +204,7 @@ func TestUnmarshalRaw(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = db.Delete(ctx, "users")
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.NoError(t, err)
 
 	username := "johnny"
 	password := "123"
