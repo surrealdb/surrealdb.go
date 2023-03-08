@@ -255,6 +255,10 @@ func TestSmartQuery(t *testing.T) {
 		Password: "1234",
 	}}
 
+	// Clean up from other tests
+	_, err = db.Delete("users")
+	assert.NoError(t, err)
+
 	// RAW query create
 	dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Create users set Username = $user, Password = $pass", map[string]interface{}{
 		"user": user[0].Username,
