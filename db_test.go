@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/surrealdb/surrealdb.go"
 )
@@ -13,6 +14,28 @@ type testUser struct {
 	Username string
 	Password string
 	ID       string
+}
+
+type testStatefulUser struct {
+	Username  string      `type:"string" unique:"Username"`
+	Email     string      `type:"string" unique:"Email,Username" assert:"$value != NONE AND is::email($value)"`
+	Password  string      `type:"string"`
+	Tag       string      `type:"string" index:"Tag"`
+	ID        int64       `type:"int"`
+	Cost      float64     `type:"float" value:"$value OR 0.0" assert:"$value > 0"`
+	Status    bool        `type:"bool" index:"Cost,Status"`
+	MetaData  struct{}    `type:"object"`
+	CreatedAt time.Time   `type:"datetime"`
+	Checkouts []time.Time `type:"array"`
+
+	UsernameOptional  *string      `type:"string"` // all pointers are optional unless assert is mentioned
+	PasswordOptional  *string      `type:"string"`
+	IDOptional        *int64       `type:"int"`
+	CostOptional      *float64     `type:"float"`
+	StatusOptional    *bool        `type:"bool"`
+	MetaDataOptional  *struct{}    `type:"object"`
+	CreatedAtOptional *time.Time   `type:"datetime"`
+	CheckoutsOptional *[]time.Time `type:"array"`
 }
 
 func openConnection(t *testing.T) *surrealdb.DB {
@@ -300,4 +323,32 @@ func TestModify(t *testing.T) {
 	// // TODO: this needs to simplified for the end user somehow
 	fmt.Println((user2).(map[string]interface{})["age"])
 	// Output: 44
+}
+
+func TestAutoMigration(t *testing.T) {
+	db := openConnection(t)
+	defer db.Close()
+
+	_ = signin(t, db)
+
+	_, err := db.Use("test", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	errs := db.AutoMigrate(testUser{}, true)
+
+	if len(errs) != 0 {
+		for _, err := range errs {
+			t.Fatalf(err.Error())
+		}
+	}
+
+	errs = db.AutoMigrate(testStatefulUser{}, true)
+
+	if len(errs) != 0 {
+		for _, err := range errs {
+			t.Fatalf(err.Error())
+		}
+	}
 }

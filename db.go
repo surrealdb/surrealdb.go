@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
+	"github.com/fatih/structtag"
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
@@ -110,6 +112,130 @@ func (db *DB) Use(ns, database string) (interface{}, error) {
 
 func (db *DB) Info() (interface{}, error) {
 	return db.send("info")
+}
+
+// AutoMigrate structs into stateful schema
+func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
+
+	t := reflect.TypeOf(data)
+
+	if t.Kind() != reflect.Struct {
+		return
+	}
+
+	table := t.Name()
+	sql := fmt.Sprintf("DEFINE TABLE %s SCHEMAFULL;", table)
+
+	if verbose {
+		fmt.Println(sql)
+	}
+	output, err := db.send("query", sql)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	if verbose {
+		fmt.Println(output, err)
+	}
+
+	allowedTypes := map[string]bool{
+		"bool":     true,
+		"int":      true,
+		"float":    true,
+		"string":   true,
+		"number":   true,
+		"decimal":  true,
+		"datetime": true,
+		"duration": true,
+		"object":   true,
+		"array":    true,
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+
+		tags, err := structtag.Parse(string(t.Field(i).Tag))
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		fieldType, _ := tags.Get("type")
+		if fieldType == nil || !allowedTypes[fieldType.Value()] {
+			continue
+		}
+
+		assert := ""
+		fieldAssert, _ := tags.Get("assert")
+		if fieldAssert == nil {
+			if t.Field(i).Type.Kind() != reflect.Ptr {
+				assert = " ASSERT $value != NONE"
+			}
+		} else {
+
+			assert = " ASSERT " + fieldAssert.Value()
+		}
+
+		value := ""
+		fieldValue, _ := tags.Get("value")
+		if fieldValue != nil {
+			value = " VALUE " + fieldValue.Value()
+		}
+
+		sql = fmt.Sprintf("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldType.Value(), assert, value)
+
+		if verbose {
+			fmt.Println(sql)
+		}
+		output, err := db.send("query", sql)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if verbose {
+			fmt.Println(output, err)
+		}
+
+		// Indexes
+
+		unique := false
+		indexFields, _ := tags.Get("index")
+
+		if indexFields == nil {
+
+			indexFields, _ = tags.Get("unique")
+			unique = indexFields != nil
+		}
+
+		if indexFields != nil {
+
+			indexName := fmt.Sprintf("%s_%s", table, strings.ReplaceAll(indexFields.Value(), ",", "_"))
+
+			uniqueStatment := ""
+			if unique {
+				indexName = "unique_" + indexName
+				uniqueStatment = " UNIQUE"
+			} else {
+				indexName = "index_" + indexName
+			}
+
+			sql = fmt.Sprintf("DEFINE INDEX %s ON TABLE %s COLUMNS %s%s;", indexName, table, indexFields.Value(), uniqueStatment)
+
+			if verbose {
+				fmt.Println(sql)
+			}
+			output, err := db.send("query", sql)
+			if err != nil {
+				errs = append(errs, err)
+			}
+			if verbose {
+				fmt.Println(output, err)
+			}
+		}
+	}
+
+	return
 }
 
 // Signup is a helper method for signing up a new user.
