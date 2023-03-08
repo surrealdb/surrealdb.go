@@ -13,7 +13,7 @@ import (
 const statusOK = "OK"
 
 var (
-	ErrInvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
+	ErrInvalidResponse = errors.New("invalid SurrealDB response")
 	ErrQuery           = errors.New("error occurred processing the SurrealDB query")
 )
 
@@ -146,7 +146,7 @@ func (db *DB) Close() error {
 // --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
-func (db *DB) Use(ctx context.Context, ns string, dbname string) (interface{}, error) {
+func (db *DB) Use(ctx context.Context, ns, dbname string) (interface{}, error) {
 	return db.send(ctx, "use", ns, dbname)
 }
 
