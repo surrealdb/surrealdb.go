@@ -241,6 +241,56 @@ func TestModify(t *testing.T) {
 	assert.Equal(t, "44", (user2).(map[string]interface{})["age"])
 }
 
+func TestSmartQuery(t *testing.T) {
+	db := openConnection(t)
+	defer db.Close()
+
+	_ = signin(t, db)
+
+	_, err := db.Use("test", "test")
+	assert.NoError(t, err)
+
+	user := []testUser{{
+		Username: "electwix",
+		Password: "1234",
+	}}
+
+	// RAW query create
+	dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Create users set Username = $user, Password = $pass", map[string]interface{}{
+		"user": user[0].Username,
+		"pass": user[0].Password,
+	}))
+
+	assert.NoError(t, err)
+	assert.Equal(t, "electwix", dataArr[0].Username)
+
+	// RAW query select
+	dataArr, err = surrealdb.SmartUnmarshal[[]testUser](db.Query("Select * from $record", map[string]interface{}{
+		"record": dataArr[0].ID,
+	}))
+
+	assert.Equal(t, "electwix", dataArr[0].Username)
+	assert.NoError(t, err)
+
+	// Select
+	data, err := surrealdb.SmartUnmarshal[testUser](db.Select(dataArr[0].ID))
+
+	assert.NoError(t, err)
+	assert.Equal(t, "electwix", data.Username)
+
+	// Select array
+	dataArr, err = surrealdb.SmartUnmarshal[[]testUser](db.Select("users"))
+
+	assert.Equal(t, "electwix", dataArr[0].Username)
+	assert.NoError(t, err)
+
+	// Delete, if needed return can ben nullable with pointer
+	nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(dataArr[0].ID))
+
+	assert.NoError(t, err)
+	assert.Equal(t, (*testUser)(nil), nulldata)
+}
+
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
 func assertContains[K fmt.Stringer](t *testing.T, input []K, matcher func(K) bool) []K {
