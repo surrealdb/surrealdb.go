@@ -128,11 +128,9 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		return
 	}
 
-	table := t.Name()
+	updateSchema := func(format string, a ...any) {
 
-	updateSchema := func(table, schemaType string) {
-
-		sql := fmt.Sprintf("DEFINE TABLE %s %s;", table, schemaType)
+		sql := fmt.Sprintf(format, a...)
 
 		if verbose {
 			fmt.Println(sql)
@@ -146,7 +144,39 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		}
 	}
 
-	updateSchema(table, SchemaLess)
+	table := t.Name()
+	updateSchema("DEFINE TABLE %s %s;", table, SchemaLess)
+
+	// by default if no type is provided then it will be converted to the closest possible type.
+	// [go Primitive Types]: [SurrealDB Types]
+	goTypes := map[string]string{
+
+		"bool": "bool",
+
+		"int":   "int",
+		"int8":  "int",
+		"int16": "int",
+		"int32": "int",
+		"int64": "int",
+
+		"uint":    "int",
+		"uint8":   "int",
+		"uint16":  "int",
+		"uint32":  "int",
+		"uint64":  "int",
+		"uintptr": "int",
+
+		"float32": "float",
+		"float64": "float",
+
+		"string": "string",
+
+		"byte": "int",
+		"rune": "int",
+
+		"struct": "object",
+		"slice":  "array",
+	}
 
 	allowedTypes := map[string]bool{
 		"bool":     true,
@@ -182,13 +212,19 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		if schemaType != nil {
 			selected := strings.ToUpper(schemaType.Value())
 			if allowedSchema[selected] {
-				updateSchema(table, selected)
+				updateSchema("DEFINE TABLE %s %s;", table, selected)
 			}
 		}
 
+		fieldTypeValue := t.Field(i).Type.Kind().String()
 		fieldType, _ := tags.Get("type")
 		if fieldType == nil || !allowedTypes[fieldType.Value()] {
-			continue
+			if !allowedTypes[goTypes[fieldTypeValue]] {
+				continue
+			}
+			fieldTypeValue = goTypes[fieldTypeValue]
+		} else {
+			fieldTypeValue = fieldType.Value()
 		}
 
 		assert := ""
@@ -198,7 +234,6 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 				assert = " ASSERT $value != NONE"
 			}
 		} else {
-
 			assert = " ASSERT " + fieldAssert.Value()
 		}
 
@@ -208,18 +243,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			value = " VALUE " + fieldValue.Value()
 		}
 
-		sql := fmt.Sprintf("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldType.Value(), assert, value)
-
-		if verbose {
-			fmt.Println(sql)
-		}
-		output, err := db.send("query", sql)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		if verbose {
-			fmt.Println(output, err)
-		}
+		updateSchema("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldTypeValue, assert, value)
 
 		// Indexes
 
@@ -244,18 +268,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 				indexName = "index_" + indexName
 			}
 
-			sql = fmt.Sprintf("DEFINE INDEX %s ON TABLE %s COLUMNS %s%s;", indexName, table, indexFields.Value(), uniqueStatment)
-
-			if verbose {
-				fmt.Println(sql)
-			}
-			output, err := db.send("query", sql)
-			if err != nil {
-				errs = append(errs, err)
-			}
-			if verbose {
-				fmt.Println(output, err)
-			}
+			updateSchema("DEFINE INDEX %s ON TABLE %s COLUMNS %s%s;", indexName, table, indexFields.Value(), uniqueStatment)
 		}
 	}
 

@@ -22,9 +22,13 @@ func init() {
 
 // a simple user struct for testing
 type testUser struct {
-	Username string
-	Password string
-	ID       string
+	Username  string
+	Password  string
+	ID        string
+	Tag       int64
+	Goals     []string
+	UpdatedAt time.Time // without `type` it will be returned to its original type which is `struct` and not `time.Time` anymore.
+	CreatedAt time.Time `type:"datetime"`
 }
 
 func (t testUser) String() string {
