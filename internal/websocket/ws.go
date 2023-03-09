@@ -26,7 +26,8 @@ type WebSocket struct {
 
 	responseChannels     map[string]chan RPCResponse
 	responseChannelsLock sync.RWMutex
-	close                chan int
+
+	close chan int
 }
 
 func NewWebsocket(url string) (*WebSocket, error) {
@@ -73,13 +74,18 @@ func (ws *WebSocket) Close() error {
 	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) createResponseChannel(id string) chan RPCResponse {
-	ch := make(chan RPCResponse)
+func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
+
+	if _, ok := ws.responseChannels[id]; ok {
+		return nil, fmt.Errorf("id already in use: %v", id)
+	}
+
+	ch := make(chan RPCResponse)
 	ws.responseChannels[id] = ch
 
-	return ch
+	return ch, nil
 }
 
 func (ws *WebSocket) removeResponseChannel(id string) {
@@ -102,7 +108,10 @@ func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{},
 		Params: params,
 	}
 
-	responseChan := ws.createResponseChannel(id)
+	responseChan, err := ws.createResponseChannel(id)
+	if err != nil {
+		return nil, err
+	}
 	defer ws.removeResponseChannel(id)
 
 	if err := ws.write(request); err != nil {

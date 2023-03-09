@@ -187,6 +187,7 @@ func (db *DB) Delete(what string) (interface{}, error) {
 func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	// generate an id for the action, this is used to distinguish its response
 	id := xid(16) //nolint:gomnd
+
 	// here we send the args through our websocket connection
 	resp, err := db.ws.Send(id, method, params)
 	if err != nil {
