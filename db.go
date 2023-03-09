@@ -11,7 +11,12 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
-const statusOK = "OK"
+const (
+	statusOK = "OK"
+
+	SchemaLess = "SCHEMALESS"
+	SchemaFull = "SCHEMAFULL"
+)
 
 var (
 	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
@@ -114,7 +119,7 @@ func (db *DB) Info() (interface{}, error) {
 	return db.send("info")
 }
 
-// AutoMigrate structs into stateful schema
+// AutoMigrate struct into schemaless/schemaful table
 func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 
 	t := reflect.TypeOf(data)
@@ -124,18 +129,24 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 	}
 
 	table := t.Name()
-	sql := fmt.Sprintf("DEFINE TABLE %s SCHEMAFULL;", table)
 
-	if verbose {
-		fmt.Println(sql)
+	updateSchema := func(table, schemaType string) {
+
+		sql := fmt.Sprintf("DEFINE TABLE %s %s;", table, schemaType)
+
+		if verbose {
+			fmt.Println(sql)
+		}
+		output, err := db.send("query", sql)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if verbose {
+			fmt.Println(output, err)
+		}
 	}
-	output, err := db.send("query", sql)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	if verbose {
-		fmt.Println(output, err)
-	}
+
+	updateSchema(table, SchemaLess)
 
 	allowedTypes := map[string]bool{
 		"bool":     true,
@@ -150,6 +161,11 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		"array":    true,
 	}
 
+	allowedSchema := map[string]bool{
+		SchemaFull: true,
+		SchemaLess: true,
+	}
+
 	for i := 0; i < t.NumField(); i++ {
 
 		tags, err := structtag.Parse(string(t.Field(i).Tag))
@@ -160,6 +176,14 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 
 		if err != nil {
 			errs = append(errs, err)
+		}
+
+		schemaType, _ := tags.Get("schema")
+		if schemaType != nil {
+			selected := strings.ToUpper(schemaType.Value())
+			if allowedSchema[selected] {
+				updateSchema(table, selected)
+			}
 		}
 
 		fieldType, _ := tags.Get("type")
@@ -184,7 +208,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			value = " VALUE " + fieldValue.Value()
 		}
 
-		sql = fmt.Sprintf("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldType.Value(), assert, value)
+		sql := fmt.Sprintf("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldType.Value(), assert, value)
 
 		if verbose {
 			fmt.Println(sql)

@@ -9,6 +9,16 @@ import (
 	"github.com/surrealdb/surrealdb.go"
 )
 
+var testDB = "test"
+
+func init() {
+	testDB = fmt.Sprint("test-", time.Now().Unix())
+	fmt.Println("TestDB(act like an ID for every test): ", testDB)
+	// Later the test itself can open an auto-generated `GET` request with the default browser which is point to the last testDB
+	// Like https://surrealdb-admin.vercel.app/app?server=http%3A%2F%2Flocalhost%3A8000&user=root&password=root&ns=test&db=test-XXXXXXXXXXXX
+	// That's will increase the cycles of development. ^_^
+}
+
 // a simple user struct for testing
 type testUser struct {
 	Username string
@@ -16,7 +26,7 @@ type testUser struct {
 	ID       string
 }
 
-type testStatefulUser struct {
+type testTypefulUser struct {
 	Username  string      `type:"string" unique:"Username"`
 	Email     string      `type:"string" unique:"Email,Username" assert:"$value != NONE AND is::email($value)"`
 	Password  string      `type:"string"`
@@ -28,6 +38,8 @@ type testStatefulUser struct {
 	CreatedAt time.Time   `type:"datetime"`
 	Checkouts []time.Time `type:"array"`
 
+	Name Text `type:"object"`
+
 	UsernameOptional  *string      `type:"string"` // all pointers are optional unless assert is mentioned
 	PasswordOptional  *string      `type:"string"`
 	IDOptional        *int64       `type:"int"`
@@ -36,6 +48,14 @@ type testStatefulUser struct {
 	MetaDataOptional  *struct{}    `type:"object"`
 	CreatedAtOptional *time.Time   `type:"datetime"`
 	CheckoutsOptional *[]time.Time `type:"array"`
+}
+
+type Text struct {
+	Ar string `type:"string" schema:"schemafull"` // by default schemaless
+	En string `type:"string"`
+}
+type Book struct {
+	Title Text `type:"object" unique:"Title"`
 }
 
 func openConnection(t *testing.T) *surrealdb.DB {
@@ -71,7 +91,7 @@ func TestDelete(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +127,7 @@ func TestCreate(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +166,7 @@ func TestSelect(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +206,7 @@ func TestUpdate(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +255,7 @@ func TestUnmarshalRaw(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +311,7 @@ func TestModify(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +351,7 @@ func TestAutoMigration(t *testing.T) {
 
 	_ = signin(t, db)
 
-	_, err := db.Use("test", "test")
+	_, err := db.Use("test", testDB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +364,23 @@ func TestAutoMigration(t *testing.T) {
 		}
 	}
 
-	errs = db.AutoMigrate(testStatefulUser{}, true)
+	errs = db.AutoMigrate(testTypefulUser{}, true)
+
+	if len(errs) != 0 {
+		for _, err := range errs {
+			t.Fatalf(err.Error())
+		}
+	}
+
+	errs = db.AutoMigrate(Book{}, true)
+
+	if len(errs) != 0 {
+		for _, err := range errs {
+			t.Fatalf(err.Error())
+		}
+	}
+
+	errs = db.AutoMigrate(Text{}, true)
 
 	if len(errs) != 0 {
 		for _, err := range errs {
