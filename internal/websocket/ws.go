@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -28,15 +29,15 @@ type WebSocket struct {
 	close    chan int
 }
 
-func NewWebsocket(url string) (*WebSocket, error) {
-	return NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
+func NewWebsocket(ctx context.Context, url string) (*WebSocket, error) {
+	return NewWebsocketWithOptions(ctx, url, Timeout(DefaultTimeout))
 }
 
-func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
+func NewWebsocketWithOptions(ctx context.Context, url string, options ...Option) (*WebSocket, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
-	conn, _, err := dialer.Dial(url, nil)
+	conn, _, err := dialer.DialContext(ctx, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ func (ws *WebSocket) Close() error {
 	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
+func (ws *WebSocket) Send(ctx context.Context, method string, params []interface{}) (interface{}, error) {
 	id := rand.String(RequestIDLength)
 	request := &RPCRequest{
 		ID:     id,
@@ -85,10 +86,14 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	}
 
 	tick := time.NewTicker(ws.timeout)
+	defer tick.Stop()
+
 	for {
 		select {
 		case <-tick.C:
 			return nil, errors.New("timeout")
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case res := <-ws.respChan:
 			if res.ID != id {
 				continue
