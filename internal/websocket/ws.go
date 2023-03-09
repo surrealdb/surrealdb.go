@@ -164,6 +164,7 @@ func (ws *WebSocket) initialize() {
 				responseChan, ok := ws.getResponseChan(fmt.Sprintf("%v", res.ID))
 				if ok {
 					responseChan <- res
+					close(responseChan)
 				}
 			}
 		}
