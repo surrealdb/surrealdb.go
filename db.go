@@ -103,8 +103,8 @@ type RawQuery[I any] struct {
 // SmartUnmarshal using generics for return desired type.
 // Supports both raw and normal queries.
 func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err error) {
-	if err = wrapperError; err != nil {
-		return data, err
+	if wrapperError != nil {
+		return data, wrapperError
 	}
 	var bytes []byte
 	if arrResp, isArr := respond.([]interface{}); len(arrResp) > 0 {
