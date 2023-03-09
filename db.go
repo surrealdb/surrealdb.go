@@ -92,6 +92,43 @@ func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	return true, nil
 }
 
+// Used for RawQuery Unmarshaling
+type RawQuery[I any] struct {
+	Status string `json:"status"`
+	Time   string `json:"time"`
+	Result I      `json:"result"`
+	Detail string `json:"detail"`
+}
+
+// SmartUnmarshal using generics for return desired type.
+// Supports both raw and normal queries.
+func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err error) {
+	if wrapperError != nil {
+		return data, wrapperError
+	}
+	var bytes []byte
+	if arrResp, isArr := respond.([]interface{}); len(arrResp) > 0 {
+		if dataMap, ok := arrResp[0].(map[string]interface{}); ok && isArr {
+			if _, ok := dataMap["status"]; ok {
+				if bytes, err = json.Marshal(respond); err == nil {
+					var raw []RawQuery[I]
+					if err = json.Unmarshal(bytes, &raw); err == nil {
+						if raw[0].Status != statusOK {
+							err = fmt.Errorf("%s: %s", raw[0].Status, raw[0].Detail)
+						}
+						data = raw[0].Result
+					}
+				}
+				return data, err
+			}
+		}
+	}
+	if bytes, err = json.Marshal(respond); err == nil {
+		err = json.Unmarshal(bytes, &data)
+	}
+	return data, err
+}
+
 // --------------------------------------------------
 // Public methods
 // --------------------------------------------------

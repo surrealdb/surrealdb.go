@@ -22,6 +22,14 @@ func (t testUser) String() string {
 	return fmt.Sprintf("testUser{Username: %+v, Password: %+v, ID: %+v}", t.Username, t.Password, t.ID)
 }
 
+func setupDB(t *testing.T) *surrealdb.DB {
+	db := openConnection(t)
+	_ = signin(t, db)
+	_, err := db.Use("test", "test")
+	assert.NoError(t, err)
+	return db
+}
+
 func openConnection(t *testing.T) *surrealdb.DB {
 	url := os.Getenv("SURREALDB_URL")
 	if url == "" {
@@ -239,6 +247,62 @@ func TestModify(t *testing.T) {
 
 	// // TODO: this needs to simplified for the end user somehow
 	assert.Equal(t, "44", (user2).(map[string]interface{})["age"])
+}
+
+func TestSmartQuerySelect(t *testing.T) {
+	db := setupDB(t)
+	defer db.Close()
+
+	user := []testUser{{
+		Username: "electwix",
+		Password: "1234",
+	}}
+
+	// Clean up from other tests
+	_, err := db.Delete("users")
+	assert.NoError(t, err)
+
+	t.Run("raw create query", func(t *testing.T) {
+		QueryStr := "Create users set Username = $user, Password = $pass"
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(QueryStr, map[string]interface{}{
+			"user": user[0].Username,
+			"pass": user[0].Password,
+		}))
+
+		assert.NoError(t, err)
+		assert.Equal(t, "electwix", dataArr[0].Username)
+		user = dataArr
+	})
+
+	t.Run("raw select query", func(t *testing.T) {
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Select * from $record", map[string]interface{}{
+			"record": user[0].ID,
+		}))
+
+		assert.Equal(t, "electwix", dataArr[0].Username)
+		assert.NoError(t, err)
+	})
+
+	t.Run("select query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[testUser](db.Select(user[0].ID))
+
+		assert.Equal(t, "electwix", data.Username)
+		assert.NoError(t, err)
+	})
+
+	t.Run("select array query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[[]testUser](db.Select("users"))
+
+		assert.Equal(t, "electwix", data[0].Username)
+		assert.NoError(t, err)
+	})
+
+	t.Run("delete record query", func(t *testing.T) {
+		nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(user[0].ID))
+
+		assert.NoError(t, err)
+		assert.Nil(t, nulldata)
+	})
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
