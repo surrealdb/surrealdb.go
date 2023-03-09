@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
 )
 
 const (
+	// RequestIDLength size of id sent on WS request
+	RequestIDLength = 16
 	// CloseMessageCode identifier the message id for a close request
 	CloseMessageCode = 1000
 	// DefaultTimeout timeout in seconds
@@ -69,7 +72,8 @@ func (ws *WebSocket) Close() error {
 	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{}, error) {
+func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
+	id := rand.String(RequestIDLength)
 	request := &RPCRequest{
 		ID:     id,
 		Method: method,
