@@ -7,8 +7,10 @@ import (
 	"time"
 )
 
-var randSource = rand.New(rand.NewSource(time.Now().UnixNano()))
-var randSourceLock sync.Mutex
+var (
+	randSource     = rand.New(rand.NewSource(time.Now().UnixNano()))
+	randSourceLock sync.Mutex
+)
 
 func xid(length int) string {
 	// Create a random byte slice
