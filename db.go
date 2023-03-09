@@ -103,7 +103,7 @@ type RawQuery[I any] struct {
 // SmartUnmarshal using generics for return desired type.
 // Supports both raw and normal queries.
 func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err error) {
-	if err := wrapperError; err != nil {
+	if err = wrapperError; err != nil {
 		return data, err
 	}
 	var bytes []byte
@@ -114,7 +114,7 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err
 					var raw []RawQuery[I]
 					if err = json.Unmarshal(bytes, &raw); err == nil {
 						if raw[0].Status != statusOK {
-							err = errors.New(fmt.Sprintf("%s: %s", raw[0].Status, raw[0].Detail))
+							err = fmt.Errorf("%s: %s", raw[0].Status, raw[0].Detail)
 						}
 						data = raw[0].Result
 					}

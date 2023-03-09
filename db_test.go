@@ -263,7 +263,8 @@ func TestSmartQuerySelect(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("raw create query", func(t *testing.T) {
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Create users set Username = $user, Password = $pass", map[string]interface{}{
+		QueryStr := "Create users set Username = $user, Password = $pass"
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(QueryStr, map[string]interface{}{
 			"user": user[0].Username,
 			"pass": user[0].Password,
 		}))
