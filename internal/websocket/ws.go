@@ -75,7 +75,7 @@ func (ws *WebSocket) Close() error {
 }
 
 var (
-	ErrIDAlreadyInUse    = errors.New("id already in use")
+	ErrIDInUse           = errors.New("id already in use")
 	ErrTimeout           = errors.New("timeout")
 	ErrInvalidResponseID = errors.New("invalid response id")
 )
@@ -85,7 +85,7 @@ func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) 
 	defer ws.responseChannelsLock.Unlock()
 
 	if _, ok := ws.responseChannels[id]; ok {
-		return nil, fmt.Errorf("%w: %v", ErrIDAlreadyInUse, id)
+		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
 	}
 
 	ch := make(chan RPCResponse)
