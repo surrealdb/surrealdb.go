@@ -122,9 +122,9 @@ func (db *DB) Info() (interface{}, error) {
 // AutoMigrate struct into schemaless/schemaful table
 func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 
-	t := reflect.TypeOf(data)
+	object := reflect.TypeOf(data)
 
-	if t.Kind() != reflect.Struct {
+	if object.Kind() != reflect.Struct {
 		return
 	}
 
@@ -144,7 +144,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		}
 	}
 
-	table := t.Name()
+	table := object.Name()
 	updateSchema("DEFINE TABLE %s %s;", table, SchemaLess)
 
 	// by default if no type is provided then it will be converted to the closest possible type.
@@ -178,6 +178,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		"slice":  "array",
 	}
 
+	// SurrealDB Types
 	allowedTypes := map[string]bool{
 		"bool":     true,
 		"int":      true,
@@ -196,9 +197,10 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 		SchemaLess: true,
 	}
 
-	for i := 0; i < t.NumField(); i++ {
+	for i := 0; i < object.NumField(); i++ {
 
-		tags, err := structtag.Parse(string(t.Field(i).Tag))
+		field := object.Field(i)
+		tags, err := structtag.Parse(string(field.Tag))
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -208,6 +210,8 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			errs = append(errs, err)
 		}
 
+		// schema tag
+
 		schemaType, _ := tags.Get("schema")
 		if schemaType != nil {
 			selected := strings.ToUpper(schemaType.Value())
@@ -216,7 +220,9 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			}
 		}
 
-		fieldTypeValue := t.Field(i).Type.Kind().String()
+		// type tag
+
+		fieldTypeValue := field.Type.Kind().String()
 		fieldType, _ := tags.Get("type")
 		if fieldType == nil || !allowedTypes[fieldType.Value()] {
 			if !allowedTypes[goTypes[fieldTypeValue]] {
@@ -227,15 +233,19 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			fieldTypeValue = fieldType.Value()
 		}
 
+		// assert tag
+
 		assert := ""
 		fieldAssert, _ := tags.Get("assert")
 		if fieldAssert == nil {
-			if t.Field(i).Type.Kind() != reflect.Ptr {
+			if field.Type.Kind() != reflect.Ptr {
 				assert = " ASSERT $value != NONE"
 			}
 		} else {
 			assert = " ASSERT " + fieldAssert.Value()
 		}
+
+		// value tag
 
 		value := ""
 		fieldValue, _ := tags.Get("value")
@@ -243,7 +253,7 @@ func (db *DB) AutoMigrate(data interface{}, verbose bool) (errs []error) {
 			value = " VALUE " + fieldValue.Value()
 		}
 
-		updateSchema("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", t.Field(i).Name, table, fieldTypeValue, assert, value)
+		updateSchema("DEFINE FIELD %s ON TABLE %s TYPE %s%s%s;", field.Name, table, fieldTypeValue, assert, value)
 
 		// Indexes
 
