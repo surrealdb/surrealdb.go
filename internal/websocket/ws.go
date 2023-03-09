@@ -88,7 +88,7 @@ func (ws *WebSocket) removeResponseChannel(id string) {
 	delete(ws.responseChannels, id)
 }
 
-func (ws *WebSocket) getResponseChan(id string) (chan RPCResponse, bool) {
+func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
@@ -161,7 +161,7 @@ func (ws *WebSocket) initialize() {
 					// TODO need to find a proper way to log this error
 					continue
 				}
-				responseChan, ok := ws.getResponseChan(fmt.Sprintf("%v", res.ID))
+				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 				if ok {
 					responseChan <- res
 					close(responseChan)
