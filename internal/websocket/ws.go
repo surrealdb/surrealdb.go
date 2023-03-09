@@ -110,21 +110,20 @@ func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{},
 	}
 
 	timeout := time.After(ws.timeout)
-	for {
-		select {
-		case <-timeout:
-			return nil, errors.New("timeout")
-		case res := <-responseChan:
-			if res.ID != id {
-				continue
-			}
 
-			if res.Error != nil {
-				return nil, res.Error
-			}
-
-			return res.Result, nil
+	select {
+	case <-timeout:
+		return nil, errors.New("timeout")
+	case res := <-responseChan:
+		if res.ID != id {
+			return nil, errors.New("invalid response id")
 		}
+
+		if res.Error != nil {
+			return nil, res.Error
+		}
+
+		return res.Result, nil
 	}
 }
 
