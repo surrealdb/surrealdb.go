@@ -74,12 +74,18 @@ func (ws *WebSocket) Close() error {
 	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
+var (
+	ErrIDAlreadyInUse    = errors.New("id already in use")
+	ErrTimeout           = errors.New("timeout")
+	ErrInvalidResponseID = errors.New("invalid response id")
+)
+
 func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 
 	if _, ok := ws.responseChannels[id]; ok {
-		return nil, fmt.Errorf("id already in use: %v", id)
+		return nil, fmt.Errorf("%w: %v", ErrIDAlreadyInUse, id)
 	}
 
 	ch := make(chan RPCResponse)
@@ -122,10 +128,10 @@ func (ws *WebSocket) Send(id, method string, params []interface{}) (interface{},
 
 	select {
 	case <-timeout:
-		return nil, errors.New("timeout")
+		return nil, ErrTimeout
 	case res := <-responseChan:
 		if res.ID != id {
-			return nil, errors.New("invalid response id")
+			return nil, ErrInvalidResponseID
 		}
 
 		if res.Error != nil {
@@ -173,6 +179,8 @@ func (ws *WebSocket) initialize() {
 				if ok {
 					responseChan <- res
 					close(responseChan)
+				} else {
+					// TODO need to find a proper way to log this
 				}
 			}
 		}
