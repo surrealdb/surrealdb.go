@@ -11,9 +11,10 @@ import (
 
 // a simple user struct for testing
 type testUser struct {
-	Username string
-	Password string
-	ID       string
+	surrealdb.Basemodel `table:"test"`
+	Username            string
+	Password            string
+	ID                  string
 }
 
 func (t testUser) String() string {
@@ -300,6 +301,33 @@ func TestSmartQuerySelect(t *testing.T) {
 	t.Run("delete record query", func(t *testing.T) {
 		nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(user[0].ID))
 
+		assert.NoError(t, err)
+		assert.Nil(t, nulldata)
+	})
+
+	// Overwrite ID for other tests
+	user[0].ID = "sometable:someid"
+
+	t.Run("create with SmartMarshal query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Create, user[0]))
+		assert.NoError(t, err)
+		assert.Equal(t, user[0], data)
+	})
+
+	t.Run("select with SmartMarshal query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user[0]))
+		assert.NoError(t, err)
+		assert.Equal(t, user[0], data)
+	})
+
+	t.Run("select with pointer SmartMarshal query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &user[0]))
+		assert.NoError(t, err)
+		assert.Equal(t, &user[0], data)
+	})
+
+	t.Run("delete with SmartMarshal query", func(t *testing.T) {
+		nulldata, err := surrealdb.SmartMarshal(db.Delete, &user[0])
 		assert.NoError(t, err)
 		assert.Nil(t, nulldata)
 	})

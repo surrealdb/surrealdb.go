@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
@@ -127,6 +128,53 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err
 		err = json.Unmarshal(bytes, &data)
 	}
 	return data, err
+}
+
+// Used for define table name, it has no value.
+type Basemodel struct{}
+
+// SmartUnmarshal can be used with all DB methods with generics and type safety.
+// Will handle errors, can use table struct tag with `BaseModel` type.
+// What Try to do if that fail what will happen.
+// 1. If there are some ID on struct it will file table with ID
+// 2. If there are struct tags with type of `Basemodel` it will use values of that`
+// 3. If everything failed or not exist it will use struct name as tablename.
+func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err error) {
+	var table string
+	datatype := reflect.TypeOf(data)
+	datavalue := reflect.ValueOf(data)
+	if datatype.Kind() == reflect.Pointer {
+		datatype = datatype.Elem()
+		datavalue = datavalue.Elem()
+	}
+	if datatype.Kind() == reflect.Struct {
+		if _, ok := datavalue.Field(0).Interface().(Basemodel); ok {
+			if temptable, ok := datatype.Field(0).Tag.Lookup("table"); ok {
+				table = temptable
+			} else {
+				table = reflect.TypeOf(data).Name()
+			}
+		}
+		if id, ok := datatype.FieldByName("ID"); ok {
+			if id.Type.Kind() == reflect.String {
+				if str, ok := datavalue.FieldByName("ID").Interface().(string); ok {
+					if str != "" {
+						table = str
+					}
+				}
+			}
+		}
+	} else {
+		return nil, errors.New("data is not struct")
+	}
+	if function, ok := inputfunc.(func(thing string, data interface{}) (interface{}, error)); ok {
+		return function(table, data)
+	} else {
+		if function, ok := inputfunc.(func(thing string) (interface{}, error)); ok {
+			return function(table)
+		}
+	}
+	return nil, errors.New("invalid function")
 }
 
 // --------------------------------------------------
