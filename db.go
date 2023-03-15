@@ -15,6 +15,7 @@ const statusOK = "OK"
 var (
 	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
 	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
+	ErrNoRow        = errors.New("error no row")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -296,25 +297,20 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
-	arg, ok := params[0].(string)
+	if arg, ok := params[0].(string); ok {
+		if strings.Contains(arg, ":") {
+			arr, ok := res.([]interface{})
+			if !ok {
+				return nil, InvalidResponse
+			}
 
-	if !ok {
-		return res, nil
-	}
+			if len(arr) < 1 {
+				return nil, ErrNoRow
+			}
 
-	if strings.Contains(arg, ":") {
-		arr, ok := res.([]interface{})
-		if !ok {
-			return nil, PermissionError{what: arg}
+			return arr[0], nil
 		}
-
-		if len(arr) < 1 {
-			return nil, PermissionError{what: arg}
-		}
-
-		return arr[0], nil
 	}
-
 	return res, nil
 }
 

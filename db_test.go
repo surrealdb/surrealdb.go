@@ -216,7 +216,6 @@ func TestUnmarshalRaw(t *testing.T) {
 }
 
 func TestModify(t *testing.T) {
-	t.Skip("There is a permission issue with this test that may need to be solved in a different change")
 	db := openConnection(t)
 	defer db.Close()
 
@@ -232,11 +231,11 @@ func TestModify(t *testing.T) {
 		"username": "john999",
 		"password": "123",
 	})
-	assert.NoError(t, err) // TODO: permission error, "Unable to access record:users:999"
+	assert.NoError(t, err)
 
 	patches := []surrealdb.Patch{
 		{Op: "add", Path: "nickname", Value: "johnny"},
-		{Op: "add", Path: "age", Value: 44},
+		{Op: "add", Path: "age", Value: int(44)},
 	}
 
 	// Update the user
@@ -246,11 +245,37 @@ func TestModify(t *testing.T) {
 	user2, err := db.Select("users:999")
 	assert.NoError(t, err)
 
-	// // TODO: this needs to simplified for the end user somehow
-	assert.Equal(t, "44", (user2).(map[string]interface{})["age"])
+	data := (user2).(map[string]interface{})["age"].(float64)
+
+	assert.Equal(t, patches[1].Value, int(data))
 }
 
-func TestSmartQuerySelect(t *testing.T) {
+func TestNonRowSelect(t *testing.T) {
+	db := openConnection(t)
+	defer db.Close()
+
+	_ = signin(t, db)
+
+	_, err := db.Use("test", "test")
+	assert.NoError(t, err)
+
+	user := testUser{
+		Username: "ElecTwix",
+		Password: "1234",
+		ID:       "users:notexists",
+	}
+
+	_, err = db.Select("users:notexists")
+	assert.Equal(t, err, surrealdb.ErrNoRow)
+
+	_, err = surrealdb.SmartUnmarshal[testUser](db.Select("users:notexists"))
+	assert.Equal(t, err, surrealdb.ErrNoRow)
+
+	_, err = surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user))
+	assert.Equal(t, err, surrealdb.ErrNoRow)
+}
+
+func TestSmartUnMarshalQuery(t *testing.T) {
 	db := setupDB(t)
 	defer db.Close()
 
@@ -304,9 +329,21 @@ func TestSmartQuerySelect(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Nil(t, nulldata)
 	})
+}
 
-	// Overwrite ID for other tests
-	user[0].ID = "sometable:someid"
+func TestSmartMarshalQuery(t *testing.T) {
+	db := setupDB(t)
+	defer db.Close()
+
+	user := []testUser{{
+		Username: "electwix",
+		Password: "1234",
+		ID:       "sometable:someid",
+	}}
+
+	// Clean up from other tests
+	_, err := db.Delete("users")
+	assert.NoError(t, err)
 
 	t.Run("create with SmartMarshal query", func(t *testing.T) {
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Create, user[0]))
@@ -324,6 +361,13 @@ func TestSmartQuerySelect(t *testing.T) {
 		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &user[0]))
 		assert.NoError(t, err)
 		assert.Equal(t, &user[0], data)
+	})
+
+	t.Run("update with SmartMarshal query", func(t *testing.T) {
+		user[0].Password = "test123"
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Update, user[0]))
+		assert.NoError(t, err)
+		assert.Equal(t, user[0].Password, data.Password)
 	})
 
 	t.Run("delete with SmartMarshal query", func(t *testing.T) {
