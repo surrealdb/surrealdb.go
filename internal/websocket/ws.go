@@ -180,12 +180,12 @@ func (ws *WebSocket) initialize() {
 					continue
 				}
 				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
-				if ok {
-					responseChan <- res
-					close(responseChan)
-				} else {
+				if !ok {
 					// TODO need to find a proper way to log this
+					continue
 				}
+				responseChan <- res
+				close(responseChan)
 			}
 		}
 	}()
