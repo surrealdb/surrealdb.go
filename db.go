@@ -134,12 +134,19 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err
 // Used for define table name, it has no value.
 type Basemodel struct{}
 
+// Smart Marshal Errors
+var (
+	ErrNotStruct    = errors.New("data is not struct")
+	ErrNotValidFunc = errors.New("invalid function")
+)
+
 // SmartUnmarshal can be used with all DB methods with generics and type safety.
-// Will handle errors, can use table struct tag with `BaseModel` type.
-// What Try to do if that fail what will happen.
-// 1. If there are some ID on struct it will file table with ID
-// 2. If there are struct tags with type of `Basemodel` it will use values of that`
-// 3. If everything failed or not exist it will use struct name as tablename.
+// This handles errors and can use any struct tag with `BaseModel` type.
+// Warning: "ID" field is case sensitive and expect string.
+// Upon failure, the following will happen
+// 1. If there are some ID on struct it will fill the table with the ID
+// 2. If there are struct tags of the type `Basemodel`, it will use those values instead
+// 3. If everything above fails or the IDs do not exist, SmartUnmarshal will use the struct name as the table name.
 func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err error) {
 	var table string
 	datatype := reflect.TypeOf(data)
@@ -166,7 +173,7 @@ func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err
 			}
 		}
 	} else {
-		return nil, errors.New("data is not struct")
+		return nil, ErrNotStruct
 	}
 	if function, ok := inputfunc.(func(thing string, data interface{}) (interface{}, error)); ok {
 		return function(table, data)
@@ -175,7 +182,7 @@ func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err
 			return function(table)
 		}
 	}
-	return nil, errors.New("invalid function")
+	return nil, ErrNotValidFunc
 }
 
 // --------------------------------------------------

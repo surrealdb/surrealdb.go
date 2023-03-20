@@ -357,6 +357,13 @@ func TestSmartMarshalQuery(t *testing.T) {
 		assert.Equal(t, user[0], data)
 	})
 
+	t.Run("select with nil pointer SmartMarshal query", func(t *testing.T) {
+		var nilptr *testUser
+		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &nilptr))
+		assert.Equal(t, err, surrealdb.ErrNotStruct)
+		assert.Equal(t, nilptr, data)
+	})
+
 	t.Run("select with pointer SmartMarshal query", func(t *testing.T) {
 		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &user[0]))
 		assert.NoError(t, err)
@@ -374,6 +381,12 @@ func TestSmartMarshalQuery(t *testing.T) {
 		nulldata, err := surrealdb.SmartMarshal(db.Delete, &user[0])
 		assert.NoError(t, err)
 		assert.Nil(t, nulldata)
+	})
+
+	t.Run("check if data deleted SmartMarshal query", func(t *testing.T) {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user[0]))
+		assert.Equal(t, err, surrealdb.ErrNoRow)
+		assert.Equal(t, data, testUser{})
 	})
 }
 
