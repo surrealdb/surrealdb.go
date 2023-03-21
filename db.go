@@ -177,7 +177,8 @@ func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err
 	}
 	if function, ok := inputfunc.(func(thing string, data interface{}) (interface{}, error)); ok {
 		return function(table, data)
-	} else if function, ok := inputfunc.(func(thing string) (interface{}, error)); ok {
+	}
+	if function, ok := inputfunc.(func(thing string) (interface{}, error)); ok {
 		return function(table)
 	}
 	return nil, ErrNotValidFunc
