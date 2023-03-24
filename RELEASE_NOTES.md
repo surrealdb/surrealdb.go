@@ -5,7 +5,7 @@ This file includes release details of the golang driver for SurrealDB.
 
 # Release Notes
 
-## 0.1.2 (SurrealDB 1.0.0-beta8, 24/03/2023)
+## 0.2.0 (SurrealDB 1.0.0-beta8, 24/03/2023)
 
 - Improved testing
 - Add SmartMarshal/SmartUnmarshal
