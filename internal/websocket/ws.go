@@ -3,6 +3,8 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -21,11 +23,14 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
-	conn    *websocket.Conn
-	timeout time.Duration
+	conn     *websocket.Conn
+	connLock sync.Mutex
+	timeout  time.Duration
 
-	respChan chan RPCResponse
-	close    chan int
+	responseChannels     map[string]chan RPCResponse
+	responseChannelsLock sync.RWMutex
+
+	close chan int
 }
 
 func NewWebsocket(url string) (*WebSocket, error) {
@@ -42,9 +47,9 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 	}
 
 	ws := &WebSocket{
-		conn:     conn,
-		respChan: make(chan RPCResponse),
-		close:    make(chan int),
+		conn:             conn,
+		close:            make(chan int),
+		responseChannels: make(map[string]chan RPCResponse),
 	}
 
 	for _, option := range options {
@@ -72,6 +77,39 @@ func (ws *WebSocket) Close() error {
 	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
+var (
+	ErrIDInUse           = errors.New("id already in use")
+	ErrTimeout           = errors.New("timeout")
+	ErrInvalidResponseID = errors.New("invalid response id")
+)
+
+func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
+	ws.responseChannelsLock.Lock()
+	defer ws.responseChannelsLock.Unlock()
+
+	if _, ok := ws.responseChannels[id]; ok {
+		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
+	}
+
+	ch := make(chan RPCResponse)
+	ws.responseChannels[id] = ch
+
+	return ch, nil
+}
+
+func (ws *WebSocket) removeResponseChannel(id string) {
+	ws.responseChannelsLock.Lock()
+	defer ws.responseChannelsLock.Unlock()
+	delete(ws.responseChannels, id)
+}
+
+func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
+	ws.responseChannelsLock.RLock()
+	defer ws.responseChannelsLock.RUnlock()
+	ch, ok := ws.responseChannels[id]
+	return ch, ok
+}
+
 func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
 	id := rand.String(RequestIDLength)
 	request := &RPCRequest{
@@ -80,26 +118,31 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 		Params: params,
 	}
 
+	responseChan, err := ws.createResponseChannel(id)
+	if err != nil {
+		return nil, err
+	}
+	defer ws.removeResponseChannel(id)
+
 	if err := ws.write(request); err != nil {
 		return nil, err
 	}
 
-	tick := time.NewTicker(ws.timeout)
-	for {
-		select {
-		case <-tick.C:
-			return nil, errors.New("timeout")
-		case res := <-ws.respChan:
-			if res.ID != id {
-				continue
-			}
+	timeout := time.After(ws.timeout)
 
-			if res.Error != nil {
-				return nil, res.Error
-			}
-
-			return res.Result, nil
+	select {
+	case <-timeout:
+		return nil, ErrTimeout
+	case res := <-responseChan:
+		if res.ID != id {
+			return nil, ErrInvalidResponseID
 		}
+
+		if res.Error != nil {
+			return nil, res.Error
+		}
+
+		return res.Result, nil
 	}
 }
 
@@ -118,6 +161,8 @@ func (ws *WebSocket) write(v interface{}) error {
 		return err
 	}
 
+	ws.connLock.Lock()
+	defer ws.connLock.Unlock()
 	return ws.conn.WriteMessage(websocket.TextMessage, data)
 }
 
@@ -134,8 +179,13 @@ func (ws *WebSocket) initialize() {
 					// TODO need to find a proper way to log this error
 					continue
 				}
-
-				ws.respChan <- res
+				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
+				if !ok {
+					// TODO need to find a proper way to log this
+					continue
+				}
+				responseChan <- res
+				close(responseChan)
 			}
 		}
 	}()
