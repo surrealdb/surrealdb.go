@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
@@ -14,6 +15,7 @@ const statusOK = "OK"
 var (
 	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
 	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
+	ErrNoRow        = errors.New("error no row")
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
@@ -127,6 +129,59 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err
 		err = json.Unmarshal(bytes, &data)
 	}
 	return data, err
+}
+
+// Used for define table name, it has no value.
+type Basemodel struct{}
+
+// Smart Marshal Errors
+var (
+	ErrNotStruct    = errors.New("data is not struct")
+	ErrNotValidFunc = errors.New("invalid function")
+)
+
+// SmartUnmarshal can be used with all DB methods with generics and type safety.
+// This handles errors and can use any struct tag with `BaseModel` type.
+// Warning: "ID" field is case sensitive and expect string.
+// Upon failure, the following will happen
+// 1. If there are some ID on struct it will fill the table with the ID
+// 2. If there are struct tags of the type `Basemodel`, it will use those values instead
+// 3. If everything above fails or the IDs do not exist, SmartUnmarshal will use the struct name as the table name.
+func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err error) {
+	var table string
+	datatype := reflect.TypeOf(data)
+	datavalue := reflect.ValueOf(data)
+	if datatype.Kind() == reflect.Pointer {
+		datatype = datatype.Elem()
+		datavalue = datavalue.Elem()
+	}
+	if datatype.Kind() == reflect.Struct {
+		if _, ok := datavalue.Field(0).Interface().(Basemodel); ok {
+			if temptable, ok := datatype.Field(0).Tag.Lookup("table"); ok {
+				table = temptable
+			} else {
+				table = reflect.TypeOf(data).Name()
+			}
+		}
+		if id, ok := datatype.FieldByName("ID"); ok {
+			if id.Type.Kind() == reflect.String {
+				if str, ok := datavalue.FieldByName("ID").Interface().(string); ok {
+					if str != "" {
+						table = str
+					}
+				}
+			}
+		}
+	} else {
+		return nil, ErrNotStruct
+	}
+	if function, ok := inputfunc.(func(thing string, data interface{}) (interface{}, error)); ok {
+		return function(table, data)
+	}
+	if function, ok := inputfunc.(func(thing string) (interface{}, error)); ok {
+		return function(table)
+	}
+	return nil, ErrNotValidFunc
 }
 
 // --------------------------------------------------
@@ -248,25 +303,20 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
-	arg, ok := params[0].(string)
+	if arg, ok := params[0].(string); ok {
+		if strings.Contains(arg, ":") {
+			arr, ok := res.([]interface{})
+			if !ok {
+				return nil, InvalidResponse
+			}
 
-	if !ok {
-		return res, nil
-	}
+			if len(arr) < 1 {
+				return nil, ErrNoRow
+			}
 
-	if strings.Contains(arg, ":") {
-		arr, ok := res.([]interface{})
-		if !ok {
-			return nil, PermissionError{what: arg}
+			return arr[0], nil
 		}
-
-		if len(arr) < 1 {
-			return nil, PermissionError{what: arg}
-		}
-
-		return arr[0], nil
 	}
-
 	return res, nil
 }
 
