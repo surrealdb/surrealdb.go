@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
@@ -303,19 +302,8 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
-	if arg, ok := params[0].(string); ok {
-		if strings.Contains(arg, ":") {
-			arr, ok := res.([]interface{})
-			if !ok {
-				return nil, InvalidResponse
-			}
-
-			if len(arr) < 1 {
-				return nil, ErrNoRow
-			}
-
-			return arr[0], nil
-		}
+	if res == nil {
+		return nil, ErrNoRow
 	}
 	return res, nil
 }
