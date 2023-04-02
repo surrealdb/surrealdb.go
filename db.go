@@ -301,7 +301,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 }
 
 // resp is a helper method for parsing the response from a query.
-func (db *DB) resp(_ string, params []interface{}, res interface{}) (interface{}, error) {
+func (db *DB) resp(_ string, _ []interface{}, res interface{}) (interface{}, error) {
 	if res == nil {
 		return nil, ErrNoRow
 	}
