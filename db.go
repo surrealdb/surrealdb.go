@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/internal/websocket"
 	"reflect"
+
+	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
 const statusOK = "OK"
@@ -33,7 +34,6 @@ func New(url string) (*DB, error) {
 
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
-
 	var jsonBytes []byte
 	var err error
 	if isSlice(v) {
