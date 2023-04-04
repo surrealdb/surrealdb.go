@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"reflect"
 
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
@@ -33,20 +34,22 @@ func New(url string) (*DB, error) {
 
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
-	var ok bool
-
-	assertedData, ok := data.([]interface{})
-	if !ok {
-		return InvalidResponse
-	}
-	sliceFlag := isSlice(v)
-
 	var jsonBytes []byte
 	var err error
-	if !sliceFlag && len(assertedData) > 0 {
-		jsonBytes, err = json.Marshal(assertedData[0])
-	} else {
+	if isSlice(v) {
+		assertedData, ok := data.([]interface{})
+		if !ok {
+			return fmt.Errorf("failed to deserialise response to slice: %w", InvalidResponse)
+		}
 		jsonBytes, err = json.Marshal(assertedData)
+		if err != nil {
+			return fmt.Errorf("failed to deserialise response '%+v' to slice: %w", assertedData, InvalidResponse)
+		}
+	} else {
+		jsonBytes, err = json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to deserialise response '%+v' to object: %w", data, err)
+		}
 	}
 	if err != nil {
 		return err
@@ -54,10 +57,9 @@ func Unmarshal(data, v interface{}) error {
 
 	err = json.Unmarshal(jsonBytes, v)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed unmarshaling jsonBytes '%+v': %w", jsonBytes, err)
 	}
-
-	return err
+	return nil
 }
 
 // UnmarshalRaw loads a raw SurrealQL response returned by Query into a struct. Queries that return with results will
@@ -65,20 +67,20 @@ func Unmarshal(data, v interface{}) error {
 func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	var data []interface{}
 	if data, ok = rawData.([]interface{}); !ok {
-		return false, InvalidResponse
+		return false, fmt.Errorf("failed raw unmarshaling to interface slice: %w", InvalidResponse)
 	}
 
 	var responseObj map[string]interface{}
 	if responseObj, ok = data[0].(map[string]interface{}); !ok {
-		return false, InvalidResponse
+		return false, fmt.Errorf("failed mapping to response object: %w", InvalidResponse)
 	}
 
 	var status string
 	if status, ok = responseObj["status"].(string); !ok {
-		return false, InvalidResponse
+		return false, fmt.Errorf("failed retrieving status: %w", InvalidResponse)
 	}
 	if status != statusOK {
-		return false, ErrQuery
+		return false, fmt.Errorf("status was not ok: %w", ErrQuery)
 	}
 
 	result := responseObj["result"]
@@ -87,7 +89,7 @@ func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 	}
 	err = Unmarshal(result, v)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
 	return true, nil
@@ -279,7 +281,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	// here we send the args through our websocket connection
 	resp, err := db.ws.Send(method, params)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sending request failed for method '%s': %w", method, err)
 	}
 
 	switch method {
