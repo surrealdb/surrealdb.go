@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
 // a simple user struct for testing
@@ -24,6 +26,18 @@ func (t testUser) String() string {
 	return fmt.Sprintf("testUser{Username: %+v, Password: %+v, ID: %+v}", t.Username, t.Password, t.ID)
 }
 
+func openConnection(t *testing.T) *surrealdb.DB {
+	url := os.Getenv("SURREALDB_URL")
+	if url == "" {
+		url = "ws://localhost:8000/rpc"
+	}
+
+	db, err := surrealdb.New(url)
+	require.NoError(t, err)
+
+	return db
+}
+
 func setupDB(t *testing.T) *surrealdb.DB {
 	db := openConnection(t)
 	_ = signin(t, db)
@@ -32,16 +46,36 @@ func setupDB(t *testing.T) *surrealdb.DB {
 	return db
 }
 
-func openConnection(t *testing.T) *surrealdb.DB {
+func setupDBOptions(t *testing.T) *surrealdb.DB {
+	db := openConnectionWithOptions(t)
+	_ = signin(t, db)
+	_, err := db.Use("test", "test")
+	require.NoError(t, err)
+	return db
+}
+
+func openConnectionWithOptions(t *testing.T) *surrealdb.DB {
 	url := os.Getenv("SURREALDB_URL")
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
 
-	db, err := surrealdb.New(url)
-	if err != nil {
-		t.Fatal(err)
+	option1 := func(ws *websocket.WebSocket) error {
+		ws.Timeout = time.Duration(20) * time.Second
+		return nil
 	}
+
+	option2 := func(ws *websocket.WebSocket) error {
+		ws.Conn.EnableWriteCompression(true)
+		return nil
+	}
+
+	options := []websocket.Option{option1, option2}
+
+	db, err := surrealdb.NewWithOptions(url, options...)
+
+	require.NotNil(t, db)
+	require.NoError(t, err)
 
 	return db
 }
@@ -52,21 +86,34 @@ func signin(t *testing.T, db *surrealdb.DB) interface{} {
 		"pass": "root",
 	})
 
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	return signin
 }
 
 func TestDelete(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
 
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
+	userData, err := db.Create("users", testUser{
+		Username: "johnny",
+		Password: "123",
+	})
 	require.NoError(t, err)
+
+	// unmarshal the data into a user struct
+	var user []testUser
+	err = surrealdb.Unmarshal(userData, &user)
+	require.NoError(t, err)
+
+	// Delete the users...
+	_, err = db.Delete("users")
+	require.NoError(t, err)
+}
+
+func TestDeleteWithOptions(t *testing.T) {
+	db := setupDBOptions(t)
+	defer db.Close()
 
 	userData, err := db.Create("users", testUser{
 		Username: "johnny",
@@ -85,13 +132,8 @@ func TestDelete(t *testing.T) {
 }
 
 func TestCreate(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
-
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
 
 	t.Run("raw map works", func(t *testing.T) {
 		userData, err := db.Create("users", map[string]interface{}{
@@ -153,13 +195,8 @@ func TestCreate(t *testing.T) {
 }
 
 func TestSelect(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
-
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
 
 	createdUsers, err := db.Create("users", testUser{
 		Username: "johnnyjohn",
@@ -201,13 +238,8 @@ func TestSelect(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
-
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
 
 	userData, err := db.Create("users", testUser{
 		Username: "johnny",
@@ -237,15 +269,10 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestUnmarshalRaw(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
 
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
-
-	_, err = db.Delete("users")
+	_, err := db.Delete("users")
 	require.NoError(t, err)
 
 	username := "johnny"
@@ -278,15 +305,10 @@ func TestUnmarshalRaw(t *testing.T) {
 }
 
 func TestModify(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
 
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
-
-	_, err = db.Delete("users:999") // Cleanup for reproducibility
+	_, err := db.Delete("users:999") // Cleanup for reproducibility
 	require.NoError(t, err)
 
 	_, err = db.Create("users:999", map[string]interface{}{
@@ -313,13 +335,8 @@ func TestModify(t *testing.T) {
 }
 
 func TestNonRowSelect(t *testing.T) {
-	db := openConnection(t)
+	db := setupDB(t)
 	defer db.Close()
-
-	_ = signin(t, db)
-
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
 
 	user := testUser{
 		Username: "ElecTwix",
@@ -327,7 +344,7 @@ func TestNonRowSelect(t *testing.T) {
 		ID:       "users:notexists",
 	}
 
-	_, err = db.Select("users:notexists")
+	_, err := db.Select("users:notexists")
 	assert.Equal(t, err, surrealdb.ErrNoRow)
 
 	_, err = surrealdb.SmartUnmarshal[testUser](db.Select("users:notexists"))

@@ -32,6 +32,16 @@ func New(url string) (*DB, error) {
 	return &DB{ws}, nil
 }
 
+// NewWithOptions Creates a new DB instance given a WebSocket URL and options.
+// Options are passed to the websocket library.
+func NewWithOptions(url string, options ...websocket.Option) (*DB, error) {
+	ws, err := websocket.NewWebsocketWithOptions(url, options...)
+	if err != nil {
+		return nil, err
+	}
+	return &DB{ws}, nil
+}
+
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) error {
 	var jsonBytes []byte
