@@ -33,10 +33,6 @@ type WebSocket struct {
 	close chan int
 }
 
-func NewWebsocket(url string) (*WebSocket, error) {
-	return NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
-}
-
 func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
@@ -50,6 +46,7 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 		Conn:             conn,
 		close:            make(chan int),
 		responseChannels: make(map[string]chan RPCResponse),
+		Timeout:          DefaultTimeout * time.Second,
 	}
 
 	for _, option := range options {
@@ -60,13 +57,6 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 
 	ws.initialize()
 	return ws, nil
-}
-
-func Timeout(timeout float64) Option {
-	return func(ws *WebSocket) error {
-		ws.Timeout = time.Duration(timeout) * time.Second
-		return nil
-	}
 }
 
 func (ws *WebSocket) Close() error {
