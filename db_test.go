@@ -6,11 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
+
+// TestDBSuite is a test s for the DB struct
+type SurrealDBTestSuite struct {
+	suite.Suite
+	db      *surrealdb.DB
+	options []websocket.Option
+}
 
 // a simple user struct for testing
 type testUser struct {
@@ -20,157 +26,147 @@ type testUser struct {
 	ID                  string `json:"id,omitempty"`
 }
 
+// getOptions returns a list of options to be used when creating a new websocket connection
+func getOptions() (options []websocket.Option) {
+	options = append(options, func(ws *websocket.WebSocket) error {
+		ws.Timeout = time.Duration(20) * time.Second
+		ws.Conn.EnableWriteCompression(true)
+		return nil
+	})
+	return
+}
+
+func TestSurrealDBSuite(t *testing.T) {
+	// Without options
+	SurrealDBSuite := new(SurrealDBTestSuite)
+	suite.Run(t, SurrealDBSuite)
+
+	// With options
+	SurrealDBSuite.options = getOptions()
+	suite.Run(t, SurrealDBSuite)
+}
+
+// SetupTest is called before each test
+func (s *SurrealDBTestSuite) TearDownTest() {
+	_, err := s.db.Delete("users")
+	s.Require().NoError(err)
+}
+
+// TearDownSuite is called after the s has finished running
+func (s *SurrealDBTestSuite) TearDownSuite() {
+	s.db.Close()
+}
+
 func (t testUser) String() string {
 	// TODO I found out we can use go generate stringer to generate these, but it was a bit confusing and too much
 	// overhead atm, so doing this as a shortcut
 	return fmt.Sprintf("testUser{Username: %+v, Password: %+v, ID: %+v}", t.Username, t.Password, t.ID)
 }
 
-func openConnection(t *testing.T) *surrealdb.DB {
+// openConnection opens a new connection to the database
+func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	url := os.Getenv("SURREALDB_URL")
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-
 	db, err := surrealdb.New(url)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	return db
 }
 
-func setupDB(t *testing.T) *surrealdb.DB {
-	db := openConnection(t)
-	_ = signin(t, db)
+// SetupSuite is called before the s starts running
+func (s *SurrealDBTestSuite) SetupSuite() {
+	db := s.openConnection()
+	s.Require().NotNil(db)
+	s.db = db
+	_ = signin(s)
 	_, err := db.Use("test", "test")
-	require.NoError(t, err)
-	return db
+	s.Require().NoError(err)
 }
 
-func setupDBOptions(t *testing.T) *surrealdb.DB {
-	db := openConnectionWithOptions(t)
-	_ = signin(t, db)
-	_, err := db.Use("test", "test")
-	require.NoError(t, err)
-	return db
-}
-
-func openConnectionWithOptions(t *testing.T) *surrealdb.DB {
-	url := os.Getenv("SURREALDB_URL")
-	if url == "" {
-		url = "ws://localhost:8000/rpc"
-	}
-
-	option1 := func(ws *websocket.WebSocket) error {
-		ws.Timeout = time.Duration(20) * time.Second
-		return nil
-	}
-
-	option2 := func(ws *websocket.WebSocket) error {
-		ws.Conn.EnableWriteCompression(true)
-		return nil
-	}
-
-	options := []websocket.Option{option1, option2}
-
-	db, err := surrealdb.New(url, options...)
-
-	require.NotNil(t, db)
-	require.NoError(t, err)
-
-	return db
-}
-
-func signin(t *testing.T, db *surrealdb.DB) interface{} {
-	signin, err := db.Signin(map[string]interface{}{
+// Sign with the root user
+// Can be used with any user
+func signin(s *SurrealDBTestSuite) interface{} {
+	signin, err := s.db.Signin(map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
-
-	require.NoError(t, err)
-
+	s.Require().NoError(err)
 	return signin
 }
 
-func TestDelete(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	userData, err := db.Create("users", testUser{
+func (s *SurrealDBTestSuite) TestDelete() {
+	userData, err := s.db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
 	var user []testUser
 	err = surrealdb.Unmarshal(userData, &user)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// Delete the users...
-	_, err = db.Delete("users")
-	require.NoError(t, err)
+	_, err = s.db.Delete("users")
+	s.Require().NoError(err)
 }
 
-func TestDeleteWithOptions(t *testing.T) {
-	db := setupDBOptions(t)
-	defer db.Close()
-
-	userData, err := db.Create("users", testUser{
+func (s *SurrealDBTestSuite) TestDeleteWithOptions() {
+	userData, err := s.db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
-	require.NoError(t, err)
+	s.NoError(err)
 
 	// unmarshal the data into a user struct
 	var user []testUser
 	err = surrealdb.Unmarshal(userData, &user)
-	require.NoError(t, err)
+	s.NoError(err)
 
 	// Delete the users...
-	_, err = db.Delete("users")
-	require.NoError(t, err)
+	_, err = s.db.Delete("users")
+	s.NoError(err)
 }
 
-func TestCreate(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	t.Run("raw map works", func(t *testing.T) {
-		userData, err := db.Create("users", map[string]interface{}{
+func (s *SurrealDBTestSuite) TestCreate() {
+	s.Run("raw map works", func() {
+		userData, err := s.db.Create("users", map[string]interface{}{
 			"username": "johnny",
 			"password": "123",
 		})
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
 		var userSlice []testUser
 		err = surrealdb.Unmarshal(userData, &userSlice)
-		require.NoError(t, err)
-		assert.Len(t, userSlice, 1)
+		s.Require().NoError(err)
+		s.Len(userSlice, 1)
 
-		assert.Equal(t, "johnny", userSlice[0].Username)
-		assert.Equal(t, "123", userSlice[0].Password)
+		s.Equal("johnny", userSlice[0].Username)
+		s.Equal("123", userSlice[0].Password)
 	})
 
-	t.Run("Single create works", func(t *testing.T) {
-		userData, err := db.Create("users", testUser{
+	s.Run("Single create works", func() {
+		userData, err := s.db.Create("users", testUser{
 			Username: "johnny",
 			Password: "123",
 		})
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
 		var userSlice []testUser
 		err = surrealdb.Unmarshal(userData, &userSlice)
-		require.NoError(t, err)
-		assert.Len(t, userSlice, 1)
+		s.Require().NoError(err)
+		s.Len(userSlice, 1)
 
-		assert.Equal(t, "johnny", userSlice[0].Username)
-		assert.Equal(t, "123", userSlice[0].Password)
+		s.Equal("johnny", userSlice[0].Username)
+		s.Equal("123", userSlice[0].Password)
 	})
 
-	t.Run("Multiple creates works", func(t *testing.T) {
-		t.Skip("Creating multiple records is not supported yet")
+	s.Run("Multiple creates works", func() {
+		s.T().Skip("Creating multiple records is not supported yet")
 		data := make([]testUser, 0)
 		data = append(data,
 			testUser{
@@ -180,142 +176,124 @@ func TestCreate(t *testing.T) {
 				Username: "joe",
 				Password: "123",
 			})
-		userData, err := db.Create("users", data)
-		require.NoError(t, err)
+		userData, err := s.db.Create("users", data)
+		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
 		var users []testUser
 		err = surrealdb.Unmarshal(userData, &users)
-		require.NoError(t, err)
-		assertContains(t, users, func(user testUser) bool {
+		s.Require().NoError(err)
+		assertContains(s, users, func(user testUser) bool {
 			return user == data[0] ||
 				user == data[1]
 		})
 	})
 }
 
-func TestSelect(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	createdUsers, err := db.Create("users", testUser{
+func (s *SurrealDBTestSuite) TestSelect() {
+	createdUsers, err := s.db.Create("users", testUser{
 		Username: "johnnyjohn",
 		Password: "123",
 	})
-	require.NoError(t, err)
-	assert.NotEmpty(t, createdUsers)
+	s.Require().NoError(err)
+	s.NotEmpty(createdUsers)
 	var createdUsersUnmarshalled []testUser
-	require.NoError(t, surrealdb.Unmarshal(createdUsers, &createdUsersUnmarshalled))
-	assert.NotEmpty(t, createdUsersUnmarshalled)
-	assert.NotEmpty(t, createdUsersUnmarshalled[0].ID, "The ID should have been set by the database")
+	s.Require().NoError(surrealdb.Unmarshal(createdUsers, &createdUsersUnmarshalled))
+	s.NotEmpty(createdUsersUnmarshalled)
+	s.NotEmpty(createdUsersUnmarshalled[0].ID, "The ID should have been set by the database")
 
-	t.Run("Select many with table", func(t *testing.T) {
-		userData, err := db.Select("users")
-		require.NoError(t, err)
+	s.Run("Select many with table", func() {
+		userData, err := s.db.Select("users")
+		s.Require().NoError(err)
 
 		// unmarshal the data into a user slice
 		var users []testUser
 		err = surrealdb.Unmarshal(userData, &users)
-		require.NoError(t, err)
-		matching := assertContains(t, users, func(item testUser) bool {
+		s.NoError(err)
+		matching := assertContains(s, users, func(item testUser) bool {
 			return item.Username == "johnnyjohn"
 		})
-		assert.GreaterOrEqual(t, len(matching), 1)
+		s.GreaterOrEqual(len(matching), 1)
 	})
 
-	t.Run("Select single record", func(t *testing.T) {
-		userData, err := db.Select(createdUsersUnmarshalled[0].ID)
-		require.NoError(t, err)
+	s.Run("Select single record", func() {
+		userData, err := s.db.Select(createdUsersUnmarshalled[0].ID)
+		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
 		var user testUser
 		err = surrealdb.Unmarshal(userData, &user)
-		require.NoError(t, err)
+		s.Require().NoError(err)
 
-		assert.Equal(t, "johnnyjohn", user.Username)
-		assert.Equal(t, "123", user.Password)
+		s.Equal("johnnyjohn", user.Username)
+		s.Equal("123", user.Password)
 	})
 }
 
-func TestUpdate(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	userData, err := db.Create("users", testUser{
+func (s *SurrealDBTestSuite) TestUpdate() {
+	userData, err := s.db.Create("users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
 	var createdUser []testUser
 	err = surrealdb.Unmarshal(userData, &createdUser)
-	require.NoError(t, err)
-	assert.Len(t, createdUser, 1)
+	s.Require().NoError(err)
+	s.Len(createdUser, 1)
 
 	createdUser[0].Password = "456"
 
 	// Update the user
-	userData, err = db.Update("users", &createdUser[0])
-	require.NoError(t, err)
+	userData, err = s.db.Update("users", &createdUser[0])
+	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
 	var updatedUser []testUser
 	err = surrealdb.Unmarshal(userData, &updatedUser)
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	// TODO: check if this updates only the user with the same ID or all users
-	assert.Equal(t, "456", updatedUser[0].Password)
+	s.Equal("456", updatedUser[0].Password)
 }
 
-func TestUnmarshalRaw(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	_, err := db.Delete("users")
-	require.NoError(t, err)
-
+func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	username := "johnny"
 	password := "123"
 
 	// create test user with raw SurrealQL and unmarshal
-	userData, err := db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
+	userData, err := s.db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
 		"user": username,
 		"pass": password,
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	var userSlice []testUser
 	ok, err := surrealdb.UnmarshalRaw(userData, &userSlice)
-	require.NoError(t, err)
-	assert.True(t, ok)
-	assert.Len(t, userSlice, 1)
-	assert.Equal(t, username, userSlice[0].Username)
-	assert.Equal(t, password, userSlice[0].Password)
+	s.Require().NoError(err)
+	s.True(ok)
+	s.Len(userSlice, 1)
+	s.Equal(username, userSlice[0].Username)
+	s.Equal(password, userSlice[0].Password)
 
 	// send query with empty result and unmarshal
-	userData, err = db.Query("select * from users where id = $id", map[string]interface{}{
+	userData, err = s.db.Query("select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
-	require.NoError(t, err)
+	s.Require().NoError(err)
 
 	ok, err = surrealdb.UnmarshalRaw(userData, &userSlice)
-	require.NoError(t, err)
-	assert.False(t, ok, "select should return an empty result")
+	s.NoError(err)
+	s.False(ok, "select should return an empty result")
 }
 
-func TestModify(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
-	_, err := db.Delete("users:999") // Cleanup for reproducibility
-	require.NoError(t, err)
-
-	_, err = db.Create("users:999", map[string]interface{}{
+func (s *SurrealDBTestSuite) TestModify() {
+	_, err := s.db.Create("users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
-	require.NoError(t, err)
+	s.NoError(err)
 
 	patches := []surrealdb.Patch{
 		{Op: "add", Path: "nickname", Value: "johnny"},
@@ -323,161 +301,144 @@ func TestModify(t *testing.T) {
 	}
 
 	// Update the user
-	_, err = db.Modify("users:999", patches)
-	require.NoError(t, err)
+	_, err = s.db.Modify("users:999", patches)
+	s.Require().NoError(err)
 
-	user2, err := db.Select("users:999")
-	require.NoError(t, err)
+	user2, err := s.db.Select("users:999")
+	s.Require().NoError(err)
 
 	data := (user2).(map[string]interface{})["age"].(float64)
 
-	assert.Equal(t, patches[1].Value, int(data))
+	s.Equal(patches[1].Value, int(data))
 }
 
-func TestNonRowSelect(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
+func (s *SurrealDBTestSuite) TestNonRowSelect() {
 	user := testUser{
 		Username: "ElecTwix",
 		Password: "1234",
 		ID:       "users:notexists",
 	}
 
-	_, err := db.Select("users:notexists")
-	assert.Equal(t, err, surrealdb.ErrNoRow)
+	_, err := s.db.Select("users:notexists")
+	s.Equal(err, surrealdb.ErrNoRow)
 
-	_, err = surrealdb.SmartUnmarshal[testUser](db.Select("users:notexists"))
-	assert.Equal(t, err, surrealdb.ErrNoRow)
+	_, err = surrealdb.SmartUnmarshal[testUser](s.db.Select("users:notexists"))
+	s.Equal(err, surrealdb.ErrNoRow)
 
-	_, err = surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user))
-	assert.Equal(t, err, surrealdb.ErrNoRow)
+	_, err = surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user))
+	s.Equal(err, surrealdb.ErrNoRow)
 }
 
-func TestSmartUnMarshalQuery(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
+func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 	user := []testUser{{
 		Username: "electwix",
 		Password: "1234",
 	}}
 
-	// Clean up from other tests
-	_, err := db.Delete("users")
-	require.NoError(t, err)
-
-	t.Run("raw create query", func(t *testing.T) {
+	s.Run("raw create query", func() {
 		QueryStr := "Create users set Username = $user, Password = $pass"
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query(QueryStr, map[string]interface{}{
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Query(QueryStr, map[string]interface{}{
 			"user": user[0].Username,
 			"pass": user[0].Password,
 		}))
 
-		require.NoError(t, err)
-		assert.Equal(t, "electwix", dataArr[0].Username)
+		s.Require().NoError(err)
+		s.Equal("electwix", dataArr[0].Username)
 		user = dataArr
 	})
 
-	t.Run("raw select query", func(t *testing.T) {
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](db.Query("Select * from $record", map[string]interface{}{
+	s.Run("raw select query", func() {
+		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Query("Select * from $record", map[string]interface{}{
 			"record": user[0].ID,
 		}))
 
-		assert.Equal(t, "electwix", dataArr[0].Username)
-		require.NoError(t, err)
+		s.Require().NoError(err)
+		s.Equal("electwix", dataArr[0].Username)
 	})
 
-	t.Run("select query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[testUser](db.Select(user[0].ID))
+	s.Run("select query", func() {
+		data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
 
-		assert.Equal(t, "electwix", data.Username)
-		require.NoError(t, err)
+		s.Require().NoError(err)
+		s.Equal("electwix", data.Username)
 	})
 
-	t.Run("select array query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[[]testUser](db.Select("users"))
+	s.Run("select array query", func() {
+		data, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Select("users"))
 
-		assert.Equal(t, "electwix", data[0].Username)
-		require.NoError(t, err)
+		s.Require().NoError(err)
+		s.Equal("electwix", data[0].Username)
 	})
 
-	t.Run("delete record query", func(t *testing.T) {
-		nulldata, err := surrealdb.SmartUnmarshal[*testUser](db.Delete(user[0].ID))
+	s.Run("delete record query", func() {
+		nulldata, err := surrealdb.SmartUnmarshal[*testUser](s.db.Delete(user[0].ID))
 
-		require.NoError(t, err)
-		assert.Nil(t, nulldata)
+		s.Require().NoError(err)
+		s.Nil(nulldata)
 	})
 }
 
-func TestSmartMarshalQuery(t *testing.T) {
-	db := setupDB(t)
-	defer db.Close()
-
+func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 	user := []testUser{{
 		Username: "electwix",
 		Password: "1234",
 		ID:       "sometable:someid",
 	}}
 
-	// Clean up from other tests
-	_, err := db.Delete("users")
-	require.NoError(t, err)
-
-	t.Run("create with SmartMarshal query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Create, user[0]))
-		require.NoError(t, err)
-		assert.Equal(t, user[0], data)
+	s.Run("create with SmartMarshal query", func() {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Create, user[0]))
+		s.Require().NoError(err)
+		s.Equal(user[0], data)
 	})
 
-	t.Run("select with SmartMarshal query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user[0]))
-		require.NoError(t, err)
-		assert.Equal(t, user[0], data)
+	s.Run("select with SmartMarshal query", func() {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user[0]))
+		s.Require().NoError(err)
+		s.Equal(user[0], data)
 	})
 
-	t.Run("select with nil pointer SmartMarshal query", func(t *testing.T) {
+	s.Run("select with nil pointer SmartMarshal query", func() {
 		var nilptr *testUser
-		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &nilptr))
-		assert.Equal(t, err, surrealdb.ErrNotStruct)
-		assert.Equal(t, nilptr, data)
+		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(s.db.Select, &nilptr))
+		s.Require().Equal(err, surrealdb.ErrNotStruct)
+		s.Equal(nilptr, data)
 	})
 
-	t.Run("select with pointer SmartMarshal query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(db.Select, &user[0]))
-		require.NoError(t, err)
-		assert.Equal(t, &user[0], data)
+	s.Run("select with pointer SmartMarshal query", func() {
+		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(s.db.Select, &user[0]))
+		s.NoError(err)
+		s.Equal(&user[0], data)
 	})
 
-	t.Run("update with SmartMarshal query", func(t *testing.T) {
+	s.Run("update with SmartMarshal query", func() {
 		user[0].Password = "test123"
-		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Update, user[0]))
-		require.NoError(t, err)
-		assert.Equal(t, user[0].Password, data.Password)
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Update, user[0]))
+		s.Require().NoError(err)
+		s.Equal(user[0].Password, data.Password)
 	})
 
-	t.Run("delete with SmartMarshal query", func(t *testing.T) {
-		nulldata, err := surrealdb.SmartMarshal(db.Delete, &user[0])
-		require.NoError(t, err)
-		assert.Nil(t, nulldata)
+	s.Run("delete with SmartMarshal query", func() {
+		nulldata, err := surrealdb.SmartMarshal(s.db.Delete, &user[0])
+		s.Require().NoError(err)
+		s.Nil(nulldata)
 	})
 
-	t.Run("check if data deleted SmartMarshal query", func(t *testing.T) {
-		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(db.Select, user[0]))
-		assert.Equal(t, err, surrealdb.ErrNoRow)
-		assert.Equal(t, data, testUser{})
+	s.Run("check if data deleted SmartMarshal query", func() {
+		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user[0]))
+		s.Require().Equal(err, surrealdb.ErrNoRow)
+		s.Equal(data, testUser{})
 	})
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
-func assertContains[K fmt.Stringer](t *testing.T, input []K, matcher func(K) bool) []K {
+func assertContains[K fmt.Stringer](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
 	matching := make([]K, 0)
 	for i := range input {
 		if matcher(input[i]) {
 			matching = append(matching, input[i])
 		}
 	}
-	assert.NotEmptyf(t, matching, "Input %+v did not contain matching element", fmt.Sprintf("%+v", input))
+	s.NotEmptyf(matching, "Input %+v did not contain matching element", fmt.Sprintf("%+v", input))
 	return matching
 }
