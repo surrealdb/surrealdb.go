@@ -24,17 +24,9 @@ type DB struct {
 }
 
 // New Creates a new DB instance given a WebSocket URL.
-func New(url string) (*DB, error) {
-	ws, err := websocket.NewWebsocket(url)
-	if err != nil {
-		return nil, err
-	}
-	return &DB{ws}, nil
-}
-
 // NewWithOptions Creates a new DB instance given a WebSocket URL and options.
 // Options are passed to the websocket library.
-func NewWithOptions(url string, options ...websocket.Option) (*DB, error) {
+func New(url string, options ...websocket.Option) (*DB, error) {
 	ws, err := websocket.NewWebsocketWithOptions(url, options...)
 	if err != nil {
 		return nil, err

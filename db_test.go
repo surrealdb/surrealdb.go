@@ -72,7 +72,7 @@ func openConnectionWithOptions(t *testing.T) *surrealdb.DB {
 
 	options := []websocket.Option{option1, option2}
 
-	db, err := surrealdb.NewWithOptions(url, options...)
+	db, err := surrealdb.New(url, options...)
 
 	require.NotNil(t, db)
 	require.NoError(t, err)
