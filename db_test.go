@@ -8,7 +8,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/internal/websocket"
 )
 
 // TestDBSuite is a test s for the DB struct
@@ -28,13 +27,7 @@ type testUser struct {
 
 // getOptions returns a list of options to be used when creating a new websocket connection
 func getOptions() (options []surrealdb.Option) {
-	optWriteCompression := surrealdb.Option{
-		WsOption: func(ws *websocket.WebSocket) error {
-			ws.Conn.EnableWriteCompression(true)
-			return nil
-		},
-	}
-	options = append(options, optWriteCompression, surrealdb.WithTimeout(20*time.Second))
+	options = append(options, surrealdb.WithWriteCompression(true), surrealdb.WithTimeout(20*time.Second))
 	return
 }
 

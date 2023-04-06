@@ -39,6 +39,16 @@ func WithTimeout(timeout time.Duration) Option {
 	}
 }
 
+// UseWriteCompression enables or disables write compression for internal websocket client
+func UseWriteCompression(useWriteCompression bool) Option {
+	return Option{
+		WsOption: func(ws *websocket.WebSocket) error {
+			ws.Conn.EnableWriteCompression(useWriteCompression)
+			return nil
+		},
+	}
+}
+
 // New creates a new SurrealDB client.
 func New(url string, options ...Option) (*DB, error) {
 	wsOptions := make([]websocket.Option, 0)
