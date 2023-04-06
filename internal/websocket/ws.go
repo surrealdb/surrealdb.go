@@ -23,18 +23,14 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
-	conn     *websocket.Conn
+	Conn     *websocket.Conn
 	connLock sync.Mutex
-	timeout  time.Duration
+	Timeout  time.Duration
 
 	responseChannels     map[string]chan RPCResponse
 	responseChannelsLock sync.RWMutex
 
 	close chan int
-}
-
-func NewWebsocket(url string) (*WebSocket, error) {
-	return NewWebsocketWithOptions(url, Timeout(DefaultTimeout))
 }
 
 func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
@@ -47,9 +43,10 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 	}
 
 	ws := &WebSocket{
-		conn:             conn,
+		Conn:             conn,
 		close:            make(chan int),
 		responseChannels: make(map[string]chan RPCResponse),
+		Timeout:          DefaultTimeout * time.Second,
 	}
 
 	for _, option := range options {
@@ -62,19 +59,12 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 	return ws, nil
 }
 
-func Timeout(timeout float64) Option {
-	return func(ws *WebSocket) error {
-		ws.timeout = time.Duration(timeout) * time.Second
-		return nil
-	}
-}
-
 func (ws *WebSocket) Close() error {
 	defer func() {
 		close(ws.close)
 	}()
 
-	return ws.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
+	return ws.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
 }
 
 var (
@@ -128,7 +118,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 		return nil, err
 	}
 
-	timeout := time.After(ws.timeout)
+	timeout := time.After(ws.Timeout)
 
 	select {
 	case <-timeout:
@@ -147,7 +137,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 }
 
 func (ws *WebSocket) read(v interface{}) error {
-	_, data, err := ws.conn.ReadMessage()
+	_, data, err := ws.Conn.ReadMessage()
 	if err != nil {
 		return err
 	}
@@ -163,7 +153,7 @@ func (ws *WebSocket) write(v interface{}) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.conn.WriteMessage(websocket.TextMessage, data)
+	return ws.Conn.WriteMessage(websocket.TextMessage, data)
 }
 
 func (ws *WebSocket) initialize() {

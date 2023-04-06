@@ -23,9 +23,20 @@ type DB struct {
 	ws *websocket.WebSocket
 }
 
-// New Creates a new DB instance given a WebSocket URL.
-func New(url string) (*DB, error) {
-	ws, err := websocket.NewWebsocket(url)
+// SurrealDBOption is a struct that holds options for the SurrealDB client.
+type SurrealDBOption struct {
+	WsOption websocket.Option
+}
+
+// New creates a new SurrealDB client.
+func New(url string, options ...SurrealDBOption) (*DB, error) {
+	wsOptions := make([]websocket.Option, 0)
+	for _, option := range options {
+		if option.WsOption != nil {
+			wsOptions = append(wsOptions, option.WsOption)
+		}
+	}
+	ws, err := websocket.NewWebsocketWithOptions(url, wsOptions...)
 	if err != nil {
 		return nil, err
 	}
