@@ -24,7 +24,7 @@ type DB struct {
 	ws *websocket.WebSocket
 }
 
-// SurrealDBOption is a struct that holds options for the SurrealDB client.
+// Option is a struct that holds options for the SurrealDB client.
 type Option struct {
 	WsOption websocket.Option
 }
