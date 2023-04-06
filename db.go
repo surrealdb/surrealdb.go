@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"reflect"
 
@@ -24,12 +25,21 @@ type DB struct {
 }
 
 // SurrealDBOption is a struct that holds options for the SurrealDB client.
-type SurrealDBOption struct {
+type Option struct {
 	WsOption websocket.Option
 }
 
+func WithTimeout(timeout time.Duration) Option {
+	return Option{
+		WsOption: func(ws *websocket.WebSocket) error {
+			ws.Timeout = timeout
+			return nil
+		},
+	}
+}
+
 // New creates a new SurrealDB client.
-func New(url string, options ...SurrealDBOption) (*DB, error) {
+func New(url string, options ...Option) (*DB, error) {
 	wsOptions := make([]websocket.Option, 0)
 	for _, option := range options {
 		if option.WsOption != nil {
