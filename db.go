@@ -29,6 +29,7 @@ type Option struct {
 	WsOption websocket.Option
 }
 
+// WithTimeout sets the timeout for requests, default timeout is 30 seconds
 func WithTimeout(timeout time.Duration) Option {
 	return Option{
 		WsOption: func(ws *websocket.WebSocket) error {
