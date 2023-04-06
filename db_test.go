@@ -27,7 +27,7 @@ type testUser struct {
 
 // getOptions returns a list of options to be used when creating a new websocket connection
 func getOptions() (options []surrealdb.Option) {
-	options = append(options, surrealdb.WithWriteCompression(true), surrealdb.WithTimeout(20*time.Second))
+	options = append(options, surrealdb.UseWriteCompression(true), surrealdb.WithTimeout(20*time.Second))
 	return
 }
 
