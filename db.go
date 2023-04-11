@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"reflect"
 
@@ -23,13 +24,33 @@ type DB struct {
 	ws *websocket.WebSocket
 }
 
-// SurrealDBOption is a struct that holds options for the SurrealDB client.
-type SurrealDBOption struct {
+// Option is a struct that holds options for the SurrealDB client.
+type Option struct {
 	WsOption websocket.Option
 }
 
+// WithTimeout sets the timeout for requests, default timeout is 30 seconds
+func WithTimeout(timeout time.Duration) Option {
+	return Option{
+		WsOption: func(ws *websocket.WebSocket) error {
+			ws.Timeout = timeout
+			return nil
+		},
+	}
+}
+
+// UseWriteCompression enables or disables write compression for internal websocket client
+func UseWriteCompression(useWriteCompression bool) Option {
+	return Option{
+		WsOption: func(ws *websocket.WebSocket) error {
+			ws.Conn.EnableWriteCompression(useWriteCompression)
+			return nil
+		},
+	}
+}
+
 // New creates a new SurrealDB client.
-func New(url string, options ...SurrealDBOption) (*DB, error) {
+func New(url string, options ...Option) (*DB, error) {
 	wsOptions := make([]websocket.Option, 0)
 	for _, option := range options {
 		if option.WsOption != nil {
