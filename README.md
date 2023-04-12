@@ -26,13 +26,13 @@ import (
 )
 
 func main() {
-    // Connect to SurrealDB
+	// Connect to SurrealDB
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
 
-    // Sign in
+	// Sign in
 	if _, err = db.Signin(map[string]string{
 		"user": "root",
 		"pass": "root",
@@ -40,7 +40,7 @@ func main() {
 		panic(err)
 	}
 
-    // Select namespace and database
+	// Select namespace and database
 	if _, err = db.Use("test", "test"); err != nil {
 		panic(err)
 	}
@@ -88,7 +88,7 @@ func main() {
 		panic(err)
 	}
 
-    // Raw Query user
+	// Raw Query user
 	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
 		"record": createdUser[0].ID,
 	}); err != nil {
