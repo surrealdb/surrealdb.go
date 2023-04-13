@@ -274,6 +274,27 @@ func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
 	return db.send("query", sql, vars)
 }
 
+// SchemalessSelect returns a list of rows from the database that have been added
+// to a table without a defined schema
+func (self *DB) SchemalessSelect(what string) ([]map[string]any, error) {
+	output, err := self.Select(what)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, wasCastSuccessful := output.([]any)
+	if !wasCastSuccessful {
+		return nil, errors.New("unable to cast rows from database to array")
+	}
+
+	returnArray := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		mapValue := (row).(map[string]any)
+		returnArray = append(returnArray, mapValue)
+	}
+	return returnArray, nil
+}
+
 // Select a table or record from the database.
 func (db *DB) Select(what string) (interface{}, error) {
 	return db.send("select", what)
