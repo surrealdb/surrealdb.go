@@ -425,6 +425,40 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 	})
 }
 
+// BenchmarkCreate benchmarks the creation of a record
+func BenchmarkCreate(b *testing.B) {
+	s := new(SurrealDBTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	user := &testUser{
+		Username: "tobi",
+		Password: "1234",
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.db.Create(fmt.Sprintf("users:%d", i), user)
+	}
+	b.StopTimer()
+	s.TearDownSuite()
+}
+
+// BenchmarkSelect benchmarks the selection of a record
+func BenchmarkSelect(b *testing.B) {
+	s := new(SurrealDBTestSuite)
+	s.SetT(&testing.T{})
+	s.SetupSuite()
+	s.db.Create("users:bob", testUser{
+		Username: "bob",
+		Password: "1234",
+	})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.db.Select("users:bob")
+	}
+	b.StopTimer()
+	s.TearDownSuite()
+}
+
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
 func assertContains[K fmt.Stringer](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
