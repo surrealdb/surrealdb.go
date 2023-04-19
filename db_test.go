@@ -41,7 +41,7 @@ func TestSurrealDBSuite(t *testing.T) {
 	suite.Run(t, SurrealDBSuite)
 }
 
-// SetupTest is called before each test
+// SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
 	_, err := s.db.Delete("users")
 	s.Require().NoError(err)
@@ -106,23 +106,6 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	// Delete the users...
 	_, err = s.db.Delete("users")
 	s.Require().NoError(err)
-}
-
-func (s *SurrealDBTestSuite) TestDeleteWithOptions() {
-	userData, err := s.db.Create("users", testUser{
-		Username: "johnny",
-		Password: "123",
-	})
-	s.NoError(err)
-
-	// unmarshal the data into a user struct
-	var user []testUser
-	err = surrealdb.Unmarshal(userData, &user)
-	s.NoError(err)
-
-	// Delete the users...
-	_, err = s.db.Delete("users")
-	s.NoError(err)
 }
 
 func (s *SurrealDBTestSuite) TestCreate() {
@@ -436,9 +419,11 @@ func BenchmarkCreate(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.db.Create(fmt.Sprintf("users:%d", i), user)
+		// error is ignored for benchmarking purposes.
+		s.db.Create(fmt.Sprintf("users:%d", i), user) //nolint:errcheck
 	}
 	b.StopTimer()
+	s.TearDownTest()
 	s.TearDownSuite()
 }
 
@@ -447,15 +432,20 @@ func BenchmarkSelect(b *testing.B) {
 	s := new(SurrealDBTestSuite)
 	s.SetT(&testing.T{})
 	s.SetupSuite()
-	s.db.Create("users:bob", testUser{
+	_, err := s.db.Create("users:bob", testUser{
 		Username: "bob",
 		Password: "1234",
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		s.db.Select("users:bob")
+		// error is ignored for benchmarking purposes.
+		s.db.Select("users:bob") //nolint:errcheck
 	}
 	b.StopTimer()
+	s.TearDownTest()
 	s.TearDownSuite()
 }
 
