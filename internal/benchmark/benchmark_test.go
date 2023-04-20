@@ -25,14 +25,19 @@ func BenchmarkCreate(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	user := &testUser{
-		Username: "tobi",
-		Password: "1234",
+	users := make([]*testUser, 0)
+	for i := 0; i < b.N; i++ {
+		// error is ignored for benchmarking purposes.
+		users = append(users, &testUser{
+			Username: "tobi",
+			Password: "1234",
+			ID:       fmt.Sprintf("users:%d", i),
+		})
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		db.Create(fmt.Sprintf("users:%d", i), user) //nolint:errcheck
+		db.Create(users[i].ID, users[i]) //nolint:errcheck
 	}
 }
 
