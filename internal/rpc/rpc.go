@@ -1,4 +1,4 @@
-package websocket
+package rpc
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {

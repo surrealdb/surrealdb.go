@@ -8,13 +8,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
 )
 
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
-	db      *surrealdb.DB
-	options []surrealdb.Option
+	db *surrealdb.DB
+	ws iwebsocket.IWebSocket
 }
 
 // a simple user struct for testing
@@ -25,19 +27,15 @@ type testUser struct {
 	ID                  string `json:"id,omitempty"`
 }
 
-// getOptions returns a list of options to be used when creating a new websocket connection
-func getOptions() (options []surrealdb.Option) {
-	options = append(options, surrealdb.UseWriteCompression(true), surrealdb.WithTimeout(20*time.Second))
-	return
-}
-
 func TestSurrealDBSuite(t *testing.T) {
-	// Without options
 	SurrealDBSuite := new(SurrealDBTestSuite)
+
+	// Without options
+	SurrealDBSuite.ws = gorilla.Create()
 	suite.Run(t, SurrealDBSuite)
 
 	// With options
-	SurrealDBSuite.options = getOptions()
+	SurrealDBSuite.ws = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
 	suite.Run(t, SurrealDBSuite)
 }
 
@@ -64,9 +62,10 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	db, err := surrealdb.New(url, s.options...)
+	websocket, err := s.ws.Connect(url)
 	s.Require().NoError(err)
-
+	db, err := surrealdb.New(url, websocket)
+	s.Require().NoError(err)
 	return db
 }
 

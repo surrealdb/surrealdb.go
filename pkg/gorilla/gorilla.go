@@ -1,4 +1,4 @@
-package websocket
+package gorilla
 
 import (
 	"encoding/json"
@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/internal/rpc"
+	"github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
+	"github.com/surrealdb/surrealdb.go/pkg/rand"
 )
 
 const (
@@ -26,14 +28,24 @@ type WebSocket struct {
 	Conn     *websocket.Conn
 	connLock sync.Mutex
 	Timeout  time.Duration
+	Option   []Option
 
-	responseChannels     map[string]chan RPCResponse
+	responseChannels     map[string]chan rpc.RPCResponse
 	responseChannelsLock sync.RWMutex
 
 	close chan int
 }
 
-func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) {
+func Create() *WebSocket {
+	return &WebSocket{
+		Conn:             nil,
+		close:            make(chan int),
+		responseChannels: make(map[string]chan rpc.RPCResponse),
+		Timeout:          DefaultTimeout * time.Second,
+	}
+}
+
+func (ws *WebSocket) Connect(url string) (iwebsocket.IWebSocket, error) {
 	dialer := websocket.DefaultDialer
 	dialer.EnableCompression = true
 
@@ -42,21 +54,32 @@ func NewWebsocketWithOptions(url string, options ...Option) (*WebSocket, error) 
 		return nil, err
 	}
 
-	ws := &WebSocket{
-		Conn:             conn,
-		close:            make(chan int),
-		responseChannels: make(map[string]chan RPCResponse),
-		Timeout:          DefaultTimeout * time.Second,
-	}
+	ws.Conn = conn
 
-	for _, option := range options {
+	for _, option := range ws.Option {
 		if err := option(ws); err != nil {
-			return nil, err
+			return ws, err
 		}
 	}
 
 	ws.initialize()
 	return ws, nil
+}
+
+func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
+	ws.Option = append(ws.Option, func(ws *WebSocket) error {
+		ws.Timeout = timeout
+		return nil
+	})
+	return ws
+}
+
+func (ws *WebSocket) SetCompression(compress bool) *WebSocket {
+	ws.Option = append(ws.Option, func(ws *WebSocket) error {
+		ws.Conn.EnableWriteCompression(compress)
+		return nil
+	})
+	return ws
 }
 
 func (ws *WebSocket) Close() error {
@@ -73,7 +96,7 @@ var (
 	ErrInvalidResponseID = errors.New("invalid response id")
 )
 
-func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
+func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 
@@ -81,7 +104,7 @@ func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) 
 		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
 	}
 
-	ch := make(chan RPCResponse)
+	ch := make(chan rpc.RPCResponse)
 	ws.responseChannels[id] = ch
 
 	return ch, nil
@@ -93,7 +116,7 @@ func (ws *WebSocket) removeResponseChannel(id string) {
 	delete(ws.responseChannels, id)
 }
 
-func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
+func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) {
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
@@ -102,7 +125,7 @@ func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
 
 func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
 	id := rand.String(RequestIDLength)
-	request := &RPCRequest{
+	request := &rpc.RPCRequest{
 		ID:     id,
 		Method: method,
 		Params: params,
@@ -163,7 +186,7 @@ func (ws *WebSocket) initialize() {
 			case <-ws.close:
 				return
 			default:
-				var res RPCResponse
+				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
 					// TODO need to find a proper way to log this error
