@@ -146,13 +146,20 @@ func (ws *WebSocket) read(v interface{}) error {
 }
 
 func (ws *WebSocket) write(v interface{}) error {
-	data, err := json.Marshal(v)
+	b := new(bytes.Buffer)
+	encoder := json.NewEncoder(b)
+	encoder.SetEscapeHTML(false)
+
+	err := encoder.Encode(&v)
 	if err != nil {
 		return err
 	}
 
+	data := bytes.TrimRight(b.Bytes(), "\n")
+
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
+
 	return ws.Conn.WriteMessage(websocket.TextMessage, data)
 }
 
