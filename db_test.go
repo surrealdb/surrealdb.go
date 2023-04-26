@@ -8,15 +8,15 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/gorilla"
-	"github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
+	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
 	db *surrealdb.DB
-	ws iwebsocket.IWebSocket
+	ws websocket.WebSocket
 }
 
 // a simple user struct for testing
@@ -62,9 +62,9 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	websocket, err := s.ws.Connect(url)
+	ws, err := s.ws.Connect(url)
 	s.Require().NoError(err)
-	db, err := surrealdb.New(url, websocket)
+	db, err := surrealdb.New(url, ws)
 	s.Require().NoError(err)
 	return db
 }

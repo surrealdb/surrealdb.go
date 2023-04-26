@@ -1,22 +1,22 @@
 package mock
 
-import "github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
+import "github.com/surrealdb/surrealdb.go/pkg/websocket"
 
-type websocket struct {
+type ws struct {
 }
 
-func (w *websocket) Connect(url string) (iwebsocket.IWebSocket, error) {
+func (w *ws) Connect(url string) (websocket.WebSocket, error) {
 	return w, nil
 }
 
-func (w *websocket) Send(method string, params []interface{}) (interface{}, error) {
+func (w *ws) Send(method string, params []interface{}) (interface{}, error) {
 	return nil, nil
 }
 
-func (w *websocket) Close() error {
+func (w *ws) Close() error {
 	return nil
 }
 
-func Create() *websocket {
-	return &websocket{}
+func Create() *ws {
+	return &ws{}
 }

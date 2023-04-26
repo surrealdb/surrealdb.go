@@ -7,7 +7,7 @@ import (
 
 	"reflect"
 
-	"github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
+	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 const statusOK = "OK"
@@ -20,11 +20,11 @@ var (
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws iwebsocket.IWebSocket
+	ws websocket.WebSocket
 }
 
 // New creates a new SurrealDB client.
-func New(url string, ws iwebsocket.IWebSocket) (*DB, error) {
+func New(url string, ws websocket.WebSocket) (*DB, error) {
 	return &DB{ws}, nil
 }
 

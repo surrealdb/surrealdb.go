@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
+	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
-	"github.com/surrealdb/surrealdb.go/pkg/iwebsocket"
 	"github.com/surrealdb/surrealdb.go/pkg/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
-	Conn     *websocket.Conn
+	Conn     *gorilla.Conn
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
@@ -45,8 +45,8 @@ func Create() *WebSocket {
 	}
 }
 
-func (ws *WebSocket) Connect(url string) (iwebsocket.IWebSocket, error) {
-	dialer := websocket.DefaultDialer
+func (ws *WebSocket) Connect(url string) (websocket.WebSocket, error) {
+	dialer := gorilla.DefaultDialer
 	dialer.EnableCompression = true
 
 	conn, _, err := dialer.Dial(url, nil)
@@ -87,7 +87,7 @@ func (ws *WebSocket) Close() error {
 		close(ws.close)
 	}()
 
-	return ws.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(CloseMessageCode, ""))
+	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
 }
 
 var (
@@ -176,7 +176,7 @@ func (ws *WebSocket) write(v interface{}) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.Conn.WriteMessage(websocket.TextMessage, data)
+	return ws.Conn.WriteMessage(gorilla.TextMessage, data)
 }
 
 func (ws *WebSocket) initialize() {
