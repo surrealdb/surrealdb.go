@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"reflect"
 
-	"github.com/surrealdb/surrealdb.go/internal/websocket"
+	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 const statusOK = "OK"
@@ -21,46 +20,11 @@ var (
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws *websocket.WebSocket
-}
-
-// Option is a struct that holds options for the SurrealDB client.
-type Option struct {
-	WsOption websocket.Option
-}
-
-// WithTimeout sets the timeout for requests, default timeout is 30 seconds
-func WithTimeout(timeout time.Duration) Option {
-	return Option{
-		WsOption: func(ws *websocket.WebSocket) error {
-			ws.Timeout = timeout
-			return nil
-		},
-	}
-}
-
-// UseWriteCompression enables or disables write compression for internal websocket client
-func UseWriteCompression(useWriteCompression bool) Option {
-	return Option{
-		WsOption: func(ws *websocket.WebSocket) error {
-			ws.Conn.EnableWriteCompression(useWriteCompression)
-			return nil
-		},
-	}
+	ws websocket.WebSocket
 }
 
 // New creates a new SurrealDB client.
-func New(url string, options ...Option) (*DB, error) {
-	wsOptions := make([]websocket.Option, 0)
-	for _, option := range options {
-		if option.WsOption != nil {
-			wsOptions = append(wsOptions, option.WsOption)
-		}
-	}
-	ws, err := websocket.NewWebsocketWithOptions(url, wsOptions...)
-	if err != nil {
-		return nil, err
-	}
+func New(url string, ws websocket.WebSocket) (*DB, error) {
 	return &DB{ws}, nil
 }
 

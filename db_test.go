@@ -8,13 +8,16 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
+	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
-	db      *surrealdb.DB
-	options []surrealdb.Option
+	db                *surrealdb.DB
+	name              string
+	wsImplementations map[string]websocket.WebSocket
 }
 
 // a simple user struct for testing
@@ -25,23 +28,30 @@ type testUser struct {
 	ID                  string `json:"id,omitempty"`
 }
 
-// getOptions returns a list of options to be used when creating a new websocket connection
-func getOptions() (options []surrealdb.Option) {
-	options = append(options, surrealdb.UseWriteCompression(true), surrealdb.WithTimeout(20*time.Second))
-	return
-}
-
 func TestSurrealDBSuite(t *testing.T) {
-	// Without options
 	SurrealDBSuite := new(SurrealDBTestSuite)
-	suite.Run(t, SurrealDBSuite)
+	SurrealDBSuite.wsImplementations = make(map[string]websocket.WebSocket)
+
+	// Without options
+	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
 
 	// With options
-	SurrealDBSuite.options = getOptions()
-	suite.Run(t, SurrealDBSuite)
+	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
+
+	RunWsMap(t, SurrealDBSuite)
 }
 
-// SetupTest is called before each test
+func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
+	for wsName := range s.wsImplementations {
+		// Run the test suite
+		t.Run(wsName, func(t *testing.T) {
+			s.name = wsName
+			suite.Run(t, s)
+		})
+	}
+}
+
+// SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
 	_, err := s.db.Delete("users")
 	s.Require().NoError(err)
@@ -64,9 +74,10 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	db, err := surrealdb.New(url, s.options...)
+	ws, err := s.wsImplementations[s.name].Connect(url)
 	s.Require().NoError(err)
-
+	db, err := surrealdb.New(url, ws)
+	s.Require().NoError(err)
 	return db
 }
 
@@ -106,23 +117,6 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	// Delete the users...
 	_, err = s.db.Delete("users")
 	s.Require().NoError(err)
-}
-
-func (s *SurrealDBTestSuite) TestDeleteWithOptions() {
-	userData, err := s.db.Create("users", testUser{
-		Username: "johnny",
-		Password: "123",
-	})
-	s.NoError(err)
-
-	// unmarshal the data into a user struct
-	var user []testUser
-	err = surrealdb.Unmarshal(userData, &user)
-	s.NoError(err)
-
-	// Delete the users...
-	_, err = s.db.Delete("users")
-	s.NoError(err)
 }
 
 func (s *SurrealDBTestSuite) TestCreate() {
