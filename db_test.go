@@ -15,8 +15,9 @@ import (
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
-	db *surrealdb.DB
-	ws websocket.WebSocket
+	db                *surrealdb.DB
+	ws                websocket.WebSocket
+	wsImplementations map[string]websocket.WebSocket
 }
 
 // a simple user struct for testing
@@ -29,14 +30,28 @@ type testUser struct {
 
 func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite := new(SurrealDBTestSuite)
+	SurrealDBSuite.wsImplementations = make(map[string]websocket.WebSocket)
 
 	// Without options
-	SurrealDBSuite.ws = gorilla.Create()
-	suite.Run(t, SurrealDBSuite)
+	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
 
 	// With options
-	SurrealDBSuite.ws = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
-	suite.Run(t, SurrealDBSuite)
+	SurrealDBSuite.wsImplementations["gorilla/w/opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
+
+	RunWsMap(t, SurrealDBSuite)
+}
+
+func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
+	for wsName, ws := range s.wsImplementations {
+
+		// Set the ws implementation
+		s.ws = ws
+
+		// Run the tests
+		t.Run(wsName, func(t *testing.T) {
+			suite.Run(t, s)
+		})
+	}
 }
 
 // SetupTest is called after each test
