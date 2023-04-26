@@ -43,7 +43,6 @@ func TestSurrealDBSuite(t *testing.T) {
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
 	for wsName, ws := range s.wsImplementations {
-
 		// Set the ws implementation
 		s.ws = ws
 
