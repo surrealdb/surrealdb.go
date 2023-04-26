@@ -16,7 +16,7 @@ import (
 type SurrealDBTestSuite struct {
 	suite.Suite
 	db                *surrealdb.DB
-	ws                websocket.WebSocket
+	name              string
 	wsImplementations map[string]websocket.WebSocket
 }
 
@@ -36,18 +36,16 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
 
 	// With options
-	SurrealDBSuite.wsImplementations["gorilla/w/opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
+	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
 
 	RunWsMap(t, SurrealDBSuite)
 }
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
-	for wsName, ws := range s.wsImplementations {
-		// Set the ws implementation
-		s.ws = ws
-
-		// Run the tests
+	for wsName := range s.wsImplementations {
+		// Run the test suite
 		t.Run(wsName, func(t *testing.T) {
+			s.name = wsName
 			suite.Run(t, s)
 		})
 	}
@@ -76,7 +74,7 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	ws, err := s.ws.Connect(url)
+	ws, err := s.wsImplementations[s.name].Connect(url)
 	s.Require().NoError(err)
 	db, err := surrealdb.New(url, ws)
 	s.Require().NoError(err)
