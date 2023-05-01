@@ -124,7 +124,7 @@ data, err := surrealdb.SmartMarshal(s.db.Create, user[0])
 
 ### Smart Unmarshal
 
-SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct. SurrealDB Go library will automatically convert it to the correct type.
+SurrealDB Go library supports smart unmarshal. It means that you can unmarshal any type of data to the generic type provided. SurrealDB Go library will automatically convert it to that type.
 
 ```go
 
