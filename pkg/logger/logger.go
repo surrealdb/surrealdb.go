@@ -1,20 +1,26 @@
 package logger
 
 import (
-	"log"
 	"os"
+
+	"github.com/rs/zerolog"
+)
+
+const (
+	permission = 0664
 )
 
 type LogData struct {
 	LogFile *os.File
-	Logger  *log.Logger
+	Logger  *zerolog.Logger
 }
 
-func CreateLogFile(path string) (logData *LogData, err error) {
-	logData.LogFile, err = os.Create("surrealdbgo.log")
+func CreateLogFile(path string) (*LogData, error) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, permission)
 	if err != nil {
-		return
+		return nil, err
 	}
-	logData.Logger = log.New(logData.LogFile, "Surreal: ", log.Ldate|log.Ltime)
-	return
+
+	newlogger := zerolog.New(zerolog.SyncWriter(file)).With().Timestamp().Logger()
+	return &LogData{LogFile: file, Logger: &newlogger}, err
 }

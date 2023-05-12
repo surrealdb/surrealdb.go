@@ -200,12 +200,12 @@ func (ws *WebSocket) initialize() {
 				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
-					ws.logger.Logger.Println(err)
+					ws.logger.Logger.Err(err)
 					continue
 				}
 				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 				if !ok {
-					ws.logger.Logger.Println("ResponseChannel is not ok")
+					ws.logger.Logger.Err(errors.New("ResponseChannel is not ok"))
 					continue
 				}
 				responseChan <- res
