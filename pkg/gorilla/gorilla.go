@@ -86,8 +86,8 @@ func (ws *WebSocket) Logger(path string) *WebSocket {
 	return ws
 }
 
-func (ws *WebSocket) RawLogger(logger *logger.LogData) *WebSocket {
-	ws.logger = logger
+func (ws *WebSocket) RawLogger(logData *logger.LogData) *WebSocket {
+	ws.logger = logData
 	return ws
 }
 
