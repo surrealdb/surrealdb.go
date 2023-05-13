@@ -76,12 +76,18 @@ func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
 	return ws
 }
 
-func (ws *WebSocket) SetLogFile(path string) *WebSocket {
+// If path is empty it will use os.stdout/os.stderr
+func (ws *WebSocket) Logger(path string) *WebSocket {
 	var err error
-	ws.logger, err = logger.CreateLogFile(path)
+	ws.logger, err = logger.NewLogger(path)
 	if err != nil {
 		return nil
 	}
+	return ws
+}
+
+func (ws *WebSocket) RawLogger(logger *logger.LogData) *WebSocket {
+	ws.logger = logger
 	return ws
 }
 

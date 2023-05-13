@@ -36,7 +36,7 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
 
 	// With options
-	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).SetLogFile("surrealdb.log")
+	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger("")
 
 	RunWsMap(t, SurrealDBSuite)
 }

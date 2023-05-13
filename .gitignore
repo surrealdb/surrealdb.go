@@ -33,3 +33,4 @@ Temporary Items
 *.db
 *.test
 *.cover
+*.log
