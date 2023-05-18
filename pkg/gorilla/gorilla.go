@@ -77,12 +77,8 @@ func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
 }
 
 // If path is empty it will use os.stdout/os.stderr
-func (ws *WebSocket) Logger(path string) *WebSocket {
-	var err error
-	ws.logger, err = logger.NewLogger(path)
-	if err != nil {
-		return nil
-	}
+func (ws *WebSocket) Logger(logData *logger.LogData) *WebSocket {
+	ws.logger = logData
 	return ws
 }
 
@@ -207,11 +203,14 @@ func (ws *WebSocket) initialize() {
 				err := ws.read(&res)
 				if err != nil {
 					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
 					continue
 				}
 				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 				if !ok {
-					ws.logger.Logger.Err(errors.New("ResponseChannel is not ok"))
+					err = errors.New("ResponseChannel is not ok")
+					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
 					continue
 				}
 				responseChan <- res

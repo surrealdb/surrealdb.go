@@ -10,12 +10,13 @@ import (
 
 func TestLog(t *testing.T) {
 	buff := bytes.NewBuffer([]byte{})
-	templogger := logger.NewLoggerRaw(buff, nil)
+	templogger, err := logger.New().FromBuffer(buff).Make()
+	require.NoError(t, err)
 	require.NotNil(t, templogger)
 	require.NotNil(t, templogger.Logger)
 	// Get Stats Before
 	require.Equal(t, buff.Len(), 0)
 	templogger.Logger.Info().Msg("Test")
 	// Get Stats After
-	require.Greater(t, buff.Len(), 0)
+	require.Contains(t, buff.String(), "Test")
 }
