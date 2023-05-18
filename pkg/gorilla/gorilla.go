@@ -9,6 +9,7 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -29,6 +30,7 @@ type WebSocket struct {
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
+	logger   *logger.LogData
 
 	responseChannels     map[string]chan rpc.RPCResponse
 	responseChannelsLock sync.RWMutex
@@ -71,6 +73,17 @@ func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
 		ws.Timeout = timeout
 		return nil
 	})
+	return ws
+}
+
+// If path is empty it will use os.stdout/os.stderr
+func (ws *WebSocket) Logger(logData *logger.LogData) *WebSocket {
+	ws.logger = logData
+	return ws
+}
+
+func (ws *WebSocket) RawLogger(logData *logger.LogData) *WebSocket {
+	ws.logger = logData
 	return ws
 }
 
@@ -189,12 +202,15 @@ func (ws *WebSocket) initialize() {
 				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
-					// TODO need to find a proper way to log this error
+					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
 					continue
 				}
 				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 				if !ok {
-					// TODO need to find a proper way to log this
+					err = errors.New("ResponseChannel is not ok")
+					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
 					continue
 				}
 				responseChan <- res

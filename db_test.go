@@ -1,14 +1,17 @@
 package surrealdb_test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
 	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
@@ -36,7 +39,10 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
 
 	// With options
-	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true)
+	buff := bytes.NewBuffer([]byte{})
+	logData, err := logger.New().FromBuffer(buff).Make()
+	require.NoError(t, err)
+	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
 
 	RunWsMap(t, SurrealDBSuite)
 }
