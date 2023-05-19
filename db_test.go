@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -423,6 +424,52 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 		s.Require().Equal(err, surrealdb.ErrNoRow)
 		s.Equal(data, testUser{})
 	})
+}
+
+func (s *SurrealDBTestSuite) TestConcurrent() {
+	var wg sync.WaitGroup
+	totalcoroutine := 50
+
+	user := testUser{
+		Username: "electwix",
+		Password: "1234",
+	}
+
+	s.Run("Request Concurrent select n-exists", func() {
+		for i := 0; i < totalcoroutine; i++ {
+			wg.Add(1)
+			go func(j int) {
+				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				s.Require().Equal(err, surrealdb.ErrNoRow)
+				wg.Done()
+			}(i)
+		}
+	})
+	wg.Wait()
+
+	s.Run("10 Request Concurrent create", func() {
+		for i := 0; i < totalcoroutine; i++ {
+			wg.Add(1)
+			go func(j int) {
+				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
+				s.Require().NoError(err)
+				wg.Done()
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	s.Run("10 Request Concurrent select exist", func() {
+		for i := 0; i < totalcoroutine; i++ {
+			wg.Add(1)
+			go func(j int) {
+				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				s.Require().NoError(err)
+				wg.Done()
+			}(i)
+		}
+	})
+	wg.Wait()
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
