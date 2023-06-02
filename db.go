@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"reflect"
+	"regexp"
 
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -318,4 +319,12 @@ func isSlice(possibleSlice interface{}) bool {
 	}
 
 	return slice
+}
+
+func IsDuplicateUniqueIdx(err error) bool {
+	if err == nil {
+		return false
+	}
+	matches, _ := regexp.MatchString(`Database index \[.*] already contains \[.*]`, err.Error())
+	return matches
 }
