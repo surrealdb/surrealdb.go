@@ -243,7 +243,7 @@ func (db *DB) Select(what string) (interface{}, error) {
 	return db.send("select", what)
 }
 
-// Creates a table or record in the database like a POST request.
+// Create a table or record in the database like a POST request.
 func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
 	return db.send("create", thing, data)
 }
