@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -436,4 +437,58 @@ func assertContains[K fmt.Stringer](s *SurrealDBTestSuite, input []K, matcher fu
 	}
 	s.NotEmptyf(matching, "Input %+v did not contain matching element", fmt.Sprintf("%+v", input))
 	return matching
+}
+
+func TestIsDuplicateUniqueIdx(t *testing.T) {
+	type args struct {
+		err error
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "No special characters",
+			args: args{
+				err: errors.New("sending request failed for method 'create': There was a problem with the database: Database index `userNameIdx` already contains 'Mark', with record `user:⟨2⟩`"),
+			},
+			want: true,
+		},
+		{
+			name: "With special characters",
+			args: args{
+				err: errors.New("sending request failed for method 'create': There was a problem with the database: Database index \"''``\" already contains '\\', with record `user:⟨{ foo = []}⟩`"),
+			},
+			want: true,
+		},
+		{
+			name: "Wrong substring in the middle",
+			args: args{
+				err: errors.New("sending request failed for method 'create': There was a problem with the database: Database index `userNameIdx` THIS MUST NOT PASS, with record `user:⟨2⟩`"),
+			},
+			want: false,
+		},
+		{
+			name: "With object field",
+			args: args{
+				err: errors.New(" Database index `uniqueBlob` already contains { date: 'today', location: 'London' }, with record `foo:2`"),
+			},
+			want: true,
+		},
+		{
+			name: "Case sensitive",
+			args: args{
+				err: errors.New(" database index `uniqueBlob` already contains { date: 'today', location: 'London' }, with record `foo:2`"),
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := surrealdb.IsDuplicateUniqueIdx(tt.args.err); got != tt.want {
+				t.Errorf("IsDuplicateUniqueIdx() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

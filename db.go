@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"reflect"
+	"regexp"
 
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -318,4 +319,16 @@ func isSlice(possibleSlice interface{}) bool {
 	}
 
 	return slice
+}
+
+// IsDuplicateUniqueIdx returns if the error was caused by
+// trying to create a record with a field that is duplicated
+// in an unique index. This function will return false if the
+// error was caused by a duplicated ID.
+func IsDuplicateUniqueIdx(err error) bool {
+	if err == nil {
+		return false
+	}
+	match, _ := regexp.MatchString(`Database index .* already contains .*, with record .*`, err.Error())
+	return match
 }
