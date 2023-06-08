@@ -428,14 +428,14 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 
 func (s *SurrealDBTestSuite) TestConcurrent() {
 	var wg sync.WaitGroup
-	totalcoroutine := 50
+	totalcoroutine := 100
 
 	user := testUser{
 		Username: "electwix",
 		Password: "1234",
 	}
 
-	s.Run("Request Concurrent select n-exists", func() {
+	s.Run(fmt.Sprintf("%d Request Concurrent select n-exists", totalcoroutine), func() {
 		for i := 0; i < totalcoroutine; i++ {
 			wg.Add(1)
 			go func(j int) {
@@ -447,7 +447,7 @@ func (s *SurrealDBTestSuite) TestConcurrent() {
 	})
 	wg.Wait()
 
-	s.Run("10 Request Concurrent create", func() {
+	s.Run(fmt.Sprintf("%d Concurrent create", totalcoroutine), func() {
 		for i := 0; i < totalcoroutine; i++ {
 			wg.Add(1)
 			go func(j int) {
@@ -459,7 +459,7 @@ func (s *SurrealDBTestSuite) TestConcurrent() {
 		wg.Wait()
 	})
 
-	s.Run("10 Request Concurrent select exist", func() {
+	s.Run(fmt.Sprintf("%d 10 Request Concurrent select exist", totalcoroutine), func() {
 		for i := 0; i < totalcoroutine; i++ {
 			wg.Add(1)
 			go func(j int) {
