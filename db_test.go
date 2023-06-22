@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -422,6 +423,52 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user[0]))
 		s.Require().Equal(err, surrealdb.ErrNoRow)
 		s.Equal(data, testUser{})
+	})
+}
+
+func (s *SurrealDBTestSuite) TestConcurrentOperations() {
+	var wg sync.WaitGroup
+	totalGoroutines := 100
+
+	user := testUser{
+		Username: "electwix",
+		Password: "1234",
+	}
+
+	s.Run(fmt.Sprintf("Concurrent select non existent rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				s.Require().Equal(err, surrealdb.ErrNoRow)
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	s.Run(fmt.Sprintf("Concurrent create rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
+				s.Require().NoError(err)
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	s.Run(fmt.Sprintf("Concurrent select exist rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				s.Require().NoError(err)
+			}(i)
+		}
+		wg.Wait()
 	})
 }
 
