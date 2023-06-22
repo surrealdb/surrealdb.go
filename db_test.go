@@ -428,15 +428,15 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 
 func (s *SurrealDBTestSuite) TestConcurrent() {
 	var wg sync.WaitGroup
-	totalcoroutine := 100
+	totalGoroutines := 100
 
 	user := testUser{
 		Username: "electwix",
 		Password: "1234",
 	}
 
-	s.Run(fmt.Sprintf("%d Request Concurrent select n-exists", totalcoroutine), func() {
-		for i := 0; i < totalcoroutine; i++ {
+	s.Run(fmt.Sprintf("%d Request Concurrent select n-exists", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
 				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
@@ -447,8 +447,8 @@ func (s *SurrealDBTestSuite) TestConcurrent() {
 	})
 	wg.Wait()
 
-	s.Run(fmt.Sprintf("%d Concurrent create", totalcoroutine), func() {
-		for i := 0; i < totalcoroutine; i++ {
+	s.Run(fmt.Sprintf("%d Concurrent create", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
 				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
@@ -459,8 +459,8 @@ func (s *SurrealDBTestSuite) TestConcurrent() {
 		wg.Wait()
 	})
 
-	s.Run(fmt.Sprintf("%d 10 Request Concurrent select exist", totalcoroutine), func() {
-		for i := 0; i < totalcoroutine; i++ {
+	s.Run(fmt.Sprintf("%d 10 Request Concurrent select exist", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
 				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
