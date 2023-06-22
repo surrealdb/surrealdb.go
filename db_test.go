@@ -426,7 +426,7 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 	})
 }
 
-func (s *SurrealDBTestSuite) TestConcurrent() {
+func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 	var wg sync.WaitGroup
 	totalGoroutines := 100
 
@@ -435,41 +435,41 @@ func (s *SurrealDBTestSuite) TestConcurrent() {
 		Password: "1234",
 	}
 
-	s.Run(fmt.Sprintf("%d Request Concurrent select n-exists", totalGoroutines), func() {
+	s.Run(fmt.Sprintf("Concurrent select non existent rows %d", totalGoroutines), func() {
 		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
+				defer wg.Done()
 				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
 				s.Require().Equal(err, surrealdb.ErrNoRow)
-				wg.Done()
-			}(i)
-		}
-	})
-	wg.Wait()
-
-	s.Run(fmt.Sprintf("%d Concurrent create", totalGoroutines), func() {
-		for i := 0; i < totalGoroutines; i++ {
-			wg.Add(1)
-			go func(j int) {
-				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
-				s.Require().NoError(err)
-				wg.Done()
 			}(i)
 		}
 		wg.Wait()
 	})
 
-	s.Run(fmt.Sprintf("%d 10 Request Concurrent select exist", totalGoroutines), func() {
+	s.Run(fmt.Sprintf("Concurrent create rows %d", totalGoroutines), func() {
 		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
-				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				defer wg.Done()
+				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
 				s.Require().NoError(err)
-				wg.Done()
 			}(i)
 		}
+		wg.Wait()
 	})
-	wg.Wait()
+
+	s.Run(fmt.Sprintf("Concurrent select exist rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				s.Require().NoError(err)
+			}(i)
+		}
+		wg.Wait()
+	})
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
