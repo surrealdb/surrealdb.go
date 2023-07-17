@@ -405,8 +405,6 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 			vals[fmt.Sprintf("user_%d", idx)] = user.Username
 			vals[fmt.Sprintf("pass_%d", idx)] = user.Password
 		}
-		fmt.Printf("query: %s\n", strings.Join(query, ""))
-		fmt.Printf("time for create: %s\n", time.Now().Format("2006-01-02 15:04:05.000000000"))
 
 		data, err := s.db.Query(strings.Join(query, ""), vals)
 		s.Require().NoError(err)
@@ -428,8 +426,6 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response.
-		fmt.Printf("user 0: %v\n", result[0])
-		fmt.Printf("user 1: %v\n", result[1])
 		s.Equal("abcdef", result[0].Username)
 		s.Equal("ghijkl", result[1].Username)
 	})
@@ -460,7 +456,6 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 
 	s.Run("delete record query", func() {
 		// Delete first user.
-		fmt.Printf("user: %s\n", users[0].ID)
 		data, err := s.db.Delete(users[0].ID)
 		s.Require().NoError(err)
 
@@ -478,7 +473,6 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		s.Equal("ghijkl", result[0].Username) // abcdef was deleted above.
 
 		// Delete second user.
-		fmt.Printf("user: %s\n", users[1].ID)
 		data, err = s.db.Delete(users[1].ID)
 		s.Require().NoError(err)
 
