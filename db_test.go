@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -371,6 +372,162 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 
 		s.Require().NoError(err)
 		s.Nil(nulldata)
+	})
+}
+
+func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
+	type userForAll struct {
+		ID       string `json:"id,omitempty"`
+		Username string `json:"username,omitempty"`
+		Password string `json:"password,omitempty"`
+	}
+	users := []userForAll{
+		{
+			ID:       "user_for_all:abc",
+			Username: "abcdef",
+			Password: "1234",
+		},
+		{
+			ID:       "user_for_all:ghi",
+			Username: "ghijkl",
+			Password: "5678",
+		},
+	}
+
+	s.Run("raw create query", func() {
+		query := []string{}
+		vals := map[string]interface{}{}
+		for idx, user := range users {
+			query = append(query,
+				fmt.Sprintf("CREATE user_for_all SET id = $id_%d, Username = $user_%d, Password = $pass_%d;",
+					idx, idx, idx))
+			vals[fmt.Sprintf("id_%d", idx)] = user.ID
+			vals[fmt.Sprintf("user_%d", idx)] = user.Username
+			vals[fmt.Sprintf("pass_%d", idx)] = user.Password
+		}
+		fmt.Printf("query: %s\n", strings.Join(query, ""))
+		fmt.Printf("time for create: %s\n", time.Now().Format("2006-01-02 15:04:05.000000000"))
+
+		data, err := s.db.Query(strings.Join(query, ""), vals)
+		s.Require().NoError(err)
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+
+		// The result is ordered based on the server response, which is ordered
+		// by the record ID.
+		s.Equal("abcdef", result[0].Username)
+		s.Equal("ghijkl", result[1].Username)
+	})
+
+	s.Run("raw select query", func() {
+		data, err := s.db.Query("SELECT * FROM user_for_all", nil)
+		s.Require().NoError(err)
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+
+		// The result is ordered based on the server response.
+		fmt.Printf("user 0: %v\n", result[0])
+		fmt.Printf("user 1: %v\n", result[1])
+		s.Equal("abcdef", result[0].Username)
+		s.Equal("ghijkl", result[1].Username)
+	})
+
+	s.Run("select query", func() {
+		data, err := s.db.Select(users[0].ID)
+		s.Require().NoError(err)
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+
+		// The result is ordered based on the server response.
+		s.Equal("abcdef", result[0].Username)
+		s.Require().Len(result, 1) // Second item is not returned.
+	})
+
+	s.Run("select bulk query", func() {
+		data, err := s.db.Select("user_for_all")
+		s.Require().NoError(err)
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+
+		// The result is ordered based on the server response.
+		s.Equal("abcdef", result[0].Username)
+		s.Equal("ghijkl", result[1].Username)
+	})
+
+	s.Run("delete record query", func() {
+		// Delete first user.
+		fmt.Printf("user: %s\n", users[0].ID)
+		data, err := s.db.Delete(users[0].ID)
+		s.Require().NoError(err)
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+
+		s.Require().NoError(err)
+		s.Empty(result[0])
+
+		// Double check that the second entry is still there.
+		data, err = s.db.Select("user_for_all")
+		s.Require().NoError(err)
+
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Equal("ghijkl", result[0].Username) // abcdef was deleted above.
+
+		// Delete second user.
+		fmt.Printf("user: %s\n", users[1].ID)
+		data, err = s.db.Delete(users[1].ID)
+		s.Require().NoError(err)
+
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Empty(result[0])
+
+		// Double check that there is no entry.
+		data, err = s.db.Select("user_for_all")
+		s.Require().NoError(err)
+
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Empty(result)
+	})
+
+	s.Run("use raw query with broken data", func() {
+		data, err := s.db.Query(`
+        CREATE user_dummy:xxxx SET Username = "x", Password = "xxxx";
+        CREATE user_dummy:y    SET Username = "y", Password = "y";
+        CREATE user_dummy:xxxx SET Username = "x", Password = "INVALID"; // NOTE: Conflicting ID.
+        `, nil)
+		s.Require().NoError(err) // The ws communication itself does not return an error.
+
+		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+
+		s.Require().ErrorContains(err, "already exists") // The last CREATE query fails with duplicate error.
+		s.Equal("xxxx", result[0].Password)
+		s.Equal("y", result[1].Password)
+
+		// Delete users for cleanup.
+		data, err = s.db.Delete("user_dummy:xxxx")
+		s.Require().NoError(err)
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Empty(result[0])
+
+		data, err = s.db.Delete("user_dummy:y")
+		s.Require().NoError(err)
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Empty(result[0])
+
+		// Double check that there is no entry.
+		data, err = s.db.Select("user_dummy")
+		s.Require().NoError(err)
+		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		s.Require().NoError(err)
+		s.Empty(result)
 	})
 }
 
