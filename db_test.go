@@ -127,7 +127,6 @@ func (s *SurrealDBTestSuite) TestDelete() {
 }
 
 func (s *SurrealDBTestSuite) TestInsert() {
-
 	s.Run("raw map works", func() {
 		userData, err := s.db.Insert("user", map[string]interface{}{
 			"username": "johnny",
@@ -161,12 +160,11 @@ func (s *SurrealDBTestSuite) TestInsert() {
 	})
 
 	s.Run("Multiple insert works", func() {
-		var userInsert []testUser
+		userInsert := make([]testUser, 0)
 		userInsert = append(userInsert, testUser{
 			Username: "johnny1",
 			Password: "123",
-		})
-		userInsert = append(userInsert, testUser{
+		}, testUser{
 			Username: "johnny2",
 			Password: "123",
 		})
