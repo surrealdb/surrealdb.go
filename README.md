@@ -109,6 +109,19 @@ func main() {
 
 Full documentation is available at [surrealdb doc](https://surrealdb.com/docs/integration/libraries/golang)
 
+## Building
+
+You can run the Makefile helper to run and build the project
+
+```
+make build
+make test
+make lint
+```
+
+You also need to be running SurrealDB alongside the tests.
+We recommend using the nightly build, as development may rely on the latest functionality.
+
 
 ## Helper functions
 ### Smart Marshal
