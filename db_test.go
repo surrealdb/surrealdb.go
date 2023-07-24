@@ -126,6 +126,64 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 }
 
+func (s *SurrealDBTestSuite) TestInsert() {
+	s.Run("raw map works", func() {
+		userData, err := s.db.Insert("user", map[string]interface{}{
+			"username": "johnny",
+			"password": "123",
+		})
+		s.Require().NoError(err)
+
+		// unmarshal the data into a user struct
+		var user []testUser
+		err = surrealdb.Unmarshal(userData, &user)
+		s.Require().NoError(err)
+
+		s.Equal("johnny", user[0].Username)
+		s.Equal("123", user[0].Password)
+	})
+
+	s.Run("Single insert works", func() {
+		userData, err := s.db.Insert("user", testUser{
+			Username: "johnny",
+			Password: "123",
+		})
+		s.Require().NoError(err)
+
+		// unmarshal the data into a user struct
+		var user []testUser
+		err = surrealdb.Unmarshal(userData, &user)
+		s.Require().NoError(err)
+
+		s.Equal("johnny", user[0].Username)
+		s.Equal("123", user[0].Password)
+	})
+
+	s.Run("Multiple insert works", func() {
+		userInsert := make([]testUser, 0)
+		userInsert = append(userInsert, testUser{
+			Username: "johnny1",
+			Password: "123",
+		}, testUser{
+			Username: "johnny2",
+			Password: "123",
+		})
+		userData, err := s.db.Insert("user", userInsert)
+		s.Require().NoError(err)
+
+		// unmarshal the data into a user struct
+		var users []testUser
+		err = surrealdb.Unmarshal(userData, &users)
+		s.Require().NoError(err)
+		s.Len(users, 2)
+
+		assertContains(s, users, func(user testUser) bool {
+			return user == users[0] ||
+				user == users[1]
+		})
+	})
+}
+
 func (s *SurrealDBTestSuite) TestCreate() {
 	s.Run("raw map works", func() {
 		userData, err := s.db.Create("users", map[string]interface{}{
