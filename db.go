@@ -268,6 +268,11 @@ func (db *DB) Delete(what string) (interface{}, error) {
 	return db.send("delete", what)
 }
 
+// Insert a table or a row from the database like a POST request.
+func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
+	return db.send("insert", what, data)
+}
+
 // --------------------------------------------------
 // Private methods
 // --------------------------------------------------
@@ -292,6 +297,8 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	case "change":
 		return db.resp(method, params, resp)
 	case "modify":
+		return db.resp(method, params, resp)
+	case "insert":
 		return db.resp(method, params, resp)
 	default:
 		return resp, nil
