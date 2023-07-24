@@ -21,7 +21,7 @@ body:
     id: check
     attributes:
       label: Is there an existing issue for this?
-      description: Please search [our issues](https://github.com/surrealdb/surrealdb/issues) to see if this bug already exists.
+      description: Please search [our issues](https://github.com/surrealdb/surrealdb.go/issues) to see if this bug already exists.
       options:
       - label: I have searched the existing issues
         required: true
