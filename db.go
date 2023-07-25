@@ -7,6 +7,7 @@ import (
 
 	"reflect"
 
+	"github.com/surrealdb/surrealdb.go/internal/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
@@ -223,6 +224,10 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 func (db *DB) Live(table string) (interface{}, error) {
 	return db.send("live", table)
+}
+
+func (db *DB) LiveNotifications(id string) chan rpc.RPCResponse {
+	return db.ws.LiveNotifications(id)
 }
 
 func (db *DB) Kill(query string) (interface{}, error) {

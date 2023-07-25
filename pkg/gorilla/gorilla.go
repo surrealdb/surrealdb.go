@@ -103,6 +103,46 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
 }
 
+func (ws *WebSocket) LiveNotifications(id string) chan rpc.RPCResponse {
+	fmt.Println("LiveNotifications", id)
+	c, err := ws.createResponseChannel(id)
+	if err != nil {
+		ws.logger.Logger.Err(err)
+		ws.logger.LogChannel <- err.Error()
+	}
+	go func() {
+		// listen to messages from the server in a loop and write them to the channel
+		for {
+			select {
+			case <-ws.close:
+				return
+			default:
+				fmt.Println("hello")
+				var res rpc.RPCResponse
+				err := ws.read(&res)
+				fmt.Println("res", res)
+				fmt.Println("err", err)
+				if err != nil {
+					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
+					continue
+				}
+				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res))
+				fmt.Println("responseChan", responseChan)
+				if !ok {
+					err = errors.New("ResponseChannel is not ok")
+					ws.logger.Logger.Err(err)
+					ws.logger.LogChannel <- err.Error()
+					continue
+				}
+				responseChan <- res
+			}
+		}
+	}()
+	fmt.Println("returning channel", c)
+	return c
+}
+
 var (
 	ErrIDInUse           = errors.New("id already in use")
 	ErrTimeout           = errors.New("timeout")
@@ -173,11 +213,12 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 }
 
 func (ws *WebSocket) read(v interface{}) error {
-	_, data, err := ws.Conn.ReadMessage()
+	msgType, data, err := ws.Conn.ReadMessage()
+	fmt.Println("msgType", msgType)
+	fmt.Println("data", string(data))
 	if err != nil {
 		return err
 	}
-
 	return json.Unmarshal(data, v)
 }
 

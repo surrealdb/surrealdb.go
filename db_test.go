@@ -109,6 +109,36 @@ func signin(s *SurrealDBTestSuite) interface{} {
 	return signin
 }
 
+func (s *SurrealDBTestSuite) TestLive() {
+	s.Run("Live notifications", func() {
+		// setup live notifications
+		// s.T().Skip("Live notifications are not supported by this database")
+		live, err := s.db.Live("users")
+		s.Require().NoError(err)
+		// get type of live
+		fmt.Printf("live type: %T\n", live)
+		notifications := s.db.LiveNotifications(live.(string))
+		// create a user
+		_, e := s.db.Create("users", map[string]interface{}{
+			"username": "johnny",
+			"password": "123",
+		})
+		s.Require().NoError(e)
+
+		fmt.Println("are we here")
+		// wait for the notification
+		select {
+		case notification := <-notifications:
+			fmt.Println("notification received", notification)
+			// s.Require().Equal("users", notification.Table)
+			// s.Require().Equal("create", notification.Method)
+			// s.Require().Equal("johnny", notification.Data.(map[string]interface{})["username"])
+		case <-time.After(5 * time.Second):
+			s.Fail("Timed out waiting for notification")
+		}
+
+	})
+}
 func (s *SurrealDBTestSuite) TestDelete() {
 	userData, err := s.db.Create("users", testUser{
 		Username: "johnny",
