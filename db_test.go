@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -69,10 +70,13 @@ func (s *SurrealDBTestSuite) TearDownSuite() {
 	s.db.Close()
 }
 
-func (t testUser) String() string {
-	// TODO I found out we can use go generate stringer to generate these, but it was a bit confusing and too much
-	// overhead atm, so doing this as a shortcut
-	return fmt.Sprintf("testUser{Username: %+v, Password: %+v, ID: %+v}", t.Username, t.Password, t.ID)
+func (t testUser) String() (str string, err error) {
+	byteData, err := json.Marshal(t)
+	if err != nil {
+		return
+	}
+	str = string(byteData)
+	return
 }
 
 // openConnection opens a new connection to the database
@@ -207,9 +211,8 @@ func (s *SurrealDBTestSuite) TestInsert() {
 		s.Require().NoError(err)
 		s.Len(users, 2)
 
-		assertContains(s, users, func(user testUser) bool {
-			return user == users[0] ||
-				user == users[1]
+		assertContains[testUser](s, users, func(user testUser) bool {
+			return s.Contains(users, user)
 		})
 	})
 }
@@ -267,9 +270,9 @@ func (s *SurrealDBTestSuite) TestCreate() {
 		var users []testUser
 		err = surrealdb.Unmarshal(userData, &users)
 		s.Require().NoError(err)
+
 		assertContains(s, users, func(user testUser) bool {
-			return user == data[0] ||
-				user == data[1]
+			return s.Contains(users, user)
 		})
 	})
 }
@@ -315,31 +318,48 @@ func (s *SurrealDBTestSuite) TestSelect() {
 }
 
 func (s *SurrealDBTestSuite) TestUpdate() {
-	userData, err := s.db.Create("users", testUser{
-		Username: "johnny",
-		Password: "123",
-	})
-	s.Require().NoError(err)
+	newPassword := "456"
+	users := []testUser{
+		{Username: "Johnny", Password: "123"},
+		{Username: "Mat", Password: "555"},
+	}
 
-	// unmarshal the data into a user struct
-	var createdUser []testUser
-	err = surrealdb.Unmarshal(userData, &createdUser)
-	s.Require().NoError(err)
-	s.Len(createdUser, 1)
+	// create users
+	var createdUsers []testUser
+	for _, v := range users {
+		createdUser, err := s.db.Create("users", v)
+		s.Require().NoError(err)
+		var tempUserArr []testUser
+		err = surrealdb.Unmarshal(createdUser, &tempUserArr)
+		s.Require().NoError(err)
+		createdUsers = append(createdUsers, tempUserArr...)
+	}
 
-	createdUser[0].Password = "456"
+	createdUsers[0].Password = newPassword
 
 	// Update the user
-	userData, err = s.db.Update("users", &createdUser[0])
+	UpdatedUserRaw, err := s.db.Update(createdUsers[0].ID, createdUsers[0])
 	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
-	var updatedUser []testUser
-	err = surrealdb.Unmarshal(userData, &updatedUser)
+	var updatedUser testUser
+	err = surrealdb.Unmarshal(UpdatedUserRaw, &updatedUser)
 	s.Require().NoError(err)
 
-	// TODO: check if this updates only the user with the same ID or all users
-	s.Equal("456", updatedUser[0].Password)
+	// Check if password changes
+	s.Equal(newPassword, updatedUser.Password)
+
+	// select controlUser
+	controlUserRaw, err := s.db.Select(createdUsers[1].ID)
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	var controlUser testUser
+	err = surrealdb.Unmarshal(controlUserRaw, &controlUser)
+	s.Require().NoError(err)
+
+	// check control user is changed or not
+	s.Equal(createdUsers[1], controlUser)
 }
 
 func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
@@ -562,11 +582,11 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
-func assertContains[K fmt.Stringer](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
+func assertContains[K any](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
 	matching := make([]K, 0)
-	for i := range input {
-		if matcher(input[i]) {
-			matching = append(matching, input[i])
+	for _, v := range input {
+		if matcher(v) {
+			matching = append(matching, v)
 		}
 	}
 	s.NotEmptyf(matching, "Input %+v did not contain matching element", fmt.Sprintf("%+v", input))
