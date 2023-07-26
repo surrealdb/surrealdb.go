@@ -114,8 +114,6 @@ func signin(s *SurrealDBTestSuite) interface{} {
 }
 
 func (s *SurrealDBTestSuite) TestLive() {
-	// skip
-	// s.T().Skip("Live is not supported yet")
 	s.Run("Live notifications", func() {
 		live, err := s.db.Live("users")
 		s.Require().NoError(err)
