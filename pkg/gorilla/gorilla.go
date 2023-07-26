@@ -103,44 +103,14 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) LiveNotifications(id string) chan rpc.RPCResponse {
-	fmt.Println("LiveNotifications", id)
+func (ws *WebSocket) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
 	c, err := ws.createResponseChannel(id)
 	if err != nil {
 		ws.logger.Logger.Err(err)
 		ws.logger.LogChannel <- err.Error()
+		return nil, err
 	}
-	go func() {
-		// listen to messages from the server in a loop and write them to the channel
-		for {
-			select {
-			case <-ws.close:
-				return
-			default:
-				fmt.Println("hello")
-				var res rpc.RPCResponse
-				err := ws.read(&res)
-				fmt.Println("res", res)
-				fmt.Println("err", err)
-				if err != nil {
-					ws.logger.Logger.Err(err)
-					ws.logger.LogChannel <- err.Error()
-					continue
-				}
-				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res))
-				fmt.Println("responseChan", responseChan)
-				if !ok {
-					err = errors.New("ResponseChannel is not ok")
-					ws.logger.Logger.Err(err)
-					ws.logger.LogChannel <- err.Error()
-					continue
-				}
-				responseChan <- res
-			}
-		}
-	}()
-	fmt.Println("returning channel", c)
-	return c
+	return c, nil
 }
 
 var (
@@ -213,9 +183,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 }
 
 func (ws *WebSocket) read(v interface{}) error {
-	msgType, data, err := ws.Conn.ReadMessage()
-	fmt.Println("msgType", msgType)
-	fmt.Println("data", string(data))
+	_, data, err := ws.Conn.ReadMessage()
 	if err != nil {
 		return err
 	}
@@ -247,15 +215,28 @@ func (ws *WebSocket) initialize() {
 					ws.logger.LogChannel <- err.Error()
 					continue
 				}
-				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
-				if !ok {
-					err = errors.New("ResponseChannel is not ok")
-					ws.logger.Logger.Err(err)
-					ws.logger.LogChannel <- err.Error()
-					continue
+				var responseChan chan rpc.RPCResponse
+				var ok bool
+				if res.ID != nil && res.ID != "" {
+					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
+					if !ok {
+						err = errors.New("ResponseChannel is not ok")
+						ws.logger.Logger.Err(err)
+						ws.logger.LogChannel <- err.Error()
+						continue
+					}
+					responseChan <- res
+					close(responseChan)
+				} else {
+					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", res.Result.(map[string]interface{})["id"]))
+					if !ok {
+						err = errors.New("ResponseChannel is not ok")
+						ws.logger.Logger.Err(err)
+						ws.logger.LogChannel <- err.Error()
+						continue
+					}
+					responseChan <- res
 				}
-				responseChan <- res
-				close(responseChan)
 			}
 		}
 	}()

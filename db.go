@@ -226,7 +226,7 @@ func (db *DB) Live(table string) (interface{}, error) {
 	return db.send("live", table)
 }
 
-func (db *DB) LiveNotifications(id string) chan rpc.RPCResponse {
+func (db *DB) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
 	return db.ws.LiveNotifications(id)
 }
 
