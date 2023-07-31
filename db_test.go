@@ -411,7 +411,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 
 	s.Run("raw create query", func() {
 		QueryStr := "Create users set Username = $user, Password = $pass"
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Query(QueryStr, map[string]interface{}{
+		dataArr, err := surrealdb.SmartUnmarshal[testUser](s.db.Query(QueryStr, map[string]interface{}{
 			"user": user[0].Username,
 			"pass": user[0].Password,
 		}))
@@ -422,7 +422,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 	})
 
 	s.Run("raw select query", func() {
-		dataArr, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Query("Select * from $record", map[string]interface{}{
+		dataArr, err := surrealdb.SmartUnmarshal[testUser](s.db.Query("Select * from $record", map[string]interface{}{
 			"record": user[0].ID,
 		}))
 
@@ -434,21 +434,21 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 		data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
 
 		s.Require().NoError(err)
-		s.Equal("electwix", data.Username)
+		s.Equal("electwix", data[0].Username)
 	})
 
 	s.Run("select array query", func() {
-		data, err := surrealdb.SmartUnmarshal[[]testUser](s.db.Select("users"))
+		data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select("users"))
 
 		s.Require().NoError(err)
 		s.Equal("electwix", data[0].Username)
 	})
 
 	s.Run("delete record query", func() {
-		nulldata, err := surrealdb.SmartUnmarshal[*testUser](s.db.Delete(user[0].ID))
+		data, err := surrealdb.SmartUnmarshal[testUser](s.db.Delete(user[0].ID))
 
 		s.Require().NoError(err)
-		s.Nil(nulldata)
+		s.Len(data, 0)
 	})
 }
 
@@ -462,45 +462,35 @@ func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
 	s.Run("create with SmartMarshal query", func() {
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Create, user[0]))
 		s.Require().NoError(err)
-		s.Equal(user[0], data)
+		s.Len(data, 1)
+		s.Equal(user[0], data[0])
 	})
 
 	s.Run("select with SmartMarshal query", func() {
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user[0]))
 		s.Require().NoError(err)
-		s.Equal(user[0], data)
-	})
-
-	s.Run("select with nil pointer SmartMarshal query", func() {
-		var nilptr *testUser
-		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(s.db.Select, &nilptr))
-		s.Require().Equal(err, surrealdb.ErrNotStruct)
-		s.Equal(nilptr, data)
-	})
-
-	s.Run("select with pointer SmartMarshal query", func() {
-		data, err := surrealdb.SmartUnmarshal[*testUser](surrealdb.SmartMarshal(s.db.Select, &user[0]))
-		s.NoError(err)
-		s.Equal(&user[0], data)
+		s.Len(data, 1)
+		s.Equal(user[0], data[0])
 	})
 
 	s.Run("update with SmartMarshal query", func() {
 		user[0].Password = "test123"
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Update, user[0]))
 		s.Require().NoError(err)
-		s.Equal(user[0].Password, data.Password)
+		s.Len(data, 1)
+		s.Equal(user[0].Password, data[0].Password)
 	})
 
 	s.Run("delete with SmartMarshal query", func() {
-		nulldata, err := surrealdb.SmartMarshal(s.db.Delete, &user[0])
+		data, err := surrealdb.SmartMarshal[testUser](s.db.Delete, user[0])
 		s.Require().NoError(err)
-		s.Nil(nulldata)
+		s.Nil(data)
 	})
 
 	s.Run("check if data deleted SmartMarshal query", func() {
 		data, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Select, user[0]))
 		s.Require().Equal(err, surrealdb.ErrNoRow)
-		s.Equal(data, testUser{})
+		s.Len(data, 0)
 	})
 }
 

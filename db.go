@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,37 +96,52 @@ func UnmarshalRaw(rawData, v interface{}) (ok bool, err error) {
 type RawQuery[I any] struct {
 	Status string `json:"status"`
 	Time   string `json:"time"`
-	Result I      `json:"result"`
+	Result []I    `json:"result"`
 	Detail string `json:"detail"`
 }
 
 // SmartUnmarshal using generics for return desired type.
 // Supports both raw and normal queries.
-func SmartUnmarshal[I any](respond interface{}, wrapperError error) (data I, err error) {
+func SmartUnmarshal[I any](respond interface{}, wrapperError error) (outputs []I, err error) {
 	if wrapperError != nil {
-		return data, wrapperError
+		return outputs, wrapperError
 	}
-	var bytes []byte
-	if arrResp, isArr := respond.([]interface{}); len(arrResp) > 0 {
-		if dataMap, ok := arrResp[0].(map[string]interface{}); ok && isArr {
-			if _, ok := dataMap["status"]; ok {
-				if bytes, err = json.Marshal(respond); err == nil {
-					var raw []RawQuery[I]
-					if err = json.Unmarshal(bytes, &raw); err == nil {
-						if raw[0].Status != statusOK {
-							err = fmt.Errorf("%s: %s", raw[0].Status, raw[0].Detail)
-						}
-						data = raw[0].Result
+	// Handle delete
+	if respond == nil {
+		return outputs, nil
+	}
+	data, err := json.Marshal(respond)
+	if err != nil {
+		return outputs, err
+	}
+	// Needed for checking fields
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if _, isArr := respond.([]interface{}); !isArr {
+		// Non Arr Normal
+		var output I
+		err = decoder.Decode(&output)
+		if err == nil {
+			outputs = append(outputs, output)
+		}
+	} else {
+		// Arr Normal
+		if err = decoder.Decode(&outputs); err != nil {
+			// Arr Raw
+			var rawArr []RawQuery[I]
+			if err = json.Unmarshal(data, &rawArr); err == nil {
+				outputs = make([]I, 0)
+				for _, raw := range rawArr {
+					if raw.Status != statusOK {
+						err = errors.Join(err, fmt.Errorf("%s: %s", raw.Status, raw.Detail))
+					} else {
+						outputs = append(outputs, raw.Result...)
 					}
 				}
-				return data, err
 			}
 		}
 	}
-	if bytes, err = json.Marshal(respond); err == nil {
-		err = json.Unmarshal(bytes, &data)
-	}
-	return data, err
+	return outputs, err
 }
 
 // Used for define table name, it has no value.
@@ -137,7 +153,7 @@ var (
 	ErrNotValidFunc = errors.New("invalid function")
 )
 
-// SmartUnmarshal can be used with all DB methods with generics and type safety.
+// Smartmarshal can be used with all DB methods with generics and type safety.
 // This handles errors and can use any struct tag with `BaseModel` type.
 // Warning: "ID" field is case sensitive and expect string.
 // Upon failure, the following will happen
