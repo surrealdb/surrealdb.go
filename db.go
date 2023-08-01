@@ -133,7 +133,7 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (outputs []I
 				outputs = make([]I, 0)
 				for _, raw := range rawArr {
 					if raw.Status != statusOK {
-						err = errors.Join(err, fmt.Errorf("%s: %s", raw.Status, raw.Detail))
+						err = errors.New(err.Error() + fmt.Sprintf("%s: %s\n", raw.Status, raw.Detail))
 					} else {
 						outputs = append(outputs, raw.Result...)
 					}
