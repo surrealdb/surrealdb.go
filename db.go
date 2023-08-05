@@ -149,13 +149,63 @@ func handleInterfaces[I any](input interface{}) ([]I, error) {
 
 	for _, i := range inputs {
 		data, err := handleInterfaces[I](i)
-		errs = append(errs, err)
+		if err != nil {
+			errs = append(errs, err)
+		}
 		result = append(result, data...)
 	}
 	if len(errs) > 0 {
-		return result, errors.Join(errs...)
+		// Go 1.20 supports `errors.Join`, and the below is essentially
+		// the copy of its implementation. In order to support Go
+		// version prior to v1.20, adding this explicit handling, but
+		// should be replaced with the official implementation once we
+		// hit Go 1.20 as the base.
+		e := &joinError{errs: errs}
+		return result, e
 	}
 	return result, nil
+}
+
+type joinError struct {
+	errs []error
+}
+
+func (e *joinError) Error() string {
+	var b []byte
+	for i, err := range e.errs {
+		if err == nil {
+			continue
+		}
+		if i > 0 {
+			b = append(b, '\n')
+		}
+		b = append(b, err.Error()...)
+	}
+	return string(b)
+}
+func (e *joinError) Is(target error) bool {
+	if e == nil || len(e.errs) == 0 {
+		return false
+	}
+
+	for _, err := range e.errs {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+
+	return false
+}
+func (e *joinError) Unwrap() error {
+	if len(e.errs) == 0 {
+		return nil
+	}
+	for _, err := range e.errs {
+		if err != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // errNotRawQuery is used only internally for checking error content, and thus
