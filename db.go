@@ -158,7 +158,9 @@ func handleInterfaces[I any](input interface{}) ([]I, error) {
 	return result, nil
 }
 
-var errNotRawQuery = fmt.Errorf("not a RawQuery")
+// errNotRawQuery is used only internally for checking error content, and thus
+// not exposed and should not be used from client directly.
+var errNotRawQuery = errors.New("not a RawQuery")
 
 // handleInput takes in an interface input and unmarshals it into the given
 // type, regardless of the input wrapped in RawQuery or not. The input is
