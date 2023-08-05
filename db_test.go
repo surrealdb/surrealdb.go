@@ -381,7 +381,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		Username string `json:"username,omitempty"`
 		Password string `json:"password,omitempty"`
 	}
-	users := []userForAll{
+	users := []testUser{
 		{
 			ID:       "user_for_all:abc",
 			Username: "abcdef",
@@ -398,6 +398,9 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		query := []string{}
 		vals := map[string]interface{}{}
 		for idx, user := range users {
+			// Note that this test uses a separate table
+			// `user_for_all`, so that it would not affect other
+			// test cases.
 			query = append(query,
 				fmt.Sprintf("CREATE user_for_all SET id = $id_%d, Username = $user_%d, Password = $pass_%d;",
 					idx, idx, idx))
@@ -409,7 +412,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err := s.db.Query(strings.Join(query, ""), vals)
 		s.Require().NoError(err)
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response, which is ordered
@@ -422,7 +425,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err := s.db.Query("SELECT * FROM user_for_all", nil)
 		s.Require().NoError(err)
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response.
@@ -434,7 +437,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err := s.db.Select(users[0].ID)
 		s.Require().NoError(err)
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response.
@@ -446,7 +449,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err := s.db.Select("user_for_all")
 		s.Require().NoError(err)
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response.
@@ -459,7 +462,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err := s.db.Delete(users[0].ID)
 		s.Require().NoError(err)
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 
 		s.Require().NoError(err)
 		s.Empty(result[0])
@@ -468,7 +471,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err = s.db.Select("user_for_all")
 		s.Require().NoError(err)
 
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Equal("ghijkl", result[0].Username) // abcdef was deleted above.
 
@@ -476,7 +479,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err = s.db.Delete(users[1].ID)
 		s.Require().NoError(err)
 
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Empty(result[0])
 
@@ -484,7 +487,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		data, err = s.db.Select("user_for_all")
 		s.Require().NoError(err)
 
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Empty(result)
 	})
@@ -497,7 +500,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
         `, nil)
 		s.Require().NoError(err) // The ws communication itself does not return an error.
 
-		result, err := surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err := surrealdb.SmartUnmarshalAll[testUser](data)
 
 		s.Require().ErrorContains(err, "already exists") // The last CREATE query fails with duplicate error.
 		s.Equal("xxxx", result[0].Password)
@@ -506,20 +509,20 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		// Delete users for cleanup.
 		data, err = s.db.Delete("user_dummy:xxxx")
 		s.Require().NoError(err)
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Empty(result[0])
 
 		data, err = s.db.Delete("user_dummy:y")
 		s.Require().NoError(err)
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Empty(result[0])
 
 		// Double check that there is no entry.
 		data, err = s.db.Select("user_dummy")
 		s.Require().NoError(err)
-		result, err = surrealdb.SmartUnmarshalAll[userForAll](data)
+		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
 		s.Empty(result)
 	})
