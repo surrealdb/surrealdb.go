@@ -453,6 +453,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 		s.Require().NoError(err)
 
 		// The result is ordered based on the server response.
+		s.Len(result, 2)
 		s.Equal("abcdef", result[0].Username)
 		s.Equal("ghijkl", result[1].Username)
 	})
@@ -473,6 +474,7 @@ func (s *SurrealDBTestSuite) TestSmartUnmarshalAll() {
 
 		result, err = surrealdb.SmartUnmarshalAll[testUser](data)
 		s.Require().NoError(err)
+		s.Len(result, 1)
 		s.Equal("ghijkl", result[0].Username) // abcdef was deleted above.
 
 		// Delete second user.
