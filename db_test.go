@@ -38,15 +38,22 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.wsImplementations = make(map[string]websocket.WebSocket)
 
 	// Without options
-	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create()
+	logData, err := createLogData(t)
+	require.NoError(t, err)
+	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create().Logger(logData)
 
 	// With options
-	buff := bytes.NewBuffer([]byte{})
-	logData, err := logger.New().FromBuffer(buff).Make()
+	logData, err = createLogData(t)
 	require.NoError(t, err)
 	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
 
 	RunWsMap(t, SurrealDBSuite)
+}
+
+func createLogData(t *testing.T) (*logger.LogData, error) {
+	t.Helper()
+	buff := bytes.NewBuffer([]byte{})
+	return logger.New().FromBuffer(buff).Make()
 }
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
@@ -85,7 +92,9 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	ws, err := s.wsImplementations[s.name].Connect(url)
+	impl := s.wsImplementations[s.name]
+	require.NotNil(s.T(), impl)
+	ws, err := impl.Connect(url)
 	s.Require().NoError(err)
 	db, err := surrealdb.New(url, ws)
 	s.Require().NoError(err)
