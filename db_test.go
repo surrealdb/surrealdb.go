@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
-	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/gorilla"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -216,7 +216,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 
 	s.Run("Single create works", func() {
 		userData, err := s.db.Create("users", testUser{
-			Username: "johnny",
+			Username: "tim",
 			Password: "123",
 		})
 		s.Require().NoError(err)
@@ -227,7 +227,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 		s.Require().NoError(err)
 		s.Len(userSlice, 1)
 
-		s.Equal("johnny", userSlice[0].Username)
+		s.Equal("tim", userSlice[0].Username)
 		s.Equal("123", userSlice[0].Password)
 	})
 
@@ -236,7 +236,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 		data := make([]testUser, 0)
 		data = append(data,
 			testUser{
-				Username: "johnny",
+				Username: "lu",
 				Password: "123"},
 			testUser{
 				Username: "joe",
@@ -570,4 +570,90 @@ func assertContains[K any](s *SurrealDBTestSuite, input []K, matcher func(K) boo
 	}
 	s.NotEmptyf(matching, "Input %+v did not contain matching element", fmt.Sprintf("%+v", input))
 	return matching
+}
+
+func (s *SurrealDBTestSuite) TestIsDuplicateUniqueIdx() {
+	query := `DEFINE INDEX uniqueNameIdx ON TABLE users COLUMNS username UNIQUE;`
+	_, err := s.db.Query(query, nil) // because of this query, I modified the 'username' field in other tests.
+	s.Require().NoError(err)
+
+	userNoSpecialChars := testUser{
+		Username: "johnny",
+		Password: "1234",
+	}
+	data, err := s.db.Create("users", userNoSpecialChars) // true
+	s.Require().NoError(err)
+	s.Require().NotNil(data) // we collect this result, so we can get the record it to use it for other test
+
+	var createdUser []testUser
+	s.Require().NoError(surrealdb.Unmarshal(data, &createdUser))
+	s.Require().NotEmpty(createdUser[0].ID)
+
+	userWithSpecialChars := testUser{
+		Username: "jim",
+		Password: "abcd",
+	}
+	_, err = s.db.Create("users", userWithSpecialChars) // true
+	s.Require().NoError(err)
+
+	userWithObjectID := map[string]interface{}{
+		"username": struct {
+			Field1 string
+		}{
+			Field1: "nestedID",
+		},
+		"password": "4321",
+	}
+	_, err = s.db.Create("users", userWithObjectID)
+	s.Require().NoError(err)
+
+	// now, the actual tests...
+	msg := "the operation must fail"
+	s.Run("normal characters work", func() {
+		_, err = s.db.Create("users", userNoSpecialChars)
+		s.Require().NotNil(err, msg) // this validation is redundant, the function already checks for nil, but just in case
+		s.True(surrealdb.IsDuplicateUniqueIdx(err))
+	})
+	err = nil
+
+	s.Run("special characters work", func() {
+		_, err = s.db.Create("users", userWithSpecialChars)
+		s.Require().NotNil(err, msg)
+		s.True(surrealdb.IsDuplicateUniqueIdx(err))
+	})
+	err = nil
+
+	s.Run("records with objects as id work", func() {
+		_, err = s.db.Create("users", userWithObjectID)
+		s.Require().NotNil(err, msg)
+		s.True(surrealdb.IsDuplicateUniqueIdx(err))
+	})
+	err = nil
+
+	// try other typical errors
+	s.Run("it returns false on other errors", func() {
+		_, err = s.db.Create("users", testUser{ID: createdUser[0].ID})
+		s.Require().NotNil(err)
+		s.False(surrealdb.IsDuplicateUniqueIdx(err))
+
+		err = nil
+
+		_, err = s.db.Select("users:notexists")
+		s.Equal(err, surrealdb.ErrNoRow)
+		s.False(surrealdb.IsDuplicateUniqueIdx(err))
+	})
+	err = nil
+
+	// and finally, check with a tricky ID; this is the only way the function can give a false positive
+	trickyID := "Database index `userNameIdx` already contains 'Mark', with record `user:⟨2⟩`"
+	trickyUser := testUser{ID: trickyID}
+	_, err = s.db.Create("users", trickyUser)
+	s.Require().NoError(err)
+	s.Run("since the function works with regexp, this one should be true", func() {
+		_, err = s.db.Create("users", trickyUser) // we force a duplicate ID error
+		s.Require().NotNil(err)
+		// the matched string is contained in the error (although it's not the error itself,
+		// but the id of the record causing the problem), the function will give us a true.
+		s.True(surrealdb.IsDuplicateUniqueIdx(err))
+	})
 }
