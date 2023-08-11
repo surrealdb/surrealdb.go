@@ -6,14 +6,15 @@ import (
 
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/internal/mock"
+	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 )
 
 // a simple user struct for testing
 type testUser struct {
-	surrealdb.Basemodel `table:"test"`
-	Username            string `json:"username,omitempty"`
-	Password            string `json:"password,omitempty"`
-	ID                  string `json:"id,omitempty"`
+	marshal.Basemodel `table:"test"`
+	Username          string `json:"username,omitempty"`
+	Password          string `json:"password,omitempty"`
+	ID                string `json:"id,omitempty"`
 }
 
 func SetupMockDB() (*surrealdb.DB, error) {
