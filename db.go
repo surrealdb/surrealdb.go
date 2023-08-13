@@ -62,10 +62,6 @@ func (db *DB) Live(table string) (interface{}, error) {
 	return db.send("live", table)
 }
 
-func (db *DB) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
-	return db.ws.LiveNotifications(id)
-}
-
 func (db *DB) Kill(query string) (interface{}, error) {
 	return db.send("kill", query)
 }
@@ -112,6 +108,10 @@ func (db *DB) Delete(what string) (interface{}, error) {
 // Insert a table or a row from the database like a POST request.
 func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
+}
+
+func (db *DB) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
+	return db.ws.LiveNotifications(id)
 }
 
 // --------------------------------------------------
