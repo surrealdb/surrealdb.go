@@ -140,6 +140,9 @@ func (s *SurrealDBTestSuite) TestLive() {
 		res := notification.Result.(map[string]interface{})
 		s.Require().Equal("CREATE", res["action"])
 		s.Require().Equal(live.(string), res["id"])
+		// Need to kill before get out from scope
+		_, err = s.db.Kill(live.(string))
+		s.Require().NoError(err)
 	})
 }
 func (s *SurrealDBTestSuite) TestDelete() {
