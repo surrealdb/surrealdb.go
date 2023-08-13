@@ -1,6 +1,8 @@
 package mock
 
 import (
+	"errors"
+
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -21,7 +23,7 @@ func (w *ws) Close() error {
 }
 
 func (w *ws) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
-	return nil, nil
+	return nil, errors.New("live queries are unimplemented for mocks")
 }
 
 func Create() *ws {

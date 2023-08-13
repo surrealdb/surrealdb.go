@@ -220,7 +220,7 @@ func (ws *WebSocket) initialize() {
 				if res.ID != nil && res.ID != "" {
 					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 					if !ok {
-						err = errors.New("ResponseChannel is not ok")
+						err = fmt.Errorf("unavailable ResponseChannel %+v", res.ID)
 						ws.logger.Logger.Err(err)
 						ws.logger.LogChannel <- err.Error()
 						continue
@@ -228,9 +228,10 @@ func (ws *WebSocket) initialize() {
 					responseChan <- res
 					close(responseChan)
 				} else {
-					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", res.Result.(map[string]interface{})["id"]))
+					resolved_id := res.Result.(map[string]interface{})["id"]
+					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", resolved_id))
 					if !ok {
-						err = errors.New("ResponseChannel is not ok")
+						err = fmt.Errorf("unavailable ResponseChannel %+v", resolved_id)
 						ws.logger.Logger.Err(err)
 						ws.logger.LogChannel <- err.Error()
 						continue
