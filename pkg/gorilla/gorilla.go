@@ -32,7 +32,7 @@ type WebSocket struct {
 	Option   []Option
 	logger   *logger.LogData
 
-	responseChannels     map[string]chan rpc.RPCResponse
+	responseChannels     map[string]chan interface{}
 	responseChannelsLock sync.RWMutex
 
 	close chan int
@@ -42,7 +42,7 @@ func Create() *WebSocket {
 	return &WebSocket{
 		Conn:             nil,
 		close:            make(chan int),
-		responseChannels: make(map[string]chan rpc.RPCResponse),
+		responseChannels: make(map[string]chan interface{}),
 		Timeout:          DefaultTimeout * time.Second,
 	}
 }
@@ -103,7 +103,7 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
 }
 
-func (ws *WebSocket) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
+func (ws *WebSocket) LiveNotifications(id string) (chan interface{}, error) {
 	c, err := ws.createResponseChannel(id)
 	if err != nil {
 		ws.logger.Logger.Err(err)
@@ -118,7 +118,7 @@ var (
 	ErrInvalidResponseID = errors.New("invalid response id")
 )
 
-func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, error) {
+func (ws *WebSocket) createResponseChannel(id string) (chan interface{}, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 
@@ -126,7 +126,7 @@ func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, err
 		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
 	}
 
-	ch := make(chan rpc.RPCResponse)
+	ch := make(chan interface{})
 	ws.responseChannels[id] = ch
 
 	return ch, nil
@@ -138,7 +138,7 @@ func (ws *WebSocket) removeResponseChannel(id string) {
 	delete(ws.responseChannels, id)
 }
 
-func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) {
+func (ws *WebSocket) getResponseChannel(id string) (chan interface{}, bool) {
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
@@ -168,15 +168,17 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	select {
 	case <-timeout:
 		return nil, ErrTimeout
-	case res := <-responseChan:
-		if res.ID != id {
+	case raw, open := <-responseChan:
+		if !open {
+			return nil, errors.New("channel closed")
+		}
+		res, ok := raw.(rpc.RPCResponse)
+		if !ok || res.ID != id {
 			return nil, ErrInvalidResponseID
 		}
-
 		if res.Error != nil {
 			return nil, res.Error
 		}
-
 		return res.Result, nil
 	}
 }
@@ -214,36 +216,38 @@ func (ws *WebSocket) initialize() {
 					ws.logger.LogChannel <- err.Error()
 					continue
 				}
-				var responseChan chan rpc.RPCResponse
-				var ok bool
-				if res.ID != nil && res.ID != "" {
-					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
-					if !ok {
-						err = fmt.Errorf("unavailable ResponseChannel %+v", res.ID)
-						ws.logger.Logger.Err(err)
-						ws.logger.LogChannel <- err.Error()
-						continue
-					}
-					responseChan <- res
-					close(responseChan)
-				} else {
-					resolvedID, ok := res.Result.(map[string]interface{})["id"]
-					if !ok {
-						err = fmt.Errorf("response did not contain an 'id' field")
-						ws.logger.Logger.With().Fields(map[string]interface{}{"result": res.Result}).Err(err)
-						ws.logger.LogChannel <- err.Error()
-						continue
-					}
-					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", resolvedID))
-					if !ok {
-						err = fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
-						ws.logger.Logger.Err(err)
-						ws.logger.LogChannel <- err.Error()
-						continue
-					}
-					responseChan <- res
-				}
+				go ws.handleRespond(res)
 			}
 		}
 	}()
+}
+
+func (ws *WebSocket) handleRespond(res rpc.RPCResponse) {
+	if res.ID != nil && res.ID != "" {
+		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
+		if !ok {
+			err := fmt.Errorf("unavailable ResponseChannel %+v", res.ID)
+			ws.logger.Logger.Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		defer close(responseChan)
+		responseChan <- res
+	} else {
+		resolvedID, ok := res.Result.(map[string]interface{})["id"]
+		if !ok {
+			err := fmt.Errorf("response did not contain an 'id' field")
+			ws.logger.Logger.With().Fields(map[string]interface{}{"result": res.Result}).Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		LiveNotificationChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", resolvedID))
+		if !ok {
+			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
+			ws.logger.Logger.Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		LiveNotificationChan <- res.Result
+	}
 }

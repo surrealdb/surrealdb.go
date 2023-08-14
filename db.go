@@ -3,7 +3,6 @@ package surrealdb
 import (
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/internal/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -110,7 +109,7 @@ func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
 }
 
-func (db *DB) LiveNotifications(id string) (chan rpc.RPCResponse, error) {
+func (db *DB) LiveNotifications(id string) (chan interface{}, error) {
 	return db.ws.LiveNotifications(id)
 }
 

@@ -142,7 +142,7 @@ func (s *SurrealDBTestSuite) TestLive() {
 		})
 		s.Require().NoError(e)
 		notification := <-notifications
-		res := notification.Result.(map[string]interface{})
+		res := notification.(map[string]interface{})
 		s.Require().Equal("CREATE", res["action"])
 		s.Require().Equal(live.(string), res["id"])
 	})
