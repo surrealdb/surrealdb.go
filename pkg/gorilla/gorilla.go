@@ -108,9 +108,8 @@ func (ws *WebSocket) LiveNotifications(id string) (chan rpc.RPCResponse, error) 
 	if err != nil {
 		ws.logger.Logger.Err(err)
 		ws.logger.LogChannel <- err.Error()
-		return nil, err
 	}
-	return c, nil
+	return c, err
 }
 
 var (
@@ -228,10 +227,16 @@ func (ws *WebSocket) initialize() {
 					responseChan <- res
 					close(responseChan)
 				} else {
-					resolved_id := res.Result.(map[string]interface{})["id"]
-					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", resolved_id))
+					resolvedID, ok := res.Result.(map[string]interface{})["id"]
 					if !ok {
-						err = fmt.Errorf("unavailable ResponseChannel %+v", resolved_id)
+						err = fmt.Errorf("response did not contain an 'id' field")
+						ws.logger.Logger.With().Fields(map[string]interface{}{"result": res.Result}).Err(err)
+						ws.logger.LogChannel <- err.Error()
+						continue
+					}
+					responseChan, ok = ws.getResponseChannel(fmt.Sprintf("%v", resolvedID))
+					if !ok {
+						err = fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
 						ws.logger.Logger.Err(err)
 						ws.logger.LogChannel <- err.Error()
 						continue

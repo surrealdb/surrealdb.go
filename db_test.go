@@ -127,6 +127,11 @@ func signin(s *SurrealDBTestSuite) interface{} {
 func (s *SurrealDBTestSuite) TestLive() {
 	s.Run("Live notifications", func() {
 		live, err := s.db.Live("users")
+
+		defer func() {
+			_, err = s.db.Kill(live.(string))
+		}()
+
 		s.Require().NoError(err)
 		notifications, er := s.db.LiveNotifications(live.(string))
 		// create a user
@@ -140,9 +145,6 @@ func (s *SurrealDBTestSuite) TestLive() {
 		res := notification.Result.(map[string]interface{})
 		s.Require().Equal("CREATE", res["action"])
 		s.Require().Equal(live.(string), res["id"])
-		// Need to kill before get out from scope
-		_, err = s.db.Kill(live.(string))
-		s.Require().NoError(err)
 	})
 }
 func (s *SurrealDBTestSuite) TestDelete() {
