@@ -390,9 +390,11 @@ func (s *SurrealDBTestSuite) TestMerge() {
 	user2, err := s.db.Select("users:999")
 	s.Require().NoError(err)
 
-	data := (user2).(map[string]interface{})["password"].(string)
+	username := (user2).(map[string]interface{})["username"].(string)
+	password := (user2).(map[string]interface{})["password"].(string)
 
-	s.Equal("456", data)
+	s.Equal("john999", username) // Ensure username hasn't change.
+	s.Equal("456", password)
 }
 
 func (s *SurrealDBTestSuite) TestPatch() {
@@ -414,9 +416,11 @@ func (s *SurrealDBTestSuite) TestPatch() {
 	user2, err := s.db.Select("users:999")
 	s.Require().NoError(err)
 
+	username := (user2).(map[string]interface{})["username"].(string)
 	data := (user2).(map[string]interface{})["age"].(float64)
 
-	s.Equal(patches[1].Value, int(data))
+	s.Equal("john999", username) // Ensure username hasn't change.
+	s.EqualValues(patches[1].Value, data)
 }
 
 func (s *SurrealDBTestSuite) TestNonRowSelect() {
