@@ -374,7 +374,28 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	s.Empty(userSlice[0].Result)
 }
 
-func (s *SurrealDBTestSuite) TestModify() {
+func (s *SurrealDBTestSuite) TestMerge() {
+	_, err := s.db.Create("users:999", map[string]interface{}{
+		"username": "john999",
+		"password": "123",
+	})
+	s.NoError(err)
+
+	// Update the user
+	_, err = s.db.Merge("users:999", map[string]string{
+		"password": "456",
+	})
+	s.Require().NoError(err)
+
+	user2, err := s.db.Select("users:999")
+	s.Require().NoError(err)
+
+	data := (user2).(map[string]interface{})["password"].(string)
+
+	s.Equal("456", data)
+}
+
+func (s *SurrealDBTestSuite) TestPatch() {
 	_, err := s.db.Create("users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
@@ -387,7 +408,7 @@ func (s *SurrealDBTestSuite) TestModify() {
 	}
 
 	// Update the user
-	_, err = s.db.Modify("users:999", patches)
+	_, err = s.db.Patch("users:999", patches)
 	s.Require().NoError(err)
 
 	user2, err := s.db.Select("users:999")
