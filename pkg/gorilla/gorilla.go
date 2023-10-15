@@ -216,13 +216,13 @@ func (ws *WebSocket) initialize() {
 					ws.logger.LogChannel <- err.Error()
 					continue
 				}
-				go ws.handleRespond(res)
+				go ws.handleResponse(res)
 			}
 		}
 	}()
 }
 
-func (ws *WebSocket) handleRespond(res rpc.RPCResponse) {
+func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 	if res.ID != nil && res.ID != "" {
 		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 		if !ok {

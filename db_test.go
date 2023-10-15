@@ -129,11 +129,11 @@ func (s *SurrealDBTestSuite) TestLive() {
 		live, err := s.db.Live("users")
 
 		defer func() {
-			_, err = s.db.Kill(live.(string))
+			_, err = s.db.Kill(live)
+			s.Require().NoError(err)
 		}()
 
-		s.Require().NoError(err)
-		notifications, er := s.db.LiveNotifications(live.(string))
+		notifications, er := s.db.LiveNotifications(live)
 		// create a user
 		s.Require().NoError(er)
 		_, e := s.db.Create("users", map[string]interface{}{
@@ -144,7 +144,7 @@ func (s *SurrealDBTestSuite) TestLive() {
 		notification := <-notifications
 		res := notification.(map[string]interface{})
 		s.Require().Equal("CREATE", res["action"])
-		s.Require().Equal(live.(string), res["id"])
+		s.Require().Equal(live, res["id"])
 	})
 }
 func (s *SurrealDBTestSuite) TestDelete() {

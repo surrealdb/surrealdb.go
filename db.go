@@ -57,8 +57,9 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (interface{}, error) {
-	return db.send("live", table)
+func (db *DB) Live(table string) (string, error) {
+	id, err := db.send("live", table)
+	return id.(string), err
 }
 
 func (db *DB) Kill(query string) (interface{}, error) {
@@ -109,6 +110,7 @@ func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
 }
 
+// LiveNotifications returns a channel for live query.
 func (db *DB) LiveNotifications(id string) (chan interface{}, error) {
 	return db.ws.LiveNotifications(id)
 }
