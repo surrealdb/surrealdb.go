@@ -128,7 +128,6 @@ func signin(s *SurrealDBTestSuite) interface{} {
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	live, err := s.db.Live("users")
-	fmt.Printf("Live queyr id: %+v\n", live)
 
 	defer func() {
 		_, err = s.db.Kill(live)
@@ -136,15 +135,13 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	}()
 
 	notifications, er := s.db.LiveNotifications(live)
-	fmt.Printf("Notifications channel: %+v\n", notifications)
 	// create a user
 	s.Require().NoError(er)
-	created, e := s.db.Create("users", map[string]interface{}{
+	_, e := s.db.Create("users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
 	s.Require().NoError(e)
-	fmt.Printf("Created user: %+v\n", created)
 	notification := <-notifications
 	s.Require().Equal(model.CreateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
@@ -153,7 +150,6 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
 	assert.NoError(s.T(), err)
-	fmt.Printf("Live query id: %+v\n", liveResponse)
 	responseArray, ok := liveResponse.([]interface{})
 	assert.True(s.T(), ok)
 	singleResponse := responseArray[0].(map[string]interface{})

@@ -169,10 +169,6 @@ func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) 
 func (ws *WebSocket) getLiveChannel(id string) (chan model.Notification, bool) {
 	ws.notificationChannelsLock.RLock()
 	defer ws.notificationChannelsLock.RUnlock()
-	fmt.Println("Priting all notification channels")
-	for k, v := range ws.notificationChannels {
-		fmt.Printf("k=%+v, v=%+v\n", k, v)
-	}
 	ch, ok := ws.notificationChannels[id]
 	return ch, ok
 }
@@ -268,7 +264,6 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 	} else {
 		// Try to resolve response as live query notification
 		mappedRes, ok := res.Result.(map[string]interface{})
-		fmt.Printf("The mapped notifiaction response is: %+v\n", mappedRes)
 		resolvedID, ok := mappedRes["id"]
 		if !ok {
 			err := fmt.Errorf("response did not contain an 'id' field")
@@ -277,17 +272,13 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 			return
 		}
 		var notification model.Notification
-		fmt.Println("Before unmarshaling")
 		err := unmarshalMapToStruct(mappedRes, &notification)
-		fmt.Printf("After unmarshaling error: :%+v\n", err)
 		if err != nil {
 			ws.logger.Logger.With().Str("result", fmt.Sprintf("%s", res.Result)).Err(err)
 			ws.logger.LogChannel <- err.Error()
 			return
 		}
-		fmt.Printf("The mapped unmarshalled notifiaction is: %+v\n", notification)
 		LiveNotificationChan, ok := ws.getLiveChannel(notification.ID)
-		fmt.Printf("The live notification channel is: %+v (ok is %v)\n", LiveNotificationChan, ok)
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
 			ws.logger.Logger.Err(err)
@@ -313,7 +304,6 @@ func unmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) er
 		fieldName := field.Name
 		jsonTag := field.Tag.Get("json")
 		if jsonTag != "" {
-			fmt.Printf("json tag is: %s\n", jsonTag)
 			fieldName = jsonTag
 		}
 		mapValue, ok := data[fieldName]
