@@ -9,7 +9,7 @@ type Notification struct {
 type Action string
 
 const (
-	CreateAction Action = "Create"
-	UpdateAction Action = "Update"
-	DeleteAction Action = "Delete"
+	CreateAction Action = "CREATE"
+	UpdateAction Action = "UPDATE"
+	DeleteAction Action = "DELETE"
 )

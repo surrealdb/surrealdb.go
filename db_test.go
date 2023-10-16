@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"os"
 	"sync"
 	"testing"
@@ -145,14 +146,20 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	s.Require().NoError(e)
 	fmt.Printf("Created user: %+v\n", created)
 	notification := <-notifications
-	s.Require().Equal("CREATE", notification.Action)
+	s.Require().Equal(model.CreateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
 	assert.NoError(s.T(), err)
-	liveId := liveResponse.(string)
+	fmt.Printf("Live query id: %+v\n", liveResponse)
+	responseArray, ok := liveResponse.([]interface{})
+	assert.True(s.T(), ok)
+	singleResponse := responseArray[0].(map[string]interface{})
+	liveIdStruct, ok := singleResponse["result"]
+	assert.True(s.T(), ok)
+	liveId := liveIdStruct.(string)
 
 	defer func() {
 		_, err = s.db.Kill(liveId)
@@ -168,7 +175,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	})
 	s.Require().NoError(e)
 	notification := <-notifications
-	s.Require().Equal("CREATE", notification.Action)
+	s.Require().Equal(model.CreateAction, notification.Action)
 	s.Require().Equal(liveId, notification.ID)
 }
 

@@ -169,6 +169,10 @@ func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) 
 func (ws *WebSocket) getLiveChannel(id string) (chan model.Notification, bool) {
 	ws.notificationChannelsLock.RLock()
 	defer ws.notificationChannelsLock.RUnlock()
+	fmt.Println("Priting all notification channels")
+	for k, v := range ws.notificationChannels {
+		fmt.Printf("k=%+v, v=%+v\n", k, v)
+	}
 	ch, ok := ws.notificationChannels[id]
 	return ch, ok
 }
@@ -282,7 +286,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 			return
 		}
 		fmt.Printf("The mapped unmarshalled notifiaction is: %+v\n", notification)
-		LiveNotificationChan, ok := ws.getLiveChannel(fmt.Sprintf("%v", resolvedID))
+		LiveNotificationChan, ok := ws.getLiveChannel(notification.ID)
 		fmt.Printf("The live notification channel is: %+v (ok is %v)\n", LiveNotificationChan, ok)
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
