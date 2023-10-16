@@ -2,8 +2,8 @@ package mock
 
 import (
 	"errors"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -153,16 +154,16 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	responseArray, ok := liveResponse.([]interface{})
 	assert.True(s.T(), ok)
 	singleResponse := responseArray[0].(map[string]interface{})
-	liveIdStruct, ok := singleResponse["result"]
+	liveIDStruct, ok := singleResponse["result"]
 	assert.True(s.T(), ok)
-	liveId := liveIdStruct.(string)
+	liveID := liveIDStruct.(string)
 
 	defer func() {
-		_, err = s.db.Kill(liveId)
+		_, err = s.db.Kill(liveID)
 		s.Require().NoError(err)
 	}()
 
-	notifications, er := s.db.LiveNotifications(liveId)
+	notifications, er := s.db.LiveNotifications(liveID)
 	// create a user
 	s.Require().NoError(er)
 	_, e := s.db.Create("users", map[string]interface{}{
@@ -172,7 +173,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	s.Require().NoError(e)
 	notification := <-notifications
 	s.Require().Equal(model.CreateAction, notification.Action)
-	s.Require().Equal(liveId, notification.ID)
+	s.Require().Equal(liveID, notification.ID)
 }
 
 func (s *SurrealDBTestSuite) TestDelete() {

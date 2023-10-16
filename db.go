@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"fmt"
+
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/surrealdb/surrealdb.go/pkg/constants"

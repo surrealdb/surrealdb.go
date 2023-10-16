@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
@@ -263,7 +264,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 		responseChan <- res
 	} else {
 		// Try to resolve response as live query notification
-		mappedRes, ok := res.Result.(map[string]interface{})
+		mappedRes, _ := res.Result.(map[string]interface{})
 		resolvedID, ok := mappedRes["id"]
 		if !ok {
 			err := fmt.Errorf("response did not contain an 'id' field")
@@ -287,7 +288,6 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 		}
 		LiveNotificationChan <- notification
 	}
-
 }
 
 func unmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) error {
