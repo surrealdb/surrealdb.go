@@ -2,6 +2,7 @@ package mock
 
 import (
 	"errors"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -21,7 +22,7 @@ func (w *ws) Close() error {
 	return nil
 }
 
-func (w *ws) LiveNotifications(id string) (chan interface{}, error) {
+func (w *ws) LiveNotifications(id string) (chan model.Notification, error) {
 	return nil, errors.New("live queries are unimplemented for mocks")
 }
 

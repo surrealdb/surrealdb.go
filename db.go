@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"fmt"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
@@ -62,8 +63,8 @@ func (db *DB) Live(table string) (string, error) {
 	return id.(string), err
 }
 
-func (db *DB) Kill(query string) (interface{}, error) {
-	return db.send("kill", query)
+func (db *DB) Kill(liveQueryID string) (interface{}, error) {
+	return db.send("kill", liveQueryID)
 }
 
 func (db *DB) Let(key string, val interface{}) (interface{}, error) {
@@ -111,8 +112,8 @@ func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 }
 
 // LiveNotifications returns a channel for live query.
-func (db *DB) LiveNotifications(id string) (chan interface{}, error) {
-	return db.ws.LiveNotifications(id)
+func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
+	return db.ws.LiveNotifications(liveQueryID)
 }
 
 // --------------------------------------------------

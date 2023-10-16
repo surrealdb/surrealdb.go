@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"sync"
 	"testing"
@@ -124,29 +125,53 @@ func signin(s *SurrealDBTestSuite) interface{} {
 	return signin
 }
 
-func (s *SurrealDBTestSuite) TestLive() {
-	s.Run("Live notifications", func() {
-		live, err := s.db.Live("users")
+func (s *SurrealDBTestSuite) TestLiveViaMethod() {
+	live, err := s.db.Live("users")
+	fmt.Printf("Live queyr id: %+v\n", live)
 
-		defer func() {
-			_, err = s.db.Kill(live)
-			s.Require().NoError(err)
-		}()
+	defer func() {
+		_, err = s.db.Kill(live)
+		s.Require().NoError(err)
+	}()
 
-		notifications, er := s.db.LiveNotifications(live)
-		// create a user
-		s.Require().NoError(er)
-		_, e := s.db.Create("users", map[string]interface{}{
-			"username": "johnny",
-			"password": "123",
-		})
-		s.Require().NoError(e)
-		notification := <-notifications
-		res := notification.(map[string]interface{})
-		s.Require().Equal("CREATE", res["action"])
-		s.Require().Equal(live, res["id"])
+	notifications, er := s.db.LiveNotifications(live)
+	fmt.Printf("Notifications channel: %+v\n", notifications)
+	// create a user
+	s.Require().NoError(er)
+	created, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
 	})
+	s.Require().NoError(e)
+	fmt.Printf("Created user: %+v\n", created)
+	notification := <-notifications
+	s.Require().Equal("CREATE", notification.Action)
+	s.Require().Equal(live, notification.ID)
 }
+
+func (s *SurrealDBTestSuite) TestLiveViaQuery() {
+	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
+	assert.NoError(s.T(), err)
+	liveId := liveResponse.(string)
+
+	defer func() {
+		_, err = s.db.Kill(liveId)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(liveId)
+	// create a user
+	s.Require().NoError(er)
+	_, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal("CREATE", notification.Action)
+	s.Require().Equal(liveId, notification.ID)
+}
+
 func (s *SurrealDBTestSuite) TestDelete() {
 	userData, err := s.db.Create("users", testUser{
 		Username: "johnny",
