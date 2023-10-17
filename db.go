@@ -3,6 +3,8 @@ package surrealdb
 import (
 	"fmt"
 
+	"github.com/surrealdb/surrealdb.go/pkg/model"
+
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -57,12 +59,13 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (interface{}, error) {
-	return db.send("live", table)
+func (db *DB) Live(table string) (string, error) {
+	id, err := db.send("live", table)
+	return id.(string), err
 }
 
-func (db *DB) Kill(query string) (interface{}, error) {
-	return db.send("kill", query)
+func (db *DB) Kill(liveQueryID string) (interface{}, error) {
+	return db.send("kill", liveQueryID)
 }
 
 func (db *DB) Let(key string, val interface{}) (interface{}, error) {
@@ -107,6 +110,11 @@ func (db *DB) Delete(what string) (interface{}, error) {
 // Insert a table or a row from the database like a POST request.
 func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
+}
+
+// LiveNotifications returns a channel for live query.
+func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
+	return db.ws.LiveNotifications(liveQueryID)
 }
 
 // --------------------------------------------------

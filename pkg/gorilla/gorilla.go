@@ -4,8 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
@@ -35,15 +39,19 @@ type WebSocket struct {
 	responseChannels     map[string]chan rpc.RPCResponse
 	responseChannelsLock sync.RWMutex
 
+	notificationChannels     map[string]chan model.Notification
+	notificationChannelsLock sync.RWMutex
+
 	close chan int
 }
 
 func Create() *WebSocket {
 	return &WebSocket{
-		Conn:             nil,
-		close:            make(chan int),
-		responseChannels: make(map[string]chan rpc.RPCResponse),
-		Timeout:          DefaultTimeout * time.Second,
+		Conn:                 nil,
+		close:                make(chan int),
+		responseChannels:     make(map[string]chan rpc.RPCResponse),
+		notificationChannels: make(map[string]chan model.Notification),
+		Timeout:              DefaultTimeout * time.Second,
 	}
 }
 
@@ -103,6 +111,15 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
 }
 
+func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
+	c, err := ws.createNotificationChannel(liveQueryID)
+	if err != nil {
+		ws.logger.Logger.Err(err)
+		ws.logger.LogChannel <- err.Error()
+	}
+	return c, err
+}
+
 var (
 	ErrIDInUse           = errors.New("id already in use")
 	ErrTimeout           = errors.New("timeout")
@@ -123,6 +140,20 @@ func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, err
 	return ch, nil
 }
 
+func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan model.Notification, error) {
+	ws.notificationChannelsLock.Lock()
+	defer ws.notificationChannelsLock.Unlock()
+
+	if _, ok := ws.notificationChannels[liveQueryID]; ok {
+		return nil, fmt.Errorf("%w: %v", ErrIDInUse, liveQueryID)
+	}
+
+	ch := make(chan model.Notification)
+	ws.notificationChannels[liveQueryID] = ch
+
+	return ch, nil
+}
+
 func (ws *WebSocket) removeResponseChannel(id string) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
@@ -133,6 +164,13 @@ func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) 
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
+	return ch, ok
+}
+
+func (ws *WebSocket) getLiveChannel(id string) (chan model.Notification, bool) {
+	ws.notificationChannelsLock.RLock()
+	defer ws.notificationChannelsLock.RUnlock()
+	ch, ok := ws.notificationChannels[id]
 	return ch, ok
 }
 
@@ -159,15 +197,16 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	select {
 	case <-timeout:
 		return nil, ErrTimeout
-	case res := <-responseChan:
+	case res, open := <-responseChan:
+		if !open {
+			return nil, errors.New("channel closed")
+		}
 		if res.ID != id {
 			return nil, ErrInvalidResponseID
 		}
-
 		if res.Error != nil {
 			return nil, res.Error
 		}
-
 		return res.Result, nil
 	}
 }
@@ -177,7 +216,6 @@ func (ws *WebSocket) read(v interface{}) error {
 	if err != nil {
 		return err
 	}
-
 	return json.Unmarshal(data, v)
 }
 
@@ -206,16 +244,112 @@ func (ws *WebSocket) initialize() {
 					ws.logger.LogChannel <- err.Error()
 					continue
 				}
-				responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
-				if !ok {
-					err = errors.New("ResponseChannel is not ok")
-					ws.logger.Logger.Err(err)
-					ws.logger.LogChannel <- err.Error()
-					continue
-				}
-				responseChan <- res
-				close(responseChan)
+				go ws.handleResponse(res)
 			}
 		}
 	}()
+}
+
+func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
+	if res.ID != nil && res.ID != "" {
+		// Try to resolve message as response to query
+		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
+		if !ok {
+			err := fmt.Errorf("unavailable ResponseChannel %+v", res.ID)
+			ws.logger.Logger.Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		defer close(responseChan)
+		responseChan <- res
+	} else {
+		// Try to resolve response as live query notification
+		mappedRes, _ := res.Result.(map[string]interface{})
+		resolvedID, ok := mappedRes["id"]
+		if !ok {
+			err := fmt.Errorf("response did not contain an 'id' field")
+			ws.logger.Logger.With().Str("result", fmt.Sprintf("%s", res.Result)).Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		var notification model.Notification
+		err := unmarshalMapToStruct(mappedRes, &notification)
+		if err != nil {
+			ws.logger.Logger.With().Str("result", fmt.Sprintf("%s", res.Result)).Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		LiveNotificationChan, ok := ws.getLiveChannel(notification.ID)
+		if !ok {
+			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
+			ws.logger.Logger.Err(err)
+			ws.logger.LogChannel <- err.Error()
+			return
+		}
+		LiveNotificationChan <- notification
+	}
+}
+
+func unmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) error {
+	outValue := reflect.ValueOf(outStruct)
+	if outValue.Kind() != reflect.Ptr || outValue.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("outStruct must be a pointer to a struct")
+	}
+
+	structValue := outValue.Elem()
+	structType := structValue.Type()
+
+	for i := 0; i < structValue.NumField(); i++ {
+		field := structType.Field(i)
+		fieldName := field.Name
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			fieldName = jsonTag
+		}
+		mapValue, ok := data[fieldName]
+		if !ok {
+			return fmt.Errorf("missing field in map: %s", fieldName)
+		}
+
+		fieldValue := structValue.Field(i)
+		if !fieldValue.CanSet() {
+			return fmt.Errorf("cannot set field: %s", fieldName)
+		}
+
+		if mapValue == nil {
+			// Handle nil values appropriately for your struct fields
+			// For simplicity, we skip nil values in this example
+			continue
+		}
+
+		// Type conversion based on the field type
+		switch fieldValue.Kind() {
+		case reflect.String:
+			fieldValue.SetString(fmt.Sprint(mapValue))
+		case reflect.Int:
+			intVal, err := strconv.Atoi(fmt.Sprint(mapValue))
+			if err != nil {
+				return err
+			}
+			fieldValue.SetInt(int64(intVal))
+		case reflect.Bool:
+			boolVal, err := strconv.ParseBool(fmt.Sprint(mapValue))
+			if err != nil {
+				return err
+			}
+			fieldValue.SetBool(boolVal)
+		case reflect.Map:
+			mapVal, ok := mapValue.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("mapValue for property %s is not a map[string]interface{}", fieldName)
+			}
+			fieldValue.Set(reflect.ValueOf(mapVal))
+
+		// Add cases for other types as needed
+		default:
+			return fmt.Errorf("unsupported field type: %s", fieldName)
+		}
+	}
+
+	return nil
 }

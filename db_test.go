@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
@@ -122,6 +125,55 @@ func signin(s *SurrealDBTestSuite) interface{} {
 	})
 	s.Require().NoError(err)
 	return signin
+}
+
+func (s *SurrealDBTestSuite) TestLiveViaMethod() {
+	live, err := s.db.Live("users")
+
+	defer func() {
+		_, err = s.db.Kill(live)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(live)
+	// create a user
+	s.Require().NoError(er)
+	_, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(live, notification.ID)
+}
+
+func (s *SurrealDBTestSuite) TestLiveViaQuery() {
+	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
+	assert.NoError(s.T(), err)
+	responseArray, ok := liveResponse.([]interface{})
+	assert.True(s.T(), ok)
+	singleResponse := responseArray[0].(map[string]interface{})
+	liveIDStruct, ok := singleResponse["result"]
+	assert.True(s.T(), ok)
+	liveID := liveIDStruct.(string)
+
+	defer func() {
+		_, err = s.db.Kill(liveID)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(liveID)
+	// create a user
+	s.Require().NoError(er)
+	_, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(liveID, notification.ID)
 }
 
 func (s *SurrealDBTestSuite) TestDelete() {
