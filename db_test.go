@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
+
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
@@ -122,6 +125,55 @@ func signin(s *SurrealDBTestSuite) interface{} {
 	})
 	s.Require().NoError(err)
 	return signin
+}
+
+func (s *SurrealDBTestSuite) TestLiveViaMethod() {
+	live, err := s.db.Live("users")
+
+	defer func() {
+		_, err = s.db.Kill(live)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(live)
+	// create a user
+	s.Require().NoError(er)
+	_, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(live, notification.ID)
+}
+
+func (s *SurrealDBTestSuite) TestLiveViaQuery() {
+	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
+	assert.NoError(s.T(), err)
+	responseArray, ok := liveResponse.([]interface{})
+	assert.True(s.T(), ok)
+	singleResponse := responseArray[0].(map[string]interface{})
+	liveIDStruct, ok := singleResponse["result"]
+	assert.True(s.T(), ok)
+	liveID := liveIDStruct.(string)
+
+	defer func() {
+		_, err = s.db.Kill(liveID)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(liveID)
+	// create a user
+	s.Require().NoError(er)
+	_, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(liveID, notification.ID)
 }
 
 func (s *SurrealDBTestSuite) TestDelete() {
@@ -374,7 +426,30 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	s.Empty(userSlice[0].Result)
 }
 
-func (s *SurrealDBTestSuite) TestModify() {
+func (s *SurrealDBTestSuite) TestMerge() {
+	_, err := s.db.Create("users:999", map[string]interface{}{
+		"username": "john999",
+		"password": "123",
+	})
+	s.NoError(err)
+
+	// Update the user
+	_, err = s.db.Merge("users:999", map[string]string{
+		"password": "456",
+	})
+	s.Require().NoError(err)
+
+	user2, err := s.db.Select("users:999")
+	s.Require().NoError(err)
+
+	username := (user2).(map[string]interface{})["username"].(string)
+	password := (user2).(map[string]interface{})["password"].(string)
+
+	s.Equal("john999", username) // Ensure username hasn't change.
+	s.Equal("456", password)
+}
+
+func (s *SurrealDBTestSuite) TestPatch() {
 	_, err := s.db.Create("users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
@@ -387,15 +462,17 @@ func (s *SurrealDBTestSuite) TestModify() {
 	}
 
 	// Update the user
-	_, err = s.db.Modify("users:999", patches)
+	_, err = s.db.Patch("users:999", patches)
 	s.Require().NoError(err)
 
 	user2, err := s.db.Select("users:999")
 	s.Require().NoError(err)
 
+	username := (user2).(map[string]interface{})["username"].(string)
 	data := (user2).(map[string]interface{})["age"].(float64)
 
-	s.Equal(patches[1].Value, int(data))
+	s.Equal("john999", username) // Ensure username hasn't change.
+	s.EqualValues(patches[1].Value, data)
 }
 
 func (s *SurrealDBTestSuite) TestNonRowSelect() {

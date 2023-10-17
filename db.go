@@ -3,6 +3,8 @@ package surrealdb
 import (
 	"fmt"
 
+	"github.com/surrealdb/surrealdb.go/pkg/model"
+
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
@@ -57,12 +59,13 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (interface{}, error) {
-	return db.send("live", table)
+func (db *DB) Live(table string) (string, error) {
+	id, err := db.send("live", table)
+	return id.(string), err
 }
 
-func (db *DB) Kill(query string) (interface{}, error) {
-	return db.send("kill", query)
+func (db *DB) Kill(liveQueryID string) (interface{}, error) {
+	return db.send("kill", liveQueryID)
 }
 
 func (db *DB) Let(key string, val interface{}) (interface{}, error) {
@@ -89,14 +92,14 @@ func (db *DB) Update(what string, data interface{}) (interface{}, error) {
 	return db.send("update", what, data)
 }
 
-// Change a table or record in the database like a PATCH request.
-func (db *DB) Change(what string, data interface{}) (interface{}, error) {
-	return db.send("change", what, data)
+// Merge a table or record in the database like a PATCH request.
+func (db *DB) Merge(what string, data interface{}) (interface{}, error) {
+	return db.send("merge", what, data)
 }
 
-// Modify applies a series of JSONPatches to a table or record.
-func (db *DB) Modify(what string, data []Patch) (interface{}, error) {
-	return db.send("modify", what, data)
+// Patch applies a series of JSONPatches to a table or record.
+func (db *DB) Patch(what string, data []Patch) (interface{}, error) {
+	return db.send("patch", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
@@ -107,6 +110,11 @@ func (db *DB) Delete(what string) (interface{}, error) {
 // Insert a table or a row from the database like a POST request.
 func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
+}
+
+// LiveNotifications returns a channel for live query.
+func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
+	return db.ws.LiveNotifications(liveQueryID)
 }
 
 // --------------------------------------------------
@@ -122,20 +130,10 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	}
 
 	switch method {
+	case "select", "create", "update", "merge", "patch", "insert":
+		return db.resp(method, params, resp)
 	case "delete":
 		return nil, nil
-	case "select":
-		return db.resp(method, params, resp)
-	case "create":
-		return db.resp(method, params, resp)
-	case "update":
-		return db.resp(method, params, resp)
-	case "change":
-		return db.resp(method, params, resp)
-	case "modify":
-		return db.resp(method, params, resp)
-	case "insert":
-		return db.resp(method, params, resp)
 	default:
 		return resp, nil
 	}
