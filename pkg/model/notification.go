@@ -1,11 +1,10 @@
 package model
 
 type Notification struct {
-	ID     string                 `json:"id"`
-	Action Action                 `json:"action"`
-	Result map[string]interface{} `json:"result"`
+	ID     string      `json:"id"`
+	Action Action      `json:"action"`
+	Result interface{} `json:"result"`
 }
-
 type Action string
 
 const (

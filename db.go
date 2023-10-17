@@ -59,8 +59,8 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (string, error) {
-	id, err := db.send("live", table)
+func (db *DB) Live(query *LiveQuery) (string, error) {
+	id, err := db.send("live", query.Table, query.Diff)
 	return id.(string), err
 }
 

@@ -128,8 +128,11 @@ func signin(s *SurrealDBTestSuite) interface{} {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
-	live, err := s.db.Live("users")
+	query := &surrealdb.LiveQuery{
+		Table: "users",
+	}
 
+	live, err := s.db.Live(query)
 	defer func() {
 		_, err = s.db.Kill(live)
 		s.Require().NoError(err)
@@ -145,6 +148,42 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	s.Require().NoError(e)
 	notification := <-notifications
 	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(live, notification.ID)
+}
+
+func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
+	// create a user
+	userData, e := s.db.Create("users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	var user []testUser
+	err := marshal.Unmarshal(userData, &user)
+	s.Require().NoError(err)
+
+	query := &surrealdb.LiveQuery{
+		Table: "users",
+		Diff:  true,
+	}
+
+	live, err := s.db.Live(query)
+	defer func() {
+		_, err = s.db.Kill(live)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := s.db.LiveNotifications(live)
+	s.Require().NoError(er)
+
+	// update the user
+	_, e = s.db.Update(user[0].ID, map[string]interface{}{
+		"password": "456",
+	})
+	s.Require().NoError(e)
+
+	notification := <-notifications
+	s.Require().Equal(model.UpdateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
 
