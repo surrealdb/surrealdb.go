@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	rawslog "log/slog"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/stretchr/testify/require"
@@ -17,6 +19,7 @@ import (
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 	"github.com/surrealdb/surrealdb.go/pkg/websocket"
@@ -43,22 +46,21 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.wsImplementations = make(map[string]websocket.WebSocket)
 
 	// Without options
-	logData, err := createLogData(t)
-	require.NoError(t, err)
+	logData := createLogger(t)
 	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create().Logger(logData)
 
 	// With options
-	logData, err = createLogData(t)
-	require.NoError(t, err)
+	logData = createLogger(t)
 	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
 
 	RunWsMap(t, SurrealDBSuite)
 }
 
-func createLogData(t *testing.T) (*logger.LogData, error) {
+func createLogger(t *testing.T) logger.Logger {
 	t.Helper()
 	buff := bytes.NewBuffer([]byte{})
-	return logger.New().FromBuffer(buff).Make()
+	handler := rawslog.NewJSONHandler(buff, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
+	return slog.New(handler)
 }
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
