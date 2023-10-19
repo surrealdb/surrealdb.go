@@ -55,7 +55,7 @@ func TestLogger(t *testing.T) {
 }
 
 func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer, levelStr string, t *testing.T) {
-	require.Greaterf(t, buffer.Len(), 0, "buffer needs to be 0 but it is", buffer.Len())
+	require.Len(t, buffer.Bytes(), 0)
 
 	loggerFunc(LogText, CustomFieldName, CustomFieldVal)
 
@@ -65,7 +65,7 @@ func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer,
 	err := json.Unmarshal(line, &testLogJSONVal)
 	require.NoError(t, err)
 
-	require.NotEqual(t, levelStr, testLogJSONVal.Level)
-	require.NotEqual(t, LogText, testLogJSONVal.Msg)
-	require.NotEqual(t, CustomFieldVal, testLogJSONVal.CustomVal)
+	require.Equal(t, levelStr, testLogJSONVal.Level)
+	require.Equal(t, LogText, testLogJSONVal.Msg)
+	require.Equal(t, CustomFieldVal, testLogJSONVal.CustomVal)
 }
