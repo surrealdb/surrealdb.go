@@ -34,7 +34,7 @@ type WebSocket struct {
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
-	logger   *logger.LogData
+	logger   logger.Logger
 
 	responseChannels     map[string]chan rpc.RPCResponse
 	responseChannelsLock sync.RWMutex
@@ -85,12 +85,12 @@ func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
 }
 
 // If path is empty it will use os.stdout/os.stderr
-func (ws *WebSocket) Logger(logData *logger.LogData) *WebSocket {
+func (ws *WebSocket) Logger(logData logger.Logger) *WebSocket {
 	ws.logger = logData
 	return ws
 }
 
-func (ws *WebSocket) RawLogger(logData *logger.LogData) *WebSocket {
+func (ws *WebSocket) RawLogger(logData logger.Logger) *WebSocket {
 	ws.logger = logData
 	return ws
 }
@@ -114,8 +114,7 @@ func (ws *WebSocket) Close() error {
 func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
 	c, err := ws.createNotificationChannel(liveQueryID)
 	if err != nil {
-		ws.logger.Logger.Err(err)
-		ws.logger.LogChannel <- err.Error()
+		ws.logger.Error(err.Error())
 	}
 	return c, err
 }
@@ -240,8 +239,7 @@ func (ws *WebSocket) initialize() {
 				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
-					ws.logger.Logger.Err(err)
-					ws.logger.LogChannel <- err.Error()
+					ws.logger.Error(err.Error())
 					continue
 				}
 				go ws.handleResponse(res)
@@ -256,8 +254,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", res.ID)
-			ws.logger.Logger.Err(err)
-			ws.logger.LogChannel <- err.Error()
+			ws.logger.Error(err.Error())
 			return
 		}
 		defer close(responseChan)
@@ -268,22 +265,20 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 		resolvedID, ok := mappedRes["id"]
 		if !ok {
 			err := fmt.Errorf("response did not contain an 'id' field")
-			ws.logger.Logger.With().Str("result", fmt.Sprintf("%s", res.Result)).Err(err)
-			ws.logger.LogChannel <- err.Error()
+
+			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
 			return
 		}
 		var notification model.Notification
 		err := unmarshalMapToStruct(mappedRes, &notification)
 		if err != nil {
-			ws.logger.Logger.With().Str("result", fmt.Sprintf("%s", res.Result)).Err(err)
-			ws.logger.LogChannel <- err.Error()
+			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
 			return
 		}
 		LiveNotificationChan, ok := ws.getLiveChannel(notification.ID)
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
-			ws.logger.Logger.Err(err)
-			ws.logger.LogChannel <- err.Error()
+			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
 			return
 		}
 		LiveNotificationChan <- notification
