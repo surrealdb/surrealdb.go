@@ -1,11 +1,9 @@
-package websocket
+package conn
 
-import (
-	"github.com/surrealdb/surrealdb.go/pkg/model"
-)
+import "github.com/surrealdb/surrealdb.go/pkg/model"
 
-type WebSocket interface {
-	Connect(url string) (WebSocket, error)
+type Connection interface {
+	Connect(url string) (Connection, error)
 	Send(method string, params []interface{}) (interface{}, error)
 	Close() error
 	LiveNotifications(id string) (chan model.Notification, error)

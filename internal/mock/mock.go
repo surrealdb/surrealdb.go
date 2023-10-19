@@ -3,14 +3,14 @@ package mock
 import (
 	"errors"
 
+	"github.com/surrealdb/surrealdb.go/pkg/conn"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
-	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 type ws struct {
 }
 
-func (w *ws) Connect(url string) (websocket.WebSocket, error) {
+func (w *ws) Connect(url string) (conn.Connection, error) {
 	return w, nil
 }
 
