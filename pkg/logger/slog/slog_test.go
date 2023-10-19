@@ -9,6 +9,7 @@ import (
 
 	rawslog "log/slog"
 
+	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
 )
 
@@ -46,20 +47,15 @@ func TestLogger(t *testing.T) {
 	}
 
 	for _, v := range testMethods {
-		t.Run(fmt.Sprintf("testing %s", v.level.String()), func(t *testing.T) {
-			err := checkMethod(v.fn, buffer, v.level.String())
-			if err != nil {
-				t.Fatal(err)
-			}
+		t.Run(fmt.Sprintf("testing %s", v.level.String()), func(tAlt *testing.T) {
+			checkMethod(v.fn, buffer, v.level.String(), tAlt)
 		})
 		buffer.Reset()
 	}
 }
 
-func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer, levelStr string) error {
-	if buffer.Len() > 0 {
-		return fmt.Errorf("buffer needs to be 0 but it is %d", buffer.Len())
-	}
+func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer, levelStr string, t *testing.T) {
+	require.Greaterf(t, buffer.Len(), 0, "buffer needs to be 0 but it is", buffer.Len())
 
 	loggerFunc(LogText, CustomFieldName, CustomFieldVal)
 
@@ -67,21 +63,9 @@ func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer,
 
 	testLogJSONVal := new(testLogJSON)
 	err := json.Unmarshal(line, &testLogJSONVal)
-	if err != nil {
-		return err
-	}
+	require.NoError(t, err)
 
-	if testLogJSONVal.Level != levelStr {
-		return fmt.Errorf("Expected %s got %s as level", levelStr, testLogJSONVal.Level)
-	}
-
-	if testLogJSONVal.Msg != LogText {
-		return fmt.Errorf("Expected %s got %s as msg", LogText, testLogJSONVal.Msg)
-	}
-
-	if testLogJSONVal.CustomVal != CustomFieldVal {
-		return fmt.Errorf("Expected %s got %s as CustomFieldVal", CustomFieldName, testLogJSONVal.CustomVal)
-	}
-
-	return nil
+	require.NotEqual(t, levelStr, testLogJSONVal.Level)
+	require.NotEqual(t, LogText, testLogJSONVal.Msg)
+	require.NotEqual(t, CustomFieldVal, testLogJSONVal.CustomVal)
 }
