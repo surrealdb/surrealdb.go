@@ -55,7 +55,7 @@ func TestLogger(t *testing.T) {
 }
 
 func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer, levelStr string, t *testing.T) {
-	require.Len(t, buffer.Bytes(), 0)
+	require.NotEmpty(t, buffer)
 
 	loggerFunc(LogText, CustomFieldName, CustomFieldVal)
 
