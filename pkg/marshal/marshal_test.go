@@ -3,7 +3,6 @@ package marshal_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 )
 
@@ -24,5 +23,7 @@ func TestUnMarshalMapToStruct(t *testing.T) {
 	testDataMap["TestBool"] = testObj.TestBool
 
 	err := marshal.UnmarshalMapToStruct(testDataMap, testObj)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
