@@ -19,6 +19,8 @@ jobs:
       pull-requests: read
     runs-on: ubuntu-latest
     steps:
+      - name: Collect Workflow Telemetry
+        uses: runforesight/workflow-telemetry-action@v1
       - name: Setup Go ${{ matrix.go-version }}
         uses: actions/setup-go@v3
         with:
