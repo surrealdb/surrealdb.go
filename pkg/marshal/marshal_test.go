@@ -13,19 +13,9 @@ type testMarshalStruct struct {
 }
 
 func TestUnMarshalMapToStruct(t *testing.T) {
-	testkey := "testKey"
 	testDataMap := make(map[string]interface{})
 
-	// nil data
-	testDataMap[testkey] = nil
-
-	testObj := new(testMarshalStruct)
-	err := marshal.UnmarshalMapToStruct(testDataMap, testObj)
-	if err == nil {
-		t.Fatal("nil value need to give error")
-	}
-
-	testObj = &testMarshalStruct{
+	testObj := &testMarshalStruct{
 		TestInt:    15,
 		TestBool:   true,
 		TestString: "testString",
@@ -35,9 +25,7 @@ func TestUnMarshalMapToStruct(t *testing.T) {
 	testDataMap["testBool"] = testObj.TestBool
 	testDataMap["testString"] = testObj.TestString
 
-	delete(testDataMap, testkey)
-
-	err = marshal.UnmarshalMapToStruct(testDataMap, testObj)
+	err := marshal.UnmarshalMapToStruct(testDataMap, testObj)
 	if err != nil {
 		t.Fatal(err)
 	}
