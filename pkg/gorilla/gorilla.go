@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
-	"strconv"
 	"sync"
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	gorilla "github.com/gorilla/websocket"
@@ -270,8 +269,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 			return
 		}
 		var notification model.Notification
-		// Just add comment line for test
-		err := unmarshalMapToStruct(mappedRes, &notification)
+		err := marshal.UnmarshalMapToStruct(mappedRes, &notification)
 		if err != nil {
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
 			return
@@ -284,68 +282,4 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 		}
 		LiveNotificationChan <- notification
 	}
-}
-
-func unmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) error {
-	outValue := reflect.ValueOf(outStruct)
-	if outValue.Kind() != reflect.Ptr || outValue.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("outStruct must be a pointer to a struct")
-	}
-
-	structValue := outValue.Elem()
-	structType := structValue.Type()
-
-	for i := 0; i < structValue.NumField(); i++ {
-		field := structType.Field(i)
-		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" {
-			fieldName = jsonTag
-		}
-		mapValue, ok := data[fieldName]
-		if !ok {
-			return fmt.Errorf("missing field in map: %s", fieldName)
-		}
-
-		fieldValue := structValue.Field(i)
-		if !fieldValue.CanSet() {
-			return fmt.Errorf("cannot set field: %s", fieldName)
-		}
-
-		if mapValue == nil {
-			// Handle nil values appropriately for your struct fields
-			// For simplicity, we skip nil values in this example
-			continue
-		}
-
-		// Type conversion based on the field type
-		switch fieldValue.Kind() {
-		case reflect.String:
-			fieldValue.SetString(fmt.Sprint(mapValue))
-		case reflect.Int:
-			intVal, err := strconv.Atoi(fmt.Sprint(mapValue))
-			if err != nil {
-				return err
-			}
-			fieldValue.SetInt(int64(intVal))
-		case reflect.Bool:
-			boolVal, err := strconv.ParseBool(fmt.Sprint(mapValue))
-			if err != nil {
-				return err
-			}
-			fieldValue.SetBool(boolVal)
-		case reflect.Map:
-			mapVal, ok := mapValue.(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("mapValue for property %s is not a map[string]interface{}", fieldName)
-			}
-			fieldValue.Set(reflect.ValueOf(mapVal))
-
-		// Add cases for other types as needed
-		default:
-			return fmt.Errorf("unsupported field type: %s", fieldName)
-		}
-	}
-
-	return nil
 }
