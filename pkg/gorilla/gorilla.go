@@ -270,6 +270,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 			return
 		}
 		var notification model.Notification
+		// Just add comment line for test
 		err := unmarshalMapToStruct(mappedRes, &notification)
 		if err != nil {
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
