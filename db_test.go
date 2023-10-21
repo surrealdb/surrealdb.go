@@ -128,11 +128,7 @@ func signin(s *SurrealDBTestSuite) interface{} {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
-	query := &surrealdb.LiveQuery{
-		Table: "users",
-	}
-
-	live, err := s.db.Live(query)
+	live, err := s.db.Live("users", 0)
 	defer func() {
 		_, err = s.db.Kill(live)
 		s.Require().NoError(err)
@@ -162,12 +158,7 @@ func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 	err := marshal.Unmarshal(userData, &user)
 	s.Require().NoError(err)
 
-	query := &surrealdb.LiveQuery{
-		Table: "users",
-		Diff:  true,
-	}
-
-	live, err := s.db.Live(query)
+	live, err := s.db.Live("users", 1)
 	defer func() {
 		_, err = s.db.Kill(live)
 		s.Require().NoError(err)

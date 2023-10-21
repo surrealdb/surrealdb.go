@@ -7,7 +7,4 @@ type Patch struct {
 	Value any    `json:"value"`
 }
 
-type LiveQuery struct {
-	Table string
-	Diff  bool
-}
+type LiveQueryUpdateType int
