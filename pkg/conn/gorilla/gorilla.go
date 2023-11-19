@@ -13,9 +13,9 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
+	"github.com/surrealdb/surrealdb.go/pkg/conn"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/rand"
-	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 const (
@@ -55,16 +55,16 @@ func Create() *WebSocket {
 	}
 }
 
-func (ws *WebSocket) Connect(url string) (websocket.WebSocket, error) {
+func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
 	dialer := gorilla.DefaultDialer
 	dialer.EnableCompression = true
 
-	conn, _, err := dialer.Dial(url, nil)
+	connection, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ws.Conn = conn
+	ws.Conn = connection
 
 	for _, option := range ws.Option {
 		if err := option(ws); err != nil {
