@@ -11,13 +11,15 @@ The official SurrealDB library for Golang.
 
 ## Getting Started
 
+For instructions on how to follow SurrealDB, follow [Installation Guide](https://surrealdb.com/docs/installation)
+
 ### Installation
 
 ```bash
 go get github.com/surrealdb/surrealdb.go
 ```
 
-### Quick Start
+### Usage
 
 ```go
 package main
@@ -33,12 +35,13 @@ type User struct {
 }
 
 func main() {
+	// Connect to SurrealDB
 	db, err := surrealdb.New("ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Signin(map[string]interface{}{
+	if _, err = db.Signin(map[string]string{
 		"user": "root",
 		"pass": "root",
 	}); err != nil {
@@ -49,7 +52,7 @@ func main() {
 		panic(err)
 	}
 
-	// Create user
+	// Define user struct
 	user := User{
 		Name:    "John",
 		Surname: "Doe",
@@ -99,7 +102,6 @@ func main() {
 	if _, err = db.Delete(selectedUser.ID); err != nil {
 		panic(err)
 	}
-
 }
 ```
 
@@ -107,8 +109,6 @@ func main() {
 * Step 2: Run the command `go mod init github.com/<github-username>/<project-name>` to create a go.mod file
 * Step 3: Run the command `go mod tidy` to download surreal db
 * Step 4: Run `go run main.go` to run the application. 
-
-Note: Would be helpful to add `fmt.Println` statements to debug.
 
 # Documentation
 
