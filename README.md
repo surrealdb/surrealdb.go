@@ -11,6 +11,8 @@ The official SurrealDB library for Golang.
 
 ## Getting Started
 
+For instructions on how to follow SurrealDB, follow [Installation Guide](https://surrealdb.com/docs/installation)
+
 ### Installation
 
 ```bash
@@ -21,11 +23,16 @@ go get github.com/surrealdb/surrealdb.go
 
 ```go
 package main
-
 import (
-    "fmt"
-    "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go"
+
 )
+
+type User struct {
+	ID      string `json:"id,omitempty"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+}
 
 func main() {
 	// Connect to SurrealDB
@@ -34,7 +41,6 @@ func main() {
 		panic(err)
 	}
 
-	// Sign in
 	if _, err = db.Signin(map[string]string{
 		"user": "root",
 		"pass": "root",
@@ -42,12 +48,11 @@ func main() {
 		panic(err)
 	}
 
-	// Select namespace and database
 	if _, err = db.Use("test", "test"); err != nil {
 		panic(err)
 	}
 
-	// Create user struct
+	// Define user struct
 	user := User{
 		Name:    "John",
 		Surname: "Doe",
@@ -81,16 +86,12 @@ func main() {
 
 	// Change part/parts of user
 	changes := map[string]string{"name": "Jane"}
-	if _, err = db.Change(selectedUser.ID, changes); err != nil {
-		panic(err)
-	}
 
 	// Update user
 	if _, err = db.Update(selectedUser.ID, changes); err != nil {
 		panic(err)
 	}
 
-	// Raw Query user
 	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
 		"record": createdUser[0].ID,
 	}); err != nil {
@@ -102,8 +103,12 @@ func main() {
 		panic(err)
 	}
 }
-
 ```
+
+* Step 1: Create a file called `main.go` and paste the above code
+* Step 2: Run the command `go mod init github.com/<github-username>/<project-name>` to create a go.mod file
+* Step 3: Run the command `go mod tidy` to download surreal db
+* Step 4: Run `go run main.go` to run the application. 
 
 # Documentation
 

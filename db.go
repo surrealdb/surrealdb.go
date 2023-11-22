@@ -5,18 +5,22 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 
+	"github.com/surrealdb/surrealdb.go/pkg/conn"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 // DB is a client for the SurrealDB database that holds are websocket connection.
 type DB struct {
-	ws websocket.WebSocket
+	conn conn.Connection
 }
 
-// New creates a new SurrealDB client.
-func New(url string, ws websocket.WebSocket) (*DB, error) {
-	return &DB{ws}, nil
+// New creates a new SurrealDB lient.
+func New(url string, connection conn.Connection) (*DB, error) {
+	connection, err := connection.Connect(url)
+	if err != nil {
+		return nil, err
+	}
+	return &DB{connection}, nil
 }
 
 // --------------------------------------------------
@@ -25,7 +29,7 @@ func New(url string, ws websocket.WebSocket) (*DB, error) {
 
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close() {
-	_ = db.ws.Close()
+	_ = db.conn.Close()
 }
 
 // --------------------------------------------------
@@ -114,7 +118,7 @@ func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 
 // LiveNotifications returns a channel for live query.
 func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
-	return db.ws.LiveNotifications(liveQueryID)
+	return db.conn.LiveNotifications(liveQueryID)
 }
 
 // --------------------------------------------------
@@ -124,7 +128,7 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, er
 // send is a helper method for sending a query to the database.
 func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	// here we send the args through our websocket connection
-	resp, err := db.ws.Send(method, params)
+	resp, err := db.conn.Send(method, params)
 	if err != nil {
 		return nil, fmt.Errorf("sending request failed for method '%s': %w", method, err)
 	}
