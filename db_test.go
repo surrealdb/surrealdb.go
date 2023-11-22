@@ -119,10 +119,13 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 // Sign with the root user
 // Can be used with any user
 func signin(s *SurrealDBTestSuite) interface{} {
-	signin, err := s.db.Signin(map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
+	authData := &surrealdb.Auth{
+		Database:  "test",
+		Namespace: "test",
+		Username:  "root",
+		Password:  "root",
+	}
+	signin, err := s.db.Signin(authData)
 	s.Require().NoError(err)
 	return signin
 }
