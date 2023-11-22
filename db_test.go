@@ -4,30 +4,33 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	rawslog "log/slog"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/conn/gorilla"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	gorilla "github.com/surrealdb/surrealdb.go/pkg/gorilla"
+
+	"github.com/surrealdb/surrealdb.go/pkg/conn"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
-	"github.com/surrealdb/surrealdb.go/pkg/websocket"
 )
 
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
-	db                *surrealdb.DB
-	name              string
-	wsImplementations map[string]websocket.WebSocket
+	db                  *surrealdb.DB
+	name                string
+	connImplementations map[string]conn.Connection
 }
 
 // a simple user struct for testing
@@ -40,29 +43,28 @@ type testUser struct {
 
 func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite := new(SurrealDBTestSuite)
-	SurrealDBSuite.wsImplementations = make(map[string]websocket.WebSocket)
+	SurrealDBSuite.connImplementations = make(map[string]conn.Connection)
 
 	// Without options
-	logData, err := createLogData(t)
-	require.NoError(t, err)
-	SurrealDBSuite.wsImplementations["gorilla"] = gorilla.Create().Logger(logData)
+	logData := createLogger(t)
+	SurrealDBSuite.connImplementations["gorilla"] = gorilla.Create().Logger(logData)
 
 	// With options
-	logData, err = createLogData(t)
-	require.NoError(t, err)
-	SurrealDBSuite.wsImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
+	logData = createLogger(t)
+	SurrealDBSuite.connImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
 
 	RunWsMap(t, SurrealDBSuite)
 }
 
-func createLogData(t *testing.T) (*logger.LogData, error) {
+func createLogger(t *testing.T) logger.Logger {
 	t.Helper()
 	buff := bytes.NewBuffer([]byte{})
-	return logger.New().FromBuffer(buff).Make()
+	handler := rawslog.NewJSONHandler(buff, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
+	return slog.New(handler)
 }
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
-	for wsName := range s.wsImplementations {
+	for wsName := range s.connImplementations {
 		// Run the test suite
 		t.Run(wsName, func(t *testing.T) {
 			s.name = wsName
@@ -97,11 +99,9 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
-	impl := s.wsImplementations[s.name]
+	impl := s.connImplementations[s.name]
 	require.NotNil(s.T(), impl)
-	ws, err := impl.Connect(url)
-	s.Require().NoError(err)
-	db, err := surrealdb.New(url, ws)
+	db, err := surrealdb.New(url, impl)
 	s.Require().NoError(err)
 	return db
 }

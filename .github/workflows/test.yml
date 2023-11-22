@@ -13,22 +13,23 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [ '1.20', '1.21']
+        go-version: ['1.21']
     permissions:
       contents: read
       pull-requests: read
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
         with:
           go-version: ${{ matrix.go-version }}
-      - uses: actions/checkout@v3
-      - name: Start SurrealDB
-        run: docker run -it -d --rm --name surrealdb -p 8000:8000 surrealdb/surrealdb:nightly start -u root -p root
-      - name: Test
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: download surrealdb
+        run: curl --proto '=https' --tlsv1.2 -sSf https://install.surrealdb.com | sh -s -- --nightly
+      - name: start surrealdb
+        run: surreal start memory -A --auth --user root --pass root &
+      - name: test
         run: go test -v -cover ./...
         env:
           SURREALDB_URL: ws://localhost:8000/rpc
-      - name: Stop SurrealDB
-        run: docker stop -t 1 surrealdb
