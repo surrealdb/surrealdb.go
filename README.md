@@ -41,7 +41,6 @@ func main() {
 		panic(err)
 	}
 
-
 	authData := &surrealdb.Auth{
 		Database:  "test",
 		Namespace: "test",
