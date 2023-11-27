@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/util"
@@ -161,4 +162,78 @@ func SmartMarshal[I any](inputfunc interface{}, data I) (output interface{}, err
 		return function(table)
 	}
 	return nil, ErrNotValidFunc
+}
+
+// UnmarshalMapToStruct unmarshals a map[string]interface{} to a struct.
+func UnmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) error {
+	outValue := reflect.ValueOf(outStruct)
+	if outValue.Kind() != reflect.Ptr || outValue.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("outStruct must be a pointer to a struct")
+	}
+
+	structValue := outValue.Elem()
+	structType := structValue.Type()
+
+	for i := 0; i < structValue.NumField(); i++ {
+		field := structType.Field(i)
+		fieldName := field.Name
+		jsonTag, jsonOk := field.Tag.Lookup("json")
+		if jsonOk {
+			fieldName = jsonTag
+		}
+		mapValue, mapOk := data[fieldName]
+		if !mapOk {
+			return fmt.Errorf("missing field in map: %s", fieldName)
+		}
+
+		if mapValue == nil {
+			// if values nil we will skip for speed
+			continue
+		}
+
+		fieldValue := structValue.Field(i)
+		if !fieldValue.CanSet() {
+			return fmt.Errorf("cannot set field: %s", fieldName)
+		}
+
+		// Type conversion based on the field type
+		err := setField(&fieldValue, fieldName, mapValue)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// setField helper function for UnmarshalMapToStruct.
+// Set Value of field based on its type.
+func setField(fieldValue *reflect.Value, fieldName string, mapValue interface{}) error {
+	switch fieldValue.Kind() {
+	case reflect.String:
+		fieldValue.SetString(fmt.Sprint(mapValue))
+	case reflect.Int:
+		intVal, err := strconv.Atoi(fmt.Sprint(mapValue))
+		if err != nil {
+			return err
+		}
+		fieldValue.SetInt(int64(intVal))
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(fmt.Sprint(mapValue))
+		if err != nil {
+			return err
+		}
+		fieldValue.SetBool(boolVal)
+	case reflect.Map:
+		mapVal, ok := mapValue.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("mapValue for property %s is not a map[string]interface{}", fieldName)
+		}
+		fieldValue.Set(reflect.ValueOf(mapVal))
+
+	// Add cases for other types as needed
+	default:
+		return fmt.Errorf("unsupported field type: %s", fieldName)
+	}
+	return nil
 }
