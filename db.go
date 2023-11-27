@@ -9,12 +9,21 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
-// DB is a client for the SurrealDB database that holds are websocket connection.
+// DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
 	conn conn.Connection
 }
 
-// New creates a new SurrealDB lient.
+// Auth is a struct that holds surrealdb auth data for login.
+type Auth struct {
+	Namespace string `json:"NS,omitempty"`
+	Database  string `json:"DB,omitempty"`
+	Scope     string `json:"SC,omitempty"`
+	Username  string `json:"user,omitempty"`
+	Password  string `json:"pass,omitempty"`
+}
+
+// New creates a new SurrealDB client.
 func New(url string, connection conn.Connection) (*DB, error) {
 	connection, err := connection.Connect(url)
 	if err != nil {
@@ -44,13 +53,13 @@ func (db *DB) Info() (interface{}, error) {
 }
 
 // Signup is a helper method for signing up a new user.
-func (db *DB) Signup(vars interface{}) (interface{}, error) {
-	return db.send("signup", vars)
+func (db *DB) Signup(authData *Auth) (interface{}, error) {
+	return db.send("signup", authData)
 }
 
 // Signin is a helper method for signing in a user.
-func (db *DB) Signin(vars interface{}) (interface{}, error) {
-	return db.send("signin", vars)
+func (db *DB) Signin(authData *Auth) (interface{}, error) {
+	return db.send("signin", authData)
 }
 
 func (db *DB) Invalidate() (interface{}, error) {
