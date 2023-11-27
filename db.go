@@ -63,8 +63,8 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string, updateType LiveQueryUpdateType) (string, error) {
-	id, err := db.send("live", table, updateType)
+func (db *DB) Live(table string, diff bool) (string, error) {
+	id, err := db.send("live", table, diff)
 	return id.(string), err
 }
 

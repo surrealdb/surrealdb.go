@@ -6,5 +6,3 @@ type Patch struct {
 	Path  string `json:"path"`
 	Value any    `json:"value"`
 }
-
-type LiveQueryUpdateType int
