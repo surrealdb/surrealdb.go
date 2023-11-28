@@ -72,8 +72,8 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string) (string, error) {
-	id, err := db.send("live", table)
+func (db *DB) Live(table string, diff bool) (string, error) {
+	id, err := db.send("live", table, diff)
 	return id.(string), err
 }
 
