@@ -36,16 +36,10 @@ type SurrealDBTestSuite struct {
 // a simple user struct for testing
 type testUser struct {
 	marshal.Basemodel `table:"test"`
-	Username          string       `json:"username,omitempty"`
-	Password          string       `json:"password,omitempty"`
-	Personal          PersonalInfo `json:"personal_info"`
-	Friends           []string     `json:"friends,omitempty"`
-	ID                string       `json:"id,omitempty"`
-}
-
-type PersonalInfo struct {
-	Name    string `json:"name,omitempty"`
-	Surname string `json:"surname,omitempty"`
+	Username          string   `json:"username,omitempty"`
+	Password          string   `json:"password,omitempty"`
+	Friends           []string `json:"friends,omitempty"`
+	ID                string   `json:"id,omitempty"`
 }
 
 func TestSurrealDBSuite(t *testing.T) {
@@ -91,7 +85,7 @@ func (s *SurrealDBTestSuite) TearDownSuite() {
 	s.db.Close()
 }
 
-func (t *testUser) String() (str string, err error) {
+func (t testUser) String() (str string, err error) {
 	byteData, err := json.Marshal(t)
 	if err != nil {
 		return
@@ -206,14 +200,12 @@ func (s *SurrealDBTestSuite) TestFetch() {
 		{
 			ID:       "users:arthur",
 			Username: "arthur",
-			Personal: PersonalInfo{Name: "arthur", Surname: "morgan"},
 			Password: "deer",
 			Friends:  []string{"users:john"},
 		},
 		{
 			ID:       "users:john",
 			Username: "john",
-			Personal: PersonalInfo{Name: "john", Surname: "marston"},
 			Password: "wolf",
 			Friends:  []string{"users:arthur"},
 		},
