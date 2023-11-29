@@ -36,9 +36,16 @@ type SurrealDBTestSuite struct {
 // a simple user struct for testing
 type testUser struct {
 	marshal.Basemodel `table:"test"`
-	Username          string `json:"username,omitempty"`
-	Password          string `json:"password,omitempty"`
-	ID                string `json:"id,omitempty"`
+	Username          string       `json:"username,omitempty"`
+	Password          string       `json:"password,omitempty"`
+	Personal          PersonalInfo `json:"personal_info"`
+	Friends           []string     `json:"friends,omitempty"`
+	ID                string       `json:"id,omitempty"`
+}
+
+type PersonalInfo struct {
+	Name    string `json:"name,omitempty"`
+	Surname string `json:"surname,omitempty"`
 }
 
 func TestSurrealDBSuite(t *testing.T) {
@@ -84,7 +91,7 @@ func (s *SurrealDBTestSuite) TearDownSuite() {
 	s.db.Close()
 }
 
-func (t testUser) String() (str string, err error) {
+func (t *testUser) String() (str string, err error) {
 	byteData, err := json.Marshal(t)
 	if err != nil {
 		return
@@ -191,6 +198,80 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	// Delete the users...
 	_, err = s.db.Delete("users")
 	s.Require().NoError(err)
+}
+
+func (s *SurrealDBTestSuite) TestFetch() {
+	// Define initial user slice
+	userSlice := []testUser{
+		{
+			ID:       "users:arthur",
+			Username: "arthur",
+			Personal: PersonalInfo{Name: "arthur", Surname: "morgan"},
+			Password: "deer",
+			Friends:  []string{"users:john"},
+		},
+		{
+			ID:       "users:john",
+			Username: "john",
+			Personal: PersonalInfo{Name: "john", Surname: "marston"},
+			Password: "wolf",
+			Friends:  []string{"users:arthur"},
+		},
+	}
+
+	// Initialize data using users
+	for _, v := range userSlice {
+		data, err := s.db.Create(v.ID, v)
+		s.NoError(err)
+		s.NotNil(data)
+	}
+
+	// User rows are individually fetched
+	s.Run("Run fetch for individual users", func() {
+		for _, v := range userSlice {
+			res, err := s.db.Query("select * from $table fetch $fetchstr;", map[string]interface{}{
+				"record":   v.ID,
+				"fetchstr": "friends.*",
+			})
+			// TODO: This should be fixed once the code is fixed
+			s.Error(err)
+			s.Nil(res)
+		}
+	})
+
+	s.Run("Run fetch on hardcoded query", func() {
+		query := "SELECT * from users fetch friends.*"
+		res, err := s.db.Query(query, map[string]interface{}{})
+		s.NoError(err)
+		s.NotNil(res)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
+		res, err := s.db.Query("select * from $record fetch $fetchstr;", map[string]interface{}{
+			"record":   "users",
+			"fetchstr": "friends.*",
+		})
+		// TODO: This should be fixed once the code is fixed
+		s.Error(err)
+		s.Nil(res)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
+		res, err := s.db.Query("select * from users fetch $fetchstr;", map[string]interface{}{
+			"fetchstr": "friends.*",
+		})
+		// TODO: This should be fixed once the code is fixed
+		s.Error(err)
+		s.Nil(res)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for thing or tableName", func() {
+		res, err := s.db.Query("select * from $record fetch friends.*;", map[string]interface{}{
+			"record": "users",
+		})
+		s.NoError(err)
+		s.NotNil(res)
+	})
 }
 
 func (s *SurrealDBTestSuite) TestInsert() {
