@@ -121,10 +121,10 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 // Can be used with any user
 func signin(s *SurrealDBTestSuite) interface{} {
 	authData := &surrealdb.Auth{
-		Database:  "test",
-		Namespace: "test",
-		Username:  "root",
-		Password:  "root",
+		// Database:  "test",
+		// Namespace: "test",
+		Username: "root",
+		Password: "root",
 	}
 	signin, err := s.db.Signin(authData)
 	s.Require().NoError(err)
