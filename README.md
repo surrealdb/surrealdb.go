@@ -41,10 +41,13 @@ func main() {
 		panic(err)
 	}
 
-	if _, err = db.Signin(map[string]string{
-		"user": "root",
-		"pass": "root",
-	}); err != nil {
+	authData := &surrealdb.Auth{
+		Database:  "test",
+		Namespace: "test",
+		Username:  "root",
+		Password:  "root",
+	}
+	if _, err = db.Signin(authData); err != nil {
 		panic(err)
 	}
 
