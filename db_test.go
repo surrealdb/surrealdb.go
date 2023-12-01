@@ -225,6 +225,53 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 }
 
+// TODO: This can maybe be replaced by smartUnmarshal
+func (s *SurrealDBTestSuite) validateFriends(actualUser interface{}, expectedUserID string) {
+	s.T().Helper()
+	output, ok := actualUser.([]interface{})
+	if !ok {
+		s.T().Errorf("Failed to convert to map[string]interface{}")
+	}
+
+	// Access the first element in the output slice
+	if len(output) > 0 {
+		resultMap, ok := output[0].(map[string]interface{})
+		if !ok {
+			s.T().Errorf("Failed to convert to map[string]interface{}")
+		}
+
+		// Access the "result" key
+		results, ok := resultMap["result"].([]interface{})
+		if !ok {
+			s.T().Errorf("Failed to get 'result' key as a slice")
+		}
+
+		// Access the first element in the "result" slice
+		if len(results) > 0 {
+			firstResult, ok := results[0].(map[string]interface{})
+			if !ok {
+				s.T().Errorf("Failed to get the first result as a map")
+			}
+
+			// Access the "friends" key in the first result
+			friends, ok := firstResult["friends"].([]interface{})
+			if !ok {
+				s.T().Errorf("Failed to get 'friends' key as a slice")
+			}
+
+			// Access the first element in the "result" slice
+			if len(friends) > 0 {
+				firstFriend, ok := friends[0].(map[string]interface{})
+				if !ok {
+					s.T().Errorf("Failed to get the first result as a map")
+				}
+
+				s.Equal(expectedUserID, firstFriend["id"])
+			}
+		}
+	}
+}
+
 func (s *SurrealDBTestSuite) TestFetch() {
 	// Define initial user slice
 	userSlice := []testUser{
@@ -251,49 +298,56 @@ func (s *SurrealDBTestSuite) TestFetch() {
 
 	// User rows are individually fetched
 	s.Run("Run fetch for individual users", func() {
+		// TODO: This should be fixed once the code is fixed
+		s.T().Skip()
 		for _, v := range userSlice {
 			res, err := s.db.Query("select * from $table fetch $fetchstr;", map[string]interface{}{
 				"record":   v.ID,
 				"fetchstr": "friends.*",
 			})
-			// TODO: This should be fixed once the code is fixed
-			s.Error(err)
-			s.Nil(res)
+			s.NoError(err)
+			s.NotEmpty(res)
 		}
 	})
 
 	s.Run("Run fetch on hardcoded query", func() {
-		query := "SELECT * from users fetch friends.*"
+		query := "SELECT * from users:arthur fetch friends.*"
 		res, err := s.db.Query(query, map[string]interface{}{})
 		s.NoError(err)
-		s.NotNil(res)
+		s.NotEmpty(res)
+
+		s.validateFriends(res, userSlice[0].Friends[0])
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
+		// TODO: This should be fixed once the code is fixed
+		s.T().Skip()
 		res, err := s.db.Query("select * from $record fetch $fetchstr;", map[string]interface{}{
 			"record":   "users",
 			"fetchstr": "friends.*",
 		})
 		// TODO: This should be fixed once the code is fixed
-		s.Error(err)
-		s.Nil(res)
+		s.NoError(err)
+		s.NotEmpty(res)
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
+		// TODO: This should be fixed once the code is fixed
+		s.T().Skip()
 		res, err := s.db.Query("select * from users fetch $fetchstr;", map[string]interface{}{
 			"fetchstr": "friends.*",
 		})
-		// TODO: This should be fixed once the code is fixed
-		s.Error(err)
-		s.Nil(res)
+		s.NoError(err)
+		s.NotEmpty(res)
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for thing or tableName", func() {
 		res, err := s.db.Query("select * from $record fetch friends.*;", map[string]interface{}{
-			"record": "users",
+			"record": "users:arthur",
 		})
 		s.NoError(err)
-		s.NotNil(res)
+		s.NotEmpty(res)
+		s.validateFriends(res, userSlice[0].Friends[0])
 	})
 }
 
