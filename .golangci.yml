@@ -1,7 +1,25 @@
 linters-settings:
   depguard:
-    list-type: denylist
-
+    rules:
+      main:
+       allow:
+        - $gostd
+        - github.com/OpenPeeDeeP/depguard
+        - github.com/surrealdb/surrealdb.go/pkg/constants
+        - github.com/surrealdb/surrealdb.go/pkg/websocket
+        - github.com/rs/zerolog
+        - github.com/gorilla/websocket
+        - github.com/surrealdb/surrealdb.go/internal/rpc
+        - github.com/surrealdb/surrealdb.go/pkg/logger
+        - github.com/surrealdb/surrealdb.go/pkg/rand
+        - github.com/surrealdb/surrealdb.go/pkg/util
+        - github.com/stretchr/testify/require
+        - github.com/stretchr/testify/suite
+        - github.com/surrealdb/surrealdb.go
+        - github.com/surrealdb/surrealdb.go/pkg/gorilla
+        - github.com/surrealdb/surrealdb.go/pkg/marshal
+        - github.com/surrealdb/surrealdb.go
+        - github.com/surrealdb/surrealdb.go/internal/mock
   dupl:
     threshold: 100
   funlen:
@@ -55,6 +73,7 @@ linters-settings:
 linters:
   disable-all: true
   enable:
+    - depguard
     - bodyclose
     - dogsled
     - dupl
