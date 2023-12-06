@@ -33,8 +33,8 @@ func Test_TestSurrealDBParallelSimple(t *testing.T) {
 		t.Run(fmt.Sprintf("parallel__%d", i), func(t *testing.T) {
 			t.Parallel()
 
-			_, db, cancel := NewTestSurrealDB(t)
-			defer cancel()
+			_, db, close := NewTestSurrealDB(t)
+			defer close()
 
 			// Ensure that CREATE statement does not run against the same
 			// database (which would fail).
@@ -50,8 +50,8 @@ func Test_TestSurrealDBParalleSelect(t *testing.T) {
 		i := i
 		t.Run(fmt.Sprintf("parallel__%d", i), func(t *testing.T) {
 			t.Parallel()
-			_, db, cancel := NewTestSurrealDB(t)
-			defer cancel()
+			_, db, close := NewTestSurrealDB(t)
+			defer close()
 
 			// Ensure that CREATE statement does not run against the same
 			// database (which would fail).
