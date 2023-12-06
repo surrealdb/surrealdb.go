@@ -92,6 +92,7 @@ type DBForTest struct {
 
 func NewTestSurrealDB(t testing.TB) (string, *DBForTest, func()) {
 	t.Helper()
+
 	checkSurrealCLIOnce.Do(func() {
 		if _, err := exec.LookPath("surreal"); err == nil {
 			testHasSurrealCLI = true
@@ -159,6 +160,8 @@ func NewTestSurrealDB(t testing.TB) (string, *DBForTest, func()) {
 }
 
 func getFreePort(t testing.TB) uint32 {
+	t.Helper()
+
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
 		t.Fatalf("could not find any open port: %v", err)
@@ -172,6 +175,8 @@ func getFreePort(t testing.TB) uint32 {
 }
 
 func newDBForTest(t testing.TB, endpoint string) *DB {
+	t.Helper()
+
 	url := fmt.Sprintf("ws://%s/rpc", endpoint)
 	buff := bytes.NewBuffer([]byte{})
 	handler := rawslog.NewJSONHandler(buff, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
