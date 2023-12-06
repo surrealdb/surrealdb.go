@@ -26,6 +26,26 @@ var (
 	DelayBeforeServerExit time.Duration = 300 * time.Millisecond
 )
 
+func Test_NewTestSurrealDB_Simple(t *testing.T) {
+	// Simple illustration of how NewTestSurrealDB can be used.
+
+	// Tests can run in parallel.
+	t.Parallel()
+
+	// NewTestSurrealDB returns endpoint (random open port used), DB instance
+	// (which is wrapped in DBForTest to provide extra methods), and a func to
+	// shutdown the SurrealDB server.
+	endpoint, db, close := NewTestSurrealDB(t)
+	defer close()
+	_ = endpoint // endpoint could be useful for some low level testing.
+
+	// DBForTest.Prepare is to run any SurrealQL for test prep. This would fail
+	// early if the provided string results in an error from SurrealDB server.
+	db.Prepare(t, "CREATE user:x SET name = 'x'")
+
+	// More interactions can simply use db instance from here on.
+}
+
 func Test_TestSurrealDBParallelSimple(t *testing.T) {
 	t.Parallel()
 	instanceCount := 20
