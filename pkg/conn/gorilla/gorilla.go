@@ -239,7 +239,7 @@ func (ws *WebSocket) initialize() {
 				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
-					// TODO: Handle error correctly, otherwise this can panic
+					// TODO(#119): Handle error correctly, otherwise this can panic
 					// after 1000 tries in a tight loop.
 					ws.logger.Error(err.Error())
 					continue
