@@ -182,13 +182,9 @@ func NewTestSurrealDB(t testing.TB) (string, *DBForTest, func()) {
 func getFreePort(t testing.TB) uint32 {
 	t.Helper()
 
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
-		t.Fatalf("could not find any open port: %v", err)
-	}
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		t.Fatalf("could not listen to \"%s\": %v", addr, err)
+		t.Fatalf("could not listen to localhost:0: %v", err)
 	}
 	defer l.Close()
 	return uint32(l.Addr().(*net.TCPAddr).Port)
