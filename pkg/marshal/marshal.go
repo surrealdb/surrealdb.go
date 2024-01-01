@@ -21,6 +21,13 @@ type RawQuery[I any] struct {
 	Detail string `json:"detail"`
 }
 
+type RawQueryRaw[I any] struct {
+	Status string `json:"status"`
+	Time   string `json:"time"`
+	Result I      `json:"result"`
+	Detail string `json:"detail"`
+}
+
 // Unmarshal loads a SurrealDB response into a struct.
 func Unmarshal(data, v interface{}) (err error) {
 	var jsonBytes []byte
@@ -108,6 +115,54 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (outputs []I
 		}
 	}
 	return outputs, err
+}
+
+// SmartUnmarshalRaw1 using generics for return desired type.
+// Supports only raw queries with 1 returned result.
+// example: [map[result:true status:OK time:4.219606ms]]
+// handles THROW errors: [map[result:An error occurred: blocked status:ERR time:4.219606ms]]
+func SmartUnmarshalRaw1[I any](respond interface{}, wrapperError error) (output I, err error) {
+	// Handle delete
+	if respond == nil || wrapperError != nil {
+		return output, wrapperError
+	}
+	data, err := json.Marshal(respond)
+	if err != nil {
+		return output, err
+	}
+
+	var rawArr []RawQueryRaw[I]
+	if err = json.Unmarshal(data, &rawArr); err == nil {
+		if len(rawArr) == 1 {
+			raw := rawArr[0]
+			if raw.Status != StatusOK {
+				err = errors.Join(err, errors.New(raw.Detail))
+			} else {
+				output = raw.Result
+			}
+		} else {
+			err = errors.New("invalid response")
+		}
+	} else {
+		// Error in Result field
+		unmarshalError := err
+		var rawError []RawQueryRaw[string]
+		if err = json.Unmarshal(data, &rawError); err == nil {
+			if len(rawError) == 1 {
+				if rawError[0].Status != StatusOK {
+					err = errors.Join(err, errors.New(rawError[0].Result))
+				} else {
+					err = errors.Join(err, unmarshalError)
+				}
+			} else {
+				err = errors.New("invalid response")
+			}
+		} else {
+			err = errors.Join(err, unmarshalError)
+		}
+	}
+
+	return output, err
 }
 
 // Used for define table name, it has no value.

@@ -228,7 +228,7 @@ func (s *SurrealDBTestSuite) TestDelete() {
 
 func (s *SurrealDBTestSuite) TestInsert() {
 	s.Run("raw map works", func() {
-		userData, err := s.db.Insert("user", map[string]interface{}{
+		userData, err := s.db.Insert("users", map[string]interface{}{
 			"username": "johnny",
 			"password": "123",
 		})
@@ -244,7 +244,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 	})
 
 	s.Run("Single insert works", func() {
-		userData, err := s.db.Insert("user", testUser{
+		userData, err := s.db.Insert("users", testUser{
 			Username: "johnny",
 			Password: "123",
 		})
@@ -268,7 +268,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 			Username: "johnny2",
 			Password: "123",
 		})
-		userData, err := s.db.Insert("user", userInsert)
+		userData, err := s.db.Insert("users", userInsert)
 		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
@@ -572,6 +572,47 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 		s.Require().NoError(err)
 		s.Len(data, 0)
 	})
+}
+
+func (s *SurrealDBTestSuite) TestSmartUnMarshalRaw1Query() {
+	user := testUser{
+		Username: "electwix",
+		Password: "1234",
+	}
+
+	s.Run("raw create query", func() {
+		QueryStr := "Create Only users set Username = $user, Password = $pass"
+		data, err := marshal.SmartUnmarshalRaw1[testUser](s.db.Query(QueryStr, map[string]interface{}{
+			"user": user.Username,
+			"pass": user.Password,
+		}))
+
+		s.Require().NoError(err)
+		s.Equal("electwix", data.Username)
+		user = data
+	})
+
+	s.Run("raw select query", func() {
+		dataArr, err := marshal.SmartUnmarshalRaw1[[]testUser](s.db.Query("Select * from $record", map[string]interface{}{
+			"record": user.ID,
+		}))
+
+		s.Require().NoError(err)
+		s.Equal("electwix", dataArr[0].Username)
+	})
+
+	s.Run("raw THROW query", func() {
+		_, err := marshal.SmartUnmarshalRaw1[[]testUser](s.db.Query(
+			`BEGIN;
+			THROW 'blocked';
+			COMMIT;
+			`,
+			map[string]interface{}{}))
+
+		s.Require().Error(err)
+		s.Require().Contains(err.Error(), "blocked")
+	})
+
 }
 
 func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
