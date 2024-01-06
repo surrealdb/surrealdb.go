@@ -581,7 +581,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalRaw1Query() {
 	}
 
 	s.Run("raw create query", func() {
-		QueryStr := "Create Only users set Username = $user, Password = $pass"
+		QueryStr := "CREATE ONLY users SET Username = $user, Password = $pass"
 		data, err := marshal.SmartUnmarshalRaw1[testUser](s.db.Query(QueryStr, map[string]interface{}{
 			"user": user.Username,
 			"pass": user.Password,
@@ -593,7 +593,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalRaw1Query() {
 	})
 
 	s.Run("raw select query", func() {
-		dataArr, err := marshal.SmartUnmarshalRaw1[[]testUser](s.db.Query("Select * from $record", map[string]interface{}{
+		dataArr, err := marshal.SmartUnmarshalRaw1[[]testUser](s.db.Query("SELECT * FROM $record", map[string]interface{}{
 			"record": user.ID,
 		}))
 

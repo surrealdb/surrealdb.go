@@ -21,7 +21,7 @@ type RawQuery[I any] struct {
 	Detail string `json:"detail"`
 }
 
-type RawQueryRaw[I any] struct {
+type RawQuerySingle[I any] struct {
 	Status string `json:"status"`
 	Time   string `json:"time"`
 	Result I      `json:"result"`
@@ -131,7 +131,7 @@ func SmartUnmarshalRaw1[I any](respond interface{}, wrapperError error) (output 
 		return output, err
 	}
 
-	var rawArr []RawQueryRaw[I]
+	var rawArr []RawQuerySingle[I]
 	if err = json.Unmarshal(data, &rawArr); err == nil {
 		if len(rawArr) == 1 {
 			raw := rawArr[0]
@@ -146,7 +146,7 @@ func SmartUnmarshalRaw1[I any](respond interface{}, wrapperError error) (output 
 	} else {
 		// Error in Result field
 		unmarshalError := err
-		var rawError []RawQueryRaw[string]
+		var rawError []RawQuerySingle[string]
 		if err = json.Unmarshal(data, &rawError); err == nil {
 			if len(rawError) == 1 {
 				if rawError[0].Status != StatusOK {
