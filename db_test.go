@@ -225,46 +225,33 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 }
 
-// TODO: This can maybe be replaced by smartUnmarshal
 func (s *SurrealDBTestSuite) validateFriends(actualUser interface{}, expectedUserID string) {
 	s.T().Helper()
 	output, ok := actualUser.([]interface{})
-	if !ok {
-		s.T().Errorf("Failed to convert to map[string]interface{}")
-	}
+	assert.True(s.T(), ok, "Failed to convert to map[string]interface{}")
 
 	// Access the first element in the output slice
 	if len(output) > 0 {
 		resultMap, ok := output[0].(map[string]interface{})
-		if !ok {
-			s.T().Errorf("Failed to convert to map[string]interface{}")
-		}
+		assert.True(s.T(), ok, "Failed to convert to map[string]interface{}")
 
 		// Access the "result" key
 		results, ok := resultMap["result"].([]interface{})
-		if !ok {
-			s.T().Errorf("Failed to get 'result' key as a slice")
-		}
+		assert.True(s.T(), ok, "Failed to get 'result' key as a slice")
 
 		// Access the first element in the "result" slice
 		if len(results) > 0 {
 			firstResult, ok := results[0].(map[string]interface{})
-			if !ok {
-				s.T().Errorf("Failed to get the first result as a map")
-			}
+			assert.True(s.T(), ok, "Failed to get the first result as a map")
 
 			// Access the "friends" key in the first result
 			friends, ok := firstResult["friends"].([]interface{})
-			if !ok {
-				s.T().Errorf("Failed to get 'friends' key as a slice")
-			}
+			assert.True(s.T(), ok, "Failed to get 'friends' key as a slice")
 
 			// Access the first element in the "result" slice
 			if len(friends) > 0 {
 				firstFriend, ok := friends[0].(map[string]interface{})
-				if !ok {
-					s.T().Errorf("Failed to get the first result as a map")
-				}
+				assert.True(s.T(), ok, "Failed to get the first result as a map")
 
 				s.Equal(expectedUserID, firstFriend["id"])
 			}
