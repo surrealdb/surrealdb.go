@@ -259,7 +259,7 @@ func (s *SurrealDBTestSuite) TestFetch() {
 
 	// User rows are individually fetched
 	s.Run("Run fetch for individual users", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		for _, v := range userSlice {
 			res, err := s.db.Query("select * from $table fetch $fetchstr;", map[string]interface{}{
 				"record":   v.ID,
@@ -285,18 +285,17 @@ func (s *SurrealDBTestSuite) TestFetch() {
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		res, err := s.db.Query("select * from $record fetch $fetchstr;", map[string]interface{}{
 			"record":   "users",
 			"fetchstr": "friends.*",
 		})
-		// TODO: This should be fixed once the code is fixed
 		s.NoError(err)
 		s.NotEmpty(res)
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		res, err := s.db.Query("select * from users fetch $fetchstr;", map[string]interface{}{
 			"fetchstr": "friends.*",
 		})
