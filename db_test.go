@@ -36,10 +36,18 @@ type SurrealDBTestSuite struct {
 // a simple user struct for testing
 type testUser struct {
 	marshal.Basemodel `table:"test"`
-	Username          string   `json:"username,omitempty"`
-	Password          string   `json:"password,omitempty"`
-	Friends           []string `json:"friends,omitempty"`
-	ID                string   `json:"id,omitempty"`
+	Username          string `json:"username,omitempty"`
+	Password          string `json:"password,omitempty"`
+	ID                string `json:"id,omitempty"`
+}
+
+// a simple user struct for testing
+type testUserWithFriend[I any] struct {
+	marshal.Basemodel `table:"user_with_friend"`
+	Username          string `json:"username,omitempty"`
+	Password          string `json:"password,omitempty"`
+	ID                string `json:"id,omitempty"`
+	Friends           []I    `json:"friends,omitempty"`
 }
 
 func TestSurrealDBSuite(t *testing.T) {
@@ -225,43 +233,9 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 }
 
-func (s *SurrealDBTestSuite) validateFriends(actualUser interface{}, expectedUserID string) {
-	s.T().Helper()
-	output, ok := actualUser.([]interface{})
-	assert.True(s.T(), ok, "Failed to convert to map[string]interface{}")
-
-	// Access the first element in the output slice
-	if len(output) > 0 {
-		resultMap, ok := output[0].(map[string]interface{})
-		assert.True(s.T(), ok, "Failed to convert to map[string]interface{}")
-
-		// Access the "result" key
-		results, ok := resultMap["result"].([]interface{})
-		assert.True(s.T(), ok, "Failed to get 'result' key as a slice")
-
-		// Access the first element in the "result" slice
-		if len(results) > 0 {
-			firstResult, ok := results[0].(map[string]interface{})
-			assert.True(s.T(), ok, "Failed to get the first result as a map")
-
-			// Access the "friends" key in the first result
-			friends, ok := firstResult["friends"].([]interface{})
-			assert.True(s.T(), ok, "Failed to get 'friends' key as a slice")
-
-			// Access the first element in the "result" slice
-			if len(friends) > 0 {
-				firstFriend, ok := friends[0].(map[string]interface{})
-				assert.True(s.T(), ok, "Failed to get the first result as a map")
-
-				s.Equal(expectedUserID, firstFriend["id"])
-			}
-		}
-	}
-}
-
 func (s *SurrealDBTestSuite) TestFetch() {
 	// Define initial user slice
-	userSlice := []testUser{
+	userSlice := []testUserWithFriend[string]{
 		{
 			ID:       "users:arthur",
 			Username: "arthur",
@@ -285,7 +259,7 @@ func (s *SurrealDBTestSuite) TestFetch() {
 
 	// User rows are individually fetched
 	s.Run("Run fetch for individual users", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		for _, v := range userSlice {
 			res, err := s.db.Query("select * from $table fetch $fetchstr;", map[string]interface{}{
 				"record":   v.ID,
@@ -302,22 +276,26 @@ func (s *SurrealDBTestSuite) TestFetch() {
 		s.NoError(err)
 		s.NotEmpty(res)
 
-		s.validateFriends(res, userSlice[0].Friends[0])
+		userSlice, err := marshal.SmartUnmarshal[testUserWithFriend[testUserWithFriend[interface{}]]](res, err)
+		s.NoError(err)
+
+		s.Require().Len(userSlice, 1)
+		s.Require().Len(userSlice[0].Friends, 1)
+		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		res, err := s.db.Query("select * from $record fetch $fetchstr;", map[string]interface{}{
 			"record":   "users",
 			"fetchstr": "friends.*",
 		})
-		// TODO: This should be fixed once the code is fixed
 		s.NoError(err)
 		s.NotEmpty(res)
 	})
 
 	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
-		s.T().Skip("Not working, check https://github.com/surrealdb/surrealdb.go/issues/116")
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
 		res, err := s.db.Query("select * from users fetch $fetchstr;", map[string]interface{}{
 			"fetchstr": "friends.*",
 		})
@@ -331,7 +309,13 @@ func (s *SurrealDBTestSuite) TestFetch() {
 		})
 		s.NoError(err)
 		s.NotEmpty(res)
-		s.validateFriends(res, userSlice[0].Friends[0])
+
+		userSlice, err := marshal.SmartUnmarshal[testUserWithFriend[testUserWithFriend[interface{}]]](res, err)
+		s.NoError(err)
+
+		s.Require().Len(userSlice, 1)
+		s.Require().Len(userSlice[0].Friends, 1)
+		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
 	})
 }
 
@@ -433,7 +417,8 @@ func (s *SurrealDBTestSuite) TestCreate() {
 		data = append(data,
 			testUser{
 				Username: "johnny",
-				Password: "123"},
+				Password: "123",
+			},
 			testUser{
 				Username: "joe",
 				Password: "123",
