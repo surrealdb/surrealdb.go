@@ -2,6 +2,7 @@ package slog_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -14,7 +15,7 @@ import (
 )
 
 type testMethod struct {
-	fn    func(msg string, args ...any)
+	fn    func(ctx context.Context, msg string, args ...any)
 	level rawslog.Level
 }
 
@@ -54,10 +55,10 @@ func TestLogger(t *testing.T) {
 	}
 }
 
-func checkMethod(loggerFunc func(msg string, args ...any), buffer *bytes.Buffer, levelStr string, t *testing.T) {
+func checkMethod(loggerFunc func(ctx context.Context, msg string, args ...any), buffer *bytes.Buffer, levelStr string, t *testing.T) {
 	require.NotEmpty(t, buffer)
 
-	loggerFunc(LogText, CustomFieldName, CustomFieldVal)
+	loggerFunc(context.Background(), LogText, CustomFieldName, CustomFieldVal)
 
 	line := buffer.Bytes()
 

@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	rawslog "log/slog"
@@ -75,7 +76,7 @@ func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
 
 // SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
-	_, err := s.db.Delete("users")
+	_, err := s.db.Delete(context.Background(), "users")
 	s.Require().NoError(err)
 }
 
@@ -101,7 +102,7 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 	}
 	impl := s.connImplementations[s.name]
 	require.NotNil(s.T(), impl)
-	db, err := surrealdb.New(url, impl)
+	db, err := surrealdb.New(context.Background(), url, impl)
 	s.Require().NoError(err)
 	return db
 }
@@ -112,7 +113,7 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 	s.Require().NotNil(db)
 	s.db = db
 	_ = signin(s)
-	_, err := db.Use("test", "test")
+	_, err := db.Use(context.Background(), "test", "test")
 	s.Require().NoError(err)
 }
 
@@ -125,22 +126,22 @@ func signin(s *SurrealDBTestSuite) interface{} {
 		Username:  "root",
 		Password:  "root",
 	}
-	signin, err := s.db.Signin(authData)
+	signin, err := s.db.Signin(context.Background(), authData)
 	s.Require().NoError(err)
 	return signin
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
-	live, err := s.db.Live("users", false)
+	live, err := s.db.Live(context.Background(), "users", false)
 	defer func() {
-		_, err = s.db.Kill(live)
+		_, err = s.db.Kill(context.Background(), live)
 		s.Require().NoError(err)
 	}()
 
-	notifications, er := s.db.LiveNotifications(live)
+	notifications, er := s.db.LiveNotifications(context.Background(), live)
 	// create a user
 	s.Require().NoError(er)
-	_, e := s.db.Create("users", map[string]interface{}{
+	_, e := s.db.Create(context.Background(), "users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -152,7 +153,7 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 
 func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 	// create a user
-	userData, e := s.db.Create("users", map[string]interface{}{
+	userData, e := s.db.Create(context.Background(), "users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -161,17 +162,17 @@ func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 	err := marshal.Unmarshal(userData, &user)
 	s.Require().NoError(err)
 
-	live, err := s.db.Live("users", true)
+	live, err := s.db.Live(context.Background(), "users", true)
 	defer func() {
-		_, err = s.db.Kill(live)
+		_, err = s.db.Kill(context.Background(), live)
 		s.Require().NoError(err)
 	}()
 
-	notifications, er := s.db.LiveNotifications(live)
+	notifications, er := s.db.LiveNotifications(context.Background(), live)
 	s.Require().NoError(er)
 
 	// update the user
-	_, e = s.db.Update(user[0].ID, map[string]interface{}{
+	_, e = s.db.Update(context.Background(), user[0].ID, map[string]interface{}{
 		"password": "456",
 	})
 	s.Require().NoError(e)
@@ -182,7 +183,7 @@ func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaQuery() {
-	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
+	liveResponse, err := s.db.Query(context.Background(), "LIVE SELECT * FROM users", map[string]interface{}{})
 	assert.NoError(s.T(), err)
 	responseArray, ok := liveResponse.([]interface{})
 	assert.True(s.T(), ok)
@@ -192,14 +193,14 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	liveID := liveIDStruct.(string)
 
 	defer func() {
-		_, err = s.db.Kill(liveID)
+		_, err = s.db.Kill(context.Background(), liveID)
 		s.Require().NoError(err)
 	}()
 
-	notifications, er := s.db.LiveNotifications(liveID)
+	notifications, er := s.db.LiveNotifications(context.Background(), liveID)
 	// create a user
 	s.Require().NoError(er)
-	_, e := s.db.Create("users", map[string]interface{}{
+	_, e := s.db.Create(context.Background(), "users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -210,7 +211,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 }
 
 func (s *SurrealDBTestSuite) TestDelete() {
-	userData, err := s.db.Create("users", testUser{
+	userData, err := s.db.Create(context.Background(), "users", testUser{
 		Username: "johnny",
 		Password: "123",
 	})
@@ -222,13 +223,13 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 
 	// Delete the users...
-	_, err = s.db.Delete("users")
+	_, err = s.db.Delete(context.Background(), "users")
 	s.Require().NoError(err)
 }
 
 func (s *SurrealDBTestSuite) TestInsert() {
 	s.Run("raw map works", func() {
-		userData, err := s.db.Insert("user", map[string]interface{}{
+		userData, err := s.db.Insert(context.Background(), "user", map[string]interface{}{
 			"username": "johnny",
 			"password": "123",
 		})
@@ -244,7 +245,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 	})
 
 	s.Run("Single insert works", func() {
-		userData, err := s.db.Insert("user", testUser{
+		userData, err := s.db.Insert(context.Background(), "user", testUser{
 			Username: "johnny",
 			Password: "123",
 		})
@@ -268,7 +269,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 			Username: "johnny2",
 			Password: "123",
 		})
-		userData, err := s.db.Insert("user", userInsert)
+		userData, err := s.db.Insert(context.Background(), "user", userInsert)
 		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
@@ -285,7 +286,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 
 func (s *SurrealDBTestSuite) TestCreate() {
 	s.Run("raw map works", func() {
-		userData, err := s.db.Create("users", map[string]interface{}{
+		userData, err := s.db.Create(context.Background(), "users", map[string]interface{}{
 			"username": "johnny",
 			"password": "123",
 		})
@@ -302,7 +303,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 	})
 
 	s.Run("Single create works", func() {
-		userData, err := s.db.Create("users", testUser{
+		userData, err := s.db.Create(context.Background(), "users", testUser{
 			Username: "johnny",
 			Password: "123",
 		})
@@ -329,7 +330,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 				Username: "joe",
 				Password: "123",
 			})
-		userData, err := s.db.Create("users", data)
+		userData, err := s.db.Create(context.Background(), "users", data)
 		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
@@ -344,7 +345,7 @@ func (s *SurrealDBTestSuite) TestCreate() {
 }
 
 func (s *SurrealDBTestSuite) TestSelect() {
-	createdUsers, err := s.db.Create("users", testUser{
+	createdUsers, err := s.db.Create(context.Background(), "users", testUser{
 		Username: "johnnyjohn",
 		Password: "123",
 	})
@@ -356,7 +357,7 @@ func (s *SurrealDBTestSuite) TestSelect() {
 	s.NotEmpty(createdUsersUnmarshalled[0].ID, "The ID should have been set by the database")
 
 	s.Run("Select many with table", func() {
-		userData, err := s.db.Select("users")
+		userData, err := s.db.Select(context.Background(), "users")
 		s.Require().NoError(err)
 
 		// unmarshal the data into a user slice
@@ -370,7 +371,7 @@ func (s *SurrealDBTestSuite) TestSelect() {
 	})
 
 	s.Run("Select single record", func() {
-		userData, err := s.db.Select(createdUsersUnmarshalled[0].ID)
+		userData, err := s.db.Select(context.Background(), createdUsersUnmarshalled[0].ID)
 		s.Require().NoError(err)
 
 		// unmarshal the data into a user struct
@@ -393,7 +394,7 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 	// create users
 	var createdUsers []testUser
 	for _, v := range users {
-		createdUser, err := s.db.Create("users", v)
+		createdUser, err := s.db.Create(context.Background(), "users", v)
 		s.Require().NoError(err)
 		var tempUserArr []testUser
 		err = marshal.Unmarshal(createdUser, &tempUserArr)
@@ -404,7 +405,7 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 	createdUsers[0].Password = newPassword
 
 	// Update the user
-	UpdatedUserRaw, err := s.db.Update(createdUsers[0].ID, createdUsers[0])
+	UpdatedUserRaw, err := s.db.Update(context.Background(), createdUsers[0].ID, createdUsers[0])
 	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
@@ -416,7 +417,7 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 	s.Equal(newPassword, updatedUser.Password)
 
 	// select controlUser
-	controlUserRaw, err := s.db.Select(createdUsers[1].ID)
+	controlUserRaw, err := s.db.Select(context.Background(), createdUsers[1].ID)
 	s.Require().NoError(err)
 
 	// unmarshal the data into a user struct
@@ -433,7 +434,7 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	password := "123"
 
 	// create test user with raw SurrealQL and unmarshal
-	userData, err := s.db.Query("create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
+	userData, err := s.db.Query(context.Background(), "create users:johnny set Username = $user, Password = $pass", map[string]interface{}{
 		"user": username,
 		"pass": password,
 	})
@@ -448,7 +449,7 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	s.Equal(password, userSlice[0].Result[0].Password)
 
 	// send query with empty result and unmarshal
-	userData, err = s.db.Query("select * from users where id = $id", map[string]interface{}{
+	userData, err = s.db.Query(context.Background(), "select * from users where id = $id", map[string]interface{}{
 		"id": "users:jim",
 	})
 	s.Require().NoError(err)
@@ -460,19 +461,19 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 }
 
 func (s *SurrealDBTestSuite) TestMerge() {
-	_, err := s.db.Create("users:999", map[string]interface{}{
+	_, err := s.db.Create(context.Background(), "users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
 	s.NoError(err)
 
 	// Update the user
-	_, err = s.db.Merge("users:999", map[string]string{
+	_, err = s.db.Merge(context.Background(), "users:999", map[string]string{
 		"password": "456",
 	})
 	s.Require().NoError(err)
 
-	user2, err := s.db.Select("users:999")
+	user2, err := s.db.Select(context.Background(), "users:999")
 	s.Require().NoError(err)
 
 	username := (user2).(map[string]interface{})["username"].(string)
@@ -483,7 +484,7 @@ func (s *SurrealDBTestSuite) TestMerge() {
 }
 
 func (s *SurrealDBTestSuite) TestPatch() {
-	_, err := s.db.Create("users:999", map[string]interface{}{
+	_, err := s.db.Create(context.Background(), "users:999", map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
@@ -495,10 +496,10 @@ func (s *SurrealDBTestSuite) TestPatch() {
 	}
 
 	// Update the user
-	_, err = s.db.Patch("users:999", patches)
+	_, err = s.db.Patch(context.Background(), "users:999", patches)
 	s.Require().NoError(err)
 
-	user2, err := s.db.Select("users:999")
+	user2, err := s.db.Select(context.Background(), "users:999")
 	s.Require().NoError(err)
 
 	username := (user2).(map[string]interface{})["username"].(string)
@@ -515,10 +516,10 @@ func (s *SurrealDBTestSuite) TestNonRowSelect() {
 		ID:       "users:notexists",
 	}
 
-	_, err := s.db.Select("users:notexists")
+	_, err := s.db.Select(context.Background(), "users:notexists")
 	s.Equal(err, constants.ErrNoRow)
 
-	_, err = marshal.SmartUnmarshal[testUser](s.db.Select("users:notexists"))
+	_, err = marshal.SmartUnmarshal[testUser](s.db.Select(context.Background(), "users:notexists"))
 	s.Equal(err, constants.ErrNoRow)
 
 	_, err = marshal.SmartUnmarshal[testUser](marshal.SmartMarshal(s.db.Select, user))
@@ -533,7 +534,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 
 	s.Run("raw create query", func() {
 		QueryStr := "Create users set Username = $user, Password = $pass"
-		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query(QueryStr, map[string]interface{}{
+		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query(context.Background(), QueryStr, map[string]interface{}{
 			"user": user[0].Username,
 			"pass": user[0].Password,
 		}))
@@ -544,7 +545,7 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 	})
 
 	s.Run("raw select query", func() {
-		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query("Select * from $record", map[string]interface{}{
+		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query(context.Background(), "Select * from $record", map[string]interface{}{
 			"record": user[0].ID,
 		}))
 
@@ -553,21 +554,21 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
 	})
 
 	s.Run("select query", func() {
-		data, err := marshal.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
+		data, err := marshal.SmartUnmarshal[testUser](s.db.Select(context.Background(), user[0].ID))
 
 		s.Require().NoError(err)
 		s.Equal("electwix", data[0].Username)
 	})
 
 	s.Run("select array query", func() {
-		data, err := marshal.SmartUnmarshal[testUser](s.db.Select("users"))
+		data, err := marshal.SmartUnmarshal[testUser](s.db.Select(context.Background(), "users"))
 
 		s.Require().NoError(err)
 		s.Equal("electwix", data[0].Username)
 	})
 
 	s.Run("delete record query", func() {
-		data, err := marshal.SmartUnmarshal[testUser](s.db.Delete(user[0].ID))
+		data, err := marshal.SmartUnmarshal[testUser](s.db.Delete(context.Background(), user[0].ID))
 
 		s.Require().NoError(err)
 		s.Len(data, 0)
@@ -630,7 +631,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				_, err := s.db.Select(context.Background(), fmt.Sprintf("users:%d", j))
 				s.Require().Equal(err, constants.ErrNoRow)
 			}(i)
 		}
@@ -642,7 +643,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				_, err := s.db.Create(fmt.Sprintf("users:%d", j), user)
+				_, err := s.db.Create(context.Background(), fmt.Sprintf("users:%d", j), user)
 				s.Require().NoError(err)
 			}(i)
 		}
@@ -654,7 +655,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				_, err := s.db.Select(fmt.Sprintf("users:%d", j))
+				_, err := s.db.Select(context.Background(), fmt.Sprintf("users:%d", j))
 				s.Require().NoError(err)
 			}(i)
 		}
