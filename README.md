@@ -36,7 +36,7 @@ type User struct {
 
 func main() {
 	// Connect to SurrealDB
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New(context.Background(), "ws://localhost:8000/rpc")
 	if err != nil {
 		panic(err)
 	}
@@ -47,11 +47,11 @@ func main() {
 		Username:  "root",
 		Password:  "root",
 	}
-	if _, err = db.Signin(authData); err != nil {
+	if _, err = db.Signin(context.Background(), authData); err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Use("test", "test"); err != nil {
+	if _, err = db.Use(context.Background(), "test", "test"); err != nil {
 		panic(err)
 	}
 
@@ -62,7 +62,7 @@ func main() {
 	}
 
 	// Insert user
-	data, err := db.Create("user", user)
+	data, err := db.Create(context.Background(), "user", user)
 	if err != nil {
 		panic(err)
 	}
@@ -75,7 +75,7 @@ func main() {
 	}
 
 	// Get user by ID
-	data, err = db.Select(createdUser[0].ID)
+	data, err = db.Select(context.Background(), createdUser[0].ID)
 	if err != nil {
 		panic(err)
 	}
@@ -91,18 +91,18 @@ func main() {
 	changes := map[string]string{"name": "Jane"}
 
 	// Update user
-	if _, err = db.Update(selectedUser.ID, changes); err != nil {
+	if _, err = db.Update(context.Background(), selectedUser.ID, changes); err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
+	if _, err = db.Query(context.Background(), "SELECT * FROM $record", map[string]interface{}{
 		"record": createdUser[0].ID,
 	}); err != nil {
 		panic(err)
 	}
 
 	// Delete user by ID
-	if _, err = db.Delete(selectedUser.ID); err != nil {
+	if _, err = db.Delete(context.Background(), selectedUser.ID); err != nil {
 		panic(err)
 	}
 }
@@ -152,7 +152,7 @@ SurrealDB Go library supports smart unmarshal. It means that you can unmarshal a
 ```go
 
 // User struct is a test struct
-data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
+data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(context.Background(), user[0].ID))
 
 ```
 

@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"errors"
 
 	"github.com/surrealdb/surrealdb.go/pkg/conn"
@@ -10,11 +11,11 @@ import (
 type ws struct {
 }
 
-func (w *ws) Connect(url string) (conn.Connection, error) {
+func (w *ws) Connect(ctx context.Context, url string) (conn.Connection, error) {
 	return w, nil
 }
 
-func (w *ws) Send(method string, params []interface{}) (interface{}, error) {
+func (w *ws) Send(ctx context.Context, method string, params []interface{}) (interface{}, error) {
 	return nil, nil
 }
 
@@ -22,7 +23,7 @@ func (w *ws) Close() error {
 	return nil
 }
 
-func (w *ws) LiveNotifications(id string) (chan model.Notification, error) {
+func (w *ws) LiveNotifications(ctx context.Context, id string) (chan model.Notification, error) {
 	return nil, errors.New("live queries are unimplemented for mocks")
 }
 

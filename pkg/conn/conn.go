@@ -1,10 +1,14 @@
 package conn
 
-import "github.com/surrealdb/surrealdb.go/pkg/model"
+import (
+	"context"
+
+	"github.com/surrealdb/surrealdb.go/pkg/model"
+)
 
 type Connection interface {
-	Connect(url string) (Connection, error)
-	Send(method string, params []interface{}) (interface{}, error)
+	Connect(ctx context.Context, url string) (Connection, error)
+	Send(ctx context.Context, method string, params []interface{}) (interface{}, error)
 	Close() error
-	LiveNotifications(id string) (chan model.Notification, error)
+	LiveNotifications(ctx context.Context, id string) (chan model.Notification, error)
 }

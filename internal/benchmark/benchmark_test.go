@@ -1,6 +1,7 @@
 package benchmark_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -18,7 +19,7 @@ type testUser struct {
 }
 
 func SetupMockDB() (*surrealdb.DB, error) {
-	return surrealdb.New("", mock.Create())
+	return surrealdb.New(context.Background(), "", mock.Create())
 }
 
 func BenchmarkCreate(b *testing.B) {
@@ -38,7 +39,7 @@ func BenchmarkCreate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		db.Create(users[i].ID, users[i]) //nolint:errcheck
+		db.Create(context.Background(), users[i].ID, users[i]) //nolint:errcheck
 	}
 }
 
@@ -51,6 +52,6 @@ func BenchmarkSelect(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		db.Select("users:bob") //nolint:errcheck
+		db.Select(context.Background(), "users:bob") //nolint:errcheck
 	}
 }

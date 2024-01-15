@@ -1,6 +1,7 @@
 package slog
 
 import (
+	"context"
 	"log/slog"
 )
 
@@ -13,18 +14,18 @@ func New(h slog.Handler) *SlogHandler {
 	return &SlogHandler{logger: logger}
 }
 
-func (handler *SlogHandler) Error(msg string, args ...any) {
-	handler.logger.Error(msg, args...)
+func (handler *SlogHandler) Error(ctx context.Context, msg string, args ...any) {
+	handler.logger.ErrorContext(ctx, msg, args...)
 }
 
-func (handler *SlogHandler) Warn(msg string, args ...any) {
-	handler.logger.Warn(msg, args...)
+func (handler *SlogHandler) Warn(ctx context.Context, msg string, args ...any) {
+	handler.logger.WarnContext(ctx, msg, args...)
 }
 
-func (handler *SlogHandler) Info(msg string, args ...any) {
-	handler.logger.Info(msg, args...)
+func (handler *SlogHandler) Info(ctx context.Context, msg string, args ...any) {
+	handler.logger.InfoContext(ctx, msg, args...)
 }
 
-func (handler *SlogHandler) Debug(msg string, args ...any) {
-	handler.logger.Debug(msg, args...)
+func (handler *SlogHandler) Debug(ctx context.Context, msg string, args ...any) {
+	handler.logger.DebugContext(ctx, msg, args...)
 }
