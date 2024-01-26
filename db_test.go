@@ -612,7 +612,6 @@ func (s *SurrealDBTestSuite) TestSmartUnMarshalRaw1Query() {
 		s.Require().Error(err)
 		s.Require().Contains(err.Error(), "blocked")
 	})
-
 }
 
 func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
