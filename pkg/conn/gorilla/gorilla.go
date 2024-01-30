@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strconv"
 	"sync"
@@ -104,11 +105,15 @@ func (ws *WebSocket) SetCompression(compress bool) *WebSocket {
 }
 
 func (ws *WebSocket) Close() error {
-	defer func() {
-		close(ws.close)
-	}()
+	ws.connLock.Lock()
+	defer ws.connLock.Unlock()
+	close(ws.close)
+	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
+	if err != nil {
+		return err
+	}
 
-	return ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
+	return ws.Conn.Close()
 }
 
 func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
@@ -239,6 +244,9 @@ func (ws *WebSocket) initialize() {
 				var res rpc.RPCResponse
 				err := ws.read(&res)
 				if err != nil {
+					if errors.Is(err, net.ErrClosed) {
+						break
+					}
 					ws.logger.Error(err.Error())
 					continue
 				}
