@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	rawslog "log/slog"
 	"os"
 	"sync"
@@ -31,6 +32,7 @@ type SurrealDBTestSuite struct {
 	db                  *surrealdb.DB
 	name                string
 	connImplementations map[string]conn.Connection
+	logBuffer           *bytes.Buffer
 }
 
 // a simple user struct for testing
@@ -55,20 +57,23 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite.connImplementations = make(map[string]conn.Connection)
 
 	// Without options
-	logData := createLogger(t)
+	buff := bytes.NewBufferString("")
+	logData := createLogger(t, buff)
 	SurrealDBSuite.connImplementations["gorilla"] = gorilla.Create().Logger(logData)
+	SurrealDBSuite.logBuffer = buff
 
 	// With options
-	logData = createLogger(t)
-	SurrealDBSuite.connImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logData)
+	buffOpt := bytes.NewBufferString("")
+	logDataOpt := createLogger(t, buff)
+	SurrealDBSuite.connImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logDataOpt)
+	SurrealDBSuite.logBuffer = buffOpt
 
 	RunWsMap(t, SurrealDBSuite)
 }
 
-func createLogger(t *testing.T) logger.Logger {
+func createLogger(t *testing.T, writer io.Writer) logger.Logger {
 	t.Helper()
-	buff := bytes.NewBuffer([]byte{})
-	handler := rawslog.NewJSONHandler(buff, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
+	handler := rawslog.NewJSONHandler(writer, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
 	return slog.New(handler)
 }
 
@@ -86,11 +91,16 @@ func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
 func (s *SurrealDBTestSuite) TearDownTest() {
 	_, err := s.db.Delete("users")
 	s.Require().NoError(err)
+
+	if s.logBuffer.Len() > 0 {
+		s.T().Logf("Log output:\n%s", s.logBuffer.String())
+	}
 }
 
 // TearDownSuite is called after the s has finished running
 func (s *SurrealDBTestSuite) TearDownSuite() {
-	s.db.Close()
+	err := s.db.Close()
+	s.Require().NoError(err)
 }
 
 func (t testUser) String() (str string, err error) {

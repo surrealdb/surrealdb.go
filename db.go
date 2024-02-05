@@ -37,8 +37,8 @@ func New(url string, connection conn.Connection) (*DB, error) {
 // --------------------------------------------------
 
 // Close closes the underlying WebSocket connection.
-func (db *DB) Close() {
-	_ = db.conn.Close()
+func (db *DB) Close() error {
+	return db.conn.Close()
 }
 
 // --------------------------------------------------
