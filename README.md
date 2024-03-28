@@ -75,14 +75,14 @@ func main() {
 	}
 
 	// Insert multiple entries
-	userList := []testUser{
+	userList := []User{
 		{
-			Username: "dwight",
-			Password: "123",
+			Name: "John",
+			Surname: "Doe",
 		},
 		{
-			Username: "michael",
-			Password: "456",
+			Name: "Jane",
+			Surname: "Doe",
 		},
 	}
 
