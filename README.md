@@ -67,6 +67,24 @@ func main() {
 		panic(err)
 	}
 
+	// insert multiple entries
+	userList := []testUser{
+		{
+			Username: "dwight",
+			Password: "123",
+		},
+		{
+			Username: "michael",
+			Password: "456",
+		},
+	}
+
+	createdUsers, err := s.db.CreateMany("users", userList)
+
+	if err != nil {
+		panic(err)
+	}
+
 	// Unmarshal data
 	createdUser := make([]User, 1)
 	err = surrealdb.Unmarshal(data, &createdUser)

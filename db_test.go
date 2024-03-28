@@ -447,6 +447,40 @@ func (s *SurrealDBTestSuite) TestCreate() {
 	})
 }
 
+func (s *SurrealDBTestSuite) TestCreateMany() {
+
+	userList := []testUser{
+		{
+			Username: "dwight",
+			Password: "123",
+		},
+		{
+			Username: "michael",
+			Password: "456",
+		},
+	}
+
+	createdUsers, err := s.db.CreateMany("users", userList)
+
+	s.Require().NoError(err)
+	s.NotEmpty(createdUsers)
+
+	var userSlice []marshal.RawQuery[testUser]
+	err = marshal.UnmarshalRaw(createdUsers, &userSlice)
+	s.Require().NoError(err)
+	s.Len(userSlice, 1)
+	s.Equal(userSlice[0].Status, marshal.StatusOK)
+
+	s.Len(userSlice[0].Result, 2)
+
+	s.NotEmpty(userSlice[0].Result[0].ID, "The ID should have been set by the database for record 1")
+	s.Equal("dwight", userSlice[0].Result[0].Username)
+
+	s.NotEmpty(userSlice[0].Result[1].ID, "The ID should have been set by the database for record 1")
+	s.Equal("michael", userSlice[0].Result[1].Username)
+
+}
+
 func (s *SurrealDBTestSuite) TestSelect() {
 	createdUsers, err := s.db.Create("users", testUser{
 		Username: "johnnyjohn",
