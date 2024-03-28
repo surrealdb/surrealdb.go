@@ -74,6 +74,24 @@ func main() {
 		panic(err)
 	}
 
+	// Insert multiple entries
+	userList := []User{
+		{
+			Name: "John",
+			Surname: "Doe",
+		},
+		{
+			Name: "Jane",
+			Surname: "Doe",
+		},
+	}
+
+	createdUsers, err := s.db.CreateMany("users", userList)
+
+	if err != nil {
+		panic(err)
+	}
+
 	// Get user by ID
 	data, err = db.Select(createdUser[0].ID)
 	if err != nil {

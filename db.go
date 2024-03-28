@@ -100,6 +100,13 @@ func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
 	return db.send("create", thing, data)
 }
 
+// Creates multiple records in table
+func (db *DB) CreateMany(thing string, records interface{}) (interface{}, error) {
+	return db.send("query", fmt.Sprintf("INSERT INTO %s ($records)", thing), map[string]interface{}{
+		"records": records,
+	})
+}
+
 // Update a table or record in the database like a PUT request.
 func (db *DB) Update(what string, data interface{}) (interface{}, error) {
 	return db.send("update", what, data)
