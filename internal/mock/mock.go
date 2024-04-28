@@ -7,11 +7,14 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/model"
 )
 
-type ws struct {
-}
+type ws struct{}
 
 func (w *ws) Connect(url string) (conn.Connection, error) {
 	return w, nil
+}
+
+func (w *ws) Initialize() error {
+	return nil
 }
 
 func (w *ws) Send(method string, params []interface{}) (interface{}, error) {

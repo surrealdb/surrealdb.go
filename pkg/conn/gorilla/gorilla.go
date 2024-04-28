@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"strconv"
@@ -73,8 +74,11 @@ func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
 		}
 	}
 
-	ws.initialize()
 	return ws, nil
+}
+
+func (ws *WebSocket) Initialize() error {
+	return ws.initialize()
 }
 
 func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
@@ -234,26 +238,29 @@ func (ws *WebSocket) write(v interface{}) error {
 	return ws.Conn.WriteMessage(gorilla.TextMessage, data)
 }
 
-func (ws *WebSocket) initialize() {
-	go func() {
-		for {
-			select {
-			case <-ws.close:
-				return
-			default:
-				var res rpc.RPCResponse
-				err := ws.read(&res)
-				if err != nil {
-					if errors.Is(err, net.ErrClosed) {
-						break
-					}
-					ws.logger.Error(err.Error())
-					continue
+func (ws *WebSocket) initialize() error {
+	for {
+		select {
+		case <-ws.close:
+			return nil
+		default:
+			var res rpc.RPCResponse
+			err := ws.read(&res)
+			if err != nil {
+				// this needed because gorilla not shudown gracefully
+				if errors.Is(err, net.ErrClosed) {
+					return nil
 				}
-				go ws.handleResponse(res)
+				// returns error if connection drop in fly
+				if gorilla.IsUnexpectedCloseError(err) {
+					return io.ErrClosedPipe
+				}
+				ws.logger.Error(err.Error())
+				continue
 			}
+			go ws.handleResponse(res)
 		}
-	}()
+	}
 }
 
 func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {

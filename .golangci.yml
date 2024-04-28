@@ -34,15 +34,16 @@ linters-settings:
       - condition
       - return
     ignored-numbers:
-      - '0'
-      - '1'
-      - '2'
-      - '3'
+      - "0"
+      - "1"
+      - "2"
+      - "3"
     ignored-functions:
       - strings.SplitN
 
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   lll:
     line-length: 140
   misspell:
