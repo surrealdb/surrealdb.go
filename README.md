@@ -161,7 +161,7 @@ We recommend using the nightly build, as development may rely on the latest func
 
 ### Smart Marshal
 
-SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct. SurrealDB Go library will automatically convert it to the correct type.
+SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct, and the library will automatically convert it to the correct type.
 
 ```go
 // User struct is a test struct
