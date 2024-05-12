@@ -1,31 +1,60 @@
+<br>
+
+<p align="center">
+    <img width=120 src="https://raw.githubusercontent.com/surrealdb/icons/main/surreal.svg" />
+    &nbsp;
+    <img width=120 src="https://raw.githubusercontent.com/surrealdb/icons/main/golang.svg" />
+</p>
+
+<h3 align="center">The official SurrealDB SDK for Golang.</h3>
+
+<br>
+
+<p align="center">
+    <a href="https://github.com/surrealdb/surrealdb.go"><img src="https://img.shields.io/badge/status-beta-ff00bb.svg?style=flat-square"></a>
+    &nbsp;
+    <a href="https://surrealdb.com/docs/integration/libraries/golang"><img src="https://img.shields.io/badge/docs-view-44cc11.svg?style=flat-square"></a>
+    &nbsp;
+    <a href="https://pkg.go.dev/github.com/surrealdb/surrealdb.go"><img src="https://img.shields.io/github/go-mod/go-version/surrealdb/surrealdb.go?style=flat-square&label=go"></a>
+	&nbsp;
+	<a href="https://goreportcard.com/report/github.com/surrealdb/surrealdb.go"><img src="https://goreportcard.com/badge/github.com/surrealdb/surrealdb.go?style=flat-square"></a>
+</p>
+
+<p align="center">
+    <a href="https://surrealdb.com/discord"><img src="https://img.shields.io/discord/902568124350599239?label=discord&style=flat-square&color=5a66f6"></a>
+    &nbsp;
+    <a href="https://twitter.com/surrealdb"><img src="https://img.shields.io/badge/twitter-follow_us-1d9bf0.svg?style=flat-square"></a>
+    &nbsp;
+    <a href="https://www.linkedin.com/company/surrealdb/"><img src="https://img.shields.io/badge/linkedin-connect_with_us-0a66c2.svg?style=flat-square"></a>
+    &nbsp;
+    <a href="https://www.youtube.com/channel/UCjf2teVEuYVvvVC-gFZNq6w"><img src="https://img.shields.io/badge/youtube-subscribe-fc1c1c.svg?style=flat-square"></a>
+</p>
+
 # surrealdb.go
 
-The official SurrealDB library for Golang.
+The official SurrealDB SDK for Golang.
 
-[![](https://img.shields.io/badge/status-beta-ff00bb.svg?style=flat-square)](https://github.com/surrealdb/surrealdb.go) 
-[![](https://img.shields.io/badge/docs-view-44cc11.svg?style=flat-square)](https://surrealdb.com/docs/integration/libraries/golang)
-[![Go Reference](https://pkg.go.dev/badge/github.com/surrealdb/surrealdb.go.svg)](https://pkg.go.dev/github.com/surrealdb/surrealdb.go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/surrealdb/surrealdb.go)](https://goreportcard.com/report/github.com/surrealdb/surrealdb.go)
-[![](https://img.shields.io/badge/license-Apache_License_2.0-00bfff.svg?style=flat-square)](https://github.com/surrealdb/surrealdb.go)
-[![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)
+## Documentation
 
-## Getting Started
+View the SDK documentation [here](https://surrealdb.com/docs/integration/libraries/golang).
 
-For instructions on how to follow SurrealDB, follow [Installation Guide](https://surrealdb.com/docs/installation)
+## How to install
 
-### Installation
-
-```bash
+```sh
 go get github.com/surrealdb/surrealdb.go
 ```
 
-### Usage
+## Getting started
+
+In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.
+
+> This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
 ```go
 package main
+
 import (
 	"github.com/surrealdb/surrealdb.go"
-
 )
 
 type User struct {
@@ -108,18 +137,16 @@ func main() {
 }
 ```
 
-* Step 1: Create a file called `main.go` and paste the above code
-* Step 2: Run the command `go mod init github.com/<github-username>/<project-name>` to create a go.mod file
-* Step 3: Run the command `go mod tidy` to download surreal db
-* Step 4: Run `go run main.go` to run the application. 
+### Instructions for running the example
 
-# Documentation
+- In a new folder, create a file called `main.go` and paste the above code
+- Run `go mod init github.com/<github-username>/<project-name>` to initialise a `go.mod` file
+- Run `go mod tidy` to download the `surrealdb.go` dependency
+- Run `go run main.go` to run the example.
 
-Full documentation is available at [surrealdb doc](https://surrealdb.com/docs/integration/libraries/golang)
+## Contributing
 
-## Building
-
-You can run the Makefile helper to run and build the project
+You can run the Makefile commands to run and build the project
 
 ```
 make build
@@ -130,14 +157,13 @@ make lint
 You also need to be running SurrealDB alongside the tests.
 We recommend using the nightly build, as development may rely on the latest functionality.
 
-
 ## Helper functions
+
 ### Smart Marshal
 
 SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct. SurrealDB Go library will automatically convert it to the correct type.
 
 ```go
-// Recommended to use with SmartUnmarshal SmartMarshal
 // User struct is a test struct
 user, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Create, user[0]))
 
@@ -150,10 +176,8 @@ data, err := surrealdb.SmartMarshal(s.db.Create, user[0])
 SurrealDB Go library supports smart unmarshal. It means that you can unmarshal any type of data to the generic type provided. SurrealDB Go library will automatically convert it to that type.
 
 ```go
-
 // User struct is a test struct
 data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
-
 ```
 
 
