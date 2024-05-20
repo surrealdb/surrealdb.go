@@ -32,6 +32,12 @@ func New(url string, connection conn.Connection) (*DB, error) {
 	return &DB{connection}, nil
 }
 
+// Initialize initializes the connection to the database.
+// Can return an error if the connection fails on runtime.
+func (db *DB) Initialize() error {
+	return db.conn.Initialize()
+}
+
 // --------------------------------------------------
 // Public methods
 // --------------------------------------------------
