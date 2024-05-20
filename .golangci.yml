@@ -26,7 +26,7 @@ linters-settings:
     min-complexity: 15
   goimports:
     local-prefixes: github.com/golangci/golangci-lint
-  gomnd:
+  mnd:
     # don't include the "operation" and "assign"
     checks:
       - argument
@@ -34,15 +34,16 @@ linters-settings:
       - condition
       - return
     ignored-numbers:
-      - '0'
-      - '1'
-      - '2'
-      - '3'
+      - "0"
+      - "1"
+      - "2"
+      - "3"
     ignored-functions:
       - strings.SplitN
 
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   lll:
     line-length: 140
   misspell:
