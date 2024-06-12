@@ -26,6 +26,15 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 )
 
+// Default consts and vars for testing
+const (
+	defaultURL = "ws://localhost:8000/rpc"
+)
+
+var currentURL = os.Getenv("SURREALDB_URL")
+
+//
+
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
 	suite.Suite
@@ -112,13 +121,18 @@ func (t testUser) String() (str string, err error) {
 	return
 }
 
-// openConnection opens a new connection to the database
-func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
+func (s *SurrealDBTestSuite) createTestDB() *surrealdb.DB {
 	url := os.Getenv("SURREALDB_URL")
 	if url == "" {
 		url = "ws://localhost:8000/rpc"
 	}
 	impl := s.connImplementations[s.name]
+	db := s.openConnection(url, impl)
+	return db
+}
+
+// openConnection opens a new connection to the database
+func (s *SurrealDBTestSuite) openConnection(url string, impl conn.Connection) *surrealdb.DB {
 	require.NotNil(s.T(), impl)
 	db, err := surrealdb.New(url, impl)
 	s.Require().NoError(err)
@@ -127,7 +141,7 @@ func (s *SurrealDBTestSuite) openConnection() *surrealdb.DB {
 
 // SetupSuite is called before the s starts running
 func (s *SurrealDBTestSuite) SetupSuite() {
-	db := s.openConnection()
+	db := s.createTestDB()
 	s.Require().NotNil(db)
 	s.db = db
 	_ = signin(s)
@@ -764,6 +778,24 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 		}
 		wg.Wait()
 	})
+}
+
+func (s *SurrealDBTestSuite) TestConnectionBreak() {
+	ws := gorilla.Create()
+	var url string
+	if currentURL == "" {
+		url = defaultURL
+	} else {
+		url = currentURL
+	}
+
+	db := s.openConnection(url, ws)
+	// Close the connection hard from ws
+	ws.Conn.Close()
+
+	// Needs to be return error when the connection is closed or broken
+	_, err := db.Select("users")
+	s.Require().Error(err)
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
