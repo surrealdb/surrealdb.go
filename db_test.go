@@ -501,6 +501,7 @@ func (s *SurrealDBTestSuite) TestSelect() {
 	})
 }
 
+//nolint:dupl
 func (s *SurrealDBTestSuite) TestUpdate() {
 	newPassword := "456"
 	users := []testUser{
@@ -544,6 +545,103 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 
 	// check control user is changed or not
 	s.Equal(createdUsers[1], controlUser)
+}
+
+//nolint:dupl
+func (s *SurrealDBTestSuite) TestUpsertWithCreate() {
+	newPassword := "456"
+	users := []testUser{
+		{Username: "Johnny", Password: "123"},
+		{Username: "Mat", Password: "555"},
+	}
+
+	// create users
+	var createdUsers []testUser
+	for _, v := range users {
+		createdUser, err := s.db.Create("users", v)
+		s.Require().NoError(err)
+		var tempUserArr []testUser
+		err = marshal.Unmarshal(createdUser, &tempUserArr)
+		s.Require().NoError(err)
+		createdUsers = append(createdUsers, tempUserArr...)
+	}
+
+	createdUsers[0].Password = newPassword
+
+	// Upsert the user
+	upsertedUserRaw, err := s.db.Upsert(createdUsers[0].ID, createdUsers[0])
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	var upsertedUser testUser
+	err = marshal.Unmarshal(upsertedUserRaw, &upsertedUser)
+	s.Require().NoError(err)
+
+	// Check if password changes
+	s.Equal(newPassword, upsertedUser.Password)
+
+	// select controlUser
+	controlUserRaw, err := s.db.Select(createdUsers[1].ID)
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	var controlUser testUser
+	err = marshal.Unmarshal(controlUserRaw, &controlUser)
+	s.Require().NoError(err)
+
+	// check control user is changed or not
+	s.Equal(createdUsers[1], controlUser)
+}
+
+func (s *SurrealDBTestSuite) TestUpsertWithoutCreate() {
+	newPassword := "456"
+	users := []testUser{
+		{ID: "user:Johnny", Username: "Johnny", Password: "123"},
+		{ID: "user:Mat", Username: "Mat", Password: "555"},
+	}
+
+	// Upsert the first user
+	controlUserRaw, err := s.db.Upsert(users[0].ID, users[0])
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	var controlUser testUser
+	err = marshal.Unmarshal(controlUserRaw, &controlUser)
+	s.Require().NoError(err)
+
+	// Upsert the second user
+	secondUserRaw, err := s.db.Upsert(users[1].ID, users[1])
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	var secondUser testUser
+	err = marshal.Unmarshal(secondUserRaw, &secondUser)
+	s.Require().NoError(err)
+
+	// Update the password of the second user
+	users[1].Password = newPassword
+
+	// Upsert the second user
+	secondUserRaw, err = s.db.Upsert(users[1].ID, users[1])
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	err = marshal.Unmarshal(secondUserRaw, &secondUser)
+	s.Require().NoError(err)
+
+	// Check if password changes
+	s.Equal(newPassword, secondUser.Password)
+
+	// select controlUser
+	controlUserRaw, err = s.db.Select(users[0].ID)
+	s.Require().NoError(err)
+
+	// unmarshal the data into a user struct
+	err = marshal.Unmarshal(controlUserRaw, &controlUser)
+	s.Require().NoError(err)
+
+	// check control user is changed or not
+	s.Equal(users[0], controlUser)
 }
 
 func (s *SurrealDBTestSuite) TestUnmarshalRaw() {

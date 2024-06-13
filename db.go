@@ -100,9 +100,14 @@ func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
 	return db.send("create", thing, data)
 }
 
-// Update a table or record in the database like a PUT request.
+// Update a table or record in the database like a PUT request, returning an error if the record does not exist..
 func (db *DB) Update(what string, data interface{}) (interface{}, error) {
 	return db.send("update", what, data)
+}
+
+// Upsert a table or record in the database like a PUT request, creating the record if it does not exist.
+func (db *DB) Upsert(what string, data interface{}) (interface{}, error) {
+	return db.send("upsert", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
@@ -143,7 +148,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	}
 
 	switch method {
-	case "select", "create", "update", "merge", "patch", "insert":
+	case "select", "create", "update", "merge", "patch", "insert", "upsert":
 		return db.resp(method, params, resp)
 	case "delete":
 		return nil, nil
