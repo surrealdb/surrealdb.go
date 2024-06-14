@@ -557,7 +557,7 @@ func (s *SurrealDBTestSuite) TestUnmarshalRaw() {
 	})
 	s.Require().NoError(err)
 
-	var userSlice []marshal.RawQuery[testUser]
+	var userSlice []marshal.RawQuery[[]testUser]
 	err = marshal.UnmarshalRaw(userData, &userSlice)
 	s.Require().NoError(err)
 	s.Len(userSlice, 1)

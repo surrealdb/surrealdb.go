@@ -17,7 +17,7 @@ const StatusOK = "OK"
 type RawQuery[I any] struct {
 	Status string `json:"status"`
 	Time   string `json:"time"`
-	Result []I    `json:"result"`
+	Result I      `json:"result"`
 	Detail string `json:"detail"`
 }
 
@@ -94,7 +94,7 @@ func SmartUnmarshal[I any](respond interface{}, wrapperError error) (outputs []I
 		// Arr Normal
 		if err = decoder.Decode(&outputs); err != nil {
 			// Arr Raw
-			var rawArr []RawQuery[I]
+			var rawArr []RawQuery[[]I]
 			if err = json.Unmarshal(data, &rawArr); err == nil {
 				outputs = make([]I, 0)
 				for _, raw := range rawArr {
