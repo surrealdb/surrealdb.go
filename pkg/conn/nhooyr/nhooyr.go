@@ -1,19 +1,20 @@
-package gorilla
+package nhooyr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
+	"net/http"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/surrealdb/surrealdb.go/pkg/model"
+	nhooyr "nhooyr.io/websocket"
 
-	gorilla "github.com/gorilla/websocket"
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/conn"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -32,7 +33,7 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
-	Conn     *gorilla.Conn
+	Conn     *nhooyr.Conn
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
@@ -44,14 +45,13 @@ type WebSocket struct {
 	notificationChannels     map[string]chan model.Notification
 	notificationChannelsLock sync.RWMutex
 
-	closeChan  chan int
-	closeError error
+	close chan int
 }
 
 func Create() *WebSocket {
 	return &WebSocket{
 		Conn:                 nil,
-		closeChan:            make(chan int),
+		close:                make(chan int),
 		responseChannels:     make(map[string]chan rpc.RPCResponse),
 		notificationChannels: make(map[string]chan model.Notification),
 		Timeout:              DefaultTimeout * time.Second,
@@ -59,12 +59,17 @@ func Create() *WebSocket {
 }
 
 func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
-	dialer := gorilla.DefaultDialer
-	dialer.EnableCompression = true
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
-	connection, _, err := dialer.Dial(url, nil)
+	connection, resp, err := nhooyr.Dial(ctx, url, nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		resp.Body.Close()
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	ws.Conn = connection
@@ -75,7 +80,7 @@ func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
 		}
 	}
 
-	go ws.initialize()
+	ws.initialize()
 	return ws, nil
 }
 
@@ -98,24 +103,12 @@ func (ws *WebSocket) RawLogger(logData logger.Logger) *WebSocket {
 	return ws
 }
 
-func (ws *WebSocket) SetCompression(compress bool) *WebSocket {
-	ws.Option = append(ws.Option, func(ws *WebSocket) error {
-		ws.Conn.EnableWriteCompression(compress)
-		return nil
-	})
-	return ws
-}
-
 func (ws *WebSocket) Close() error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	close(ws.closeChan)
-	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
-	if err != nil {
-		return err
-	}
+	close(ws.close)
 
-	return ws.Conn.Close()
+	return ws.Conn.Close(nhooyr.StatusNormalClosure, "")
 }
 
 func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
@@ -181,12 +174,6 @@ func (ws *WebSocket) getLiveChannel(id string) (chan model.Notification, bool) {
 }
 
 func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
-	select {
-	case <-ws.closeChan:
-		return nil, ws.closeError
-	default:
-	}
-
 	id := rand.String(RequestIDLength)
 	request := &rpc.RPCRequest{
 		ID:     id,
@@ -224,7 +211,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 }
 
 func (ws *WebSocket) read(v interface{}) error {
-	_, data, err := ws.Conn.ReadMessage()
+	_, data, err := ws.Conn.Read(context.Background())
 	if err != nil {
 		return err
 	}
@@ -239,42 +226,29 @@ func (ws *WebSocket) write(v interface{}) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.Conn.WriteMessage(gorilla.TextMessage, data)
+	return ws.Conn.Write(context.Background(), nhooyr.MessageText, data)
 }
 
 func (ws *WebSocket) initialize() {
-	for {
-		select {
-		case <-ws.closeChan:
-			return
-		default:
-			var res rpc.RPCResponse
-			err := ws.read(&res)
-			if err != nil {
-				shouldExit := ws.handleError(err)
-				if shouldExit {
-					return
+	go func() {
+		for {
+			select {
+			case <-ws.close:
+				return
+			default:
+				var res rpc.RPCResponse
+				err := ws.read(&res)
+				if err != nil {
+					if errors.Is(err, net.ErrClosed) {
+						break
+					}
+					ws.logger.Error(err.Error())
+					continue
 				}
-				continue
+				go ws.handleResponse(res)
 			}
-			go ws.handleResponse(res)
 		}
-	}
-}
-
-func (ws *WebSocket) handleError(err error) bool {
-	if errors.Is(err, net.ErrClosed) {
-		ws.closeError = net.ErrClosed
-		return true
-	}
-	if gorilla.IsUnexpectedCloseError(err) {
-		ws.closeError = io.ErrClosedPipe
-		<-ws.closeChan
-		return true
-	}
-
-	ws.logger.Error(err.Error())
-	return false
+	}()
 }
 
 func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
