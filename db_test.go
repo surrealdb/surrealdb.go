@@ -9,7 +9,6 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
@@ -18,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/conn/gorilla"
+	"github.com/surrealdb/surrealdb.go/pkg/conn/nhooyr"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 
 	"github.com/surrealdb/surrealdb.go/pkg/conn"
@@ -65,17 +64,18 @@ func TestSurrealDBSuite(t *testing.T) {
 	SurrealDBSuite := new(SurrealDBTestSuite)
 	SurrealDBSuite.connImplementations = make(map[string]conn.Connection)
 
+	// // Nhooyr
 	// Without options
-	buff := bytes.NewBufferString("")
-	logData := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["gorilla"] = gorilla.Create().Logger(logData)
-	SurrealDBSuite.logBuffer = buff
+	nbuff := bytes.NewBufferString("")
+	nlogData := createLogger(t, nbuff)
+	SurrealDBSuite.connImplementations["nhooyr"] = nhooyr.Create().Logger(nlogData)
+	SurrealDBSuite.logBuffer = nbuff
 
 	// With options
-	buffOpt := bytes.NewBufferString("")
-	logDataOpt := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logDataOpt)
-	SurrealDBSuite.logBuffer = buffOpt
+	nbuffOpt := bytes.NewBufferString("")
+	nlogDataOpt := createLogger(t, nbuffOpt)
+	SurrealDBSuite.connImplementations["nhooyr_opt"] = nhooyr.Create().Logger(nlogDataOpt)
+	SurrealDBSuite.logBuffer = nbuffOpt
 
 	RunWsMap(t, SurrealDBSuite)
 }
@@ -781,7 +781,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 }
 
 func (s *SurrealDBTestSuite) TestConnectionBreak() {
-	ws := gorilla.Create()
+	ws := nhooyr.Create()
 	var url string
 	if currentURL == "" {
 		url = defaultURL
@@ -791,10 +791,11 @@ func (s *SurrealDBTestSuite) TestConnectionBreak() {
 
 	db := s.openConnection(url, ws)
 	// Close the connection hard from ws
-	ws.Conn.Close()
+	err := ws.Conn.CloseNow()
+	s.Require().NoError(err)
 
 	// Needs to be return error when the connection is closed or broken
-	_, err := db.Select("users")
+	_, err = db.Select("users")
 	s.Require().Error(err)
 }
 
