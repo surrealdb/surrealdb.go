@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
+	coderws "github.com/coder/websocket"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
-	nhooyr "nhooyr.io/websocket"
 
 	"github.com/surrealdb/surrealdb.go/internal/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/conn"
@@ -33,7 +33,7 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
-	Conn     *nhooyr.Conn
+	Conn     *coderws.Conn
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
@@ -62,7 +62,7 @@ func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	connection, resp, err := nhooyr.Dial(ctx, url, nil)
+	connection, resp, err := coderws.Dial(ctx, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (ws *WebSocket) Close() error {
 	defer ws.connLock.Unlock()
 	close(ws.close)
 
-	return ws.Conn.Close(nhooyr.StatusNormalClosure, "")
+	return ws.Conn.Close(coderws.StatusNormalClosure, "")
 }
 
 func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
@@ -226,7 +226,7 @@ func (ws *WebSocket) write(v interface{}) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.Conn.Write(context.Background(), nhooyr.MessageText, data)
+	return ws.Conn.Write(context.Background(), coderws.MessageText, data)
 }
 
 func (ws *WebSocket) initialize() {
