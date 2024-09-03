@@ -130,6 +130,11 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, er
 	return db.conn.LiveNotifications(liveQueryID)
 }
 
+// Create a relation between two records. The data parameter is optional.
+func (db *DB) Relate(fromRecordId, table, toRecordId, data interface{}) (interface{}, error) {
+	return db.send("relate", fromRecordId, table, toRecordId, data)
+}
+
 // --------------------------------------------------
 // Private methods
 // --------------------------------------------------
@@ -143,7 +148,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	}
 
 	switch method {
-	case "select", "create", "update", "merge", "patch", "insert":
+	case "select", "create", "update", "merge", "patch", "insert", "relate":
 		return db.resp(method, params, resp)
 	case "delete":
 		return nil, nil
