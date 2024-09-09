@@ -1,4 +1,4 @@
-package rpc
+package connection
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {
@@ -31,3 +31,28 @@ type RPCNotification struct {
 	Method string        `json:"method,omitempty" msgpack:"method,omitempty"`
 	Params []interface{} `json:"params,omitempty" msgpack:"params,omitempty"`
 }
+
+type RPCFunction string
+
+var (
+	FUse         RPCFunction = "use"
+	Info         RPCFunction = "info"
+	SignUp       RPCFunction = "signup"
+	SignIn       RPCFunction = "signin"
+	Authenticate RPCFunction = "authenticate"
+	Invalidate   RPCFunction = "invalidate"
+	Let          RPCFunction = "let"
+	Unset        RPCFunction = "unset"
+	Live         RPCFunction = "live"
+	Kill         RPCFunction = "kill"
+	Query        RPCFunction = "query"
+	Select       RPCFunction = "select"
+	Create       RPCFunction = "create"
+	Insert       RPCFunction = "insert"
+	Update       RPCFunction = "update"
+	Upsert       RPCFunction = "upsert"
+	Relate       RPCFunction = "relate"
+	Merge        RPCFunction = "merge"
+	Patch        RPCFunction = "patch"
+	Delete       RPCFunction = "delete"
+)

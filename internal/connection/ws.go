@@ -1,9 +1,11 @@
-package gorilla
+package connection
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"io"
 	"net"
 	"reflect"
@@ -11,13 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/pkg/model"
-
 	gorilla "github.com/gorilla/websocket"
-	"github.com/surrealdb/surrealdb.go/internal/rpc"
-	"github.com/surrealdb/surrealdb.go/pkg/conn"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/rand"
 )
 
 const (
@@ -32,33 +28,41 @@ const (
 type Option func(ws *WebSocket) error
 
 type WebSocket struct {
+	BaseConnection
+
 	Conn     *gorilla.Conn
 	connLock sync.Mutex
 	Timeout  time.Duration
 	Option   []Option
 	logger   logger.Logger
 
-	responseChannels     map[string]chan rpc.RPCResponse
+	responseChannels     map[string]chan RPCResponse
 	responseChannelsLock sync.RWMutex
 
-	notificationChannels     map[string]chan model.Notification
+	notificationChannels     map[string]chan Notification
 	notificationChannelsLock sync.RWMutex
 
 	closeChan  chan int
 	closeError error
 }
 
-func Create() *WebSocket {
+func NewWebSocket(p NewConnectionParams) *WebSocket {
 	return &WebSocket{
+		BaseConnection: BaseConnection{
+			encode: p.Encoder,
+			decode: p.Decoder,
+		},
+		logger: p.Logger,
+
 		Conn:                 nil,
 		closeChan:            make(chan int),
-		responseChannels:     make(map[string]chan rpc.RPCResponse),
-		notificationChannels: make(map[string]chan model.Notification),
+		responseChannels:     make(map[string]chan RPCResponse),
+		notificationChannels: make(map[string]chan Notification),
 		Timeout:              DefaultTimeout * time.Second,
 	}
 }
 
-func (ws *WebSocket) Connect(url string) (conn.Connection, error) {
+func (ws *WebSocket) Connect(url string) (Connection, error) {
 	dialer := gorilla.DefaultDialer
 	dialer.EnableCompression = true
 
@@ -118,7 +122,7 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.Close()
 }
 
-func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
+func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan Notification, error) {
 	c, err := ws.createNotificationChannel(liveQueryID)
 	if err != nil {
 		ws.logger.Error(err.Error())
@@ -132,7 +136,7 @@ var (
 	ErrInvalidResponseID = errors.New("invalid response id")
 )
 
-func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, error) {
+func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 
@@ -140,13 +144,13 @@ func (ws *WebSocket) createResponseChannel(id string) (chan rpc.RPCResponse, err
 		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
 	}
 
-	ch := make(chan rpc.RPCResponse)
+	ch := make(chan RPCResponse)
 	ws.responseChannels[id] = ch
 
 	return ch, nil
 }
 
-func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan model.Notification, error) {
+func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan Notification, error) {
 	ws.notificationChannelsLock.Lock()
 	defer ws.notificationChannelsLock.Unlock()
 
@@ -154,7 +158,7 @@ func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan model.N
 		return nil, fmt.Errorf("%w: %v", ErrIDInUse, liveQueryID)
 	}
 
-	ch := make(chan model.Notification)
+	ch := make(chan Notification)
 	ws.notificationChannels[liveQueryID] = ch
 
 	return ch, nil
@@ -166,14 +170,14 @@ func (ws *WebSocket) removeResponseChannel(id string) {
 	delete(ws.responseChannels, id)
 }
 
-func (ws *WebSocket) getResponseChannel(id string) (chan rpc.RPCResponse, bool) {
+func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
 	return ch, ok
 }
 
-func (ws *WebSocket) getLiveChannel(id string) (chan model.Notification, bool) {
+func (ws *WebSocket) getLiveChannel(id string) (chan Notification, bool) {
 	ws.notificationChannelsLock.RLock()
 	defer ws.notificationChannelsLock.RUnlock()
 	ch, ok := ws.notificationChannels[id]
@@ -188,7 +192,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	}
 
 	id := rand.String(RequestIDLength)
-	request := &rpc.RPCRequest{
+	request := &RPCRequest{
 		ID:     id,
 		Method: method,
 		Params: params,
@@ -248,7 +252,7 @@ func (ws *WebSocket) initialize() {
 		case <-ws.closeChan:
 			return
 		default:
-			var res rpc.RPCResponse
+			var res RPCResponse
 			err := ws.read(&res)
 			if err != nil {
 				shouldExit := ws.handleError(err)
@@ -277,7 +281,7 @@ func (ws *WebSocket) handleError(err error) bool {
 	return false
 }
 
-func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
+func (ws *WebSocket) handleResponse(res RPCResponse) {
 	if res.ID != nil && res.ID != "" {
 		// Try to resolve message as response to query
 		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))
@@ -298,7 +302,7 @@ func (ws *WebSocket) handleResponse(res rpc.RPCResponse) {
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))
 			return
 		}
-		var notification model.Notification
+		var notification Notification
 		err := unmarshalMapToStruct(mappedRes, &notification)
 		if err != nil {
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(res.Result))

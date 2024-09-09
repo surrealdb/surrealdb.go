@@ -2,16 +2,15 @@ package surrealdb
 
 import (
 	"fmt"
-
-	"github.com/surrealdb/surrealdb.go/pkg/model"
-
-	"github.com/surrealdb/surrealdb.go/pkg/conn"
+	"github.com/surrealdb/surrealdb.go/internal/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 )
 
 // DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
-	conn conn.Connection
+	conn        connection.Connection
+	liveHandler connection.LiveHandler
 }
 
 // Auth is a struct that holds surrealdb auth data for login.
@@ -24,12 +23,24 @@ type Auth struct {
 }
 
 // New creates a new SurrealDB client.
-func New(url string, connection conn.Connection) (*DB, error) {
-	connection, err := connection.Connect(url)
+func New(url string, engine string) (*DB, error) {
+	newParams := connection.NewConnectionParams{
+		Encoder: model.GetCborEncoder(),
+		Decoder: model.GetCborDecoder(),
+	}
+	var conn connection.Connection
+	if engine != "http" {
+		conn = connection.NewHttp(newParams)
+	} else {
+		conn = connection.NewWebSocket(newParams)
+	}
+
+	connect, err := conn.Connect(url)
 	if err != nil {
 		return nil, err
 	}
-	return &DB{connection}, nil
+
+	return &DB{conn: connect}, nil
 }
 
 // --------------------------------------------------
@@ -126,8 +137,8 @@ func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 }
 
 // LiveNotifications returns a channel for live query.
-func (db *DB) LiveNotifications(liveQueryID string) (chan model.Notification, error) {
-	return db.conn.LiveNotifications(liveQueryID)
+func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
+	return db.liveHandler.LiveNotifications(liveQueryID) //check if implemented
 }
 
 // --------------------------------------------------
@@ -155,6 +166,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, _ []interface{}, res interface{}) (interface{}, error) {
 	if res == nil {
+		//return nil, pkg.ErrNoRow
 		return nil, constants.ErrNoRow
 	}
 	return res, nil

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/internal/mock"
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 )
 
@@ -18,7 +17,7 @@ type testUser struct {
 }
 
 func SetupMockDB() (*surrealdb.DB, error) {
-	return surrealdb.New("", mock.Create())
+	return surrealdb.New("", "")
 }
 
 func BenchmarkCreate(b *testing.B) {

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"io"
 	rawslog "log/slog"
 	"os"
@@ -12,17 +14,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
-
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/conn/gorilla"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-
-	"github.com/surrealdb/surrealdb.go/pkg/conn"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	conn "github.com/surrealdb/surrealdb.go/internal/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/marshal"
 )
 
@@ -68,13 +63,13 @@ func TestSurrealDBSuite(t *testing.T) {
 	// Without options
 	buff := bytes.NewBufferString("")
 	logData := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["gorilla"] = gorilla.Create().Logger(logData)
+	SurrealDBSuite.connImplementations["ws"] = conn.NewWebSocket(conn.NewConnectionParams{}).Logger(logData)
 	SurrealDBSuite.logBuffer = buff
 
 	// With options
 	buffOpt := bytes.NewBufferString("")
 	logDataOpt := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["gorilla_opt"] = gorilla.Create().SetTimeOut(time.Minute).SetCompression(true).Logger(logDataOpt)
+	SurrealDBSuite.connImplementations["ws_opt"] = conn.NewWebSocket(conn.NewConnectionParams{}).SetTimeOut(time.Minute).SetCompression(true).Logger(logDataOpt)
 	SurrealDBSuite.logBuffer = buffOpt
 
 	RunWsMap(t, SurrealDBSuite)
@@ -83,7 +78,7 @@ func TestSurrealDBSuite(t *testing.T) {
 func createLogger(t *testing.T, writer io.Writer) logger.Logger {
 	t.Helper()
 	handler := rawslog.NewJSONHandler(writer, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
-	return slog.New(handler)
+	return logger.New(handler)
 }
 
 func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
@@ -134,7 +129,7 @@ func (s *SurrealDBTestSuite) createTestDB() *surrealdb.DB {
 // openConnection opens a new connection to the database
 func (s *SurrealDBTestSuite) openConnection(url string, impl conn.Connection) *surrealdb.DB {
 	require.NotNil(s.T(), impl)
-	db, err := surrealdb.New(url, impl)
+	db, err := surrealdb.New(url, "")
 	s.Require().NoError(err)
 	return db
 }
@@ -177,7 +172,7 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	})
 	s.Require().NoError(e)
 	notification := <-notifications
-	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(conn.CreateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
 
@@ -208,7 +203,7 @@ func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 	s.Require().NoError(e)
 
 	notification := <-notifications
-	s.Require().Equal(model.UpdateAction, notification.Action)
+	s.Require().Equal(conn.UpdateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
 
@@ -236,7 +231,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	})
 	s.Require().NoError(e)
 	notification := <-notifications
-	s.Require().Equal(model.CreateAction, notification.Action)
+	s.Require().Equal(conn.CreateAction, notification.Action)
 	s.Require().Equal(liveID, notification.ID)
 }
 
@@ -781,7 +776,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 }
 
 func (s *SurrealDBTestSuite) TestConnectionBreak() {
-	ws := gorilla.Create()
+	ws := conn.NewWebSocket(conn.NewConnectionParams{})
 	var url string
 	if currentURL == "" {
 		url = defaultURL
