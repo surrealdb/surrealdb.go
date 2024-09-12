@@ -35,7 +35,7 @@ type RPCNotification struct {
 type RPCFunction string
 
 var (
-	FUse         RPCFunction = "use"
+	Use          RPCFunction = "use"
 	Info         RPCFunction = "info"
 	SignUp       RPCFunction = "signup"
 	SignIn       RPCFunction = "signin"

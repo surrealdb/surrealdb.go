@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"io"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -15,10 +15,7 @@ type Http struct {
 	BaseConnection
 
 	httpClient *http.Client
-
-	namespace string
-	database  string
-	token     string
+	variables  sync.Map
 }
 
 func NewHttp(p NewConnectionParams) *Http {
@@ -26,6 +23,7 @@ func NewHttp(p NewConnectionParams) *Http {
 		BaseConnection: BaseConnection{
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
+			baseURL:     p.BaseURL,
 		},
 	}
 
@@ -82,10 +80,6 @@ func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("connection host not set")
 	}
 
-	if h.namespace == "" || h.database == "" {
-		return nil, fmt.Errorf("namespace or database or both are not set")
-	}
-
 	rpcReq := &RPCRequest{
 		ID:     rand.String(RequestIDLength),
 		Method: method,
@@ -101,16 +95,20 @@ func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
-	if h.namespace != "" {
-		req.Header.Set("Surreal-NS", h.namespace)
+	if namespace, ok := h.variables.Load("namespace"); ok {
+		req.Header.Set("Surreal-NS", namespace.(string))
+	} else {
+		return nil, fmt.Errorf("namespace or database or both are not set")
 	}
 
-	if h.database != "" {
-		req.Header.Set("Surreal-DB", h.database)
+	if database, ok := h.variables.Load("database"); ok {
+		req.Header.Set("Surreal-DB", database.(string))
+	} else {
+		return nil, fmt.Errorf("namespace or database or both are not set")
 	}
 
-	if h.token != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", h.token))
+	if token, ok := h.variables.Load("token"); ok {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
 	resp, err := h.MakeRequest(req)
@@ -120,6 +118,19 @@ func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
 
 	var rpcResponse RPCResponse
 	err = h.unmarshaler.Unmarshal(resp, &rpcResponse)
+
+	// Manage auth tokens
+	switch method {
+	case "signin", "signup":
+		h.variables.Store("token", rpcResponse.Result)
+		break
+	case "authenticate":
+		h.variables.Store("token", params[0])
+		break
+	case "invalidate":
+		h.variables.Delete("token")
+		break
+	}
 
 	return rpcResponse.Result, nil
 }
@@ -139,39 +150,18 @@ func (h *Http) MakeRequest(req *http.Request) ([]byte, error) {
 }
 
 func (h *Http) Use(namespace string, database string) error {
-	h.namespace = namespace
-	h.database = database
+	h.variables.Store("namespace", namespace)
+	h.variables.Store("database", database)
 
 	return nil
 }
 
-func (h *Http) SignIn(auth model.Auth) (string, error) {
-	resp, err := h.Send("signin", []interface{}{auth})
-	if err != nil {
-		return "", err
-	}
-
-	h.token = resp.(string)
-
-	return resp.(string), nil
+func (h *Http) Let(key string, value interface{}) error {
+	h.variables.Store(key, value)
+	return nil
 }
 
-func (h *Http) signup() {
-
-}
-
-func (h *Http) let() {
-
-}
-
-func (h *Http) unset() {
-
-}
-
-func (h *Http) authenticate() {
-
-}
-
-func (h *Http) invalidate() {
-
+func (h *Http) Unset(key string) error {
+	h.variables.Delete(key)
+	return nil
 }

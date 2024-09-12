@@ -130,7 +130,7 @@ func (s *SurrealDBTestSuite) createTestDB() *surrealdb.DB {
 // openConnection opens a new connection to the database
 func (s *SurrealDBTestSuite) openConnection(url string, impl connection.Connection) *surrealdb.DB {
 	require.NotNil(s.T(), impl)
-	db, err := surrealdb.New(url, "")
+	db, err := surrealdb.New(url)
 	s.Require().NoError(err)
 	return db
 }

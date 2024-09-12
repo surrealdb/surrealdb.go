@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"io"
 	"net"
 	"reflect"
@@ -69,6 +68,7 @@ func (ws *WebSocket) Connect() error {
 
 	dialer := gorilla.DefaultDialer
 	dialer.EnableCompression = true
+	dialer.Subprotocols = append(dialer.Subprotocols, "cbor")
 
 	connection, _, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
@@ -134,6 +134,10 @@ func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan Notification, e
 	return c, err
 }
 
+func (ws *WebSocket) Kill(id string) (interface{}, error) {
+	return ws.Send("kill", []interface{}{id})
+}
+
 var (
 	ErrIDInUse           = errors.New("id already in use")
 	ErrTimeout           = errors.New("timeout")
@@ -189,8 +193,7 @@ func (ws *WebSocket) getLiveChannel(id string) (chan Notification, bool) {
 }
 
 func (ws *WebSocket) Use(namespace string, database string) error {
-	params := []interface{}{namespace, database}
-	_, err := ws.Send("use", params)
+	_, err := ws.Send("use", []interface{}{namespace, database})
 	if err != nil {
 		return err
 	}
@@ -198,13 +201,14 @@ func (ws *WebSocket) Use(namespace string, database string) error {
 	return nil
 }
 
-func (ws *WebSocket) SignIn(auth model.Auth) (string, error) {
-	resp, err := ws.Send("signin", []interface{}{auth})
-	if err != nil {
-		return "", err
-	}
+func (ws *WebSocket) Let(key string, value interface{}) error {
+	_, err := ws.Send("let", []interface{}{key, value})
+	return err
+}
 
-	return resp.(string), nil
+func (ws *WebSocket) Unset(key string) error {
+	_, err := ws.Send("unset", []interface{}{key})
+	return err
 }
 
 func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
@@ -230,7 +234,6 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	if err := ws.write(request); err != nil {
 		return nil, err
 	}
-
 	timeout := time.After(ws.Timeout)
 
 	select {
@@ -255,13 +258,10 @@ func (ws *WebSocket) read(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	//return json.Unmarshal(data, v)
 	return ws.unmarshaler.Unmarshal(data, v)
 }
 
 func (ws *WebSocket) write(v interface{}) error {
-	//fmt.Printf("%+v\n", v)
-	//data, err := json.Marshal(v)
 	data, err := ws.marshaler.Marshal(v)
 	if err != nil {
 		return err
@@ -269,7 +269,7 @@ func (ws *WebSocket) write(v interface{}) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.Conn.WriteMessage(gorilla.TextMessage, data)
+	return ws.Conn.WriteMessage(gorilla.BinaryMessage, data)
 }
 
 func (ws *WebSocket) initialize() {
@@ -293,6 +293,7 @@ func (ws *WebSocket) initialize() {
 }
 
 func (ws *WebSocket) handleError(err error) bool {
+	fmt.Println(err)
 	if errors.Is(err, net.ErrClosed) {
 		ws.closeError = net.ErrClosed
 		return true

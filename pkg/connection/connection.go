@@ -2,7 +2,6 @@ package connection
 
 import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 )
 
 type Connection interface {
@@ -10,11 +9,13 @@ type Connection interface {
 	Close() error
 	Send(method string, params []interface{}) (interface{}, error)
 	Use(namespace string, database string) error
-	SignIn(auth model.Auth) (string, error)
+	Let(key string, value interface{}) error
+	Unset(key string) error
 }
 
 type LiveHandler interface {
 	LiveNotifications(id string) (chan Notification, error)
+	Kill(id string) (interface{}, error)
 }
 
 type BaseConnection struct {

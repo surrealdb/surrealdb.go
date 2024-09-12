@@ -21,7 +21,6 @@ func New(connectionURL string) (*DB, error) {
 		return nil, err
 	}
 
-	baseURL := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	scheme := u.Scheme
 
 	newParams := connection.NewConnectionParams{
@@ -37,23 +36,25 @@ func New(connectionURL string) (*DB, error) {
 		return nil, fmt.Errorf("invalid connection url")
 	}
 
-	err := conn.Connect()
+	err = conn.Connect()
 	if err != nil {
 		return nil, err
 	}
 
 	// Only Websocket exposes live fields, try to connect to ws
-	liveconn := connection.NewWebSocket(newParams)
-	//liveScheme := "ws"
+	liveScheme := "ws"
 	if scheme == "wss" || scheme == "https" {
 		liveScheme = "wss"
 	}
-	//liveconn, err = liveconn.Connect(fmt.Sprintf("%s://%s", liveScheme, u.Host))
+	newLiveConnParams := newParams
+	newLiveConnParams.BaseURL = fmt.Sprintf("%s://%s", liveScheme, u.Host)
+	liveconn := connection.NewWebSocket(newParams)
+	err = liveconn.Connect()
 	if err != nil {
 		return nil, err
 	}
 
-	return &DB{conn: connect, liveHandler: liveconn}, nil
+	return &DB{conn: conn, liveHandler: liveconn}, nil
 }
 
 // --------------------------------------------------
@@ -94,12 +95,12 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 	return db.send("authenticate", token)
 }
 
-func (db *DB) Let(key string, val interface{}) (interface{}, error) {
-	return db.send("let", key, val)
+func (db *DB) Let(key string, val interface{}) error {
+	return db.conn.Let(key, val)
 }
 
-func (db *DB) Unset(key string, val interface{}) (interface{}, error) {
-	return db.send("unset", key, val)
+func (db *DB) Unset(key string) error {
+	return db.conn.Unset(key)
 }
 
 // Query is a convenient method for sending a query to the database.
@@ -150,7 +151,7 @@ func (db *DB) Live(table string, diff bool) (string, error) {
 }
 
 func (db *DB) Kill(liveQueryID string) (interface{}, error) {
-	return db.send("kill", liveQueryID)
+	return db.liveHandler.Kill(liveQueryID)
 }
 
 // LiveNotifications returns a channel for live query.

@@ -1,9 +1,11 @@
 package connection
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
+	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
@@ -24,26 +26,35 @@ func NewTestClient(fn RoundTripFunc) *http.Client {
 	}
 }
 
+func TestEngine_MakeRequest(t *testing.T) {
+	httpClient := NewTestClient(func(req *http.Request) *http.Response {
+		assert.Equal(t, req.URL.String(), "http://test.surreal/rpc")
+
+		return &http.Response{
+			StatusCode: 400,
+			// Send response to be tested
+			Body: ioutil.NopCloser(bytes.NewBufferString(`OK`)),
+			// Must be set to non-nil value or it panics
+			Header: make(http.Header),
+		}
+	})
+
+	p := NewConnectionParams{
+		BaseURL:     "http://test.surreal",
+		Marshaler:   model.CborMarshaler{},
+		Unmarshaler: model.CborUnmashaler{},
+	}
+	httpEngine := NewHttp(p)
+	httpEngine.SetHttpClient(httpClient)
+
+	req, _ := http.NewRequest(http.MethodGet, "http://test.surreal/rpc", nil)
+	resp, err := httpEngine.MakeRequest(req)
+	assert.Error(t, err, "should return error for status code 400")
+
+	fmt.Println(resp)
+}
+
 func TestEngine_HttpMakeRequest(t *testing.T) {
-	//httpClient := NewTestClient(func(req *http.Request) *http.Response {
-	//	assert.Equal(t, req.URL.String(), "http://test.surreal/rpc")
-	//
-	//	return &http.Response{
-	//		StatusCode: 400,
-	//		// Send response to be tested
-	//		Body: ioutil.NopCloser(bytes.NewBufferString(`OK`)),
-	//		// Must be set to non-nil value or it panics
-	//		Header: make(http.Header),
-	//	}
-	//})
-	//
-	//httpEngine := (NewHttp(p)).(*Http)
-	//httpEngine.SetHttpClient(httpClient)
-	//
-	//resp, err := httpEngine.MakeRequest(http.MethodGet, "http://test.surreal/rpc", nil)
-	//assert.Error(t, err, "should return error for status code 400")
-	//
-	//fmt.Println(resp)
 
 	p := NewConnectionParams{
 		BaseURL:     "http://localhost:8000",
@@ -54,10 +65,10 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	err := con.Use("test", "test")
 	assert.Nil(t, err, "no error returned when setting namespace and database")
 
-	con, err = con.Connect("http://127.0.0.1:8000")
+	err = con.Connect() //implement a is ready
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
-	token, err := con.SignIn(model.Auth{Username: "pass", Password: "pass"})
+	token, err := con.Send("signin", []interface{}{model.Auth{Username: "pass", Password: "pass"}})
 	assert.Nil(t, err, "no error returned when signing in")
 	fmt.Println(token)
 
