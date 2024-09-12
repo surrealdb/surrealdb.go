@@ -1,11 +1,11 @@
 package connection
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"io"
 	"net"
 	"reflect"
@@ -49,10 +49,10 @@ type WebSocket struct {
 func NewWebSocket(p NewConnectionParams) *WebSocket {
 	return &WebSocket{
 		BaseConnection: BaseConnection{
-			encode: p.Encoder,
-			decode: p.Decoder,
+			marshaler:   p.Marshaler,
+			unmarshaler: p.Unmarshaler,
+			baseURL:     p.BaseURL,
 		},
-		logger: p.Logger,
 
 		Conn:                 nil,
 		closeChan:            make(chan int),
@@ -62,25 +62,29 @@ func NewWebSocket(p NewConnectionParams) *WebSocket {
 	}
 }
 
-func (ws *WebSocket) Connect(url string) (Connection, error) {
+func (ws *WebSocket) Connect() error {
+	if ws.baseURL == "" {
+		return fmt.Errorf("base url not set")
+	}
+
 	dialer := gorilla.DefaultDialer
 	dialer.EnableCompression = true
 
-	connection, _, err := dialer.Dial(url, nil)
+	connection, _, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	ws.Conn = connection
 
 	for _, option := range ws.Option {
 		if err := option(ws); err != nil {
-			return ws, err
+			return err
 		}
 	}
 
 	go ws.initialize()
-	return ws, nil
+	return nil
 }
 
 func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
@@ -184,6 +188,25 @@ func (ws *WebSocket) getLiveChannel(id string) (chan Notification, bool) {
 	return ch, ok
 }
 
+func (ws *WebSocket) Use(namespace string, database string) error {
+	params := []interface{}{namespace, database}
+	_, err := ws.Send("use", params)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ws *WebSocket) SignIn(auth model.Auth) (string, error) {
+	resp, err := ws.Send("signin", []interface{}{auth})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.(string), nil
+}
+
 func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
 	select {
 	case <-ws.closeChan:
@@ -232,11 +255,14 @@ func (ws *WebSocket) read(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, v)
+	//return json.Unmarshal(data, v)
+	return ws.unmarshaler.Unmarshal(data, v)
 }
 
 func (ws *WebSocket) write(v interface{}) error {
-	data, err := json.Marshal(v)
+	//fmt.Printf("%+v\n", v)
+	//data, err := json.Marshal(v)
+	data, err := ws.marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}

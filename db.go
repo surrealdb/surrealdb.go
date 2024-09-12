@@ -2,9 +2,10 @@ package surrealdb
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/internal/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
+	"net/url"
 )
 
 // DB is a client for the SurrealDB database that holds the connection.
@@ -13,34 +14,46 @@ type DB struct {
 	liveHandler connection.LiveHandler
 }
 
-// Auth is a struct that holds surrealdb auth data for login.
-type Auth struct {
-	Namespace string `json:"NS,omitempty"`
-	Database  string `json:"DB,omitempty"`
-	Scope     string `json:"SC,omitempty"`
-	Username  string `json:"user,omitempty"`
-	Password  string `json:"pass,omitempty"`
-}
-
 // New creates a new SurrealDB client.
-func New(url string, engine string) (*DB, error) {
-	newParams := connection.NewConnectionParams{
-		Encoder: model.GetCborEncoder(),
-		Decoder: model.GetCborDecoder(),
-	}
-	var conn connection.Connection
-	if engine != "http" {
-		conn = connection.NewHttp(newParams)
-	} else {
-		conn = connection.NewWebSocket(newParams)
-	}
-
-	connect, err := conn.Connect(url)
+func New(connectionURL string) (*DB, error) {
+	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DB{conn: connect}, nil
+	baseURL := fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+	scheme := u.Scheme
+
+	newParams := connection.NewConnectionParams{
+		Marshaler:   model.CborMarshaler{},
+		Unmarshaler: model.CborUnmashaler{},
+	}
+	var conn connection.Connection
+	if scheme == "http" || scheme == "https" {
+		conn = connection.NewHttp(newParams)
+	} else if scheme == "ws" || scheme == "wss" {
+		conn = connection.NewWebSocket(newParams)
+	} else {
+		return nil, fmt.Errorf("invalid connection url")
+	}
+
+	err := conn.Connect()
+	if err != nil {
+		return nil, err
+	}
+
+	// Only Websocket exposes live fields, try to connect to ws
+	liveconn := connection.NewWebSocket(newParams)
+	//liveScheme := "ws"
+	if scheme == "wss" || scheme == "https" {
+		liveScheme = "wss"
+	}
+	//liveconn, err = liveconn.Connect(fmt.Sprintf("%s://%s", liveScheme, u.Host))
+	if err != nil {
+		return nil, err
+	}
+
+	return &DB{conn: connect, liveHandler: liveconn}, nil
 }
 
 // --------------------------------------------------
@@ -64,12 +77,12 @@ func (db *DB) Info() (interface{}, error) {
 }
 
 // Signup is a helper method for signing up a new user.
-func (db *DB) Signup(authData *Auth) (interface{}, error) {
+func (db *DB) Signup(authData *model.Auth) (interface{}, error) {
 	return db.send("signup", authData)
 }
 
 // Signin is a helper method for signing in a user.
-func (db *DB) Signin(authData *Auth) (interface{}, error) {
+func (db *DB) Signin(authData *model.Auth) (interface{}, error) {
 	return db.send("signin", authData)
 }
 
@@ -81,19 +94,12 @@ func (db *DB) Authenticate(token string) (interface{}, error) {
 	return db.send("authenticate", token)
 }
 
-// --------------------------------------------------
-
-func (db *DB) Live(table string, diff bool) (string, error) {
-	id, err := db.send("live", table, diff)
-	return id.(string), err
-}
-
-func (db *DB) Kill(liveQueryID string) (interface{}, error) {
-	return db.send("kill", liveQueryID)
-}
-
 func (db *DB) Let(key string, val interface{}) (interface{}, error) {
 	return db.send("let", key, val)
+}
+
+func (db *DB) Unset(key string, val interface{}) (interface{}, error) {
+	return db.send("unset", key, val)
 }
 
 // Query is a convenient method for sending a query to the database.
@@ -134,6 +140,17 @@ func (db *DB) Delete(what string) (interface{}, error) {
 // Insert a table or a row from the database like a POST request.
 func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
+}
+
+// --------------------------------------------------
+
+func (db *DB) Live(table string, diff bool) (string, error) {
+	id, err := db.send("live", table, diff)
+	return id.(string), err
+}
+
+func (db *DB) Kill(liveQueryID string) (interface{}, error) {
+	return db.send("kill", liveQueryID)
 }
 
 // LiveNotifications returns a channel for live query.
