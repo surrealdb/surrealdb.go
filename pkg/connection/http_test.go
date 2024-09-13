@@ -76,7 +76,6 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 		map[string]interface{}{
 			"datetime": time.Now(),
 			"testnil":  nil,
-			//"duration": Duration(340),
 		},
 	}
 	res, err := con.Send("query", params)

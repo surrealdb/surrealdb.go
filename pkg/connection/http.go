@@ -152,7 +152,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (h *HTTPConnection) Use(namespace string, database string) error {
+func (h *HTTPConnection) Use(namespace, database string) error {
 	h.variables.Store("namespace", namespace)
 	h.variables.Store("database", database)
 

@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"context"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
@@ -10,6 +11,7 @@ import (
 
 // DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
+	ctx         context.Context
 	conn        connection.Connection
 	liveHandler connection.LiveHandler
 }
@@ -61,12 +63,16 @@ func New(connectionURL string) (*DB, error) {
 // Public methods
 // --------------------------------------------------
 
+// WithContext
+func (db *DB) WithContext(ctx context.Context) *DB {
+	db.ctx = ctx
+	return db
+}
+
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close() error {
 	return db.conn.Close()
 }
-
-// --------------------------------------------------
 
 // Use is a method to select the namespace and table to use.
 func (db *DB) Use(ns, database string) (interface{}, error) {

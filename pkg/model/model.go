@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"github.com/fxamacker/cbor/v2"
 	"time"
 )
@@ -10,14 +11,14 @@ type GeometryPoint struct {
 	Longitude float64
 }
 
-func NewGeometryPoint(latitude float64, longitude float64) GeometryPoint {
+func NewGeometryPoint(latitude, longitude float64) GeometryPoint {
 	return GeometryPoint{
 		Latitude: latitude, Longitude: longitude,
 	}
 }
 
-func (g *GeometryPoint) GetCoordinates() [2]float64 {
-	return [2]float64{g.Latitude, g.Longitude}
+func (gp *GeometryPoint) GetCoordinates() [2]float64 {
+	return [2]float64{gp.Latitude, gp.Longitude}
 }
 
 func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
@@ -29,7 +30,7 @@ func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
 	})
 }
 
-func (g *GeometryPoint) UnmarshalCBOR(data []byte) error {
+func (gp *GeometryPoint) UnmarshalCBOR(data []byte) error {
 	dec := getCborDecoder()
 
 	var temp [2]float64
@@ -38,8 +39,8 @@ func (g *GeometryPoint) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
-	g.Latitude = temp[0]
-	g.Longitude = temp[1]
+	gp.Latitude = temp[0]
+	gp.Longitude = temp[1]
 
 	return nil
 }
@@ -67,11 +68,83 @@ type RecordID struct {
 	ID    interface{}
 }
 
+func NewRecordID(table string, id interface{}) *RecordID {
+	return &RecordID{Table: table, ID: id}
+}
+
+func (r *RecordID) MarshalCBOR() ([]byte, error) {
+	enc := getCborEncoder()
+
+	return enc.Marshal(cbor.Tag{
+		Number:  uint64(RecordIDTag),
+		Content: []interface{}{r.ID, r.Table},
+	})
+}
+
+func (r *RecordID) UnmarshalCBOR(data []byte) error {
+	dec := getCborDecoder()
+
+	var temp []interface{}
+	err := dec.Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+
+	r.Table = temp[0].(string)
+	r.ID = temp[1]
+
+	return nil
+}
+
 type Decimal string
 
 type CustomDateTime time.Time
 
+func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
+	enc := getCborEncoder()
+
+	return enc.Marshal(cbor.Tag{
+		Number:  uint64(DateTimeCompactString),
+		Content: [2]int64{1213, 123},
+	})
+}
+
+func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
+	dec := getCborDecoder()
+
+	var temp [2]interface{}
+	err := dec.Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(temp)
+	return nil
+}
+
 type CustomDuration time.Duration
+
+func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
+	enc := getCborEncoder()
+
+	return enc.Marshal(cbor.Tag{
+		Number:  uint64(DurationCompactTag),
+		Content: [2]int64{1213, 123},
+	})
+}
+
+func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
+	dec := getCborDecoder()
+
+	var temp [2]interface{}
+	err := dec.Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(temp)
+	return nil
+}
 
 // Auth is a struct that holds surrealdb auth data for login.
 type Auth struct {
@@ -81,3 +154,22 @@ type Auth struct {
 	Username  string `json:"user,omitempty"`
 	Password  string `json:"pass,omitempty"`
 }
+
+type CustomNil struct {
+}
+
+func (c *CustomNil) MarshalCBOR() ([]byte, error) {
+	enc := getCborEncoder()
+
+	return enc.Marshal(cbor.Tag{
+		Number:  uint64(NoneTag),
+		Content: nil,
+	})
+}
+
+func (c *CustomNil) CustomNil(data []byte) error {
+	c = &CustomNil{}
+	return nil
+}
+
+var None = CustomNil{}
