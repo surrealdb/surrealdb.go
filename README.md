@@ -144,6 +144,8 @@ func main() {
 - Run `go mod tidy` to download the `surrealdb.go` dependency
 - Run `go run main.go` to run the example.
 
+## Data Models
+
 ## Contributing
 
 You can run the Makefile commands to run and build the project

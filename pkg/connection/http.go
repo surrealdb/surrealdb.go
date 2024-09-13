@@ -11,15 +11,15 @@ import (
 	"time"
 )
 
-type Http struct {
+type HTTPConnection struct {
 	BaseConnection
 
 	httpClient *http.Client
 	variables  sync.Map
 }
 
-func NewHttp(p NewConnectionParams) *Http {
-	con := Http{
+func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
+	con := HTTPConnection{
 		BaseConnection: BaseConnection{
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
@@ -36,7 +36,7 @@ func NewHttp(p NewConnectionParams) *Http {
 	return &con
 }
 
-func (h *Http) Connect() error {
+func (h *HTTPConnection) Connect() error {
 	if h.baseURL == "" {
 		return fmt.Errorf("base url not set")
 	}
@@ -49,7 +49,7 @@ func (h *Http) Connect() error {
 		return fmt.Errorf("unmarshaler is not set")
 	}
 
-	httpReq, err := http.NewRequest(http.MethodGet, h.baseURL+"/health", nil)
+	httpReq, err := http.NewRequest(http.MethodGet, h.baseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -61,21 +61,21 @@ func (h *Http) Connect() error {
 	return nil
 }
 
-func (h *Http) Close() error {
+func (h *HTTPConnection) Close() error {
 	return nil
 }
 
-func (h *Http) SetTimeout(timeout time.Duration) *Http {
+func (h *HTTPConnection) SetTimeout(timeout time.Duration) *HTTPConnection {
 	h.httpClient.Timeout = timeout
 	return h
 }
 
-func (h *Http) SetHttpClient(client *http.Client) *Http {
+func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 	h.httpClient = client
 	return h
 }
 
-func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
+func (h *HTTPConnection) Send(method string, params []interface{}) (interface{}, error) {
 	if h.baseURL == "" {
 		return nil, fmt.Errorf("connection host not set")
 	}
@@ -92,6 +92,9 @@ func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
@@ -118,24 +121,24 @@ func (h *Http) Send(method string, params []interface{}) (interface{}, error) {
 
 	var rpcResponse RPCResponse
 	err = h.unmarshaler.Unmarshal(resp, &rpcResponse)
+	if err != nil {
+		return nil, err
+	}
 
 	// Manage auth tokens
 	switch method {
 	case "signin", "signup":
 		h.variables.Store("token", rpcResponse.Result)
-		break
 	case "authenticate":
 		h.variables.Store("token", params[0])
-		break
 	case "invalidate":
 		h.variables.Delete("token")
-		break
 	}
 
 	return rpcResponse.Result, nil
 }
 
-func (h *Http) MakeRequest(req *http.Request) ([]byte, error) {
+func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		log.Fatalf("Error making HTTP request: %v", err)
@@ -149,19 +152,19 @@ func (h *Http) MakeRequest(req *http.Request) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (h *Http) Use(namespace string, database string) error {
+func (h *HTTPConnection) Use(namespace string, database string) error {
 	h.variables.Store("namespace", namespace)
 	h.variables.Store("database", database)
 
 	return nil
 }
 
-func (h *Http) Let(key string, value interface{}) error {
+func (h *HTTPConnection) Let(key string, value interface{}) error {
 	h.variables.Store(key, value)
 	return nil
 }
 
-func (h *Http) Unset(key string) error {
+func (h *HTTPConnection) Unset(key string) error {
 	h.variables.Delete(key)
 	return nil
 }

@@ -14,7 +14,7 @@ func TestEngine_WsMakeRequest(t *testing.T) {
 		Unmarshaler: model.CborUnmashaler{},
 		BaseURL:     "ws://127.0.0.1:8000",
 	}
-	con := NewWebSocket(p)
+	con := NewWebSocketConnection(p)
 
 	err := con.Connect()
 	assert.Nil(t, err, "no error returned when initializing engine connection")

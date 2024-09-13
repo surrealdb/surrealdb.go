@@ -115,30 +115,6 @@ func getCborDecoder() cbor.DecMode {
 	return dm
 }
 
-func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
-	return enc.Marshal(cbor.Tag{
-		Number:  uint64(GeometryPointTag),
-		Content: gp.GetCoordinates(),
-	})
-}
-
-func (g *GeometryPoint) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
-
-	var temp [2]float64
-	err := dec.Unmarshal(data, &temp)
-	if err != nil {
-		return err
-	}
-
-	g.Latitude = temp[0]
-	g.Longitude = temp[1]
-
-	return nil
-}
-
 func (r *RecordID) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 

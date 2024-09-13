@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/surrealdb/surrealdb.go/pkg/model"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -33,7 +33,7 @@ func TestEngine_MakeRequest(t *testing.T) {
 		return &http.Response{
 			StatusCode: 400,
 			// Send response to be tested
-			Body: ioutil.NopCloser(bytes.NewBufferString(`OK`)),
+			Body: io.NopCloser(bytes.NewBufferString(`OK`)),
 			// Must be set to non-nil value or it panics
 			Header: make(http.Header),
 		}
@@ -44,10 +44,10 @@ func TestEngine_MakeRequest(t *testing.T) {
 		Marshaler:   model.CborMarshaler{},
 		Unmarshaler: model.CborUnmashaler{},
 	}
-	httpEngine := NewHttp(p)
-	httpEngine.SetHttpClient(httpClient)
+	httpEngine := NewHTTPConnection(p)
+	httpEngine.SetHTTPClient(httpClient)
 
-	req, _ := http.NewRequest(http.MethodGet, "http://test.surreal/rpc", nil)
+	req, _ := http.NewRequest(http.MethodGet, "http://test.surreal/rpc", http.NoBody)
 	resp, err := httpEngine.MakeRequest(req)
 	assert.Error(t, err, "should return error for status code 400")
 
@@ -55,17 +55,16 @@ func TestEngine_MakeRequest(t *testing.T) {
 }
 
 func TestEngine_HttpMakeRequest(t *testing.T) {
-
 	p := NewConnectionParams{
 		BaseURL:     "http://localhost:8000",
 		Marshaler:   model.CborMarshaler{},
 		Unmarshaler: model.CborUnmashaler{},
 	}
-	con := NewHttp(p)
+	con := NewHTTPConnection(p)
 	err := con.Use("test", "test")
 	assert.Nil(t, err, "no error returned when setting namespace and database")
 
-	err = con.Connect() //implement a is ready
+	err = con.Connect() // implement a "is ready"
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
 	token, err := con.Send("signin", []interface{}{model.Auth{Username: "pass", Password: "pass"}})

@@ -24,9 +24,9 @@ const (
 	DefaultTimeout = 30
 )
 
-type Option func(ws *WebSocket) error
+type Option func(ws *WebSocketConnection) error
 
-type WebSocket struct {
+type WebSocketConnection struct {
 	BaseConnection
 
 	Conn     *gorilla.Conn
@@ -45,8 +45,8 @@ type WebSocket struct {
 	closeError error
 }
 
-func NewWebSocket(p NewConnectionParams) *WebSocket {
-	return &WebSocket{
+func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
+	return &WebSocketConnection{
 		BaseConnection: BaseConnection{
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
@@ -61,7 +61,7 @@ func NewWebSocket(p NewConnectionParams) *WebSocket {
 	}
 }
 
-func (ws *WebSocket) Connect() error {
+func (ws *WebSocketConnection) Connect() error {
 	if ws.baseURL == "" {
 		return fmt.Errorf("base url not set")
 	}
@@ -87,8 +87,8 @@ func (ws *WebSocket) Connect() error {
 	return nil
 }
 
-func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
-	ws.Option = append(ws.Option, func(ws *WebSocket) error {
+func (ws *WebSocketConnection) SetTimeOut(timeout time.Duration) *WebSocketConnection {
+	ws.Option = append(ws.Option, func(ws *WebSocketConnection) error {
 		ws.Timeout = timeout
 		return nil
 	})
@@ -96,25 +96,25 @@ func (ws *WebSocket) SetTimeOut(timeout time.Duration) *WebSocket {
 }
 
 // If path is empty it will use os.stdout/os.stderr
-func (ws *WebSocket) Logger(logData logger.Logger) *WebSocket {
+func (ws *WebSocketConnection) Logger(logData logger.Logger) *WebSocketConnection {
 	ws.logger = logData
 	return ws
 }
 
-func (ws *WebSocket) RawLogger(logData logger.Logger) *WebSocket {
+func (ws *WebSocketConnection) RawLogger(logData logger.Logger) *WebSocketConnection {
 	ws.logger = logData
 	return ws
 }
 
-func (ws *WebSocket) SetCompression(compress bool) *WebSocket {
-	ws.Option = append(ws.Option, func(ws *WebSocket) error {
+func (ws *WebSocketConnection) SetCompression(compress bool) *WebSocketConnection {
+	ws.Option = append(ws.Option, func(ws *WebSocketConnection) error {
 		ws.Conn.EnableWriteCompression(compress)
 		return nil
 	})
 	return ws
 }
 
-func (ws *WebSocket) Close() error {
+func (ws *WebSocketConnection) Close() error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
 	close(ws.closeChan)
@@ -126,7 +126,7 @@ func (ws *WebSocket) Close() error {
 	return ws.Conn.Close()
 }
 
-func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan Notification, error) {
+func (ws *WebSocketConnection) LiveNotifications(liveQueryID string) (chan Notification, error) {
 	c, err := ws.createNotificationChannel(liveQueryID)
 	if err != nil {
 		ws.logger.Error(err.Error())
@@ -134,7 +134,7 @@ func (ws *WebSocket) LiveNotifications(liveQueryID string) (chan Notification, e
 	return c, err
 }
 
-func (ws *WebSocket) Kill(id string) (interface{}, error) {
+func (ws *WebSocketConnection) Kill(id string) (interface{}, error) {
 	return ws.Send("kill", []interface{}{id})
 }
 
@@ -144,7 +144,7 @@ var (
 	ErrInvalidResponseID = errors.New("invalid response id")
 )
 
-func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) {
+func (ws *WebSocketConnection) createResponseChannel(id string) (chan RPCResponse, error) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 
@@ -158,7 +158,7 @@ func (ws *WebSocket) createResponseChannel(id string) (chan RPCResponse, error) 
 	return ch, nil
 }
 
-func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan Notification, error) {
+func (ws *WebSocketConnection) createNotificationChannel(liveQueryID string) (chan Notification, error) {
 	ws.notificationChannelsLock.Lock()
 	defer ws.notificationChannelsLock.Unlock()
 
@@ -172,27 +172,27 @@ func (ws *WebSocket) createNotificationChannel(liveQueryID string) (chan Notific
 	return ch, nil
 }
 
-func (ws *WebSocket) removeResponseChannel(id string) {
+func (ws *WebSocketConnection) removeResponseChannel(id string) {
 	ws.responseChannelsLock.Lock()
 	defer ws.responseChannelsLock.Unlock()
 	delete(ws.responseChannels, id)
 }
 
-func (ws *WebSocket) getResponseChannel(id string) (chan RPCResponse, bool) {
+func (ws *WebSocketConnection) getResponseChannel(id string) (chan RPCResponse, bool) {
 	ws.responseChannelsLock.RLock()
 	defer ws.responseChannelsLock.RUnlock()
 	ch, ok := ws.responseChannels[id]
 	return ch, ok
 }
 
-func (ws *WebSocket) getLiveChannel(id string) (chan Notification, bool) {
+func (ws *WebSocketConnection) getLiveChannel(id string) (chan Notification, bool) {
 	ws.notificationChannelsLock.RLock()
 	defer ws.notificationChannelsLock.RUnlock()
 	ch, ok := ws.notificationChannels[id]
 	return ch, ok
 }
 
-func (ws *WebSocket) Use(namespace string, database string) error {
+func (ws *WebSocketConnection) Use(namespace, database string) error {
 	_, err := ws.Send("use", []interface{}{namespace, database})
 	if err != nil {
 		return err
@@ -201,17 +201,17 @@ func (ws *WebSocket) Use(namespace string, database string) error {
 	return nil
 }
 
-func (ws *WebSocket) Let(key string, value interface{}) error {
+func (ws *WebSocketConnection) Let(key string, value interface{}) error {
 	_, err := ws.Send("let", []interface{}{key, value})
 	return err
 }
 
-func (ws *WebSocket) Unset(key string) error {
+func (ws *WebSocketConnection) Unset(key string) error {
 	_, err := ws.Send("unset", []interface{}{key})
 	return err
 }
 
-func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, error) {
+func (ws *WebSocketConnection) Send(method string, params []interface{}) (interface{}, error) {
 	select {
 	case <-ws.closeChan:
 		return nil, ws.closeError
@@ -253,7 +253,7 @@ func (ws *WebSocket) Send(method string, params []interface{}) (interface{}, err
 	}
 }
 
-func (ws *WebSocket) read(v interface{}) error {
+func (ws *WebSocketConnection) read(v interface{}) error {
 	_, data, err := ws.Conn.ReadMessage()
 	if err != nil {
 		return err
@@ -261,7 +261,7 @@ func (ws *WebSocket) read(v interface{}) error {
 	return ws.unmarshaler.Unmarshal(data, v)
 }
 
-func (ws *WebSocket) write(v interface{}) error {
+func (ws *WebSocketConnection) write(v interface{}) error {
 	data, err := ws.marshaler.Marshal(v)
 	if err != nil {
 		return err
@@ -272,7 +272,7 @@ func (ws *WebSocket) write(v interface{}) error {
 	return ws.Conn.WriteMessage(gorilla.BinaryMessage, data)
 }
 
-func (ws *WebSocket) initialize() {
+func (ws *WebSocketConnection) initialize() {
 	for {
 		select {
 		case <-ws.closeChan:
@@ -292,7 +292,7 @@ func (ws *WebSocket) initialize() {
 	}
 }
 
-func (ws *WebSocket) handleError(err error) bool {
+func (ws *WebSocketConnection) handleError(err error) bool {
 	fmt.Println(err)
 	if errors.Is(err, net.ErrClosed) {
 		ws.closeError = net.ErrClosed
@@ -308,7 +308,7 @@ func (ws *WebSocket) handleError(err error) bool {
 	return false
 }
 
-func (ws *WebSocket) handleResponse(res RPCResponse) {
+func (ws *WebSocketConnection) handleResponse(res RPCResponse) {
 	if res.ID != nil && res.ID != "" {
 		// Try to resolve message as response to query
 		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", res.ID))

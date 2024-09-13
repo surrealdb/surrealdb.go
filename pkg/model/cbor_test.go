@@ -71,7 +71,7 @@ func TestForRequestPayload(t *testing.T) {
 			"line":     GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
 			"datetime": time.Now(),
 			"testnil":  nil,
-			//"duration": Duration(340),
+			// "duration": Duration(340),
 		},
 	}
 

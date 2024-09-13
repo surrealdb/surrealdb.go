@@ -29,9 +29,9 @@ func New(connectionURL string) (*DB, error) {
 	}
 	var conn connection.Connection
 	if scheme == "http" || scheme == "https" {
-		conn = connection.NewHttp(newParams)
+		conn = connection.NewHTTPConnection(newParams)
 	} else if scheme == "ws" || scheme == "wss" {
-		conn = connection.NewWebSocket(newParams)
+		conn = connection.NewWebSocketConnection(newParams)
 	} else {
 		return nil, fmt.Errorf("invalid connection url")
 	}
@@ -48,7 +48,7 @@ func New(connectionURL string) (*DB, error) {
 	}
 	newLiveConnParams := newParams
 	newLiveConnParams.BaseURL = fmt.Sprintf("%s://%s", liveScheme, u.Host)
-	liveconn := connection.NewWebSocket(newParams)
+	liveconn := connection.NewWebSocketConnection(newParams)
 	err = liveconn.Connect()
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (db *DB) Kill(liveQueryID string) (interface{}, error) {
 
 // LiveNotifications returns a channel for live query.
 func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
-	return db.liveHandler.LiveNotifications(liveQueryID) //check if implemented
+	return db.liveHandler.LiveNotifications(liveQueryID)
 }
 
 // --------------------------------------------------
@@ -184,7 +184,6 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, _ []interface{}, res interface{}) (interface{}, error) {
 	if res == nil {
-		//return nil, pkg.ErrNoRow
 		return nil, constants.ErrNoRow
 	}
 	return res, nil

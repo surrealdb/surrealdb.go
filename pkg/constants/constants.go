@@ -8,3 +8,10 @@ var (
 	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
 	ErrNoRow        = errors.New("error no row")
 )
+
+var (
+	WebsocketScheme      = "ws"
+	WebsocketSucerScheme = "wss"
+	HTTPScheme           = "http"
+	HTTPSecureScheme     = "https"
+)

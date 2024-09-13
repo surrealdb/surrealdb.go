@@ -64,13 +64,19 @@ func TestSurrealDBSuite(t *testing.T) {
 	// Without options
 	buff := bytes.NewBufferString("")
 	logData := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["ws"] = connection.NewWebSocket(connection.NewConnectionParams{}).Logger(logData)
+	SurrealDBSuite.connImplementations["ws"] = connection.
+		NewWebSocketConnection(connection.NewConnectionParams{}).
+		Logger(logData)
 	SurrealDBSuite.logBuffer = buff
 
 	// With options
 	buffOpt := bytes.NewBufferString("")
 	logDataOpt := createLogger(t, buff)
-	SurrealDBSuite.connImplementations["ws_opt"] = connection.NewWebSocket(connection.NewConnectionParams{}).SetTimeOut(time.Minute).SetCompression(true).Logger(logDataOpt)
+	SurrealDBSuite.connImplementations["ws_opt"] = connection.
+		NewWebSocketConnection(connection.NewConnectionParams{}).
+		SetTimeOut(time.Minute).
+		SetCompression(true).
+		Logger(logDataOpt)
 	SurrealDBSuite.logBuffer = buffOpt
 
 	RunWsMap(t, SurrealDBSuite)
@@ -777,7 +783,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 }
 
 func (s *SurrealDBTestSuite) TestConnectionBreak() {
-	ws := connection.NewWebSocket(connection.NewConnectionParams{})
+	ws := connection.NewWebSocketConnection(connection.NewConnectionParams{})
 	var url string
 	if currentURL == "" {
 		url = defaultURL

@@ -8,8 +8,8 @@ import (
 type ws struct {
 }
 
-func (w *ws) Connect(url string) (connection.Connection, error) {
-	return w, nil
+func (w *ws) Connect(url string) error {
+	return nil
 }
 
 func (w *ws) Send(method string, params []interface{}) (interface{}, error) {
