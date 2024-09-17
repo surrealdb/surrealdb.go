@@ -1,4 +1,4 @@
-package types
+package models
 
 import (
 	"github.com/fxamacker/cbor/v2"
@@ -67,7 +67,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
-	//v = replacerBeforeEncode(v)
+	v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -77,21 +77,21 @@ func (c CborMarshaler) NewEncoder(w io.Writer) codec.Encoder {
 	return em.NewEncoder(w)
 }
 
-type CborUnmashaler struct {
+type CborUnmarshaler struct {
 }
 
-func (c CborUnmashaler) Unmarshal(data []byte, dst interface{}) error {
+func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 	dm := getCborDecoder()
 	err := dm.Unmarshal(data, dst)
 	if err != nil {
 		return err
 	}
 
-	//replacerAfterDecode(&dst)
+	replacerAfterDecode(&dst)
 	return nil
 }
 
-func (c CborUnmashaler) NewDecoder(r io.Reader) codec.Decoder {
+func (c CborUnmarshaler) NewDecoder(r io.Reader) codec.Decoder {
 	dm := getCborDecoder()
 	return dm.NewDecoder(r)
 }

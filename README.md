@@ -55,7 +55,7 @@ package main
 
 import (
 	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/types"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type User struct {

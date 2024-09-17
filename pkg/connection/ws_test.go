@@ -3,15 +3,15 @@ package connection
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/types"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"testing"
 	"time"
 )
 
 func TestEngine_WsMakeRequest(t *testing.T) {
 	p := NewConnectionParams{
-		Marshaler:   types.CborMarshaler{},
-		Unmarshaler: types.CborUnmashaler{},
+		Marshaler:   models.CborMarshaler{},
+		Unmarshaler: models.CborUnmarshaler{},
 		BaseURL:     "ws://127.0.0.1:8000",
 	}
 	con := NewWebSocketConnection(p)
@@ -22,7 +22,7 @@ func TestEngine_WsMakeRequest(t *testing.T) {
 	err = con.Use("test", "test")
 	assert.Nil(t, err, "no error returned when setting namespace and database")
 
-	token, err := con.Send("signin", []interface{}{Auth{Username: "pass", Password: "pass"}})
+	token, err := con.Send("signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
 	assert.Nil(t, err, "no error returned when signing in")
 	fmt.Println(token)
 

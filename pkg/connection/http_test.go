@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/types"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"io"
 	"net/http"
 	"testing"
@@ -41,8 +41,8 @@ func TestEngine_MakeRequest(t *testing.T) {
 
 	p := NewConnectionParams{
 		BaseURL:     "http://test.surreal",
-		Marshaler:   types.CborMarshaler{},
-		Unmarshaler: types.CborUnmashaler{},
+		Marshaler:   models.CborMarshaler{},
+		Unmarshaler: models.CborUnmarshaler{},
 	}
 	httpEngine := NewHTTPConnection(p)
 	httpEngine.SetHTTPClient(httpClient)
@@ -57,8 +57,8 @@ func TestEngine_MakeRequest(t *testing.T) {
 func TestEngine_HttpMakeRequest(t *testing.T) {
 	p := NewConnectionParams{
 		BaseURL:     "http://localhost:8000",
-		Marshaler:   types.CborMarshaler{},
-		Unmarshaler: types.CborUnmashaler{},
+		Marshaler:   models.CborMarshaler{},
+		Unmarshaler: models.CborUnmarshaler{},
 	}
 	con := NewHTTPConnection(p)
 	err := con.Use("test", "test")
@@ -67,7 +67,7 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	err = con.Connect() // implement a "is ready"
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
-	token, err := con.Send("signin", []interface{}{types.Auth{Username: "pass", Password: "pass"}})
+	token, err := con.Send("signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
 	assert.Nil(t, err, "no error returned when signing in")
 	fmt.Println(token)
 

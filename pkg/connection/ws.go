@@ -394,7 +394,7 @@ func unmarshalMapToStruct(data map[string]interface{}, outStruct interface{}) er
 			fieldValue.SetBool(boolVal)
 		case reflect.Interface:
 			fieldValue.Set(reflect.ValueOf(mapValue))
-		// Add cases for other types as needed
+		// Add cases for other models as needed
 		default:
 			return fmt.Errorf("unsupported field type: %s", fieldName)
 		}
