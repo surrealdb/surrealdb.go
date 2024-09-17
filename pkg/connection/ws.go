@@ -293,7 +293,6 @@ func (ws *WebSocketConnection) initialize() {
 }
 
 func (ws *WebSocketConnection) handleError(err error) bool {
-	fmt.Println(err)
 	if errors.Is(err, net.ErrClosed) {
 		ws.closeError = net.ErrClosed
 		return true

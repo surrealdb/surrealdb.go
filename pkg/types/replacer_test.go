@@ -1,4 +1,4 @@
-package model
+package types
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestReplacer(t *testing.T) {
+func TestReplacerBeForeEncode(t *testing.T) {
 	d := map[string]interface{}{
 		"duration": time.Duration(2000),
 		"nested": map[string]interface{}{

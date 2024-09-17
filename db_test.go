@@ -7,7 +7,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
 	"io"
 	rawslog "log/slog"
 	"os"
@@ -154,7 +153,7 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 // Sign with the root user
 // Can be used with any user
 func signin(s *SurrealDBTestSuite) interface{} {
-	authData := &model.Auth{
+	authData := &connection.Auth{
 		Username: "root",
 		Password: "root",
 	}

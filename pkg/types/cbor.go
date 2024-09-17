@@ -1,4 +1,4 @@
-package model
+package types
 
 import (
 	"github.com/fxamacker/cbor/v2"
@@ -43,10 +43,9 @@ func registerCborTags() cbor.TagSet {
 		DecimalStringTag: Decimal(""),
 		BinaryUUIDTag:    UUIDBin{},
 
-		DateTimeCompactString: CustomDateTime{},
-		//DurationStringTag:        Duration("0"),
-		//DurationCompactTag: time.Duration(0), // Duration(""),
-		//DurationCompactTag: Duration(0), // Duration(""),
+		DateTimeCompactString: CustomDateTime.String(""),
+		DurationStringTag:     CustomDurationStr("2w"),
+		DurationCompactTag:    CustomDuration.Nanoseconds(0),
 	}
 
 	tags := cbor.NewTagSet()
@@ -68,6 +67,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
+	//v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -82,7 +82,13 @@ type CborUnmashaler struct {
 
 func (c CborUnmashaler) Unmarshal(data []byte, dst interface{}) error {
 	dm := getCborDecoder()
-	return dm.Unmarshal(data, dst)
+	err := dm.Unmarshal(data, dst)
+	if err != nil {
+		return err
+	}
+
+	//replacerAfterDecode(&dst)
+	return nil
 }
 
 func (c CborUnmashaler) NewDecoder(r io.Reader) codec.Decoder {

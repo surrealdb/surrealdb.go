@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/model"
+	"github.com/surrealdb/surrealdb.go/pkg/types"
 	"net/url"
 )
 
@@ -26,8 +26,8 @@ func New(connectionURL string) (*DB, error) {
 	scheme := u.Scheme
 
 	newParams := connection.NewConnectionParams{
-		Marshaler:   model.CborMarshaler{},
-		Unmarshaler: model.CborUnmashaler{},
+		Marshaler:   types.CborMarshaler{},
+		Unmarshaler: types.CborUnmashaler{},
 	}
 	var conn connection.Connection
 	if scheme == "http" || scheme == "https" {
@@ -84,12 +84,12 @@ func (db *DB) Info() (interface{}, error) {
 }
 
 // Signup is a helper method for signing up a new user.
-func (db *DB) Signup(authData *model.Auth) (interface{}, error) {
+func (db *DB) Signup(authData *connection.Auth) (interface{}, error) {
 	return db.send("signup", authData)
 }
 
 // Signin is a helper method for signing in a user.
-func (db *DB) Signin(authData *model.Auth) (interface{}, error) {
+func (db *DB) Signin(authData *connection.Auth) (interface{}, error) {
 	return db.send("signin", authData)
 }
 

@@ -1,7 +1,6 @@
-package model
+package types
 
 import (
-	"fmt"
 	"github.com/fxamacker/cbor/v2"
 	"time"
 )
@@ -98,14 +97,21 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 
 type Decimal string
 
-type CustomDateTime time.Time
+type CustomDateTime struct {
+	time.Time
+}
 
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
+	totalNS := d.Nanosecond()
+
+	s := totalNS / 1_000_000_000
+	ns := totalNS % 1_000_000_000
+
 	return enc.Marshal(cbor.Tag{
 		Number:  uint64(DateTimeCompactString),
-		Content: [2]int64{1213, 123},
+		Content: [2]int64{int64(s), int64(ns)},
 	})
 }
 
@@ -118,11 +124,17 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
-	fmt.Println(temp)
+	s := temp[0].(int64)
+	ns := temp[1].(int64)
+
+	d = &CustomDateTime{time.Unix(s, ns)}
+
 	return nil
 }
 
-type CustomDuration time.Duration
+type CustomDuration struct {
+	time.Duration
+}
 
 func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
@@ -142,18 +154,10 @@ func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
-	fmt.Println(temp)
 	return nil
 }
 
-// Auth is a struct that holds surrealdb auth data for login.
-type Auth struct {
-	Namespace string `json:"NS,omitempty"`
-	Database  string `json:"DB,omitempty"`
-	Scope     string `json:"SC,omitempty"`
-	Username  string `json:"user,omitempty"`
-	Password  string `json:"pass,omitempty"`
-}
+type CustomDurationStr string
 
 type CustomNil struct {
 }

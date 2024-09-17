@@ -55,6 +55,7 @@ package main
 
 import (
 	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/types"
 )
 
 type User struct {
@@ -65,7 +66,7 @@ type User struct {
 
 func main() {
 	// Connect to SurrealDB
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000")
 	if err != nil {
 		panic(err)
 	}
@@ -86,8 +87,9 @@ func main() {
 
 	// Define user struct
 	user := User{
-		Name:    "John",
-		Surname: "Doe",
+		Name:     "John",
+		Surname:  "Doe",
+		Location: types.NewGeometryPoint(-0.11, 22.00),
 	}
 
 	// Insert user
@@ -143,6 +145,33 @@ func main() {
 - Run `go mod init github.com/<github-username>/<project-name>` to initialise a `go.mod` file
 - Run `go mod tidy` to download the `surrealdb.go` dependency
 - Run `go run main.go` to run the example.
+
+## Connection Engines
+There are 2 different connection engines you can use to connect to SurrealDb backend. You can do so via Websocket or through HTTP
+connections
+
+### Via Websocket
+```go
+db, err := surrealdb.New("ws://localhost:8000")
+```
+or for a secure connection
+```go
+db, err := surrealdb.New("wss://localhost:8000")
+```
+
+### Via HTTP
+There are some functions that are not available on RPC when using HTTP but on Websocket. All these except
+the "live" endpoint are effectively implemented in the HTTP library and provides the same result as though
+it is natively available on HTTP. While using the HTTP connection engine, note that live queries will still
+use a websocket connection if the backend supports it
+```go
+db, err := surrealdb.New("http://localhost:8000")
+```
+or for a secure connection
+```go
+db, err := surrealdb.New("https://localhost:8000")
+```
+
 
 ## Data Models
 This package facilitates communication between client and the backend service using the Concise 
