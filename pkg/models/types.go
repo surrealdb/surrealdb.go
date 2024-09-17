@@ -97,14 +97,12 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 
 type Decimal string
 
-type CustomDateTime struct {
-	time.Time
-}
+type CustomDateTime time.Time
 
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
-	totalNS := d.Nanosecond()
+	totalNS := time.Time(*d).Nanosecond()
 
 	s := totalNS / 1_000_000_000
 	ns := totalNS % 1_000_000_000
@@ -127,21 +125,23 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	s := temp[0].(int64)
 	ns := temp[1].(int64)
 
-	d = &CustomDateTime{time.Unix(s, ns)}
+	*d = CustomDateTime(time.Unix(s, ns))
 
 	return nil
 }
 
-type CustomDuration struct {
-	time.Duration
-}
+type CustomDuration time.Duration
 
 func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
+	totalNS := time.Duration(*d).Nanoseconds()
+	s := totalNS / 1_000_000_000
+	ns := totalNS % 1_000_000_000
+
 	return enc.Marshal(cbor.Tag{
 		Number:  uint64(DurationCompactTag),
-		Content: [2]int64{1213, 123},
+		Content: [2]int64{s, ns},
 	})
 }
 
@@ -153,6 +153,11 @@ func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 	if err != nil {
 		return err
 	}
+
+	s := temp[0].(int64)
+	ns := temp[1].(int64)
+
+	*d = CustomDuration(time.Duration((float64(s) * 1_000_000_000) + float64(ns)))
 
 	return nil
 }

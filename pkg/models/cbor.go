@@ -5,6 +5,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"io"
 	"reflect"
+	"time"
 )
 
 type CustomCBORTag uint64
@@ -43,9 +44,9 @@ func registerCborTags() cbor.TagSet {
 		DecimalStringTag: Decimal(""),
 		BinaryUUIDTag:    UUIDBin{},
 
-		DateTimeCompactString: CustomDateTime.String(""),
+		DateTimeCompactString: CustomDateTime(time.Now()),
 		DurationStringTag:     CustomDurationStr("2w"),
-		DurationCompactTag:    CustomDuration.Nanoseconds(0),
+		DurationCompactTag:    CustomDuration(0),
 	}
 
 	tags := cbor.NewTagSet()
