@@ -3,10 +3,11 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"net/url"
+
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
-	"net/url"
 )
 
 // DB is a client for the SurrealDB database that holds the connection.
@@ -124,6 +125,11 @@ func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
 	return db.send("create", thing, data)
 }
 
+// Creates a table or record in the database like a POST request.
+func (db *DB) Upsert(thing string, data interface{}) (interface{}, error) {
+	return db.send("upsert", thing, data)
+}
+
 // Update a table or record in the database like a PUT request.
 func (db *DB) Update(what string, data interface{}) (interface{}, error) {
 	return db.send("update", what, data)
@@ -178,7 +184,7 @@ func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
 	}
 
 	switch method {
-	case "select", "create", "update", "merge", "patch", "insert":
+	case "select", "create", "upsert", "update", "merge", "patch", "insert":
 		return db.resp(method, params, resp)
 	case "delete":
 		return nil, nil
