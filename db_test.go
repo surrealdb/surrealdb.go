@@ -29,6 +29,11 @@ const (
 
 var currentURL = os.Getenv("SURREALDB_URL")
 
+var newConParams = connection.NewConnectionParams{
+	Marshaler:   models.CborMarshaler{},
+	Unmarshaler: models.CborUnmarshaler{},
+}
+
 //
 
 // TestDBSuite is a test s for the DB struct
@@ -65,7 +70,7 @@ func TestSurrealDBSuite(t *testing.T) {
 	buff := bytes.NewBufferString("")
 	logData := createLogger(t, buff)
 	SurrealDBSuite.connImplementations["ws"] = connection.
-		NewWebSocketConnection(connection.NewConnectionParams{}).
+		NewWebSocketConnection(newConParams).
 		Logger(logData)
 	SurrealDBSuite.logBuffer = buff
 
@@ -73,7 +78,7 @@ func TestSurrealDBSuite(t *testing.T) {
 	buffOpt := bytes.NewBufferString("")
 	logDataOpt := createLogger(t, buff)
 	SurrealDBSuite.connImplementations["ws_opt"] = connection.
-		NewWebSocketConnection(connection.NewConnectionParams{}).
+		NewWebSocketConnection(newConParams).
 		SetTimeOut(time.Minute).
 		SetCompression(true).
 		Logger(logDataOpt)

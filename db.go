@@ -30,6 +30,7 @@ func New(connectionURL string) (*DB, error) {
 		BaseURL:     connectionURL,
 		Marshaler:   models.CborMarshaler{},
 		Unmarshaler: models.CborUnmarshaler{},
+		BaseURL:     connectionURL,
 	}
 	var conn connection.Connection
 	if scheme == "http" || scheme == "https" {
@@ -52,7 +53,7 @@ func New(connectionURL string) (*DB, error) {
 	}
 	newLiveConnParams := newParams
 	newLiveConnParams.BaseURL = fmt.Sprintf("%s://%s", liveScheme, u.Host)
-	liveconn := connection.NewWebSocketConnection(newParams)
+	liveconn := connection.NewWebSocketConnection(newLiveConnParams)
 	err = liveconn.Connect()
 	if err != nil {
 		return nil, err

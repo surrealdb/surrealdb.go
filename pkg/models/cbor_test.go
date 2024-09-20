@@ -67,11 +67,14 @@ func TestForRequestPayload(t *testing.T) {
 	params := []interface{}{
 		"SELECT marketing, count() FROM $tb GROUP BY marketing",
 		map[string]interface{}{
-			"tb":       Table("person"),
-			"line":     GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
-			"datetime": time.Now(),
-			"testnil":  nil,
-			// "duration": Duration(340),
+			"tb":              Table("person"),
+			"line":            GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
+			"datetime":        time.Now(),
+			"testNone":        None,
+			"testNil":         nil,
+			"duration":        time.Duration(340),
+			"custom_duration": CustomDuration(340),
+			"custom_datetime": CustomDateTime(time.Now()),
 		},
 	}
 
