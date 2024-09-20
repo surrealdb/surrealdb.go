@@ -27,7 +27,6 @@ func New(connectionURL string) (*DB, error) {
 	scheme := u.Scheme
 
 	newParams := connection.NewConnectionParams{
-		BaseURL:     connectionURL,
 		Marshaler:   models.CborMarshaler{},
 		Unmarshaler: models.CborUnmarshaler{},
 		BaseURL:     connectionURL,
