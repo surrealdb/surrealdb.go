@@ -27,7 +27,6 @@ func New(connectionURL string) (*DB, error) {
 	scheme := u.Scheme
 
 	newParams := connection.NewConnectionParams{
-		BaseURL:     connectionURL,
 		Marshaler:   models.CborMarshaler{},
 		Unmarshaler: models.CborUnmarshaler{},
 		BaseURL:     connectionURL,
@@ -37,6 +36,8 @@ func New(connectionURL string) (*DB, error) {
 		conn = connection.NewHTTPConnection(newParams)
 	} else if scheme == "ws" || scheme == "wss" {
 		conn = connection.NewWebSocketConnection(newParams)
+	} else if scheme == "mem" || scheme == "surrealkv" {
+		conn = connection.NewEmbeddedConnection(newParams)
 	} else {
 		return nil, fmt.Errorf("invalid connection url")
 	}
