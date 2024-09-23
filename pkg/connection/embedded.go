@@ -9,7 +9,6 @@ import "C"
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"sync"
 	"unsafe"
 )
@@ -73,17 +72,19 @@ func (h *EmbeddedConnection) Send(method string, params []interface{}) (interfac
 		return nil, fmt.Errorf("connection host not set")
 	}
 
-	rpcReq := &RPCRequest{
-		ID:     rand.String(RequestIDLength),
-		Method: method,
-		Params: params,
-	}
-
-	_, err := h.marshaler.Marshal(rpcReq)
-	if err != nil {
-		return nil, err
-	}
-
+	query := C.CString("SELECT * FROM person;")
+	defer C.free(unsafe.Pointer(query))
+	//rpcReq := &RPCRequest{
+	//	ID:     rand.String(RequestIDLength),
+	//	Method: method,
+	//	Params: params,
+	//}
+	//
+	//_, err := h.marshaler.Marshal(rpcReq)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
 	return nil, nil
 }
 
