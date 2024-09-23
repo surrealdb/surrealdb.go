@@ -117,42 +117,42 @@ func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
 }
 
 // Select a table or record from the database.
-func (db *DB) Select(what string) (interface{}, error) {
+func (db *DB) Select(what interface{}) (interface{}, error) {
 	return db.send("select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Create(thing string, data interface{}) (interface{}, error) {
-	return db.send("create", thing, data)
+func (db *DB) Create(what interface{}, data interface{}) (interface{}, error) {
+	return db.send("create", what, data)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Upsert(thing string, data interface{}) (interface{}, error) {
-	return db.send("upsert", thing, data)
+func (db *DB) Upsert(what interface{}, data interface{}) (interface{}, error) {
+	return db.send("upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (db *DB) Update(what string, data interface{}) (interface{}, error) {
+func (db *DB) Update(what interface{}, data interface{}) (interface{}, error) {
 	return db.send("update", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
-func (db *DB) Merge(what string, data interface{}) (interface{}, error) {
+func (db *DB) Merge(what interface{}, data interface{}) (interface{}, error) {
 	return db.send("merge", what, data)
 }
 
 // Patch applies a series of JSONPatches to a table or record.
-func (db *DB) Patch(what string, data []Patch) (interface{}, error) {
+func (db *DB) Patch(what interface{}, data []Patch) (interface{}, error) {
 	return db.send("patch", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (db *DB) Delete(what string) (interface{}, error) {
+func (db *DB) Delete(what interface{}) (interface{}, error) {
 	return db.send("delete", what)
 }
 
 // Insert a table or a row from the database like a POST request.
-func (db *DB) Insert(what string, data interface{}) (interface{}, error) {
+func (db *DB) Insert(what interface{}, data interface{}) (interface{}, error) {
 	return db.send("insert", what, data)
 }
 
