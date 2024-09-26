@@ -43,6 +43,7 @@ func registerCborTags() cbor.TagSet {
 		UUIDStringTag:    UUID(""),
 		DecimalStringTag: Decimal(""),
 		BinaryUUIDTag:    UUIDBin{},
+		NoneTag:          CustomNil{},
 
 		DateTimeCompactString: CustomDateTime(time.Now()),
 		DurationStringTag:     CustomDurationStr("2w"),
@@ -68,7 +69,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
-	v = replacerBeforeEncode(v)
+	//v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -88,7 +89,7 @@ func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 		return err
 	}
 
-	replacerAfterDecode(&dst)
+	//replacerAfterDecode(&dst)
 	return nil
 }
 

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 )
 
 // RoundTripFunc .
@@ -54,6 +53,17 @@ func TestEngine_MakeRequest(t *testing.T) {
 	fmt.Println(resp)
 }
 
+type TestQueryResult struct {
+	count     int64
+	marketing string
+}
+
+type User struct {
+	//ID      models.RecordID `json:"id,omitempty"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+}
+
 func TestEngine_HttpMakeRequest(t *testing.T) {
 	p := NewConnectionParams{
 		BaseURL:     "http://localhost:8000",
@@ -67,18 +77,38 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	err = con.Connect() // implement a "is ready"
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
-	token, err := con.Send("signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
+	var bearer string
+	//token, err := con.Send(&bearer, "signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
+	err = con.Send(&bearer, "signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
 	assert.Nil(t, err, "no error returned when signing in")
-	fmt.Println(token)
+	//fmt.Println(token)
+	//fmt.Println(bearer)
 
-	params := []interface{}{
-		"SELECT marketing, count() FROM $tb GROUP BY marketing",
-		map[string]interface{}{
-			"datetime": time.Now(),
-			"testnil":  nil,
-		},
-	}
-	res, err := con.Send("query", params)
+	err = con.Send(nil, "info")
+
+	// Insert user
+	//user := User{
+	//	ID:      models.RecordID{ID: "343", Table: "user"},
+	//	Name:    "John",
+	//	Surname: "Doe",
+	//}
+	//
+	//var resUser User
+	//data, err := con.Send(&user, "create", []interface{}{"users", user})
+	//fmt.Println(err)
+	//fmt.Println(data)
+	//fmt.Println(resUser)
+
+	//params := []interface{}{
+	//	"SELECT * FROM $t",
+	//	map[string]interface{}{
+	//		"tb": models.Table("users"),
+	//	},
+	//}
+
+	var selectRes []User
+	err = con.Send(&selectRes, "select", []interface{}{"users"})
 	assert.Nil(t, err, "no error returned when sending a query")
-	fmt.Println(res)
+	fmt.Println(err)
+	fmt.Println(selectRes)
 }

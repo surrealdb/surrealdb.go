@@ -67,10 +67,6 @@ type RecordID struct {
 	ID    interface{}
 }
 
-func NewRecordID(table string, id interface{}) *RecordID {
-	return &RecordID{Table: table, ID: id}
-}
-
 func (r *RecordID) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
@@ -93,6 +89,10 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 	r.ID = temp[1]
 
 	return nil
+}
+
+type TableOrRecord interface {
+	Table | RecordID
 }
 
 type Decimal string

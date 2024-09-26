@@ -77,30 +77,41 @@ func (db *DB) Close() error {
 }
 
 // Use is a method to select the namespace and table to use.
-func (db *DB) Use(ns, database string) (interface{}, error) {
-	return db.send("use", ns, database)
+func (db *DB) Use(ns, database string) error {
+	return db.conn.Use(ns, database)
 }
 
 func (db *DB) Info() (interface{}, error) {
-	return db.send("info")
+	var info interface{}
+	err := db.conn.Send(&info, "info")
+	return info, err
 }
 
-// Signup is a helper method for signing up a new user.
-func (db *DB) Signup(authData *models.Auth) (interface{}, error) {
-	return db.send("signup", authData)
+// SignUp is a helper method for signing up a new user.
+func (db *DB) SignUp(authData *models.Auth) (*string, error) {
+	var token string
+	if err := db.conn.Send(&token, "signup", authData); err != nil {
+		return nil, err
+	}
+
+	return &token, nil
 }
 
-// Signin is a helper method for signing in a user.
-func (db *DB) Signin(authData *models.Auth) (interface{}, error) {
-	return db.send("signin", authData)
+// SignIn is a helper method for signing in a user.
+func (db *DB) SignIn(authData *models.Auth) (*string, error) {
+	var token string
+	if err := db.conn.Send(&token, "signin", authData); err != nil {
+		return nil, err
+	}
+	return &token, nil
 }
 
-func (db *DB) Invalidate() (interface{}, error) {
-	return db.send("invalidate")
+func (db *DB) Invalidate() error {
+	return db.conn.Send(nil, "invalidate")
 }
 
-func (db *DB) Authenticate(token string) (interface{}, error) {
-	return db.send("authenticate", token)
+func (db *DB) Authenticate(token string) error {
+	return db.conn.Send(nil, "authenticate", token)
 }
 
 func (db *DB) Let(key string, val interface{}) error {
@@ -112,58 +123,62 @@ func (db *DB) Unset(key string) error {
 }
 
 // Query is a convenient method for sending a query to the database.
-func (db *DB) Query(sql string, vars interface{}) (interface{}, error) {
-	return db.send("query", sql, vars)
+func (db *DB) Query(dest interface{}, sql string, vars interface{}) error {
+	return db.conn.Send(&dest, "query", sql, vars)
 }
 
 // Select a table or record from the database.
-func (db *DB) Select(what interface{}) (interface{}, error) {
-	return db.send("select", what)
+func (db *DB) Select(dest interface{}, what interface{}) error {
+	return db.conn.Send(&dest, "select", what)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Create(what interface{}, data interface{}) (interface{}, error) {
-	return db.send("create", what, data)
+func (db *DB) Create(what interface{}, data interface{}) error {
+	return db.conn.Send(&what, "create", what, data)
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Upsert(what interface{}, data interface{}) (interface{}, error) {
-	return db.send("upsert", what, data)
+func (db *DB) Upsert(what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func (db *DB) Update(what interface{}, data interface{}) (interface{}, error) {
-	return db.send("update", what, data)
+func (db *DB) Update(what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "update", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
-func (db *DB) Merge(what interface{}, data interface{}) (interface{}, error) {
-	return db.send("merge", what, data)
+func (db *DB) Merge(what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "merge", what, data)
 }
 
 // Patch applies a series of JSONPatches to a table or record.
-func (db *DB) Patch(what interface{}, data []Patch) (interface{}, error) {
-	return db.send("patch", what, data)
+func (db *DB) Patch(what interface{}, data []Patch) error {
+	return db.conn.Send(nil, "patch", what, data)
 }
 
 // Delete a table or a row from the database like a DELETE request.
-func (db *DB) Delete(what interface{}) (interface{}, error) {
-	return db.send("delete", what)
+func (db *DB) Delete(what interface{}) error {
+	return db.conn.Send(nil, "delete", what)
 }
 
 // Insert a table or a row from the database like a POST request.
-func (db *DB) Insert(what interface{}, data interface{}) (interface{}, error) {
-	return db.send("insert", what, data)
+func (db *DB) Insert(what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "insert", what, data)
 }
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string, diff bool) (string, error) {
-	id, err := db.send("live", table, diff)
-	return id.(string), err
+func (db *DB) Live(table string, diff bool) (*string, error) {
+	var id string
+	if err := db.conn.Send(&id, "live", table, diff); err != nil {
+		return nil, err
+	}
+
+	return &id, nil
 }
 
-func (db *DB) Kill(liveQueryID string) (interface{}, error) {
+func (db *DB) Kill(liveQueryID string) error {
 	return db.liveHandler.Kill(liveQueryID)
 }
 
@@ -177,22 +192,22 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notificatio
 // --------------------------------------------------
 
 // send is a helper method for sending a query to the database.
-func (db *DB) send(method string, params ...interface{}) (interface{}, error) {
-	// here we send the args through our websocket connection
-	resp, err := db.conn.Send(method, params)
-	if err != nil {
-		return nil, fmt.Errorf("sending request failed for method '%s': %w", method, err)
-	}
-
-	switch method {
-	case "select", "create", "upsert", "update", "merge", "patch", "insert":
-		return db.resp(method, params, resp)
-	case "delete":
-		return nil, nil
-	default:
-		return resp, nil
-	}
-}
+//func (db *DB) send(res interface{}, method string, params ...interface{}) error {
+//	// here we send the args through our websocket connection
+//	resp, err := db.conn.Send(method, params)
+//	if err != nil {
+//		return nil, fmt.Errorf("sending request failed for method '%s': %w", method, err)
+//	}
+//
+//	switch method {
+//	case "select", "create", "upsert", "update", "merge", "patch", "insert":
+//		return db.resp(method, params, resp)
+//	case "delete":
+//		return nil, nil
+//	default:
+//		return resp, nil
+//	}
+//}
 
 // resp is a helper method for parsing the response from a query.
 func (db *DB) resp(_ string, _ []interface{}, res interface{}) (interface{}, error) {

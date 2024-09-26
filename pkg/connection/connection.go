@@ -7,7 +7,7 @@ import (
 type Connection interface {
 	Connect() error
 	Close() error
-	Send(method string, params []interface{}) (interface{}, error)
+	Send(res interface{}, method string, params ...interface{}) error
 	Use(namespace string, database string) error
 	Let(key string, value interface{}) error
 	Unset(key string) error
@@ -15,7 +15,13 @@ type Connection interface {
 
 type LiveHandler interface {
 	LiveNotifications(id string) (chan Notification, error)
-	Kill(id string) (interface{}, error)
+	Kill(id string) error
+}
+
+type NewConnectionParams struct {
+	Marshaler   codec.Marshaler
+	Unmarshaler codec.Unmarshaler
+	BaseURL     string
 }
 
 type BaseConnection struct {
@@ -24,8 +30,19 @@ type BaseConnection struct {
 	baseURL     string
 }
 
-type NewConnectionParams struct {
-	Marshaler   codec.Marshaler
-	Unmarshaler codec.Unmarshaler
-	BaseURL     string
+func (b *BaseConnection) handleResponse(dest interface{}, respData []byte) error {
+	var rpcResponse RPCResponse
+	err := b.unmarshaler.Unmarshal(respData, &rpcResponse)
+	if err != nil {
+		return err
+	}
+
+	if rpcResponse.Error != nil {
+		return rpcResponse.Error
+	}
+
+	test, err := b.marshaler.Marshal(rpcResponse.Result)
+	err = b.unmarshaler.Unmarshal(test, dest)
+
+	return nil
 }

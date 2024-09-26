@@ -2,11 +2,15 @@ package connection
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {
-	Code    int    `json:"code" msgpack:"code"`
-	Message string `json:"message,omitempty" msgpack:"message,omitempty"`
+	Code        int    `json:"code" msgpack:"code"`
+	Message     string `json:"message,omitempty" msgpack:"message,omitempty"`
+	Description string `json:"description,omitempty" msgpack:"message,omitempty"`
 }
 
-func (r *RPCError) Error() string {
+func (r RPCError) Error() string {
+	if r.Description != "" {
+		return r.Description
+	}
 	return r.Message
 }
 

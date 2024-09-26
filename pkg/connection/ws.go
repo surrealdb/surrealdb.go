@@ -134,8 +134,8 @@ func (ws *WebSocketConnection) LiveNotifications(liveQueryID string) (chan Notif
 	return c, err
 }
 
-func (ws *WebSocketConnection) Kill(id string) (interface{}, error) {
-	return ws.Send("kill", []interface{}{id})
+func (ws *WebSocketConnection) Kill(id string) error {
+	return ws.Send(nil, "kill", []interface{}{id})
 }
 
 var (
@@ -193,7 +193,7 @@ func (ws *WebSocketConnection) getLiveChannel(id string) (chan Notification, boo
 }
 
 func (ws *WebSocketConnection) Use(namespace, database string) error {
-	_, err := ws.Send("use", []interface{}{namespace, database})
+	err := ws.Send(nil, "use", []interface{}{namespace, database})
 	if err != nil {
 		return err
 	}
@@ -202,19 +202,17 @@ func (ws *WebSocketConnection) Use(namespace, database string) error {
 }
 
 func (ws *WebSocketConnection) Let(key string, value interface{}) error {
-	_, err := ws.Send("let", []interface{}{key, value})
-	return err
+	return ws.Send(nil, "let", []interface{}{key, value})
 }
 
 func (ws *WebSocketConnection) Unset(key string) error {
-	_, err := ws.Send("unset", []interface{}{key})
-	return err
+	return ws.Send(nil, "unset", []interface{}{key})
 }
 
-func (ws *WebSocketConnection) Send(method string, params []interface{}) (interface{}, error) {
+func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
 	select {
 	case <-ws.closeChan:
-		return nil, ws.closeError
+		return ws.closeError
 	default:
 	}
 
@@ -227,29 +225,29 @@ func (ws *WebSocketConnection) Send(method string, params []interface{}) (interf
 
 	responseChan, err := ws.createResponseChannel(id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer ws.removeResponseChannel(id)
 
 	if err := ws.write(request); err != nil {
-		return nil, err
+		return err
 	}
 	timeout := time.After(ws.Timeout)
 
 	select {
 	case <-timeout:
-		return nil, ErrTimeout
+		return ErrTimeout
 	case res, open := <-responseChan:
 		if !open {
-			return nil, errors.New("channel closed")
+			return errors.New("channel closed")
 		}
 		if res.ID != id {
-			return nil, ErrInvalidResponseID
+			return ErrInvalidResponseID
 		}
 		if res.Error != nil {
-			return nil, res.Error
+			return res.Error
 		}
-		return res.Result, nil
+		return nil
 	}
 }
 
