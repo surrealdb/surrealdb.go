@@ -71,6 +71,10 @@ func main() {
 		panic(err)
 	}
 
+	if err = db.Use("test", "test"); err != nil {
+		panic(err)
+	}
+
 	authData := &surrealdb.Auth{
 		Database:  "test",
 		Namespace: "test",
@@ -81,9 +85,6 @@ func main() {
 		panic(err)
 	}
 
-	if _, err = db.Use("test", "test"); err != nil {
-		panic(err)
-	}
 
 	// Define user struct
 	user := User{
@@ -93,47 +94,36 @@ func main() {
 	}
 
 	// Insert user
-	data, err := db.Create("user", user)
-	if err != nil {
-		panic(err)
-	}
-
-	// Unmarshal data
-	createdUser := make([]User, 1)
-	err = surrealdb.Unmarshal(data, &createdUser)
+	err := db.Create("user", &user)
 	if err != nil {
 		panic(err)
 	}
 
 	// Get user by ID
-	data, err = db.Select(createdUser[0].ID)
+	var users []User
+	err = db.Select(createdUser[0].ID, &users)
 	if err != nil {
 		panic(err)
 	}
 
-	// Unmarshal data
-	selectedUser := new(User)
-	err = surrealdb.Unmarshal(data, &selectedUser)
-	if err != nil {
-		panic(err)
-	}
-
+	
 	// Change part/parts of user
 	changes := map[string]string{"name": "Jane"}
 
 	// Update user
-	if _, err = db.Update(selectedUser.ID, changes); err != nil {
+	if err = db.Update(selectedUser.ID, changes); err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
+	var queryRes interface{}
+	if err = db.Query(&queryRes, "SELECT * FROM $record", map[string]interface{}{
 		"record": createdUser[0].ID,
 	}); err != nil {
 		panic(err)
 	}
 
 	// Delete user by ID
-	if _, err = db.Delete(selectedUser.ID); err != nil {
+	if err = db.Delete(selectedUser.ID); err != nil {
 		panic(err)
 	}
 }

@@ -76,7 +76,7 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 	return h
 }
 
-func (h *HTTPConnection) Send(res interface{}, method string, params ...interface{}) error {
+func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
 	if h.baseURL == "" {
 		return fmt.Errorf("connection host not set")
 	}
@@ -111,7 +111,7 @@ func (h *HTTPConnection) Send(res interface{}, method string, params ...interfac
 		return fmt.Errorf("namespace or database or both are not set")
 	}
 
-	if token, ok := h.variables.Load("token"); ok {
+	if token, ok := h.variables.Load(AuthTokenKey); ok {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
@@ -120,19 +120,18 @@ func (h *HTTPConnection) Send(res interface{}, method string, params ...interfac
 		return err
 	}
 
-	err = h.handleResponse(&res, respData)
-	if err != nil {
-		return err
+	if dest != nil {
+		return h.unmarshaler.Unmarshal(respData, dest)
 	}
 
-	switch method {
-	case "signin", "signup":
-		h.variables.Store("token", (res).(string))
-	case "authenticate":
-		h.variables.Store("token", params[0])
-	case "invalidate":
-		h.variables.Delete("token")
-	}
+	//switch method {
+	//case "signin", "signup":
+	//	h.variables.Store("token", (dest.Result).(string))
+	//case "authenticate":
+	//	h.variables.Store("token", params[0])
+	//case "invalidate":
+	//	h.variables.Delete("token")
+	//}
 
 	return nil
 }
@@ -148,7 +147,6 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 			panic(err)
 		}
 	}(resp.Body)
-
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

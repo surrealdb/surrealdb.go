@@ -23,10 +23,10 @@ type RPCRequest struct {
 }
 
 // RPCResponse represents an outgoing JSON-RPC response
-type RPCResponse struct {
+type RPCResponse[T any] struct {
 	ID     interface{} `json:"id" msgpack:"id"`
 	Error  *RPCError   `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result interface{} `json:"result,omitempty" msgpack:"result,omitempty"`
+	Result T           `json:"result,omitempty" msgpack:"result,omitempty"`
 }
 
 // RPCNotification represents an outgoing JSON-RPC notification

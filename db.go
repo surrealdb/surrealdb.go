@@ -4,11 +4,24 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
+
+type RPCResponse[T any] struct {
+	ID     interface{}          `json:"id" msgpack:"id"`
+	Error  *connection.RPCError `json:"error,omitempty" msgpack:"error,omitempty"`
+	Result T                    `json:"result,omitempty" msgpack:"result,omitempty"`
+}
+
+type QueryResult[T any] struct {
+	Status string    `json:"status"`
+	Time   time.Time `json:"time"`
+	Result []T       `json:"result"`
+}
 
 // DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
@@ -88,30 +101,55 @@ func (db *DB) Info() (interface{}, error) {
 }
 
 // SignUp is a helper method for signing up a new user.
-func (db *DB) SignUp(authData *models.Auth) (*string, error) {
-	var token string
+func (db *DB) SignUp(authData *models.Auth) (string, error) {
+	var token connection.RPCResponse[string]
 	if err := db.conn.Send(&token, "signup", authData); err != nil {
-		return nil, err
+		return "", err
 	}
 
-	return &token, nil
+	if err := db.conn.Let(connection.AuthTokenKey, token.Result); err != nil {
+		return "", err
+	}
+
+	return token.Result, nil
 }
 
 // SignIn is a helper method for signing in a user.
-func (db *DB) SignIn(authData *models.Auth) (*string, error) {
-	var token string
+func (db *DB) SignIn(authData *models.Auth) (string, error) {
+	var token connection.RPCResponse[string]
 	if err := db.conn.Send(&token, "signin", authData); err != nil {
-		return nil, err
+		return "", err
 	}
-	return &token, nil
+
+	if err := db.conn.Let(connection.AuthTokenKey, token.Result); err != nil {
+		return "", err
+	}
+
+	return token.Result, nil
 }
 
 func (db *DB) Invalidate() error {
-	return db.conn.Send(nil, "invalidate")
+	if err := db.conn.Send(nil, "invalidate"); err != nil {
+		return err
+	}
+
+	if err := db.conn.Unset(connection.AuthTokenKey); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (db *DB) Authenticate(token string) error {
-	return db.conn.Send(nil, "authenticate", token)
+	if err := db.conn.Send(nil, "authenticate", token); err != nil {
+		return err
+	}
+
+	if err := db.conn.Let(connection.AuthTokenKey, token); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (db *DB) Let(key string, val interface{}) error {
@@ -129,7 +167,7 @@ func (db *DB) Query(dest interface{}, sql string, vars interface{}) error {
 
 // Select a table or record from the database.
 func (db *DB) Select(dest interface{}, what interface{}) error {
-	return db.conn.Send(&dest, "select", what)
+	return db.conn.Send(dest, "select", what)
 }
 
 // Creates a table or record in the database like a POST request.
@@ -169,13 +207,13 @@ func (db *DB) Insert(what interface{}, data interface{}) error {
 
 // --------------------------------------------------
 
-func (db *DB) Live(table string, diff bool) (*string, error) {
+func (db *DB) Live(table models.Table, diff bool) (string, error) {
 	var id string
 	if err := db.conn.Send(&id, "live", table, diff); err != nil {
-		return nil, err
+		return "", err
 	}
 
-	return &id, nil
+	return id, nil
 }
 
 func (db *DB) Kill(liveQueryID string) error {

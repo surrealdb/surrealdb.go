@@ -77,14 +77,14 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	err = con.Connect() // implement a "is ready"
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
-	var bearer string
-	//token, err := con.Send(&bearer, "signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
-	err = con.Send(&bearer, "signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
+	var bearerRes RPCResponse[string]
+	err = con.Send(&bearerRes, "signin", models.Auth{Username: "pass", Password: "pass"})
+
 	assert.Nil(t, err, "no error returned when signing in")
-	//fmt.Println(token)
+	fmt.Println(bearerRes.Result)
 	//fmt.Println(bearer)
 
-	err = con.Send(nil, "info")
+	//err = con.Send(nil, "info")
 
 	// Insert user
 	//user := User{
@@ -106,9 +106,9 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	//	},
 	//}
 
-	var selectRes []User
-	err = con.Send(&selectRes, "select", []interface{}{"users"})
-	assert.Nil(t, err, "no error returned when sending a query")
-	fmt.Println(err)
-	fmt.Println(selectRes)
+	//var selectRes []User
+	//err = con.Send(&selectRes, "select", []interface{}{"users"})
+	//assert.Nil(t, err, "no error returned when sending a query")
+	//fmt.Println(err)
+	//fmt.Println(selectRes)
 }

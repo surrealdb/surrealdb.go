@@ -29,20 +29,3 @@ type BaseConnection struct {
 	unmarshaler codec.Unmarshaler
 	baseURL     string
 }
-
-func (b *BaseConnection) handleResponse(dest interface{}, respData []byte) error {
-	var rpcResponse RPCResponse
-	err := b.unmarshaler.Unmarshal(respData, &rpcResponse)
-	if err != nil {
-		return err
-	}
-
-	if rpcResponse.Error != nil {
-		return rpcResponse.Error
-	}
-
-	test, err := b.marshaler.Marshal(rpcResponse.Result)
-	err = b.unmarshaler.Unmarshal(test, dest)
-
-	return nil
-}
