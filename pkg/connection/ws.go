@@ -292,6 +292,12 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 		panic(err)
 	}
 
+	if rpcRes.Error != nil {
+		err := fmt.Errorf("rpc request err %w", rpcRes.Error)
+		ws.logger.Error(err.Error())
+		return
+	}
+
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Try to resolve message as response to query
 		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", rpcRes.ID))

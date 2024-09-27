@@ -2,6 +2,7 @@ package connection
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
@@ -77,6 +78,8 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
+	fmt.Println(method)
+
 	if h.baseURL == "" {
 		return fmt.Errorf("connection host not set")
 	}
@@ -120,23 +123,23 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 		return err
 	}
 
+	var rpcRes RPCResponse[interface{}]
+	if err := h.unmarshaler.Unmarshal(respData, &rpcRes); err != nil {
+		return err
+	}
+	if rpcRes.Error != nil {
+		return rpcRes.Error
+	}
+
 	if dest != nil {
 		return h.unmarshaler.Unmarshal(respData, dest)
 	}
-
-	//switch method {
-	//case "signin", "signup":
-	//	h.variables.Store("token", (dest.Result).(string))
-	//case "authenticate":
-	//	h.variables.Store("token", params[0])
-	//case "invalidate":
-	//	h.variables.Delete("token")
-	//}
 
 	return nil
 }
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
+	fmt.Println(req)
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
 		log.Fatalf("Error making HTTP request: %v", err)
@@ -148,6 +151,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		}
 	}(resp.Body)
 	respBytes, err := io.ReadAll(resp.Body)
+	fmt.Println(hex.EncodeToString(respBytes))
 	if err != nil {
 		return nil, err
 	}

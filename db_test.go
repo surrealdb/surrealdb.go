@@ -16,9 +16,10 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
-// Default consts and vars for testing
+// Default const and vars for testing
 const (
 	defaultURL = "ws://localhost:8000/rpc"
 )
@@ -29,8 +30,6 @@ var newConParams = connection.NewConnectionParams{
 	Marshaler:   models.CborMarshaler{},
 	Unmarshaler: models.CborUnmarshaler{},
 }
-
-//
 
 // TestDBSuite is a test s for the DB struct
 type SurrealDBTestSuite struct {
@@ -43,9 +42,9 @@ type SurrealDBTestSuite struct {
 
 // a simple user struct for testing
 type testUser struct {
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	ID       string `json:"id,omitempty"`
+	Username string          `json:"username,omitempty"`
+	Password string          `json:"password,omitempty"`
+	ID       models.RecordID `json:"id,omitempty"`
 }
 
 // a simple user struct for testing
@@ -62,20 +61,20 @@ func TestSurrealDBSuite(t *testing.T) {
 
 	// Without options
 	buff := bytes.NewBufferString("")
-	//logData := createLogger(t, buff)
-	//SurrealDBSuite.connImplementations["ws"] = connection.
-	//	NewWebSocketConnection(newConParams).
-	//	Logger(logData)
+	logData := createLogger(t, buff)
+	SurrealDBSuite.connImplementations["ws"] = connection.
+		NewWebSocketConnection(newConParams).
+		Logger(logData)
 	SurrealDBSuite.logBuffer = buff
 
 	// With options
 	buffOpt := bytes.NewBufferString("")
-	//logDataOpt := createLogger(t, buff)
-	//SurrealDBSuite.connImplementations["ws_opt"] = connection.
-	//	NewWebSocketConnection(newConParams).
-	//	SetTimeOut(time.Minute).
-	//	SetCompression(true).
-	//	Logger(logDataOpt)
+	logDataOpt := createLogger(t, buff)
+	SurrealDBSuite.connImplementations["ws_opt"] = connection.
+		NewWebSocketConnection(newConParams).
+		SetTimeOut(time.Minute).
+		SetCompression(true).
+		Logger(logDataOpt)
 	SurrealDBSuite.logBuffer = buffOpt
 
 	RunWsMap(t, SurrealDBSuite)
@@ -172,7 +171,7 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	notifications, er := s.db.LiveNotifications(live)
 	// create a user
 	s.Require().NoError(er)
-	e := s.db.Create("users", map[string]interface{}{
+	e := s.db.Create(nil, "users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -182,37 +181,37 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	s.Require().Equal(live, notification.ID)
 }
 
-//func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
-//	// create a user
-//	userData, e := s.db.Create("users", map[string]interface{}{
-//		"username": "johnny",
-//		"password": "123",
-//	})
-//	s.Require().NoError(e)
-//	var user []testUser
-//	err := marshal.Unmarshal(userData, &user)
-//	s.Require().NoError(err)
-//
-//	live, err := s.db.Live("users", true)
-//	defer func() {
-//		_, err = s.db.Kill(live)
-//		s.Require().NoError(err)
-//	}()
-//
-//	notifications, er := s.db.LiveNotifications(live)
-//	s.Require().NoError(er)
-//
-//	// update the user
-//	_, e = s.db.Update(user[0].ID, map[string]interface{}{
-//		"password": "456",
-//	})
-//	s.Require().NoError(e)
-//
-//	notification := <-notifications
-//	s.Require().Equal(connection.UpdateAction, notification.Action)
-//	s.Require().Equal(live, notification.ID)
-//}
-//
+func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
+	//// create a user
+	//userData, e := s.db.Create("users", map[string]interface{}{
+	//	"username": "johnny",
+	//	"password": "123",
+	//})
+	//s.Require().NoError(e)
+	//var user []testUser
+	//err := marshal.Unmarshal(userData, &user)
+	//s.Require().NoError(err)
+	//
+	//live, err := s.db.Live("users", true)
+	//defer func() {
+	//	_, err = s.db.Kill(live)
+	//	s.Require().NoError(err)
+	//}()
+	//
+	//notifications, er := s.db.LiveNotifications(live)
+	//s.Require().NoError(er)
+	//
+	//// update the user
+	//_, e = s.db.Update(user[0].ID, map[string]interface{}{
+	//	"password": "456",
+	//})
+	//s.Require().NoError(e)
+	//
+	//notification := <-notifications
+	//s.Require().Equal(connection.UpdateAction, notification.Action)
+	//s.Require().Equal(live, notification.ID)
+}
+
 //func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 //	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
 //	assert.NoError(s.T(), err)
@@ -756,7 +755,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				err := s.db.Create(fmt.Sprintf("users:%d", j), user)
+				err := s.db.Create(nil, fmt.Sprintf("users:%d", j), user)
 				s.Require().NoError(err)
 			}(i)
 		}
@@ -776,23 +775,23 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 	})
 }
 
-//func (s *SurrealDBTestSuite) TestConnectionBreak() {
-//	ws := connection.NewWebSocketConnection(connection.NewConnectionParams{})
-//	var url string
-//	if currentURL == "" {
-//		url = defaultURL
-//	} else {
-//		url = currentURL
-//	}
-//
-//	db := s.openConnection(url, ws)
-//	// Close the connection hard from ws
-//	ws.Conn.Close()
-//
-//	// Needs to be return error when the connection is closed or broken
-//	err := db.Select(nil, "users")
-//	s.Require().Error(err)
-//}
+func (s *SurrealDBTestSuite) TestConnectionBreak() {
+	ws := connection.NewWebSocketConnection(connection.NewConnectionParams{})
+	var url string
+	if currentURL == "" {
+		url = defaultURL
+	} else {
+		url = currentURL
+	}
+
+	db := s.openConnection(url, ws)
+	// Close the connection hard from ws
+	ws.Conn.Close()
+
+	// Needs to be return error when the connection is closed or broken
+	err := db.Select(nil, "users")
+	s.Require().Error(err)
+}
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
@@ -808,7 +807,7 @@ func assertContains[K any](s *SurrealDBTestSuite, input []K, matcher func(K) boo
 }
 
 func TestDb(t *testing.T) {
-	db, err := surrealdb.New("ws://localhost:8000")
+	db, err := surrealdb.New("http://localhost:8000")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -823,4 +822,19 @@ func TestDb(t *testing.T) {
 		fmt.Println(err)
 	}
 	fmt.Println(bearer)
+
+	//var newUser surrealdb.Result[testUser]
+	//err = db.Create(&newUser, models.RecordID{Table: "users", ID: "ttrrddrr"}, map[string]interface{}{
+	//	"Username": "remi",
+	//	"Password": "1234",
+	//})
+	//if err != nil {
+	//	fmt.Println(err)
+	//}
+	//fmt.Println(newUser)
+
+	var users surrealdb.Result[[]testUser]
+	err = db.Select(&users, models.Table("users"))
+	fmt.Println(users)
+
 }

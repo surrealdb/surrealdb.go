@@ -3,24 +3,21 @@ package surrealdb
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"time"
-
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"net/url"
 )
 
-type RPCResponse[T any] struct {
-	ID     interface{}          `json:"id" msgpack:"id"`
-	Error  *connection.RPCError `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result T                    `json:"result,omitempty" msgpack:"result,omitempty"`
+type Result[T any] struct {
+	ID     string `json:"id" msgpack:"id"`
+	Result T      `json:"result,omitempty" msgpack:"result,omitempty"`
 }
 
 type QueryResult[T any] struct {
-	Status string    `json:"status"`
-	Time   time.Time `json:"time"`
-	Result []T       `json:"result"`
+	Status string `json:"status"`
+	Time   string `json:"time"`
+	Result []T    `json:"result"`
 }
 
 // DB is a client for the SurrealDB database that holds the connection.
@@ -65,13 +62,13 @@ func New(connectionURL string) (*DB, error) {
 	}
 	newLiveConnParams := newParams
 	newLiveConnParams.BaseURL = fmt.Sprintf("%s://%s", liveScheme, u.Host)
-	liveconn := connection.NewWebSocketConnection(newLiveConnParams)
-	err = liveconn.Connect()
+	livecon := connection.NewWebSocketConnection(newLiveConnParams)
+	err = livecon.Connect()
 	if err != nil {
 		return nil, err
 	}
 
-	return &DB{conn: conn, liveHandler: liveconn}, nil
+	return &DB{conn: conn, liveHandler: livecon}, nil
 }
 
 // --------------------------------------------------
@@ -171,8 +168,8 @@ func (db *DB) Select(dest interface{}, what interface{}) error {
 }
 
 // Creates a table or record in the database like a POST request.
-func (db *DB) Create(what interface{}, data interface{}) error {
-	return db.conn.Send(&what, "create", what, data)
+func (db *DB) Create(dest interface{}, what interface{}, data interface{}) error {
+	return db.conn.Send(dest, "create", what, data)
 }
 
 // Creates a table or record in the database like a POST request.
