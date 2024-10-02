@@ -1,7 +1,9 @@
 package models
 
 import (
+	"fmt"
 	"github.com/fxamacker/cbor/v2"
+	"strings"
 	"time"
 )
 
@@ -57,7 +59,7 @@ type GeometryMultiPolygon []GeometryPolygon
 type GeometryCollection []any
 
 type TableOrRecord interface {
-	Table | RecordID | []Table | []RecordID
+	string | Table | RecordID | []Table | []RecordID
 }
 
 type Table string
@@ -69,6 +71,16 @@ type UUIDBin []byte
 type RecordID struct {
 	Table string
 	ID    interface{}
+}
+
+func NewRecordID(idStr string) RecordID {
+	bits := strings.Split(idStr, ":")
+	if len(bits) != 2 {
+		panic(fmt.Errorf("invalid id string. Expected format is 'tablename:indentifier'"))
+	}
+	return RecordID{
+		ID: bits[0], Table: bits[1],
+	}
 }
 
 func (r *RecordID) MarshalCBOR() ([]byte, error) {

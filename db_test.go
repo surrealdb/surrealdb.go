@@ -4,15 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"io"
 	rawslog "log/slog"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -96,7 +99,7 @@ func RunWsMap(t *testing.T, s *SurrealDBTestSuite) {
 
 // SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
-	err := s.db.Delete("users")
+	err := surrealdb.Delete[models.Table](s.db, "users")
 	s.Require().NoError(err)
 
 	if s.logBuffer.Len() > 0 {
@@ -149,8 +152,8 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 
 // Sign with the root user
 // Can be used with any user
-func signin(s *SurrealDBTestSuite) interface{} {
-	authData := &models.Auth{
+func signin(s *SurrealDBTestSuite) string {
+	authData := &surrealdb.Auth{
 		Username: "root",
 		Password: "root",
 	}
@@ -160,16 +163,18 @@ func signin(s *SurrealDBTestSuite) interface{} {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
-	live, err := s.db.Live("users", false)
+	live, err := surrealdb.Live(s.db, "users", false)
+
 	defer func() {
-		err = s.db.Kill(live)
+		err = surrealdb.Kill(s.db, live)
 		s.Require().NoError(err)
 	}()
 
-	notifications, er := s.db.LiveNotifications(live)
+	notifications, er := surrealdb.LiveNotifications(s.db, live)
 	// create a user
 	s.Require().NoError(er)
-	e := s.db.Create(nil, "users", map[string]interface{}{
+
+	_, e := surrealdb.Create[testUser](s.db, "users", map[string]interface{}{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -180,167 +185,151 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 }
 
 func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
-	//// create a user
-	//userData, e := s.db.Create("users", map[string]interface{}{
-	//	"username": "johnny",
-	//	"password": "123",
-	//})
-	//s.Require().NoError(e)
-	//var user []testUser
-	//err := marshal.Unmarshal(userData, &user)
-	//s.Require().NoError(err)
-	//
-	//live, err := s.db.Live("users", true)
-	//defer func() {
-	//	_, err = s.db.Kill(live)
-	//	s.Require().NoError(err)
-	//}()
-	//
-	//notifications, er := s.db.LiveNotifications(live)
-	//s.Require().NoError(er)
-	//
-	//// update the user
-	//_, e = s.db.Update(user[0].ID, map[string]interface{}{
-	//	"password": "456",
-	//})
-	//s.Require().NoError(e)
-	//
-	//notification := <-notifications
-	//s.Require().Equal(connection.UpdateAction, notification.Action)
-	//s.Require().Equal(live, notification.ID)
+	// create a user
+	user, e := surrealdb.Create[testUser](s.db, "users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+
+	live, err := surrealdb.Live(s.db, "users", true)
+	defer func() {
+		err = surrealdb.Kill(s.db, live)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := surrealdb.LiveNotifications(s.db, live)
+	s.Require().NoError(er)
+
+	// update the user
+	_, e = surrealdb.Update[testUser](s.db, user.ID, map[string]interface{}{
+		"password": "456",
+	})
+	s.Require().NoError(e)
+
+	notification := <-notifications
+	s.Require().Equal(connection.UpdateAction, notification.Action)
+	s.Require().Equal(live, notification.ID)
 }
 
-//func (s *SurrealDBTestSuite) TestLiveViaQuery() {
-//	liveResponse, err := s.db.Query("LIVE SELECT * FROM users", map[string]interface{}{})
-//	assert.NoError(s.T(), err)
-//	responseArray, ok := liveResponse.([]interface{})
-//	assert.True(s.T(), ok)
-//	singleResponse := responseArray[0].(map[string]interface{})
-//	liveIDStruct, ok := singleResponse["result"]
-//	assert.True(s.T(), ok)
-//	liveID := liveIDStruct.(string)
-//
-//	defer func() {
-//		_, err = s.db.Kill(liveID)
-//		s.Require().NoError(err)
-//	}()
-//
-//	notifications, er := s.db.LiveNotifications(liveID)
-//	// create a user
-//	s.Require().NoError(er)
-//	_, e := s.db.Create("users", map[string]interface{}{
-//		"username": "johnny",
-//		"password": "123",
-//	})
-//	s.Require().NoError(e)
-//	notification := <-notifications
-//	s.Require().Equal(connection.CreateAction, notification.Action)
-//	s.Require().Equal(liveID, notification.ID)
-//}
-//
-//func (s *SurrealDBTestSuite) TestDelete() {
-//	userData, err := s.db.Create("users", testUser{
-//		Username: "johnny",
-//		Password: "123",
-//	})
-//	s.Require().NoError(err)
-//
-//	// unmarshal the data into a user struct
-//	var user []testUser
-//	err = marshal.Unmarshal(userData, &user)
-//	s.Require().NoError(err)
-//
-//	// Delete the users...
-//	_, err = s.db.Delete("users")
-//	s.Require().NoError(err)
-//}
-//
-//func (s *SurrealDBTestSuite) TestFetch() {
-//	// Define initial user slice
-//	userSlice := []testUserWithFriend[string]{
-//		{
-//			ID:       "users:arthur",
-//			Username: "arthur",
-//			Password: "deer",
-//			Friends:  []string{"users:john"},
-//		},
-//		{
-//			ID:       "users:john",
-//			Username: "john",
-//			Password: "wolf",
-//			Friends:  []string{"users:arthur"},
-//		},
-//	}
-//
-//	// Initialize data using users
-//	for _, v := range userSlice {
-//		data, err := s.db.Create(v.ID, v)
-//		s.NoError(err)
-//		s.NotNil(data)
-//	}
-//
-//	// User rows are individually fetched
-//	s.Run("Run fetch for individual users", func() {
-//		s.T().Skip("TODO(gh-116) Fetch unimplemented")
-//		for _, v := range userSlice {
-//			res, err := s.db.Query("select * from $table fetch $fetchstr;", map[string]interface{}{
-//				"record":   v.ID,
-//				"fetchstr": "friends.*",
-//			})
-//			s.NoError(err)
-//			s.NotEmpty(res)
-//		}
-//	})
-//
-//	s.Run("Run fetch on hardcoded query", func() {
-//		query := "SELECT * from users:arthur fetch friends.*"
-//		res, err := s.db.Query(query, map[string]interface{}{})
-//		s.NoError(err)
-//		s.NotEmpty(res)
-//
-//		userSlice, err := marshal.SmartUnmarshal[testUserWithFriend[testUserWithFriend[interface{}]]](res, err)
-//		s.NoError(err)
-//
-//		s.Require().Len(userSlice, 1)
-//		s.Require().Len(userSlice[0].Friends, 1)
-//		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
-//	})
-//
-//	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
-//		s.T().Skip("TODO(gh-116) Fetch unimplemented")
-//		res, err := s.db.Query("select * from $record fetch $fetchstr;", map[string]interface{}{
-//			"record":   "users",
-//			"fetchstr": "friends.*",
-//		})
-//		s.NoError(err)
-//		s.NotEmpty(res)
-//	})
-//
-//	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
-//		s.T().Skip("TODO(gh-116) Fetch unimplemented")
-//		res, err := s.db.Query("select * from users fetch $fetchstr;", map[string]interface{}{
-//			"fetchstr": "friends.*",
-//		})
-//		s.NoError(err)
-//		s.NotEmpty(res)
-//	})
-//
-//	s.Run("Run fetch on query using map[string]interface{} for thing or tableName", func() {
-//		res, err := s.db.Query("select * from $record fetch friends.*;", map[string]interface{}{
-//			"record": "users:arthur",
-//		})
-//		s.NoError(err)
-//		s.NotEmpty(res)
-//
-//		userSlice, err := marshal.SmartUnmarshal[testUserWithFriend[testUserWithFriend[interface{}]]](res, err)
-//		s.NoError(err)
-//
-//		s.Require().Len(userSlice, 1)
-//		s.Require().Len(userSlice[0].Friends, 1)
-//		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
-//	})
-//}
-//
+func (s *SurrealDBTestSuite) TestLiveViaQuery() {
+	responseArray, err := surrealdb.Query[[]interface{}](s.db, "LIVE SELECT * FROM users", map[string]interface{}{})
+	assert.NoError(s.T(), err)
+	singleResponse := responseArray[0].(map[string]interface{})
+	liveIDStruct, ok := singleResponse["result"]
+	assert.True(s.T(), ok)
+	liveID := liveIDStruct.(string)
+
+	defer func() {
+		err = surrealdb.Kill(s.db, liveID)
+		s.Require().NoError(err)
+	}()
+
+	notifications, er := surrealdb.LiveNotifications(s.db, liveID)
+	// create a user
+	s.Require().NoError(er)
+	_, e := surrealdb.Create[testUser](s.db, "users", map[string]interface{}{
+		"username": "johnny",
+		"password": "123",
+	})
+	s.Require().NoError(e)
+	notification := <-notifications
+	s.Require().Equal(connection.CreateAction, notification.Action)
+	s.Require().Equal(liveID, notification.ID)
+}
+
+func (s *SurrealDBTestSuite) TestDelete() {
+	_, err := surrealdb.Create[testUser](s.db, "users", testUser{
+		Username: "johnny",
+		Password: "123",
+	})
+	s.Require().NoError(err)
+
+	// Delete the users...
+	err = surrealdb.Delete(s.db, "users")
+	s.Require().NoError(err)
+}
+
+func (s *SurrealDBTestSuite) TestFetch() {
+	// Define initial user slice
+	userSlice := []testUserWithFriend[string]{
+		{
+			ID:       "users:arthur",
+			Username: "arthur",
+			Password: "deer",
+			Friends:  []string{"users:john"},
+		},
+		{
+			ID:       "users:john",
+			Username: "john",
+			Password: "wolf",
+			Friends:  []string{"users:arthur"},
+		},
+	}
+
+	// Initialize data using users
+	for _, v := range userSlice {
+		data, err := surrealdb.Create[testUser](s.db, v.ID, v)
+		s.NoError(err)
+		s.NotNil(data)
+	}
+
+	// User rows are individually fetched
+	s.Run("Run fetch for individual users", func() {
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
+		for _, v := range userSlice {
+			res, err := surrealdb.Query[[]interface{}](s.db, "select * from $table fetch $fetchstr;", map[string]interface{}{
+				"record":   v.ID,
+				"fetchstr": "friends.*",
+			})
+			s.NoError(err)
+			s.NotEmpty(res)
+		}
+	})
+
+	s.Run("Run fetch on hardcoded query", func() {
+		query := "SELECT * from users:arthur fetch friends.*"
+		userSlice, err := surrealdb.Query[[]testUserWithFriend[interface{}]](s.db, query, map[string]interface{}{})
+		s.NoError(err)
+		s.NotEmpty(userSlice)
+
+		s.Require().Len(userSlice, 1)
+		s.Require().Len(userSlice[0].Friends, 1)
+		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for thing and fetchString", func() {
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
+		res, err := surrealdb.Query[[]interface{}](s.db, "select * from $record fetch $fetchstr;", map[string]interface{}{
+			"record":   "users",
+			"fetchstr": "friends.*",
+		})
+		s.NoError(err)
+		s.NotEmpty(res)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for fetchString", func() {
+		s.T().Skip("TODO(gh-116) Fetch unimplemented")
+		res, err := surrealdb.Query[[]interface{}](s.db, "select * from users fetch $fetchstr;", map[string]interface{}{
+			"fetchstr": "friends.*",
+		})
+		s.NoError(err)
+		s.NotEmpty(res)
+	})
+
+	s.Run("Run fetch on query using map[string]interface{} for thing or tableName", func() {
+		userSlice, err := surrealdb.Query[[]interface{}](s.db, "select * from $record fetch friends.*;", map[string]interface{}{
+			"record": "users:arthur",
+		})
+		s.NoError(err)
+		s.NotEmpty(userSlice)
+
+		s.Require().Len(userSlice, 1)
+		s.Require().Len(userSlice[0].Friends, 1)
+		s.Require().NotEmpty(userSlice[0].Friends[0], 1)
+	})
+}
+
 //func (s *SurrealDBTestSuite) TestInsert() {
 //	s.Run("raw map works", func() {
 //		userData, err := s.db.Insert("user", map[string]interface{}{
@@ -597,199 +586,96 @@ func (s *SurrealDBTestSuite) TestLiveWithOptionsViaMethod() {
 //	s.Equal("john999", username) // Ensure username hasn't change.
 //	s.Equal("456", password)
 //}
-//
-//func (s *SurrealDBTestSuite) TestPatch() {
-//	_, err := s.db.Create("users:999", map[string]interface{}{
-//		"username": "john999",
-//		"password": "123",
-//	})
-//	s.NoError(err)
-//
-//	patches := []surrealdb.Patch{
-//		{Op: "add", Path: "nickname", Value: "johnny"},
-//		{Op: "add", Path: "age", Value: int(44)},
-//	}
-//
-//	// Update the user
-//	_, err = s.db.Patch("users:999", patches)
-//	s.Require().NoError(err)
-//
-//	user2, err := s.db.Select("users:999")
-//	s.Require().NoError(err)
-//
-//	username := (user2).(map[string]interface{})["username"].(string)
-//	data := (user2).(map[string]interface{})["age"].(float64)
-//
-//	s.Equal("john999", username) // Ensure username hasn't change.
-//	s.EqualValues(patches[1].Value, data)
-//}
-//
-//func (s *SurrealDBTestSuite) TestNonRowSelect() {
-//	//user := testUser{
-//	//	Username: "ElecTwix",
-//	//	Password: "1234",
-//	//	ID:       "users:notexists",
-//	//}
-//
-//	var res testUser
-//	err := s.db.Select(&res, "users:notexists")
-//	s.Equal(err, constants.ErrNoRow)
-//}
 
-//func (s *SurrealDBTestSuite) TestSmartUnMarshalQuery() {
-//	user := []testUser{{
-//		Username: "electwix",
-//		Password: "1234",
-//	}}
-//
-//	s.Run("raw create query", func() {
-//		QueryStr := "Create users set Username = $user, Password = $pass"
-//		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query(QueryStr, map[string]interface{}{
-//			"user": user[0].Username,
-//			"pass": user[0].Password,
-//		}))
-//
-//		s.Require().NoError(err)
-//		s.Equal("electwix", dataArr[0].Username)
-//		user = dataArr
-//	})
-//
-//	s.Run("raw select query", func() {
-//		dataArr, err := marshal.SmartUnmarshal[testUser](s.db.Query("Select * from $record", map[string]interface{}{
-//			"record": user[0].ID,
-//		}))
-//
-//		s.Require().NoError(err)
-//		s.Equal("electwix", dataArr[0].Username)
-//	})
-//
-//	s.Run("select query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
-//
-//		s.Require().NoError(err)
-//		s.Equal("electwix", data[0].Username)
-//	})
-//
-//	s.Run("select array query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](s.db.Select("users"))
-//
-//		s.Require().NoError(err)
-//		s.Equal("electwix", data[0].Username)
-//	})
-//
-//	s.Run("delete record query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](s.db.Delete(user[0].ID))
-//
-//		s.Require().NoError(err)
-//		s.Len(data, 0)
-//	})
-//}
+func (s *SurrealDBTestSuite) TestPatch() {
+	_, err := surrealdb.Create[testUser](s.db, "users:999", map[string]interface{}{
+		"username": "john999",
+		"password": "123",
+	})
+	s.NoError(err)
 
-//func (s *SurrealDBTestSuite) TestSmartMarshalQuery() {
-//	user := []testUser{{
-//		Username: "electwix",
-//		Password: "1234",
-//		ID:       "sometable:someid",
-//	}}
-//
-//	s.Run("create with SmartMarshal query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](marshal.SmartMarshal(s.db.Create, user[0]))
-//		s.Require().NoError(err)
-//		s.Len(data, 1)
-//		s.Equal(user[0], data[0])
-//	})
-//
-//	s.Run("select with SmartMarshal query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](marshal.SmartMarshal(s.db.Select, user[0]))
-//		s.Require().NoError(err)
-//		s.Len(data, 1)
-//		s.Equal(user[0], data[0])
-//	})
-//
-//	s.Run("update with SmartMarshal query", func() {
-//		user[0].Password = "test123"
-//		data, err := marshal.SmartUnmarshal[testUser](marshal.SmartMarshal(s.db.Update, user[0]))
-//		s.Require().NoError(err)
-//		s.Len(data, 1)
-//		s.Equal(user[0].Password, data[0].Password)
-//	})
-//
-//	s.Run("delete with SmartMarshal query", func() {
-//		data, err := marshal.SmartMarshal(s.db.Delete, user[0])
-//		s.Require().NoError(err)
-//		s.Nil(data)
-//	})
-//
-//	s.Run("check if data deleted SmartMarshal query", func() {
-//		data, err := marshal.SmartUnmarshal[testUser](marshal.SmartMarshal(s.db.Select, user[0]))
-//		s.Require().Equal(err, constants.ErrNoRow)
-//		s.Len(data, 0)
-//	})
-//}
+	patches := []surrealdb.PatchData{
+		{Op: "add", Path: "nickname", Value: "johnny"},
+		{Op: "add", Path: "age", Value: int(44)},
+	}
 
-func (s *SurrealDBTestSuite) TestConcurrentOperations() {
-	//var wg sync.WaitGroup
-	//totalGoroutines := 100
-	//
-	//user := testUser{
-	//	Username: "electwix",
-	//	Password: "1234",
-	//}
+	// Update the user
+	_, err = surrealdb.Patch(s.db, "users:999", patches)
+	s.Require().NoError(err)
 
-	//s.Run(fmt.Sprintf("Concurrent select non existent rows %d", totalGoroutines), func() {
-	//	for i := 0; i < totalGoroutines; i++ {
-	//		wg.Add(1)
-	//		go func(j int) {
-	//			defer wg.Done()
-	//			err := s.db.Select(nil, fmt.Sprintf("users:%d", j))
-	//			s.Require().Equal(err, constants.ErrNoRow)
-	//		}(i)
-	//	}
-	//	wg.Wait()
-	//})
+	user2, err := s.db.Select("users:999")
+	s.Require().NoError(err)
 
-	//s.Run(fmt.Sprintf("Concurrent create rows %d", totalGoroutines), func() {
-	//	for i := 0; i < totalGoroutines; i++ {
-	//		wg.Add(1)
-	//		go func(j int) {
-	//			defer wg.Done()
-	//			err := s.db.Create(nil, fmt.Sprintf("users:%d", j), user)
-	//			s.Require().NoError(err)
-	//		}(i)
-	//	}
-	//	wg.Wait()
-	//})
+	username := (user2).(map[string]interface{})["username"].(string)
+	data := (user2).(map[string]interface{})["age"].(float64)
 
-	//s.Run(fmt.Sprintf("Concurrent select exist rows %d", totalGoroutines), func() {
-	//	for i := 0; i < totalGoroutines; i++ {
-	//		wg.Add(1)
-	//		go func(j int) {
-	//			defer wg.Done()
-	//			err := s.db.Select(nil, fmt.Sprintf("users:%d", j))
-	//			s.Require().NoError(err)
-	//		}(i)
-	//	}
-	//	wg.Wait()
-	//})
+	s.Equal("john999", username) // Ensure username hasn't change.
+	s.EqualValues(patches[1].Value, data)
 }
 
-//func (s *SurrealDBTestSuite) TestConnectionBreak() {
-//	ws := connection.NewWebSocketConnection(connection.NewConnectionParams{})
-//	var url string
-//	if currentURL == "" {
-//		url = defaultURL
-//	} else {
-//		url = currentURL
-//	}
-//
-//	db := s.openConnection(url, ws)
-//	// Close the connection hard from ws
-//	ws.Conn.Close()
-//
-//	// Needs to be return error when the connection is closed or broken
-//	err := db.Select(nil, "users")
-//	s.Require().Error(err)
-//}
+func (s *SurrealDBTestSuite) TestNonRowSelect() {
+	_, err := surrealdb.Select[testUser](s.db, models.NewRecordID("users:notexists"))
+	s.Equal(err, constants.ErrNoRow)
+}
+
+func (s *SurrealDBTestSuite) TestConcurrentOperations() {
+	var wg sync.WaitGroup
+	totalGoroutines := 100
+
+	s.Run(fmt.Sprintf("Concurrent select non existent rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := surrealdb.Select[testUser](s.db, models.NewRecordID(fmt.Sprintf("users:%d", j)))
+				s.Require().Equal(err, constants.ErrNoRow)
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	s.Run(fmt.Sprintf("Concurrent create rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := surrealdb.Select[testUser](s.db, models.NewRecordID(fmt.Sprintf("users:%d", j)))
+				s.Require().NoError(err)
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	s.Run(fmt.Sprintf("Concurrent select exist rows %d", totalGoroutines), func() {
+		for i := 0; i < totalGoroutines; i++ {
+			wg.Add(1)
+			go func(j int) {
+				defer wg.Done()
+				_, err := surrealdb.Select[testUser](s.db, models.NewRecordID(fmt.Sprintf("users:%d", j)))
+				s.Require().NoError(err)
+			}(i)
+		}
+		wg.Wait()
+	})
+}
+
+func (s *SurrealDBTestSuite) TestConnectionBreak() {
+	ws := connection.NewWebSocketConnection(connection.NewConnectionParams{})
+	var url string
+	if currentURL == "" {
+		url = defaultURL
+	} else {
+		url = currentURL
+	}
+
+	db := s.openConnection(url, ws)
+	// Close the connection hard from ws
+	ws.Conn.Close()
+
+	// Needs to be return error when the connection is closed or broken
+	_, err := surrealdb.Select[testUser](db, "users")
+	s.Require().Error(err)
+}
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.

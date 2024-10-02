@@ -239,8 +239,13 @@ func Upsert(db *DB, what interface{}, data interface{}) error {
 }
 
 // Update a table or record in the database like a PUT request.
-func Update(db *DB, what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "update", what, data)
+func Update[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.conn.Send(&res, "update", what, data); err != nil {
+		return nil, err
+	}
+
+	return &res.Result, nil
 }
 
 // Merge a table or record in the database like a PATCH request.
