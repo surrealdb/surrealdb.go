@@ -46,8 +46,8 @@ go get github.com/surrealdb/surrealdb.go
 
 ## Getting started
 
-In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.
-
+[//]: # (In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.)
+In the example provided below, we are going to connect and authenticate on a SurrealDB server, set the namespace and make several data manipulation requests.
 > This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
 ```go
@@ -59,9 +59,10 @@ import (
 )
 
 type User struct {
-	ID      string `json:"id,omitempty"`
-	Name    string `json:"name"`
-	Surname string `json:"surname"`
+	ID      	models.RecordID `json:"id,omitempty"`
+	Name    	string `json:"name"`
+	Surname 	string `json:"surname"`
+	Location 	models.GeometryPoint `json:"location"`
 }
 
 func main() {
@@ -71,62 +72,90 @@ func main() {
 		panic(err)
 	}
 
-	if err = db.Use("test", "test"); err != nil {
+	// Set the namespace and database
+	if err = db.Use("testNS", "testDB"); err != nil {
 		panic(err)
 	}
 
-	authData := &surrealdb.Auth{
-		Database:  "test",
-		Namespace: "test",
+	// Alternatively you can set the namespace and database during authentication
+	authData := surrealdb.Auth{
+		Database:  "testDB",
+		Namespace: "testNS",
 		Username:  "root",
-		Password:  "root",
+		Password:  "password",
 	}
-	if _, err = db.Signin(authData); err != nil {
+	token, err := db.SignIn(authData)
+	if err != nil {
 		panic(err)
 	}
-
+	
+	// Check token validity. This also authenticates the `db` if sign in was 
+	// not previously called
+	if err := db.Authenticate(token); err != nil {
+		panic(err)
+	}
+	
+	// And we can later on invalidate the token if desired
+	defer func(token string) {
+		if err := db.Invalidate(); err != nil {
+			panic(err)
+		}
+	}(token)
 
 	// Define user struct
 	user := User{
 		Name:     "John",
 		Surname:  "Doe",
-		Location: types.NewGeometryPoint(-0.11, 22.00),
+		Location: models.NewGeometryPoint(-0.11, 22.00),
 	}
 
 	// Insert user
-	err := db.Create("user", &user)
+	user, err := surrealdb.Create[User](db, "user", surrealdb.H{
+		Name:     "John",
+		Surname:  "Doe",
+		Location: models.NewGeometryPoint(-0.11, 22.00),
+	})
 	if err != nil {
 		panic(err)
 	}
-
-	// Get user by ID
-	var users []User
-	err = db.Select(createdUser[0].ID, &users)
-	if err != nil {
-		panic(err)
-	}
-
 	
-	// Change part/parts of user
-	changes := map[string]string{"name": "Jane"}
-
-	// Update user
-	if err = db.Update(selectedUser.ID, changes); err != nil {
+	// Get user by ID
+	users, err := surrealdb.Select[User, models.RecordID](db, user.ID)
+	if err != nil {
 		panic(err)
 	}
-
-	var queryRes interface{}
-	if err = db.Query(&queryRes, "SELECT * FROM $record", map[string]interface{}{
-		"record": createdUser[0].ID,
-	}); err != nil {
-		panic(err)
-	}
-
+	
 	// Delete user by ID
-	if err = db.Delete(selectedUser.ID); err != nil {
+	if err = surrealdb.Delete[models.RecordID](db, user.ID); err != nil {
 		panic(err)
 	}
 }
+```
+### Doing it your way
+All Data manipulation methods are handled by an undelying `send` function. This function is 
+exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
+methods are:
+- select
+- create
+- insert
+- upsert
+- update
+- patch
+- delete
+- query
+```go
+type UserSelectResult struct {
+	Result []Users
+}
+
+var res UserSelectResult
+// or var res surrealdb.Result[[]Users]
+
+users, err := db.Send(&res, "query", user.ID)
+if err != nil {
+	panic(err)
+}
+	
 ```
 
 ### Instructions for running the example

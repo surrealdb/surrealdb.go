@@ -78,7 +78,7 @@ func TestEngine_HttpMakeRequest(t *testing.T) {
 	assert.Nil(t, err, "no error returned when initializing engine connection")
 
 	var bearerRes RPCResponse[string]
-	err = con.Send(&bearerRes, "signin", models.Auth{Username: "pass", Password: "pass"})
+	err = con.Send(&bearerRes, "signin", map[string]interface{}{"user": "pass", "pass": "pass"})
 
 	assert.Nil(t, err, "no error returned when signing in")
 	fmt.Println(bearerRes.Result)

@@ -47,7 +47,7 @@ func registerCborTags() cbor.TagSet {
 
 		DateTimeCompactString: CustomDateTime(time.Now()),
 		DurationStringTag:     CustomDurationStr("2w"),
-		DurationCompactTag:    CustomDuration(0),
+		//DurationCompactTag:    CustomDuration(0),
 	}
 
 	tags := cbor.NewTagSet()

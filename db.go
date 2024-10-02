@@ -6,6 +6,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"net/url"
+	"strings"
 )
 
 type VersionData struct {
@@ -92,7 +93,7 @@ func (db *DB) Info() (map[string]interface{}, error) {
 }
 
 // SignUp is a helper method for signing up a new user.
-func (db *DB) SignUp(authData *models.Auth) (string, error) {
+func (db *DB) SignUp(authData *Auth) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.conn.Send(&token, "signup", authData); err != nil {
 		return "", err
@@ -106,7 +107,7 @@ func (db *DB) SignUp(authData *models.Auth) (string, error) {
 }
 
 // SignIn is a helper method for signing in a user.
-func (db *DB) SignIn(authData *models.Auth) (string, error) {
+func (db *DB) SignIn(authData *Auth) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.conn.Send(&token, "signin", authData); err != nil {
 		return "", err
@@ -159,6 +160,24 @@ func (db *DB) Version() (*VersionData, error) {
 	return &ver.Result, nil
 }
 
+func (db *DB) Send(res interface{}, method string, params ...interface{}) error {
+	allowedSendMethods := []string{"select", "create", "insert", "update", "upsert", "patch", "delete", "query"}
+
+	allowed := false
+	for i := 0; i < len(allowedSendMethods); i++ {
+		if allowedSendMethods[i] == strings.ToLower(method) {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		return fmt.Errorf("provided method is not allowed")
+	}
+
+	return db.conn.Send(&res, method, params...)
+}
+
 //-------------------------------------------------------------------------------------------------------------------//
 
 func Query[T any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[T], error) {
@@ -170,12 +189,17 @@ func Query[T any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResu
 	return &res.Result, nil
 }
 
-func Create[TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) error {
-	return db.conn.Send(&data, "create", what, data)
+func Create[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.conn.Send(&res, "create", what, data); err != nil {
+		return nil, err
+	}
+
+	return &res.Result, nil
 }
 
-func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
+func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*[]TResult, error) {
+	var res connection.RPCResponse[[]TResult]
 	if err := db.conn.Send(&res, "select", what); err != nil {
 		return nil, err
 	}
@@ -220,11 +244,28 @@ func Update(db *DB, what interface{}, data interface{}) error {
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge(db *DB, what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "merge", what, data)
+func Merge[T any](db *DB, what interface{}, data interface{}) ([]T, error) {
+	var res connection.RPCResponse[[]T]
+	if err := db.conn.Send(&res, "merge", what, data); err != nil {
+		return nil, err
+	}
+
+	return res.Result, nil
 }
 
 // Insert a table or a row from the database like a POST request.
 func Insert(db *DB, what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "insert", what, data)
+}
+
+func Relate[T any](db *DB, in models.RecordID, out models.RecordID, relation models.Table, data interface{}) (*T, error) {
+	var res connection.RPCResponse[T]
+	if err := db.conn.Send(&res, "relate", in, out, relation, data); err != nil {
+		return nil, err
+	}
+	return &res.Result, nil
+}
+
+func InsertRelation(db *DB, what interface{}, data interface{}) error {
 	return db.conn.Send(nil, "insert", what, data)
 }
