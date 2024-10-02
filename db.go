@@ -4,20 +4,14 @@ import (
 	"context"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"net/url"
 )
 
-type Result[T any] struct {
-	ID     string `json:"id" msgpack:"id"`
-	Result T      `json:"result,omitempty" msgpack:"result,omitempty"`
-}
-
-type QueryResult[T any] struct {
-	Status string `json:"status"`
-	Time   string `json:"time"`
-	Result []T    `json:"result"`
+type VersionData struct {
+	Version   string `json:"version"`
+	Build     string `json:"build"`
+	Timestamp string `json:"timestamp"`
 }
 
 // DB is a client for the SurrealDB database that holds the connection.
@@ -91,10 +85,10 @@ func (db *DB) Use(ns, database string) error {
 	return db.conn.Use(ns, database)
 }
 
-func (db *DB) Info() (interface{}, error) {
-	var info interface{}
+func (db *DB) Info() (map[string]interface{}, error) {
+	var info connection.RPCResponse[map[string]interface{}]
 	err := db.conn.Send(&info, "info")
-	return info, err
+	return info.Result, err
 }
 
 // SignUp is a helper method for signing up a new user.
@@ -157,54 +151,49 @@ func (db *DB) Unset(key string) error {
 	return db.conn.Unset(key)
 }
 
-// Query is a convenient method for sending a query to the database.
-func (db *DB) Query(dest interface{}, sql string, vars interface{}) error {
-	return db.conn.Send(&dest, "query", sql, vars)
+func (db *DB) Version() (*VersionData, error) {
+	var ver connection.RPCResponse[VersionData]
+	if err := db.conn.Send(&ver, "version"); err != nil {
+		return nil, err
+	}
+	return &ver.Result, nil
 }
 
-// Select a table or record from the database.
-func (db *DB) Select(dest interface{}, what interface{}) error {
-	return db.conn.Send(dest, "select", what)
+//-------------------------------------------------------------------------------------------------------------------//
+
+func Query[T any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[T], error) {
+	var res connection.RPCResponse[[]QueryResult[T]]
+	if err := db.conn.Send(&res, "query", sql, vars); err != nil {
+		return nil, err
+	}
+
+	return &res.Result, nil
 }
 
-// Creates a table or record in the database like a POST request.
-func (db *DB) Create(dest interface{}, what interface{}, data interface{}) error {
-	return db.conn.Send(dest, "create", what, data)
+func Create[TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) error {
+	return db.conn.Send(&data, "create", what, data)
 }
 
-// Creates a table or record in the database like a POST request.
-func (db *DB) Upsert(what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "upsert", what, data)
+func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.conn.Send(&res, "select", what); err != nil {
+		return nil, err
+	}
+
+	return &res.Result, nil
 }
 
-// Update a table or record in the database like a PUT request.
-func (db *DB) Update(what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "update", what, data)
+func Patch(db *DB, what interface{}, data []interface{}) (*[][]PatchData, error) {
+	var patchRes connection.RPCResponse[[][]PatchData]
+	err := db.conn.Send(&patchRes, "patch", what, data)
+	return &patchRes.Result, err
 }
 
-// Merge a table or record in the database like a PATCH request.
-func (db *DB) Merge(what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "merge", what, data)
-}
-
-// Patch applies a series of JSONPatches to a table or record.
-func (db *DB) Patch(what interface{}, data []Patch) error {
-	return db.conn.Send(nil, "patch", what, data)
-}
-
-// Delete a table or a row from the database like a DELETE request.
-func (db *DB) Delete(what interface{}) error {
+func Delete[TWhat models.TableOrRecord](db *DB, what TWhat) error {
 	return db.conn.Send(nil, "delete", what)
 }
 
-// Insert a table or a row from the database like a POST request.
-func (db *DB) Insert(what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "insert", what, data)
-}
-
-// --------------------------------------------------
-
-func (db *DB) Live(table models.Table, diff bool) (string, error) {
+func Live(db *DB, table models.Table, diff bool) (string, error) {
 	var id string
 	if err := db.conn.Send(&id, "live", table, diff); err != nil {
 		return "", err
@@ -213,41 +202,29 @@ func (db *DB) Live(table models.Table, diff bool) (string, error) {
 	return id, nil
 }
 
-func (db *DB) Kill(liveQueryID string) error {
+func Kill(db *DB, liveQueryID string) error {
 	return db.liveHandler.Kill(liveQueryID)
 }
 
-// LiveNotifications returns a channel for live query.
-func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
+func LiveNotifications(db *DB, liveQueryID string) (chan connection.Notification, error) {
 	return db.liveHandler.LiveNotifications(liveQueryID)
 }
 
-// --------------------------------------------------
-// Private methods
-// --------------------------------------------------
+func Upsert(db *DB, what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "upsert", what, data)
+}
 
-// send is a helper method for sending a query to the database.
-//func (db *DB) send(res interface{}, method string, params ...interface{}) error {
-//	// here we send the args through our websocket connection
-//	resp, err := db.conn.Send(method, params)
-//	if err != nil {
-//		return nil, fmt.Errorf("sending request failed for method '%s': %w", method, err)
-//	}
-//
-//	switch method {
-//	case "select", "create", "upsert", "update", "merge", "patch", "insert":
-//		return db.resp(method, params, resp)
-//	case "delete":
-//		return nil, nil
-//	default:
-//		return resp, nil
-//	}
-//}
+// Update a table or record in the database like a PUT request.
+func Update(db *DB, what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "update", what, data)
+}
 
-// resp is a helper method for parsing the response from a query.
-func (db *DB) resp(_ string, _ []interface{}, res interface{}) (interface{}, error) {
-	if res == nil {
-		return nil, constants.ErrNoRow
-	}
-	return res, nil
+// Merge a table or record in the database like a PATCH request.
+func Merge(db *DB, what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "merge", what, data)
+}
+
+// Insert a table or a row from the database like a POST request.
+func Insert(db *DB, what interface{}, data interface{}) error {
+	return db.conn.Send(nil, "insert", what, data)
 }

@@ -56,6 +56,10 @@ type GeometryMultiPolygon []GeometryPolygon
 
 type GeometryCollection []any
 
+type TableOrRecord interface {
+	Table | RecordID | []Table | []RecordID
+}
+
 type Table string
 
 type UUID string
@@ -89,10 +93,6 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 	r.ID = temp[1]
 
 	return nil
-}
-
-type TableOrRecord interface {
-	Table | RecordID
 }
 
 type Decimal string
