@@ -4,8 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"log/slog"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -34,8 +38,10 @@ func New(connectionURL string) (*DB, error) {
 	newParams := connection.NewConnectionParams{
 		Marshaler:   models.CborMarshaler{},
 		Unmarshaler: models.CborUnmarshaler{},
-		BaseURL:     connectionURL,
+		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
+		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	}
+
 	var conn connection.Connection
 	if scheme == "http" || scheme == "https" {
 		conn = connection.NewHTTPConnection(newParams)
@@ -198,18 +204,23 @@ func Create[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data in
 	return &res.Result, nil
 }
 
-func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*[]TResult, error) {
-	var res connection.RPCResponse[[]TResult]
+func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+
 	if err := db.conn.Send(&res, "select", what); err != nil {
 		return nil, err
+	}
+
+	if res.Result == nil {
+		return nil, constants.ErrNoRow
 	}
 
 	return &res.Result, nil
 }
 
-func Patch(db *DB, what interface{}, data []interface{}) (*[][]PatchData, error) {
-	var patchRes connection.RPCResponse[[][]PatchData]
-	err := db.conn.Send(&patchRes, "patch", what, data)
+func Patch(db *DB, what interface{}, patches []PatchData) (*[]PatchData, error) {
+	var patchRes connection.RPCResponse[[]PatchData]
+	err := db.conn.Send(&patchRes, "patch", what, patches, true)
 	return &patchRes.Result, err
 }
 
@@ -217,13 +228,12 @@ func Delete[TWhat models.TableOrRecord](db *DB, what TWhat) error {
 	return db.conn.Send(nil, "delete", what)
 }
 
-func Live(db *DB, table models.Table, diff bool) (string, error) {
-	var id string
+func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
+	var id connection.RPCResponse[models.UUID]
 	if err := db.conn.Send(&id, "live", table, diff); err != nil {
-		return "", err
+		return nil, err
 	}
-
-	return id, nil
+	return &id.Result, nil
 }
 
 func Kill(db *DB, liveQueryID string) error {
@@ -259,8 +269,13 @@ func Merge[T any](db *DB, what interface{}, data interface{}) ([]T, error) {
 }
 
 // Insert a table or a row from the database like a POST request.
-func Insert(db *DB, what interface{}, data interface{}) error {
-	return db.conn.Send(nil, "insert", what, data)
+func Insert[TResult any](db *DB, what interface{}, data interface{}) (*[]TResult, error) {
+	var res connection.RPCResponse[[]TResult]
+	if err := db.conn.Send(nil, "insert", what, data); err != nil {
+		return nil, err
+	}
+
+	return &res.Result, nil
 }
 
 func Relate[T any](db *DB, in models.RecordID, out models.RecordID, relation models.Table, data interface{}) (*T, error) {

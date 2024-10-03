@@ -39,10 +39,10 @@ func registerCborTags() cbor.TagSet {
 		GeometryMultiPolygonTag: GeometryMultiPolygon{},
 		GeometryCollectionTag:   GeometryCollection{},
 
-		TableNameTag:     Table(""),
-		UUIDStringTag:    UUID(""),
+		TableNameTag: Table(""),
+		//UUIDStringTag:    UUID(""),
 		DecimalStringTag: Decimal(""),
-		BinaryUUIDTag:    UUIDBin{},
+		BinaryUUIDTag:    UUID{},
 		NoneTag:          CustomNil{},
 
 		DateTimeCompactString: CustomDateTime(time.Now()),

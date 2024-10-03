@@ -1,12 +1,15 @@
 package connection
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"io"
+	"log/slog"
 	"net"
+	"os"
 	"sync"
 	"time"
 )
@@ -49,6 +52,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 		responseChannels:     make(map[string]chan []byte),
 		notificationChannels: make(map[string]chan Notification),
 		Timeout:              DefaultTimeout * time.Second,
+		logger:               logger.New(slog.NewJSONHandler(os.Stdout, nil)),
 	}
 }
 
@@ -174,11 +178,12 @@ func (ws *WebSocketConnection) getLiveChannel(id string) (chan Notification, boo
 	ws.notificationChannelsLock.RLock()
 	defer ws.notificationChannelsLock.RUnlock()
 	ch, ok := ws.notificationChannels[id]
+
 	return ch, ok
 }
 
 func (ws *WebSocketConnection) Use(namespace, database string) error {
-	err := ws.Send(nil, "use", []interface{}{namespace, database})
+	err := ws.Send(nil, "use", namespace, database)
 	if err != nil {
 		return err
 	}
@@ -187,14 +192,15 @@ func (ws *WebSocketConnection) Use(namespace, database string) error {
 }
 
 func (ws *WebSocketConnection) Let(key string, value interface{}) error {
-	return ws.Send(nil, "let", []interface{}{key, value})
+	return ws.Send(nil, "let", key, value)
 }
 
 func (ws *WebSocketConnection) Unset(key string) error {
-	return ws.Send(nil, "unset", []interface{}{key})
+	return ws.Send(nil, "unset", key)
 }
 
 func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
+	fmt.Println(method)
 	select {
 	case <-ws.closeChan:
 		return ws.closeError
@@ -287,6 +293,7 @@ func (ws *WebSocketConnection) handleError(err error) bool {
 }
 
 func (ws *WebSocketConnection) handleResponse(res []byte) {
+	fmt.Println(hex.EncodeToString(res))
 	var rpcRes RPCResponse[interface{}]
 	if err := ws.unmarshaler.Unmarshal(res, &rpcRes); err != nil {
 		panic(err)
@@ -309,26 +316,31 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 		defer close(responseChan)
 		responseChan <- res
 	} else {
-		// Try to resolve response as live query notification
-		mappedRes, _ := rpcRes.Result.(map[string]interface{})
-		resolvedID, ok := mappedRes["id"]
-		if !ok {
-			err := fmt.Errorf("response did not contain an 'id' field")
+		// todo: find a surefire way to confirm a notification
 
+		var notificationRes RPCResponse[Notification]
+		if err := ws.unmarshaler.Unmarshal(res, &notificationRes); err != nil {
+			panic(err)
+		}
+
+		if notificationRes.Result.ID == nil {
+			err := fmt.Errorf("response did not contain an 'id' field")
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
 			return
 		}
 
-		LiveNotificationChan, ok := ws.getLiveChannel(resolvedID.(string))
+		channelID := notificationRes.Result.ID
+
+		LiveNotificationChan, ok := ws.getLiveChannel(channelID.String())
 		if !ok {
-			err := fmt.Errorf("unavailable ResponseChannel %+v", resolvedID)
+			err := fmt.Errorf("unavailable ResponseChannel %+v", channelID.String())
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
 			return
 		}
 
 		var notification RPCResponse[Notification]
 		if err := ws.unmarshaler.Unmarshal(res, &notification); err != nil {
-			err := fmt.Errorf("error unmarshalling notification %+v", resolvedID)
+			err := fmt.Errorf("error unmarshalling notification %+v", channelID.String())
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
 			return
 		}

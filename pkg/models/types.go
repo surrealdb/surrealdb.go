@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofrs/uuid"
 	"strings"
 	"time"
 )
@@ -64,9 +65,12 @@ type TableOrRecord interface {
 
 type Table string
 
-type UUID string
+//type UUID string
 
-type UUIDBin []byte
+// type UUIDBin []byte
+type UUID struct {
+	uuid.UUID
+}
 
 type RecordID struct {
 	Table string

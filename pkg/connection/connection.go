@@ -2,6 +2,7 @@ package connection
 
 import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 )
 
 type Connection interface {
@@ -22,6 +23,7 @@ type NewConnectionParams struct {
 	Marshaler   codec.Marshaler
 	Unmarshaler codec.Unmarshaler
 	BaseURL     string
+	Logger      logger.Logger
 }
 
 type BaseConnection struct {
