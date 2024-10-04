@@ -1,11 +1,10 @@
 package connection
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"io"
 	"log/slog"
 	"net"
@@ -200,7 +199,6 @@ func (ws *WebSocketConnection) Unset(key string) error {
 }
 
 func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
-	fmt.Println(method)
 	select {
 	case <-ws.closeChan:
 		return ws.closeError
@@ -237,14 +235,6 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 		}
 		return nil
 	}
-}
-
-func (ws *WebSocketConnection) read(v interface{}) error {
-	_, data, err := ws.Conn.ReadMessage()
-	if err != nil {
-		return err
-	}
-	return ws.unmarshaler.Unmarshal(data, v)
 }
 
 func (ws *WebSocketConnection) write(v interface{}) error {
@@ -293,7 +283,6 @@ func (ws *WebSocketConnection) handleError(err error) bool {
 }
 
 func (ws *WebSocketConnection) handleResponse(res []byte) {
-	fmt.Println(hex.EncodeToString(res))
 	var rpcRes RPCResponse[interface{}]
 	if err := ws.unmarshaler.Unmarshal(res, &rpcRes); err != nil {
 		panic(err)

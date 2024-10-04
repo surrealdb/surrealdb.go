@@ -54,8 +54,8 @@ In the example provided below, we are going to connect and authenticate on a Sur
 package main
 
 import (
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 type User struct {

@@ -3,10 +3,9 @@ package surrealdb
 import (
 	"context"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"log/slog"
 	"net/url"
 	"os"
@@ -171,7 +170,7 @@ func (db *DB) Send(res interface{}, method string, params ...interface{}) error 
 
 	allowed := false
 	for i := 0; i < len(allowedSendMethods); i++ {
-		if allowedSendMethods[i] == strings.ToLower(method) {
+		if strings.EqualFold(allowedSendMethods[i], strings.ToLower(method)) {
 			allowed = true
 			break
 		}
@@ -211,10 +210,6 @@ func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*TResu
 		return nil, err
 	}
 
-	if res.Result == nil {
-		return nil, constants.ErrNoRow
-	}
-
 	return &res.Result, nil
 }
 
@@ -244,7 +239,7 @@ func LiveNotifications(db *DB, liveQueryID string) (chan connection.Notification
 	return db.liveHandler.LiveNotifications(liveQueryID)
 }
 
-func Upsert(db *DB, what interface{}, data interface{}) error {
+func Upsert(db *DB, what, data interface{}) error {
 	return db.conn.Send(nil, "upsert", what, data)
 }
 
@@ -259,7 +254,7 @@ func Update[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data in
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge[T any](db *DB, what interface{}, data interface{}) ([]T, error) {
+func Merge[T any](db *DB, what, data interface{}) ([]T, error) {
 	var res connection.RPCResponse[[]T]
 	if err := db.conn.Send(&res, "merge", what, data); err != nil {
 		return nil, err
@@ -269,7 +264,7 @@ func Merge[T any](db *DB, what interface{}, data interface{}) ([]T, error) {
 }
 
 // Insert a table or a row from the database like a POST request.
-func Insert[TResult any](db *DB, what interface{}, data interface{}) (*[]TResult, error) {
+func Insert[TResult any](db *DB, what, data interface{}) (*[]TResult, error) {
 	var res connection.RPCResponse[[]TResult]
 	if err := db.conn.Send(nil, "insert", what, data); err != nil {
 		return nil, err
@@ -278,7 +273,7 @@ func Insert[TResult any](db *DB, what interface{}, data interface{}) (*[]TResult
 	return &res.Result, nil
 }
 
-func Relate[T any](db *DB, in models.RecordID, out models.RecordID, relation models.Table, data interface{}) (*T, error) {
+func Relate[T any](db *DB, in, out models.RecordID, relation models.Table, data interface{}) (*T, error) {
 	var res connection.RPCResponse[T]
 	if err := db.conn.Send(&res, "relate", in, out, relation, data); err != nil {
 		return nil, err
@@ -286,6 +281,6 @@ func Relate[T any](db *DB, in models.RecordID, out models.RecordID, relation mod
 	return &res.Result, nil
 }
 
-func InsertRelation(db *DB, what interface{}, data interface{}) error {
+func InsertRelation(db *DB, what, data interface{}) error {
 	return db.conn.Send(nil, "insert", what, data)
 }

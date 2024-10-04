@@ -18,5 +18,7 @@ var (
 )
 
 const (
-	AuthTokenKey = "auth_token"
+	AuthTokenKey          = "auth_token"
+	WebsocketScheme       = "ws"
+	SecureWebsocketScheme = "wss"
 )

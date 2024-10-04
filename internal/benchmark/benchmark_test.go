@@ -2,18 +2,17 @@ package benchmark_test
 
 import (
 	"fmt"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/marshal"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )
 
 // a simple user struct for testing
 type testUser struct {
-	marshal.Basemodel `table:"test"`
-	Username          string `json:"username,omitempty"`
-	Password          string `json:"password,omitempty"`
-	ID                string `json:"id,omitempty"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	ID       string `json:"id,omitempty"`
 }
 
 func SetupMockDB() (*surrealdb.DB, error) {
@@ -37,7 +36,7 @@ func BenchmarkCreate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		db.Create(users[i].ID, users[i]) //nolint:errcheck
+		surrealdb.Create[testUser](db, models.Table("users"), users[i]) //nolint:errcheck
 	}
 }
 
@@ -50,6 +49,6 @@ func BenchmarkSelect(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		db.Select("users:bob") //nolint:errcheck
+		surrealdb.Select[testUser](db, models.NewRecordID("users:bob")) //nolint:errcheck
 	}
 }

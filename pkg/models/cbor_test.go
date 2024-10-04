@@ -73,7 +73,7 @@ func TestForRequestPayload(t *testing.T) {
 			"testNone": None,
 			"testNil":  nil,
 			"duration": time.Duration(340),
-			//"custom_duration": CustomDuration(340),
+			// "custom_duration": CustomDuration(340),
 			"custom_datetime": CustomDateTime(time.Now()),
 		},
 	}

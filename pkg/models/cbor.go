@@ -2,7 +2,7 @@ package models
 
 import (
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 	"io"
 	"reflect"
 	"time"
@@ -69,7 +69,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
-	//v = replacerBeforeEncode(v)
+	// v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -89,7 +89,7 @@ func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 		return err
 	}
 
-	//replacerAfterDecode(&dst)
+	// replacerAfterDecode(&dst)
 	return nil
 }
 

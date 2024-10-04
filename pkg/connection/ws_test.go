@@ -2,10 +2,9 @@ package connection
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"log/slog"
 	"os"
 	"testing"
@@ -19,7 +18,7 @@ type WsTestSuite struct {
 	logBuffer           *bytes.Buffer
 }
 
-func TestSurrealDBSuite(t *testing.T) {
+func TestWsTestSuite(t *testing.T) {
 	ts := new(WsTestSuite)
 	ts.connImplementations = make(map[string]*WebSocketConnection)
 
@@ -48,33 +47,25 @@ func RunWsMap(t *testing.T, s *WsTestSuite) {
 func (s *WsTestSuite) SetupSuite() {
 	con := s.connImplementations[s.name]
 
+	// connect
 	err := con.Connect()
 	s.Require().NoError(err)
 
-	setNamespace(s, con)
+	// set namespace, database
+	err = con.Use("test", "test")
+	s.Require().NoError(err)
 
-	_ = signIn(s, con)
-
+	// sign in
+	err = con.Send(nil, "signin", map[string]interface{}{
+		"user": "root",
+		"pass": "root",
+	})
+	s.Require().NoError(err)
 }
 
 func (s *WsTestSuite) TearDownSuite() {
 	con := s.connImplementations[s.name]
 	err := con.Close()
-	s.Require().NoError(err)
-}
-
-func signIn(s *WsTestSuite, con *WebSocketConnection) string {
-	var token RPCResponse[string]
-	err := con.Send(&token, "signin", map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-	s.Require().NoError(err)
-	return token.Result
-}
-
-func setNamespace(s *WsTestSuite, con *WebSocketConnection) {
-	err := con.Use("test", "test")
 	s.Require().NoError(err)
 }
 
@@ -92,6 +83,4 @@ func (s *WsTestSuite) TestEngine_WsMakeRequest() {
 	var res RPCResponse[interface{}]
 	err := con.Send(&res, "query", params...)
 	s.Require().NoError(err, "no error returned when sending a query")
-
-	fmt.Println(res)
 }

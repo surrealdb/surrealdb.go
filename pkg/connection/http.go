@@ -2,9 +2,9 @@ package connection
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
 	"io"
 	"log"
 	"net/http"
@@ -38,6 +38,7 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Connect() error {
+	ctx := context.TODO()
 	if h.baseURL == "" {
 		return fmt.Errorf("base url not set")
 	}
@@ -50,7 +51,7 @@ func (h *HTTPConnection) Connect() error {
 		return fmt.Errorf("unmarshaler is not set")
 	}
 
-	httpReq, err := http.NewRequest(http.MethodGet, h.baseURL+"/health", http.NoBody)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -92,7 +93,7 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return err
 	}
@@ -141,7 +142,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		log.Fatalf("Error making HTTP request: %v", err)
 	}
 	defer func(Body io.ReadCloser) {
-		err := Body.Close()
+		err = Body.Close()
 		if err != nil {
 			panic(err)
 		}
@@ -155,12 +156,12 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return respBytes, nil
 	}
 
-	var errorResponse RPCError
-	err = json.Unmarshal(respBytes, &errorResponse)
+	var errorResponse RPCResponse[any]
+	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
 		panic(err)
 	}
-	return nil, errorResponse
+	return nil, errorResponse.Error
 }
 
 func (h *HTTPConnection) Use(namespace, database string) error {

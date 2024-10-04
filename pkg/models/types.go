@@ -65,7 +65,7 @@ type TableOrRecord interface {
 
 type Table string
 
-//type UUID string
+// type UUID string
 
 // type UUIDBin []byte
 type UUID struct {
@@ -192,8 +192,8 @@ func (c *CustomNil) MarshalCBOR() ([]byte, error) {
 	})
 }
 
-func (c *CustomNil) CustomNil(data []byte) error {
-	c = &CustomNil{}
+func (c *CustomNil) UnMarshalCBOR(data []byte) error {
+	*c = CustomNil{}
 	return nil
 }
 
