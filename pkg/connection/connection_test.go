@@ -1,13 +1,14 @@
 package connection
 
 import (
+	"log/slog"
+	"os"
+	"testing"
+
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
-	"log/slog"
-	"os"
-	"testing"
 )
 
 type testUser struct {

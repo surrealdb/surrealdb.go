@@ -2,11 +2,12 @@ package connection
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
-	"sync"
 )
 
 type LiveHandler interface {

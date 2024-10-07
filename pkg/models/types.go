@@ -1,9 +1,10 @@
 package models
 
 import (
+	"time"
+
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofrs/uuid"
-	"time"
 )
 
 type TableOrRecord interface {

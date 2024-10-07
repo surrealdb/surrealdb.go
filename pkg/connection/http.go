@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"io"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 type HTTPConnection struct {

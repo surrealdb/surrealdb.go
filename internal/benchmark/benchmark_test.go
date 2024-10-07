@@ -2,8 +2,9 @@ package benchmark_test
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"testing"
+
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 
 	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )

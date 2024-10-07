@@ -2,8 +2,9 @@ package models
 
 import (
 	"fmt"
-	"github.com/fxamacker/cbor/v2"
 	"strings"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
 type RecordID struct {

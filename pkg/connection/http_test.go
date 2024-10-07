@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"io"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/suite"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response
@@ -26,8 +27,7 @@ func NewTestClient(fn RoundTripFunc) *http.Client {
 
 type HTTPTestSuite struct {
 	suite.Suite
-	name      string
-	logBuffer *bytes.Buffer
+	name string
 }
 
 func TestHttpTestSuite(t *testing.T) {

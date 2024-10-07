@@ -3,14 +3,15 @@ package surrealdb
 import (
 	"context"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"log/slog"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 type VersionData struct {

@@ -1,11 +1,12 @@
 package models
 
 import (
-	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 	"io"
 	"reflect"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 )
 
 type CustomCBORTag uint64

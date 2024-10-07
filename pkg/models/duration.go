@@ -1,8 +1,9 @@
 package models
 
 import (
-	"github.com/fxamacker/cbor/v2"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
 type CustomDuration time.Duration

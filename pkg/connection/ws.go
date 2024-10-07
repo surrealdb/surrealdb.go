@@ -3,18 +3,17 @@ package connection
 import (
 	"errors"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"sync"
 	"time"
-)
 
-import (
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+
 	gorilla "github.com/gorilla/websocket"
 )
 

@@ -2,10 +2,11 @@ package models
 
 import (
 	"fmt"
-	"github.com/fxamacker/cbor/v2"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestForGeometryPoint(t *testing.T) {
