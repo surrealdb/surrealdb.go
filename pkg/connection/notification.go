@@ -1,9 +1,11 @@
 package connection
 
+import "github.com/surrealdb/surrealdb.go/v2/pkg/models"
+
 type Notification struct {
-	ID     string      `json:"id"`
-	Action Action      `json:"action"`
-	Result interface{} `json:"result"`
+	ID     *models.UUID `json:"id,omitempty"`
+	Action Action       `json:"action"`
+	Result interface{}  `json:"result"`
 }
 type Action string
 

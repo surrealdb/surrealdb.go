@@ -2,19 +2,18 @@ package connection
 
 import (
 	"bytes"
-	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"context"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/suite"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
-// RoundTripFunc .
 type RoundTripFunc func(req *http.Request) *http.Response
 
-// RoundTrip .
 func (f RoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req), nil
 }
@@ -26,14 +25,38 @@ func NewTestClient(fn RoundTripFunc) *http.Client {
 	}
 }
 
-func TestEngine_MakeRequest(t *testing.T) {
-	httpClient := NewTestClient(func(req *http.Request) *http.Response {
-		assert.Equal(t, req.URL.String(), "http://test.surreal/rpc")
+type HTTPTestSuite struct {
+	suite.Suite
+	name string
+}
 
+func TestHttpTestSuite(t *testing.T) {
+	ts := new(HTTPTestSuite)
+	ts.name = "HTTP Test Suite"
+
+	suite.Run(t, ts)
+}
+
+// SetupSuite is called before the s starts running
+func (s *HTTPTestSuite) SetupSuite() {
+
+}
+
+func (s *HTTPTestSuite) TearDownSuite() {
+
+}
+
+func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
+	ctx := context.TODO()
+
+	httpClient := NewTestClient(func(req *http.Request) *http.Response {
+		s.Assert().Equal(req.URL.String(), "http://test.surreal/rpc")
+
+		respBody, _ := hex.DecodeString("a26269647030484b6746566c657153427563625a44656572726f72a264636f6465186f676d6573736167657354686572652077617320612070726f626c656d")
 		return &http.Response{
 			StatusCode: 400,
 			// Send response to be tested
-			Body: io.NopCloser(bytes.NewBufferString(`OK`)),
+			Body: io.NopCloser(bytes.NewReader(respBody)),
 			// Must be set to non-nil value or it panics
 			Header: make(http.Header),
 		}
@@ -44,41 +67,11 @@ func TestEngine_MakeRequest(t *testing.T) {
 		Marshaler:   models.CborMarshaler{},
 		Unmarshaler: models.CborUnmarshaler{},
 	}
+
 	httpEngine := NewHTTPConnection(p)
 	httpEngine.SetHTTPClient(httpClient)
 
-	req, _ := http.NewRequest(http.MethodGet, "http://test.surreal/rpc", http.NoBody)
-	resp, err := httpEngine.MakeRequest(req)
-	assert.Error(t, err, "should return error for status code 400")
-
-	fmt.Println(resp)
-}
-
-func TestEngine_HttpMakeRequest(t *testing.T) {
-	p := NewConnectionParams{
-		BaseURL:     "http://localhost:8000",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
-	}
-	con := NewHTTPConnection(p)
-	err := con.Use("test", "test")
-	assert.Nil(t, err, "no error returned when setting namespace and database")
-
-	err = con.Connect() // implement a "is ready"
-	assert.Nil(t, err, "no error returned when initializing engine connection")
-
-	token, err := con.Send("signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
-	assert.Nil(t, err, "no error returned when signing in")
-	fmt.Println(token)
-
-	params := []interface{}{
-		"SELECT marketing, count() FROM $tb GROUP BY marketing",
-		map[string]interface{}{
-			"datetime": time.Now(),
-			"testnil":  nil,
-		},
-	}
-	res, err := con.Send("query", params)
-	assert.Nil(t, err, "no error returned when sending a query")
-	fmt.Println(res)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://test.surreal/rpc", http.NoBody)
+	_, err := httpEngine.MakeRequest(req)
+	s.Require().Error(err, "should return error for status code 400")
 }

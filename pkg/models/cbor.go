@@ -1,11 +1,12 @@
 package models
 
 import (
-	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"io"
 	"reflect"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 )
 
 type CustomCBORTag uint64
@@ -39,14 +40,15 @@ func registerCborTags() cbor.TagSet {
 		GeometryMultiPolygonTag: GeometryMultiPolygon{},
 		GeometryCollectionTag:   GeometryCollection{},
 
-		TableNameTag:     Table(""),
-		UUIDStringTag:    UUID(""),
+		TableNameTag: Table(""),
+		//UUIDStringTag:    UUID(""),
 		DecimalStringTag: Decimal(""),
-		BinaryUUIDTag:    UUIDBin{},
+		BinaryUUIDTag:    UUID{},
+		NoneTag:          CustomNil{},
 
 		DateTimeCompactString: CustomDateTime(time.Now()),
 		DurationStringTag:     CustomDurationStr("2w"),
-		DurationCompactTag:    CustomDuration(0),
+		//DurationCompactTag:    CustomDuration(0),
 	}
 
 	tags := cbor.NewTagSet()
@@ -68,7 +70,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
-	v = replacerBeforeEncode(v)
+	// v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -88,7 +90,7 @@ func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 		return err
 	}
 
-	replacerAfterDecode(&dst)
+	// replacerAfterDecode(&dst)
 	return nil
 }
 

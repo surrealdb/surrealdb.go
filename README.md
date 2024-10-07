@@ -46,22 +46,24 @@ go get github.com/surrealdb/surrealdb.go
 
 ## Getting started
 
-In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.
-
+[//]: # (In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.)
+In the example provided below, we are going to connect and authenticate on a SurrealDB server, set the namespace and make several data manipulation requests.
 > This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
 ```go
 package main
 
 import (
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"fmt"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
-type User struct {
-	ID      string `json:"id,omitempty"`
-	Name    string `json:"name"`
-	Surname string `json:"surname"`
+type Person struct {
+	ID      	*models.RecordID `json:"id,omitempty"`
+	Name    	string `json:"name"`
+	Surname 	string `json:"surname"`
+	Location 	models.GeometryPoint `json:"location"`
 }
 
 func main() {
@@ -71,72 +73,113 @@ func main() {
 		panic(err)
 	}
 
+	// Set the namespace and database
+	if err = db.Use("testNS", "testDB"); err != nil {
+		panic(err)
+	}
+
+	// Sign in to authentication `db`
 	authData := &surrealdb.Auth{
-		Database:  "test",
-		Namespace: "test",
-		Username:  "root",
-		Password:  "root",
+		Username: "root", // use your setup username
+		Password: "root", // use your setup password
 	}
-	if _, err = db.Signin(authData); err != nil {
+	token, err := db.SignIn(authData)
+	if err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Use("test", "test"); err != nil {
+	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
+	// not previously called
+	if err := db.Authenticate(token); err != nil {
 		panic(err)
 	}
 
-	// Define user struct
-	user := User{
+	// And we can later on invalidate the token if desired
+	defer func(token string) {
+		if err := db.Invalidate(); err != nil {
+			panic(err)
+		}
+	}(token)
+
+	// Create an entry
+	person1, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.H{
+		"Name":     "John",
+		"Surname":  "Doe",
+		"Location": models.NewGeometryPoint(-0.11, 22.00),
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Created person with a map: %+v\n", person1)
+
+	// Or use structs
+	person2, err := surrealdb.Create[Person](db, models.Table("persons"), Person{
 		Name:     "John",
 		Surname:  "Doe",
-		Location: types.NewGeometryPoint(-0.11, 22.00),
-	}
-
-	// Insert user
-	data, err := db.Create("user", user)
+		Location: models.NewGeometryPoint(-0.11, 22.00),
+	})
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Created person with a struvt: %+v\n", person2)
 
-	// Unmarshal data
-	createdUser := make([]User, 1)
-	err = surrealdb.Unmarshal(data, &createdUser)
+	// Get entry by Record ID
+	person, err := surrealdb.Select[Person, models.RecordID](db, *person1.ID)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Selected a person by record id: %+v\n", person)
 
-	// Get user by ID
-	data, err = db.Select(createdUser[0].ID)
+	// Or retrieve the entire table
+	persons, err := surrealdb.Select[[]Person, models.Table](db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
-	// Unmarshal data
-	selectedUser := new(User)
-	err = surrealdb.Unmarshal(data, &selectedUser)
+	// Delete an entry by ID
+	if err = surrealdb.Delete[models.RecordID](db, *person2.ID); err != nil {
+		panic(err)
+	}
+
+	// Delete all entries
+	if err = surrealdb.Delete[models.Table](db, models.Table("persons")); err != nil {
+		panic(err)
+	}
+
+	// Confirm empty table
+	persons, err = surrealdb.Select[[]Person](db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
-
-	// Change part/parts of user
-	changes := map[string]string{"name": "Jane"}
-
-	// Update user
-	if _, err = db.Update(selectedUser.ID, changes); err != nil {
-		panic(err)
-	}
-
-	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
-		"record": createdUser[0].ID,
-	}); err != nil {
-		panic(err)
-	}
-
-	// Delete user by ID
-	if _, err = db.Delete(selectedUser.ID); err != nil {
-		panic(err)
-	}
+	fmt.Printf("No Selected person: %+v\n", persons)
 }
+```
+### Doing it your way
+All Data manipulation methods are handled by an undelying `send` function. This function is 
+exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
+methods are:
+- select
+- create
+- insert
+- upsert
+- update
+- patch
+- delete
+- query
+```go
+type UserSelectResult struct {
+	Result []Users
+}
+
+var res UserSelectResult
+// or var res surrealdb.Result[[]Users]
+
+users, err := db.Send(&res, "query", user.ID)
+if err != nil {
+	panic(err)
+}
+	
 ```
 
 ### Instructions for running the example

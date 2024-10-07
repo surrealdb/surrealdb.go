@@ -2,27 +2,30 @@ package connection
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {
-	Code    int    `json:"code" msgpack:"code"`
-	Message string `json:"message,omitempty" msgpack:"message,omitempty"`
+	Code        int    `json:"code" msgpack:"code"`
+	Message     string `json:"message,omitempty" msgpack:"message,omitempty"`
+	Description string `json:"description,omitempty" msgpack:"message,omitempty"`
 }
 
-func (r *RPCError) Error() string {
+func (r RPCError) Error() string {
+	if r.Description != "" {
+		return r.Description
+	}
 	return r.Message
 }
 
 // RPCRequest represents an incoming JSON-RPC request
 type RPCRequest struct {
 	ID     interface{}   `json:"id" msgpack:"id"`
-	Async  bool          `json:"async,omitempty" msgpack:"async,omitempty"`
 	Method string        `json:"method,omitempty" msgpack:"method,omitempty"`
 	Params []interface{} `json:"params,omitempty" msgpack:"params,omitempty"`
 }
 
 // RPCResponse represents an outgoing JSON-RPC response
-type RPCResponse struct {
+type RPCResponse[T any] struct {
 	ID     interface{} `json:"id" msgpack:"id"`
 	Error  *RPCError   `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result interface{} `json:"result,omitempty" msgpack:"result,omitempty"`
+	Result *T          `json:"result,omitempty" msgpack:"result,omitempty"`
 }
 
 // RPCNotification represents an outgoing JSON-RPC notification

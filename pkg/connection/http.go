@@ -2,13 +2,15 @@ package connection
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 type HTTPConnection struct {
@@ -37,19 +39,20 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Connect() error {
+	ctx := context.TODO()
 	if h.baseURL == "" {
-		return fmt.Errorf("base url not set")
+		return constants.ErrNoBaseURL
 	}
 
 	if h.marshaler == nil {
-		return fmt.Errorf("marshaler is not set")
+		return constants.ErrNoMarshaler
 	}
 
 	if h.unmarshaler == nil {
-		return fmt.Errorf("unmarshaler is not set")
+		return constants.ErrNoUnmarshaler
 	}
 
-	httpReq, err := http.NewRequest(http.MethodGet, h.baseURL+"/health", http.NoBody)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -75,25 +78,25 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 	return h
 }
 
-func (h *HTTPConnection) Send(method string, params []interface{}) (interface{}, error) {
+func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
 	if h.baseURL == "" {
-		return nil, fmt.Errorf("connection host not set")
+		return constants.ErrNoBaseURL
 	}
 
-	rpcReq := &RPCRequest{
-		ID:     rand.String(RequestIDLength),
+	request := &RPCRequest{
+		ID:     rand.String(constants.RequestIDLength),
 		Method: method,
 		Params: params,
 	}
+	reqBody, err := h.marshaler.Marshal(request)
 
-	reqBody, err := h.marshaler.Marshal(rpcReq)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
@@ -101,55 +104,66 @@ func (h *HTTPConnection) Send(method string, params []interface{}) (interface{},
 	if namespace, ok := h.variables.Load("namespace"); ok {
 		req.Header.Set("Surreal-NS", namespace.(string))
 	} else {
-		return nil, fmt.Errorf("namespace or database or both are not set")
+		return constants.ErrNoNamespaceOrDB
 	}
 
 	if database, ok := h.variables.Load("database"); ok {
 		req.Header.Set("Surreal-DB", database.(string))
 	} else {
-		return nil, fmt.Errorf("namespace or database or both are not set")
+		return constants.ErrNoNamespaceOrDB
 	}
 
-	if token, ok := h.variables.Load("token"); ok {
+	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
-	resp, err := h.MakeRequest(req)
+	respData, err := h.MakeRequest(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var rpcResponse RPCResponse
-	err = h.unmarshaler.Unmarshal(resp, &rpcResponse)
-	if err != nil {
-		return nil, err
+	var rpcRes RPCResponse[interface{}]
+	if err := h.unmarshaler.Unmarshal(respData, &rpcRes); err != nil {
+		return err
+	}
+	if rpcRes.Error != nil {
+		return rpcRes.Error
 	}
 
-	// Manage auth tokens
-	switch method {
-	case "signin", "signup":
-		h.variables.Store("token", rpcResponse.Result)
-	case "authenticate":
-		h.variables.Store("token", params[0])
-	case "invalidate":
-		h.variables.Delete("token")
+	if dest != nil {
+		return h.unmarshaler.Unmarshal(respData, dest)
 	}
 
-	return rpcResponse.Result, nil
+	return nil
 }
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
+	defer func(Body io.ReadCloser) {
+		err = Body.Close()
+		if err != nil {
+			panic(err)
+		}
+	}(resp.Body)
 	if err != nil {
-		log.Fatalf("Error making HTTP request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("request failed with status code %d", resp.StatusCode)
+		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}
 
-	return io.ReadAll(resp.Body)
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return respBytes, nil
+	}
+
+	var errorResponse RPCResponse[any]
+	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
+	if err != nil {
+		panic(err)
+	}
+	return nil, errorResponse.Error
 }
 
 func (h *HTTPConnection) Use(namespace, database string) error {

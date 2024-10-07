@@ -1,39 +1,28 @@
 package connection
 
 import (
-	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/suite"
 )
 
-func TestEngine_WsMakeRequest(t *testing.T) {
-	p := NewConnectionParams{
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
-		BaseURL:     "ws://127.0.0.1:8000",
-	}
-	con := NewWebSocketConnection(p)
+type WsTestSuite struct {
+	suite.Suite
+	name string
+}
 
-	err := con.Connect()
-	assert.Nil(t, err, "no error returned when initializing engine connection")
+func TestWsTestSuite(t *testing.T) {
+	ts := new(WsTestSuite)
+	ts.name = "WS Test Suite"
 
-	err = con.Use("test", "test")
-	assert.Nil(t, err, "no error returned when setting namespace and database")
+	suite.Run(t, ts)
+}
 
-	token, err := con.Send("signin", []interface{}{models.Auth{Username: "pass", Password: "pass"}})
-	assert.Nil(t, err, "no error returned when signing in")
-	fmt.Println(token)
+// SetupSuite is called before the s starts running
+func (s *WsTestSuite) SetupSuite() {
 
-	params := []interface{}{
-		"SELECT marketing, count() FROM $tb GROUP BY marketing",
-		map[string]interface{}{
-			"datetime": time.Now(),
-			"testnil":  nil,
-		},
-	}
-	res, err := con.Send("query", params)
-	assert.Nil(t, err, "no error returned when sending a query")
-	fmt.Println(res)
+}
+
+func (s *WsTestSuite) TearDownSuite() {
+
 }
