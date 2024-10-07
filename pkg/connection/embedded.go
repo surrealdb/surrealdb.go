@@ -67,7 +67,7 @@ func (h *EmbeddedConnection) Close() error {
 	return nil
 }
 
-func (h *EmbeddedConnection) Send(method string, params []interface{}) (interface{}, error) {
+func (h *EmbeddedConnection) Send(method string, params ...interface{}) (interface{}, error) {
 	if h.baseURL == "" {
 		return nil, fmt.Errorf("connection host not set")
 	}
