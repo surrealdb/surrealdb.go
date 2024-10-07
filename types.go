@@ -12,7 +12,7 @@ type PatchData struct {
 type QueryResult[T any] struct {
 	Status string `json:"status"`
 	Time   string `json:"time"`
-	Result []T    `json:"result"`
+	Result T      `json:"result"`
 }
 
 type QueryStatement[TResult any] struct {

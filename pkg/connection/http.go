@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -40,15 +40,15 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 func (h *HTTPConnection) Connect() error {
 	ctx := context.TODO()
 	if h.baseURL == "" {
-		return fmt.Errorf("base url not set")
+		return constants.ErrNoBaseURL
 	}
 
 	if h.marshaler == nil {
-		return fmt.Errorf("marshaler is not set")
+		return constants.ErrNoMarshaler
 	}
 
 	if h.unmarshaler == nil {
-		return fmt.Errorf("unmarshaler is not set")
+		return constants.ErrNoUnmarshaler
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
@@ -79,16 +79,16 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 
 func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
 	if h.baseURL == "" {
-		return fmt.Errorf("connection host not set")
+		return constants.ErrNoBaseURL
 	}
 
-	rpcReq := &RPCRequest{
-		ID:     rand.String(RequestIDLength),
+	request := &RPCRequest{
+		ID:     rand.String(constants.RequestIDLength),
 		Method: method,
 		Params: params,
 	}
+	reqBody, err := h.marshaler.Marshal(request)
 
-	reqBody, err := h.marshaler.Marshal(rpcReq)
 	if err != nil {
 		return err
 	}
@@ -103,16 +103,16 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 	if namespace, ok := h.variables.Load("namespace"); ok {
 		req.Header.Set("Surreal-NS", namespace.(string))
 	} else {
-		return fmt.Errorf("namespace or database or both are not set")
+		return constants.ErrNoNamespaceOrDB
 	}
 
 	if database, ok := h.variables.Load("database"); ok {
 		req.Header.Set("Surreal-DB", database.(string))
 	} else {
-		return fmt.Errorf("namespace or database or both are not set")
+		return constants.ErrNoNamespaceOrDB
 	}
 
-	if token, ok := h.variables.Load(AuthTokenKey); ok {
+	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	}
 
@@ -138,15 +138,16 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		log.Fatalf("Error making HTTP request: %v", err)
-	}
 	defer func(Body io.ReadCloser) {
 		err = Body.Close()
 		if err != nil {
 			panic(err)
 		}
 	}(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error making HTTP request: %w", err)
+	}
+
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

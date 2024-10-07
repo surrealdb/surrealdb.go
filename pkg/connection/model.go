@@ -17,7 +17,6 @@ func (r RPCError) Error() string {
 // RPCRequest represents an incoming JSON-RPC request
 type RPCRequest struct {
 	ID     interface{}   `json:"id" msgpack:"id"`
-	Async  bool          `json:"async,omitempty" msgpack:"async,omitempty"`
 	Method string        `json:"method,omitempty" msgpack:"method,omitempty"`
 	Params []interface{} `json:"params,omitempty" msgpack:"params,omitempty"`
 }
@@ -26,7 +25,7 @@ type RPCRequest struct {
 type RPCResponse[T any] struct {
 	ID     interface{} `json:"id" msgpack:"id"`
 	Error  *RPCError   `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result T           `json:"result,omitempty" msgpack:"result,omitempty"`
+	Result *T          `json:"result,omitempty" msgpack:"result,omitempty"`
 }
 
 // RPCNotification represents an outgoing JSON-RPC notification

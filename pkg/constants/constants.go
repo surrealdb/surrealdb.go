@@ -1,17 +1,14 @@
 package constants
 
-import "errors"
-
-// Errors
 var (
-	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
-	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
-	ErrNoRow        = errors.New("error no row")
+	AuthTokenKey = "auth_token"
 )
 
-var (
-	WebsocketScheme      = "ws"
-	WebsocketSucerScheme = "wss"
-	HTTPScheme           = "http"
-	HTTPSecureScheme     = "https"
+const (
+	// RequestIDLength size of id sent on WS request
+	RequestIDLength = 16
+	// CloseMessageCode identifier the message id for a close request
+	CloseMessageCode = 1000
+	// DefaultTimeout timeout in seconds
+	DefaultTimeout = 30
 )

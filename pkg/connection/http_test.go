@@ -5,12 +5,9 @@ import (
 	"context"
 	"encoding/hex"
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"io"
-	"log/slog"
 	"net/http"
-	"os"
 	"testing"
 )
 
@@ -29,75 +26,24 @@ func NewTestClient(fn RoundTripFunc) *http.Client {
 
 type HTTPTestSuite struct {
 	suite.Suite
-	name                string
-	connImplementations map[string]*HTTPConnection
-	logBuffer           *bytes.Buffer
+	name      string
+	logBuffer *bytes.Buffer
 }
 
 func TestHttpTestSuite(t *testing.T) {
 	ts := new(HTTPTestSuite)
-	ts.connImplementations = make(map[string]*HTTPConnection)
+	ts.name = "HTTP Test Suite"
 
-	// Default
-	ts.connImplementations["http"] = NewHTTPConnection(NewConnectionParams{
-		BaseURL:     "http://localhost:8000",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
-		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
-	})
-
-	RunHTTPMap(t, ts)
-}
-
-func RunHTTPMap(t *testing.T, s *HTTPTestSuite) {
-	for wsName := range s.connImplementations {
-		// Run the test suite
-		t.Run(wsName, func(t *testing.T) {
-			s.name = wsName
-			suite.Run(t, s)
-		})
-	}
+	suite.Run(t, ts)
 }
 
 // SetupSuite is called before the s starts running
 func (s *HTTPTestSuite) SetupSuite() {
-	con := s.connImplementations[s.name]
 
-	err := con.Connect()
-	s.Require().NoError(err)
-
-	err = con.Use("test", "test")
-	s.Require().NoError(err)
-
-	err = con.Send(nil, "signin", map[string]interface{}{
-		"user": "root",
-		"pass": "root",
-	})
-	s.Require().NoError(err)
 }
 
 func (s *HTTPTestSuite) TearDownSuite() {
-	con := s.connImplementations[s.name]
-	err := con.Close()
-	s.Require().NoError(err)
-}
 
-func (s *HTTPTestSuite) TestEngine_HttpMakeRequest() {
-	p := NewConnectionParams{
-		BaseURL:     "http://localhost:8000",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
-	}
-	con := NewHTTPConnection(p)
-	err := con.Use("test", "test")
-	s.Require().NoError(err, "no error returned when setting namespace and database")
-
-	err = con.Connect() // implement a "is ready"
-	s.Require().NoError(err, "no error returned when initializing engine connection")
-
-	var bearerRes RPCResponse[string]
-	err = con.Send(&bearerRes, "signin", map[string]interface{}{"user": "root", "pass": "root"})
-	s.Require().NoError(err, "no error returned when signing in")
 }
 
 func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {

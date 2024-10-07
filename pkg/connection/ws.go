@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 	"io"
 	"log/slog"
@@ -28,12 +29,6 @@ type WebSocketConnection struct {
 	Option   []Option
 	logger   logger.Logger
 
-	responseChannels     map[string]chan []byte
-	responseChannelsLock sync.RWMutex
-
-	notificationChannels     map[string]chan Notification
-	notificationChannelsLock sync.RWMutex
-
 	closeChan  chan int
 	closeError error
 }
@@ -41,23 +36,25 @@ type WebSocketConnection struct {
 func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 	return &WebSocketConnection{
 		BaseConnection: BaseConnection{
+			baseURL: p.BaseURL,
+
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
-			baseURL:     p.BaseURL,
+
+			responseChannels:     make(map[string]chan []byte),
+			notificationChannels: make(map[string]chan Notification),
 		},
 
-		Conn:                 nil,
-		closeChan:            make(chan int),
-		responseChannels:     make(map[string]chan []byte),
-		notificationChannels: make(map[string]chan Notification),
-		Timeout:              DefaultTimeout * time.Second,
-		logger:               logger.New(slog.NewJSONHandler(os.Stdout, nil)),
+		Conn:      nil,
+		closeChan: make(chan int),
+		Timeout:   constants.DefaultTimeout * time.Second,
+		logger:    logger.New(slog.NewJSONHandler(os.Stdout, nil)),
 	}
 }
 
 func (ws *WebSocketConnection) Connect() error {
 	if ws.baseURL == "" {
-		return fmt.Errorf("base url not set")
+		return constants.ErrNoBaseURL
 	}
 
 	dialer := gorilla.DefaultDialer
@@ -112,73 +109,12 @@ func (ws *WebSocketConnection) Close() error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
 	close(ws.closeChan)
-	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(CloseMessageCode, ""))
+	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
 	if err != nil {
 		return err
 	}
 
 	return ws.Conn.Close()
-}
-
-func (ws *WebSocketConnection) LiveNotifications(liveQueryID string) (chan Notification, error) {
-	c, err := ws.createNotificationChannel(liveQueryID)
-	if err != nil {
-		ws.logger.Error(err.Error())
-	}
-	return c, err
-}
-
-func (ws *WebSocketConnection) Kill(id string) error {
-	return ws.Send(nil, "kill", id)
-}
-
-func (ws *WebSocketConnection) createResponseChannel(id string) (chan []byte, error) {
-	ws.responseChannelsLock.Lock()
-	defer ws.responseChannelsLock.Unlock()
-
-	if _, ok := ws.responseChannels[id]; ok {
-		return nil, fmt.Errorf("%w: %v", ErrIDInUse, id)
-	}
-
-	ch := make(chan []byte)
-	ws.responseChannels[id] = ch
-
-	return ch, nil
-}
-
-func (ws *WebSocketConnection) createNotificationChannel(liveQueryID string) (chan Notification, error) {
-	ws.notificationChannelsLock.Lock()
-	defer ws.notificationChannelsLock.Unlock()
-
-	if _, ok := ws.notificationChannels[liveQueryID]; ok {
-		return nil, fmt.Errorf("%w: %v", ErrIDInUse, liveQueryID)
-	}
-
-	ch := make(chan Notification)
-	ws.notificationChannels[liveQueryID] = ch
-
-	return ch, nil
-}
-
-func (ws *WebSocketConnection) removeResponseChannel(id string) {
-	ws.responseChannelsLock.Lock()
-	defer ws.responseChannelsLock.Unlock()
-	delete(ws.responseChannels, id)
-}
-
-func (ws *WebSocketConnection) getResponseChannel(id string) (chan []byte, bool) {
-	ws.responseChannelsLock.RLock()
-	defer ws.responseChannelsLock.RUnlock()
-	ch, ok := ws.responseChannels[id]
-	return ch, ok
-}
-
-func (ws *WebSocketConnection) getLiveChannel(id string) (chan Notification, bool) {
-	ws.notificationChannelsLock.RLock()
-	defer ws.notificationChannelsLock.RUnlock()
-	ch, ok := ws.notificationChannels[id]
-
-	return ch, ok
 }
 
 func (ws *WebSocketConnection) Use(namespace, database string) error {
@@ -205,7 +141,7 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	default:
 	}
 
-	id := rand.String(RequestIDLength)
+	id := rand.String(constants.RequestIDLength)
 	request := &RPCRequest{
 		ID:     id,
 		Method: method,
@@ -225,7 +161,7 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 
 	select {
 	case <-timeout:
-		return ErrTimeout
+		return constants.ErrTimeout
 	case resBytes, open := <-responseChan:
 		if !open {
 			return errors.New("channel closed")
@@ -334,6 +270,6 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 			return
 		}
 
-		LiveNotificationChan <- notification.Result
+		LiveNotificationChan <- *notification.Result
 	}
 }

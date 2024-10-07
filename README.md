@@ -54,12 +54,13 @@ In the example provided below, we are going to connect and authenticate on a Sur
 package main
 
 import (
+	"fmt"
 	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
-type User struct {
-	ID      	models.RecordID `json:"id,omitempty"`
+type Person struct {
+	ID      	*models.RecordID `json:"id,omitempty"`
 	Name    	string `json:"name"`
 	Surname 	string `json:"surname"`
 	Location 	models.GeometryPoint `json:"location"`
@@ -77,24 +78,22 @@ func main() {
 		panic(err)
 	}
 
-	// Alternatively you can set the namespace and database during authentication
-	authData := surrealdb.Auth{
-		Database:  "testDB",
-		Namespace: "testNS",
-		Username:  "root",
-		Password:  "password",
+	// Sign in to authentication `db`
+	authData := &surrealdb.Auth{
+		Username: "root", // use your setup username
+		Password: "root", // use your setup password
 	}
 	token, err := db.SignIn(authData)
 	if err != nil {
 		panic(err)
 	}
-	
-	// Check token validity. This also authenticates the `db` if sign in was 
+
+	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
 	// not previously called
 	if err := db.Authenticate(token); err != nil {
 		panic(err)
 	}
-	
+
 	// And we can later on invalidate the token if desired
 	defer func(token string) {
 		if err := db.Invalidate(); err != nil {
@@ -102,15 +101,19 @@ func main() {
 		}
 	}(token)
 
-	// Define user struct
-	user := User{
-		Name:     "John",
-		Surname:  "Doe",
-		Location: models.NewGeometryPoint(-0.11, 22.00),
+	// Create an entry
+	person1, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.H{
+		"Name":     "John",
+		"Surname":  "Doe",
+		"Location": models.NewGeometryPoint(-0.11, 22.00),
+	})
+	if err != nil {
+		panic(err)
 	}
+	fmt.Printf("Created person with a map: %+v\n", person1)
 
-	// Insert user
-	user, err := surrealdb.Create[User](db, "user", surrealdb.H{
+	// Or use structs
+	person2, err := surrealdb.Create[Person](db, models.Table("persons"), Person{
 		Name:     "John",
 		Surname:  "Doe",
 		Location: models.NewGeometryPoint(-0.11, 22.00),
@@ -118,17 +121,38 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	
-	// Get user by ID
-	users, err := surrealdb.Select[User, models.RecordID](db, user.ID)
+	fmt.Printf("Created person with a struvt: %+v\n", person2)
+
+	// Get entry by Record ID
+	person, err := surrealdb.Select[Person, models.RecordID](db, *person1.ID)
 	if err != nil {
 		panic(err)
 	}
-	
-	// Delete user by ID
-	if err = surrealdb.Delete[models.RecordID](db, user.ID); err != nil {
+	fmt.Printf("Selected a person by record id: %+v\n", person)
+
+	// Or retrieve the entire table
+	persons, err := surrealdb.Select[[]Person, models.Table](db, models.Table("persons"))
+	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Selected all in persons table: %+v\n", persons)
+
+	// Delete an entry by ID
+	if err = surrealdb.Delete[models.RecordID](db, *person2.ID); err != nil {
+		panic(err)
+	}
+
+	// Delete all entries
+	if err = surrealdb.Delete[models.Table](db, models.Table("persons")); err != nil {
+		panic(err)
+	}
+
+	// Confirm empty table
+	persons, err = surrealdb.Select[[]Person](db, models.Table("persons"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("No Selected person: %+v\n", persons)
 }
 ```
 ### Doing it your way

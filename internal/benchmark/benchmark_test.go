@@ -49,6 +49,6 @@ func BenchmarkSelect(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// error is ignored for benchmarking purposes.
-		surrealdb.Select[testUser](db, models.NewRecordID("users:bob")) //nolint:errcheck
+		surrealdb.Select[testUser](db, models.NewRecordID("users", "bob")) //nolint:errcheck
 	}
 }
