@@ -1,4 +1,4 @@
-module github.com/surrealdb/surrealdb.go/v2
+module github.com/surrealdb/surrealdb.go
 
 go 1.20
 

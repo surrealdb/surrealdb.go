@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
 type HTTPConnection struct {

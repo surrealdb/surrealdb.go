@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // Default const and vars for testing

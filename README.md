@@ -55,8 +55,8 @@ package main
 
 import (
 	"fmt"
-	surrealdb "github.com/surrealdb/surrealdb.go/v2"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type Person struct {
@@ -102,7 +102,7 @@ func main() {
 	}(token)
 
 	// Create an entry
-	person1, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.H{
+	person1, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
 		"Name":     "John",
 		"Surname":  "Doe",
 		"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -155,6 +155,7 @@ func main() {
 	fmt.Printf("No Selected person: %+v\n", persons)
 }
 ```
+
 ### Doing it your way
 All Data manipulation methods are handled by an undelying `send` function. This function is 
 exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
@@ -175,7 +176,7 @@ type UserSelectResult struct {
 var res UserSelectResult
 // or var res surrealdb.Result[[]Users]
 
-users, err := db.Send(&res, "query", user.ID)
+err := db.Send(&res, "query", user.ID)
 if err != nil {
 	panic(err)
 }
@@ -250,9 +251,39 @@ See the [documetation on data models](https://surrealdb.com/docs/surrealql/datam
 | Geometry MultiPolygon | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryPolygon2,... }`   |       |
 | Geometry Collection| `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryLine2, GeometryPoint3, GeometryMultiPoint4,... }`   |       |
 
+## Helper Types
+### surrealdb.O
+For some methods like create, insert, update, you can pass a map instead of an struct value. An example:
+```go
+person, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
+	"Name":     "John",
+	"Surname":  "Doe",
+	"Location": models.NewGeometryPoint(-0.11, 22.00),
+})
+```
+This can be simplified to:
+```go
+person, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.O{
+	"Name":     "John",
+	"Surname":  "Doe",
+	"Location": models.NewGeometryPoint(-0.11, 22.00),
+})
+```
+Where surrealdb.O is defined below. There is no special advantage in using this other than simplicity/legibility.
+```go
+type surrealdb.O map[interface{}]interface{}
+```
 
-
-
+### surrealdb.Result[T]
+This is useful for the `Send` function where `T` is the expected response type for a request. An example:
+```go
+var res surrealdb.Result[[]Users]
+err := db.Send(&res, "select", model.Table("users"))
+if err != nil {
+	panic(err)
+}
+fmt.Printf("users: %+v\n", users.R)
+```
 ## Contributing
 
 You can run the Makefile commands to run and build the project
@@ -266,28 +297,6 @@ make lint
 You also need to be running SurrealDB alongside the tests.
 We recommend using the nightly build, as development may rely on the latest functionality.
 
-## Helper functions
-
-### Smart Marshal
-
-SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct, and the library will automatically convert it to the correct type.
-
-```go
-// User struct is a test struct
-user, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Create, user[0]))
-
-// Can be used without SmartUnmarshal
-data, err := surrealdb.SmartMarshal(s.db.Create, user[0])
-```
-
-### Smart Unmarshal
-
-SurrealDB Go library supports smart unmarshal. It means that you can unmarshal any type of data to the generic type provided, and the library will automatically convert it to that type.
-
-```go
-// User struct is a test struct
-data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
-```
 
 
 

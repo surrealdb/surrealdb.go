@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type LiveHandler interface {

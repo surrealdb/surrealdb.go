@@ -1,6 +1,6 @@
 package surrealdb
 
-import "github.com/surrealdb/surrealdb.go/v2/pkg/models"
+import "github.com/surrealdb/surrealdb.go/pkg/models"
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {
@@ -35,7 +35,7 @@ type Auth struct {
 	Password  string `json:"pass,omitempty"`
 }
 
-type H map[string]interface{}
+type O map[interface{}]interface{}
 
 type Result[T any] struct {
 	T any
