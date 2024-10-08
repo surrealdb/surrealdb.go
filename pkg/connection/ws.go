@@ -52,8 +52,8 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 }
 
 func (ws *WebSocketConnection) Connect() error {
-	if ws.baseURL == "" {
-		return constants.ErrNoBaseURL
+	if err := ws.preConnectionChecks(); err != nil {
+		return err
 	}
 
 	dialer := gorilla.DefaultDialer

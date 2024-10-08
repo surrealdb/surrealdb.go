@@ -94,6 +94,22 @@ func (bc *BaseConnection) getLiveChannel(id string) (chan Notification, bool) {
 	return ch, ok
 }
 
+func (bc *BaseConnection) preConnectionChecks() error {
+	if bc.baseURL == "" {
+		return constants.ErrNoBaseURL
+	}
+
+	if bc.marshaler == nil {
+		return constants.ErrNoMarshaler
+	}
+
+	if bc.unmarshaler == nil {
+		return constants.ErrNoUnmarshaler
+	}
+
+	return nil
+}
+
 func (bc *BaseConnection) LiveNotifications(liveQueryID string) (chan Notification, error) {
 	c, err := bc.createNotificationChannel(liveQueryID)
 	if err != nil {
