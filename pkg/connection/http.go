@@ -40,16 +40,8 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 
 func (h *HTTPConnection) Connect() error {
 	ctx := context.TODO()
-	if h.baseURL == "" {
-		return constants.ErrNoBaseURL
-	}
-
-	if h.marshaler == nil {
-		return constants.ErrNoMarshaler
-	}
-
-	if h.unmarshaler == nil {
-		return constants.ErrNoUnmarshaler
+	if err := h.preConnectionChecks(); err != nil {
+		return err
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
