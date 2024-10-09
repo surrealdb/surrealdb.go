@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+
 	"github.com/fxamacker/cbor/v2"
 )
 
@@ -14,8 +16,8 @@ func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
 	totalNS := time.Duration(*d).Nanoseconds()
-	s := totalNS / 1_000_000_000
-	ns := totalNS % 1_000_000_000
+	s := totalNS / constants.OneSecondToNanoSecond
+	ns := totalNS % constants.OneSecondToNanoSecond
 
 	return enc.Marshal(cbor.Tag{
 		Number:  uint64(DurationCompactTag),
@@ -35,7 +37,7 @@ func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 	s := temp[0].(int64)
 	ns := temp[1].(int64)
 
-	*d = CustomDuration(time.Duration((float64(s) * 1_000_000_000) + float64(ns)))
+	*d = CustomDuration(time.Duration((float64(s) * constants.OneSecondToNanoSecond) + float64(ns)))
 
 	return nil
 }

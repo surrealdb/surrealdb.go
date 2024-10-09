@@ -46,7 +46,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 
 		Conn:      nil,
 		closeChan: make(chan int),
-		Timeout:   constants.DefaultTimeout * time.Second,
+		Timeout:   constants.DefaultWSTimeout,
 		logger:    logger.New(slog.NewJSONHandler(os.Stdout, nil)),
 	}
 }
@@ -60,10 +60,11 @@ func (ws *WebSocketConnection) Connect() error {
 	dialer.EnableCompression = true
 	dialer.Subprotocols = append(dialer.Subprotocols, "cbor")
 
-	connection, _, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
 	ws.Conn = connection
 

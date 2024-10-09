@@ -31,7 +31,7 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 
 	if con.httpClient == nil {
 		con.httpClient = &http.Client{
-			Timeout: 10 * time.Second, // Set a default timeout to avoid hanging requests
+			Timeout: constants.DefaultHTTPTimeout, // Set a default timeout to avoid hanging requests
 		}
 	}
 
@@ -131,15 +131,10 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
-	defer func(Body io.ReadCloser) {
-		err = Body.Close()
-		if err != nil {
-			panic(err)
-		}
-	}(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {

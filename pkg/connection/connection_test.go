@@ -113,5 +113,4 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	var selectRes1 RPCResponse[testUser]
 	err = con.Send(&selectRes1, "select", createRes.Result.ID)
 	s.Require().NoError(err)
-	// s.Assert().Equal(nil, selectRes1.Result)
 }

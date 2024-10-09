@@ -347,7 +347,6 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			go func(j int) {
 				defer wg.Done()
 				_, _ = surrealdb.Select[testUser](s.db, models.NewRecordID("users", j))
-				// s.Require().Equal(err, constants.ErrNoRow)
 			}(i)
 		}
 		wg.Wait()

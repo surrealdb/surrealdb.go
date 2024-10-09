@@ -17,8 +17,9 @@ type RecordIDType interface {
 }
 
 func ParseRecordID(idStr string) *RecordID {
+	expectedLen := 2
 	bits := strings.Split(idStr, ":")
-	if len(bits) != 2 {
+	if len(bits) != expectedLen {
 		panic(fmt.Errorf("invalid id string. Expected format is 'tablename:indentifier'"))
 	}
 	return &RecordID{

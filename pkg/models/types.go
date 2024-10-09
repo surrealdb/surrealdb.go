@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofrs/uuid"
 )
@@ -29,8 +31,8 @@ func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 
 	totalNS := time.Time(*d).Nanosecond()
 
-	s := totalNS / 1_000_000_000
-	ns := totalNS % 1_000_000_000
+	s := totalNS / constants.OneSecondToNanoSecond
+	ns := totalNS % constants.OneSecondToNanoSecond
 
 	return enc.Marshal(cbor.Tag{
 		Number:  uint64(DateTimeCompactString),
