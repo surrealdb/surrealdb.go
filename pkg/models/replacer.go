@@ -27,6 +27,8 @@ func replacerBeforeEncode(value interface{}) interface{} {
 		return newValue
 	}
 
+	// todo: handle slices
+
 	return value
 }
 
@@ -51,6 +53,8 @@ func replacerAfterDecode(value interface{}) interface{} {
 
 		return newValue
 	}
+
+	// todo: handle slices
 
 	return value
 }
