@@ -46,95 +46,141 @@ go get github.com/surrealdb/surrealdb.go
 
 ## Getting started
 
-In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.
-
+[//]: # (In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.)
+In the example provided below, we are going to connect and authenticate on a SurrealDB server, set the namespace and make several data manipulation requests.
 > This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
 ```go
 package main
 
 import (
-	"github.com/surrealdb/surrealdb.go"
+	"fmt"
+	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-type User struct {
-	ID      string `json:"id,omitempty"`
-	Name    string `json:"name"`
-	Surname string `json:"surname"`
+type Person struct {
+	ID      	*models.RecordID `json:"id,omitempty"`
+	Name    	string `json:"name"`
+	Surname 	string `json:"surname"`
+	Location 	models.GeometryPoint `json:"location"`
 }
 
 func main() {
 	// Connect to SurrealDB
-	db, err := surrealdb.New("ws://localhost:8000/rpc")
+	db, err := surrealdb.New("ws://localhost:8000")
 	if err != nil {
 		panic(err)
 	}
 
+	// Set the namespace and database
+	if err = db.Use("testNS", "testDB"); err != nil {
+		panic(err)
+	}
+
+	// Sign in to authentication `db`
 	authData := &surrealdb.Auth{
-		Database:  "test",
-		Namespace: "test",
-		Username:  "root",
-		Password:  "root",
+		Username: "root", // use your setup username
+		Password: "root", // use your setup password
 	}
-	if _, err = db.Signin(authData); err != nil {
-		panic(err)
-	}
-
-	if _, err = db.Use("test", "test"); err != nil {
-		panic(err)
-	}
-
-	// Define user struct
-	user := User{
-		Name:    "John",
-		Surname: "Doe",
-	}
-
-	// Insert user
-	data, err := db.Create("user", user)
+	token, err := db.SignIn(authData)
 	if err != nil {
 		panic(err)
 	}
 
-	// Unmarshal data
-	createdUser := make([]User, 1)
-	err = surrealdb.Unmarshal(data, &createdUser)
+	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
+	// not previously called
+	if err := db.Authenticate(token); err != nil {
+		panic(err)
+	}
+
+	// And we can later on invalidate the token if desired
+	defer func(token string) {
+		if err := db.Invalidate(); err != nil {
+			panic(err)
+		}
+	}(token)
+
+	// Create an entry
+	person1, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
+		"Name":     "John",
+		"Surname":  "Doe",
+		"Location": models.NewGeometryPoint(-0.11, 22.00),
+	})
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Created person with a map: %+v\n", person1)
 
-	// Get user by ID
-	data, err = db.Select(createdUser[0].ID)
+	// Or use structs
+	person2, err := surrealdb.Create[Person](db, models.Table("persons"), Person{
+		Name:     "John",
+		Surname:  "Doe",
+		Location: models.NewGeometryPoint(-0.11, 22.00),
+	})
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Created person with a struvt: %+v\n", person2)
 
-	// Unmarshal data
-	selectedUser := new(User)
-	err = surrealdb.Unmarshal(data, &selectedUser)
+	// Get entry by Record ID
+	person, err := surrealdb.Select[Person, models.RecordID](db, *person1.ID)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Selected a person by record id: %+v\n", person)
 
-	// Change part/parts of user
-	changes := map[string]string{"name": "Jane"}
+	// Or retrieve the entire table
+	persons, err := surrealdb.Select[[]Person, models.Table](db, models.Table("persons"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
-	// Update user
-	if _, err = db.Update(selectedUser.ID, changes); err != nil {
+	// Delete an entry by ID
+	if err = surrealdb.Delete[models.RecordID](db, *person2.ID); err != nil {
 		panic(err)
 	}
 
-	if _, err = db.Query("SELECT * FROM $record", map[string]interface{}{
-		"record": createdUser[0].ID,
-	}); err != nil {
+	// Delete all entries
+	if err = surrealdb.Delete[models.Table](db, models.Table("persons")); err != nil {
 		panic(err)
 	}
 
-	// Delete user by ID
-	if _, err = db.Delete(selectedUser.ID); err != nil {
+	// Confirm empty table
+	persons, err = surrealdb.Select[[]Person](db, models.Table("persons"))
+	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("No Selected person: %+v\n", persons)
 }
+```
+
+### Doing it your way
+All Data manipulation methods are handled by an undelying `send` function. This function is 
+exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
+methods are:
+- select
+- create
+- insert
+- upsert
+- update
+- patch
+- delete
+- query
+```go
+type UserSelectResult struct {
+	Result []Users
+}
+
+var res UserSelectResult
+// or var res surrealdb.Result[[]Users]
+
+err := db.Send(&res, "query", user.ID)
+if err != nil {
+	panic(err)
+}
+	
 ```
 
 ### Instructions for running the example
@@ -144,6 +190,100 @@ func main() {
 - Run `go mod tidy` to download the `surrealdb.go` dependency
 - Run `go run main.go` to run the example.
 
+## Connection Engines
+There are 2 different connection engines you can use to connect to SurrealDb backend. You can do so via Websocket or through HTTP
+connections
+
+### Via Websocket
+```go
+db, err := surrealdb.New("ws://localhost:8000")
+```
+or for a secure connection
+```go
+db, err := surrealdb.New("wss://localhost:8000")
+```
+
+### Via HTTP
+There are some functions that are not available on RPC when using HTTP but on Websocket. All these except
+the "live" endpoint are effectively implemented in the HTTP library and provides the same result as though
+it is natively available on HTTP. While using the HTTP connection engine, note that live queries will still
+use a websocket connection if the backend supports it
+```go
+db, err := surrealdb.New("http://localhost:8000")
+```
+or for a secure connection
+```go
+db, err := surrealdb.New("https://localhost:8000")
+```
+
+
+## Data Models
+This package facilitates communication between client and the backend service using the Concise 
+Binary Object Representation (CBOR) format. It streamlines data serialization and deserialization 
+while ensuring efficient and lightweight communication. The library also provides custom models 
+tailored to specific Data models recognised by SurrealDb, which cannot be covered by idiomatic go, enabling seamless interaction between 
+the client and the backend.
+
+See the [documetation on data models](https://surrealdb.com/docs/surrealql/datamodel) on support data types
+
+| CBOR Type         |  Go Representation | Example                    |
+|-------------------|-----------------------------|----------------------------|
+| Null              | `nil`                       | `var x interface{} = nil`  |
+| None              | `surrealdb.None`           | `map[string]interface{}{"customer": surrealdb.None}`  |
+| Boolean           | `bool`                      | `true`, `false`            |
+| Array             | `[]interface{}`             | `[]MyStruct{item1, item2}`  |
+| Date/Time         | `time.Time`                 | `time.Now()`               |
+| Duration         | `time.Duration`              | `time.Duration(8821356)`        |
+| UUID (string representation)  | `surrealdb.UUID(string)` | `surrealdb.UUID("123e4567-e89b-12d3-a456-426614174000")` |
+| UUID (binary representation)  | `surrealdb.UUIDBin([]bytes)`| `surrealdb.UUIDBin([]byte{0x01, 0x02, ...}`)` |
+| Integer  | `uint`, `uint64`,  `int`, `int64`            | `42`, `uint64(100000)`,  `-42`, `int64(-100000)`  |
+| Floating Point    | `float32`, `float64`         | `3.14`, `float64(2.71828)` |
+| Byte String, Binary Encoded Data       | `[]byte`                    | `[]byte{0x01, 0x02}`       |
+| Text String | `string`            | `"Hello, World!"`          |
+| Map   | `map[interface{}]interface{}`   | `map[string]float64{"one": 1.0}` |
+| Table name| `surrealdb.Table(name)`   | `surrealdb.Table("users")`          |
+| Record ID| `surrealdb.RecordID{Table: string, ID: interface{}}`   | `surrealdb.RecordID{Table: "customers", ID: 1}, surrealdb.NewRecordID("customers", 1)`          |
+| Geometry Point | `surrealdb.GeometryPoint{Latitude: float64, Longitude: float64}`                    | `surrealdb.GeometryPoint{Latitude: 11.11, Longitude: 22.22`          |
+| Geometry Line | `surrealdb.GeometryLine{GeometricPoint1, GeometricPoint2,... }`                    |       |
+| Geometry Polygon | `surrealdb.GeometryPolygon{GeometryLine1, GeometryLine2,... }`                    |       |
+| Geometry Multipoint | `surrealdb.GeometryMultiPoint{GeometryPoint1, GeometryPoint2,... }`   |       |
+| Geometry MultiLine | `surrealdb.GeometryMultiLine{GeometryLine1, GeometryLine2,... }`   |       |
+| Geometry MultiPolygon | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryPolygon2,... }`   |       |
+| Geometry Collection| `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryLine2, GeometryPoint3, GeometryMultiPoint4,... }`   |       |
+
+## Helper Types
+### surrealdb.O
+For some methods like create, insert, update, you can pass a map instead of an struct value. An example:
+```go
+person, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
+	"Name":     "John",
+	"Surname":  "Doe",
+	"Location": models.NewGeometryPoint(-0.11, 22.00),
+})
+```
+This can be simplified to:
+```go
+person, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.O{
+	"Name":     "John",
+	"Surname":  "Doe",
+	"Location": models.NewGeometryPoint(-0.11, 22.00),
+})
+```
+Where surrealdb.O is defined below. There is no special advantage in using this other than simplicity/legibility.
+```go
+type surrealdb.O map[interface{}]interface{}
+```
+
+### surrealdb.Result[T]
+This is useful for the `Send` function where `T` is the expected response type for a request. An example:
+```go
+var res surrealdb.Result[[]Users]
+err := db.Send(&res, "select", model.Table("users"))
+if err != nil {
+	panic(err)
+}
+fmt.Printf("users: %+v\n", users.R)
+```
 ## Contributing
 
 You can run the Makefile commands to run and build the project
@@ -157,28 +297,6 @@ make lint
 You also need to be running SurrealDB alongside the tests.
 We recommend using the nightly build, as development may rely on the latest functionality.
 
-## Helper functions
-
-### Smart Marshal
-
-SurrealDB Go library supports smart marshal. It means that you can use any type of data as a value in your struct, and the library will automatically convert it to the correct type.
-
-```go
-// User struct is a test struct
-user, err := surrealdb.SmartUnmarshal[testUser](surrealdb.SmartMarshal(s.db.Create, user[0]))
-
-// Can be used without SmartUnmarshal
-data, err := surrealdb.SmartMarshal(s.db.Create, user[0])
-```
-
-### Smart Unmarshal
-
-SurrealDB Go library supports smart unmarshal. It means that you can unmarshal any type of data to the generic type provided, and the library will automatically convert it to that type.
-
-```go
-// User struct is a test struct
-data, err := surrealdb.SmartUnmarshal[testUser](s.db.Select(user[0].ID))
-```
 
 
 

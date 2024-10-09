@@ -1,4 +1,4 @@
-package slog_test
+package logger
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 	rawslog "log/slog"
 
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go/pkg/logger/slog"
 )
 
 type testMethod struct {
@@ -37,7 +36,7 @@ func TestLogger(t *testing.T) {
 
 	// level needs to be set to debug for log all
 	handler := rawslog.NewJSONHandler(buffer, &rawslog.HandlerOptions{Level: rawslog.LevelDebug})
-	logger := slog.New(handler)
+	logger := New(handler)
 
 	testMethods := []testMethod{
 		{fn: logger.Error, level: rawslog.LevelError},
