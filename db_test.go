@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
@@ -39,12 +38,15 @@ type testUser struct {
 	Username string           `json:"username,omitempty"`
 	Password string           `json:"password,omitempty"`
 	ID       *models.RecordID `json:"id,omitempty"`
+<<<<<<< HEAD
 }
 
 type testPerson struct {
 	FirstName string           `json:"firstname,omitempty"`
 	LastName  string           `json:"lastname,omitempty"`
 	ID        *models.RecordID `json:"id,omitempty"`
+=======
+>>>>>>> main
 }
 
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
@@ -71,12 +73,15 @@ func TestSurrealDBSuite(t *testing.T) {
 func (s *SurrealDBTestSuite) TearDownTest() {
 	err := surrealdb.Delete[models.Table](s.db, "users")
 	s.Require().NoError(err)
+<<<<<<< HEAD
 
 	err = surrealdb.Delete[models.Table](s.db, "persons")
 	s.Require().NoError(err)
 
 	err = surrealdb.Delete[models.Table](s.db, "knows")
 	s.Require().NoError(err)
+=======
+>>>>>>> main
 }
 
 // TearDownSuite is called after the s has finished running
@@ -408,6 +413,7 @@ func (s *SurrealDBTestSuite) TestMerge() {
 	s.Equal("john999", user.Username) // Ensure username hasn't change.
 	s.Equal("456", user.Password)
 }
+<<<<<<< HEAD
 
 func (s *SurrealDBTestSuite) TestInsertRelation() {
 	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
@@ -448,3 +454,5 @@ func (s *SurrealDBTestSuite) TestRelate() {
 	s.Require().NoError(err)
 	s.Assert().NotNil(relationship.ID)
 }
+=======
+>>>>>>> main
