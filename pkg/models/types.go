@@ -49,10 +49,10 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
-	s := temp[0].(int64)
-	ns := temp[1].(int64)
+	s := temp[0].(uint64)
+	ns := temp[1].(uint64)
 
-	*d = CustomDateTime(time.Unix(s, ns))
+	*d = CustomDateTime(time.Unix(int64(s), int64(ns)))
 
 	return nil
 }

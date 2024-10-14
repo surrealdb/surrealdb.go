@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go"
@@ -40,6 +41,12 @@ type testUser struct {
 	ID       *models.RecordID `json:"id,omitempty"`
 }
 
+type testPerson struct {
+	FirstName string           `json:"firstname,omitempty"`
+	LastName  string           `json:"lastname,omitempty"`
+	ID        *models.RecordID `json:"id,omitempty"`
+}
+
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
 func assertContains[K any](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
@@ -63,6 +70,12 @@ func TestSurrealDBSuite(t *testing.T) {
 // SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
 	err := surrealdb.Delete[models.Table](s.db, "users")
+	s.Require().NoError(err)
+
+	err = surrealdb.Delete[models.Table](s.db, "persons")
+	s.Require().NoError(err)
+
+	err = surrealdb.Delete[models.Table](s.db, "knows")
 	s.Require().NoError(err)
 }
 
@@ -394,4 +407,44 @@ func (s *SurrealDBTestSuite) TestMerge() {
 	s.Require().NoError(err)
 	s.Equal("john999", user.Username) // Ensure username hasn't change.
 	s.Equal("456", user.Password)
+}
+
+func (s *SurrealDBTestSuite) TestInsertRelation() {
+	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
+		{FirstName: "Mary", LastName: "Doe"},
+		{FirstName: "John", LastName: "Doe"},
+	})
+	s.Require().NoError(err)
+
+	relationship := surrealdb.Relationship{
+		In:       *(*persons)[0].ID,
+		Out:      *(*persons)[1].ID,
+		Relation: "knows",
+		Data: map[string]any{
+			"since": time.Now(),
+		},
+	}
+	err = surrealdb.InsertRelation(s.db, &relationship)
+	s.Require().NoError(err)
+	s.Assert().NotNil(relationship.ID)
+}
+
+func (s *SurrealDBTestSuite) TestRelate() {
+	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
+		{FirstName: "Mary", LastName: "Doe"},
+		{FirstName: "John", LastName: "Doe"},
+	})
+	s.Require().NoError(err)
+
+	relationship := surrealdb.Relationship{
+		In:       *(*persons)[0].ID,
+		Out:      *(*persons)[1].ID,
+		Relation: "knows",
+		Data: map[string]any{
+			"since": time.Now(),
+		},
+	}
+	err = surrealdb.Relate(s.db, &relationship)
+	s.Require().NoError(err)
+	s.Assert().NotNil(relationship.ID)
 }
