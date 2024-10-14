@@ -37,6 +37,10 @@ type RPCNotification struct {
 
 type RPCFunction string
 
+type ResponseID[T any] struct {
+	ID *T `json:"id"`
+}
+
 var (
 	Use          RPCFunction = "use"
 	Info         RPCFunction = "info"

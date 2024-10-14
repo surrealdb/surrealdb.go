@@ -190,8 +190,8 @@ func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
 	return res.Result, nil
 }
 
-func Query[T any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[T], error) {
-	var res connection.RPCResponse[[]QueryResult[T]]
+func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
+	var res connection.RPCResponse[[]QueryResult[TResult]]
 	if err := db.con.Send(&res, "query", sql, vars); err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func Delete[TWhat models.TableOrRecord](db *DB, what TWhat) error {
 	return db.con.Send(nil, "delete", what)
 }
 
-func Upsert(db *DB, what, data interface{}) error {
+func Upsert[TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) error {
 	return db.con.Send(nil, "upsert", what, data)
 }
 
@@ -243,8 +243,8 @@ func Update[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data in
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge[T any](db *DB, what, data interface{}) (*T, error) {
-	var res connection.RPCResponse[T]
+func Merge[TResult any](db *DB, what, data interface{}) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
 	if err := db.con.Send(&res, "merge", what, data); err != nil {
 		return nil, err
 	}
@@ -262,14 +262,34 @@ func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResul
 	return res.Result, nil
 }
 
-func Relate[T any](db *DB, in, out models.RecordID, relation models.Table, data interface{}) (*T, error) {
-	var res connection.RPCResponse[T]
-	if err := db.con.Send(&res, "relate", in, out, relation, data); err != nil {
-		return nil, err
+func Relate(db *DB, rel *Relationship) error {
+	var res connection.RPCResponse[connection.ResponseID[models.RecordID]]
+	if err := db.con.Send(&res, "relate", rel.In, rel.Relation, rel.Out, rel.Data); err != nil {
+		return err
 	}
-	return res.Result, nil
+
+	rel.ID = res.Result.ID
+	return nil
 }
 
-func InsertRelation(db *DB, what, data interface{}) error {
-	return db.con.Send(nil, "insert", what, data)
+func InsertRelation(db *DB, relationship *Relationship) error {
+	var res connection.RPCResponse[[]connection.ResponseID[models.RecordID]]
+
+	rel := map[string]any{
+		"in":  relationship.In,
+		"out": relationship.Out,
+	}
+	if relationship.ID != nil {
+		rel["id"] = relationship.ID
+	}
+	for k, v := range relationship.Data {
+		rel[k] = v
+	}
+
+	if err := db.con.Send(&res, "insert_relation", relationship.Relation, rel); err != nil {
+		return err
+	}
+
+	relationship.ID = (*res.Result)[0].ID
+	return nil
 }
