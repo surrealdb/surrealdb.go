@@ -43,16 +43,16 @@ func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	dec := getCborDecoder()
 
-	var temp [2]interface{}
+	var temp [2]int64
 	err := dec.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
 
-	s := temp[0].(uint64)
-	ns := temp[1].(uint64)
+	s := temp[0]
+	ns := temp[1]
 
-	*d = CustomDateTime(time.Unix(int64(s), int64(ns)))
+	*d = CustomDateTime(time.Unix(s, ns))
 
 	return nil
 }

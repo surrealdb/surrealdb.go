@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
@@ -68,6 +70,10 @@ func (h *HTTPConnection) SetTimeout(timeout time.Duration) *HTTPConnection {
 func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 	h.httpClient = client
 	return h
+}
+
+func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
+	return h.unmarshaler
 }
 
 func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
