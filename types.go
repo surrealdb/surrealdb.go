@@ -1,7 +1,9 @@
 package surrealdb
 
 import (
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -18,10 +20,18 @@ type QueryResult[T any] struct {
 	Result T      `json:"result"`
 }
 
-type QueryStmt[TResult any] struct {
-	SQL    string
-	Vars   map[string]interface{}
-	Result *connection.RPCResponse[TResult]
+type QueryStmt struct {
+	unmarshaler codec.Unmarshaler
+	SQL         string
+	Vars        map[string]interface{}
+	Result      QueryResult[cbor.RawMessage]
+}
+
+func (q *QueryStmt) GetResult(dest interface{}) error {
+	if q.unmarshaler == nil {
+		return constants.ErrNoUnmarshaler
+	}
+	return q.unmarshaler.Unmarshal(q.Result.Result, dest)
 }
 
 type Relationship struct {

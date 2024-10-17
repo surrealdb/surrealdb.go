@@ -23,6 +23,7 @@ type Connection interface {
 	Let(key string, value interface{}) error
 	Unset(key string) error
 	LiveNotifications(id string) (chan Notification, error)
+	GetUnmarshaler() codec.Unmarshaler
 }
 
 type NewConnectionParams struct {
