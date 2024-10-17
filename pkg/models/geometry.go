@@ -21,7 +21,7 @@ func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
 	return enc.Marshal(cbor.Tag{
-		Number:  uint64(GeometryPointTag),
+		Number:  TagGeometryPoint,
 		Content: gp.GetCoordinates(),
 	})
 }
