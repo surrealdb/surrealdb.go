@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -93,4 +94,64 @@ func TestForRequestPayload(t *testing.T) {
 	assert.Nil(t, err, "should not return an error while diagnosing payload")
 
 	fmt.Println(diagStr)
+}
+
+func TestRange_GetJoinString(t *testing.T) {
+	t.Run("begin excluded, end excluded", func(s *testing.T) {
+		r := Range[int, BoundExcluded[int], BoundExcluded[int]]{
+			begin: &BoundExcluded[int]{0},
+			end:   &BoundExcluded[int]{10},
+		}
+		assert.Equal(t, ">..", r.GetJoinString())
+	})
+
+	t.Run("begin excluded, end included", func(t *testing.T) {
+		r := Range[int, BoundExcluded[int], BoundIncluded[int]]{
+			begin: &BoundExcluded[int]{0},
+			end:   &BoundIncluded[int]{10},
+		}
+		assert.Equal(t, ">..=", r.GetJoinString())
+	})
+
+	t.Run("begin included, end excluded", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
+			begin: &BoundIncluded[int]{0},
+			end:   &BoundExcluded[int]{10},
+		}
+		assert.Equal(t, "..", r.GetJoinString())
+	})
+
+	t.Run("begin included, end included", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{
+			begin: &BoundIncluded[int]{0},
+			end:   &BoundIncluded[int]{10},
+		}
+		assert.Equal(t, "..=", r.GetJoinString())
+	})
+}
+
+func TestCustomDateTime_String(t *testing.T) {
+	tm, _ := time.Parse("2006-01-02T15:04:05Z", "2022-01-21T05:53:19Z")
+	ct := CustomDateTime(tm)
+
+	assert.Equal(t, "<datetime> '2022-01-21T05:53:19Z'", ct.String())
+}
+
+func TestRange_String(t *testing.T) {
+	em := getCborEncoder()
+	// dm := getCborDecoder()
+
+	r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
+		begin: &BoundIncluded[int]{0},
+		end:   &BoundExcluded[int]{10},
+	}
+
+	encoded, err := em.Marshal(r)
+	assert.NoError(t, err)
+
+	fmt.Println(hex.EncodeToString(encoded))
+
+	// r.String()
+	//fmt.Println(r)
+	//assert.Equal(t, "0..10", r.String())
 }

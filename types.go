@@ -46,3 +46,7 @@ type Obj map[interface{}]interface{}
 type Result[T any] struct {
 	T any
 }
+
+type TableOrRecord interface {
+	string | models.Table | models.RecordID | []models.Table | []models.RecordID
+}

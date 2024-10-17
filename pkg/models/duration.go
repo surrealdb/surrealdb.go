@@ -10,7 +10,7 @@ import (
 
 type CustomDuration time.Duration
 
-type CustomDurationStr string
+type CustomDurationString string
 
 func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
@@ -20,7 +20,7 @@ func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	ns := totalNS % constants.OneSecondToNanoSecond
 
 	return enc.Marshal(cbor.Tag{
-		Number:  uint64(DurationCompactTag),
+		Number:  TagCustomDuration,
 		Content: [2]int64{s, ns},
 	})
 }
