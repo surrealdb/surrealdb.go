@@ -3,6 +3,9 @@ package connection
 import (
 	"errors"
 	"fmt"
+
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+
 	"io"
 	"log/slog"
 	"net"
@@ -132,6 +135,10 @@ func (ws *WebSocketConnection) Let(key string, value interface{}) error {
 
 func (ws *WebSocketConnection) Unset(key string) error {
 	return ws.Send(nil, "unset", key)
+}
+
+func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {
+	return ws.unmarshaler
 }
 
 func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -291,5 +293,34 @@ func InsertRelation(db *DB, relationship *Relationship) error {
 	}
 
 	relationship.ID = (*res.Result)[0].ID
+	return nil
+}
+
+func QueryRaw(db *DB, queries *[]QueryStmt) error {
+	preparedQuery := ""
+	parameters := map[string]interface{}{}
+	for i := 0; i < len(*queries); i++ {
+		// append query
+		preparedQuery += fmt.Sprintf("%s;", (*queries)[i].SQL)
+		for k, v := range (*queries)[i].Vars {
+			parameters[k] = v
+		}
+	}
+
+	if preparedQuery == "" {
+		return fmt.Errorf("no query to run")
+	}
+
+	var res connection.RPCResponse[[]QueryResult[cbor.RawMessage]]
+	if err := db.con.Send(&res, "query", preparedQuery, parameters); err != nil {
+		return err
+	}
+
+	for i := 0; i < len(*queries); i++ {
+		// assign results
+		(*queries)[i].Result = (*res.Result)[i]
+		(*queries)[i].unmarshaler = db.con.GetUnmarshaler()
+	}
+
 	return nil
 }

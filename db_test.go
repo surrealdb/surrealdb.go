@@ -248,7 +248,6 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	s.Require().NoError(e)
 
 	notification := <-notifications
-	fmt.Println(notification)
 	s.Require().Equal(connection.CreateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
@@ -409,42 +408,59 @@ func (s *SurrealDBTestSuite) TestMerge() {
 	s.Equal("456", user.Password)
 }
 
-func (s *SurrealDBTestSuite) TestInsertRelation() {
+func (s *SurrealDBTestSuite) TestRelateAndInsertRelation() {
 	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
 		{FirstName: "Mary", LastName: "Doe"},
 		{FirstName: "John", LastName: "Doe"},
 	})
 	s.Require().NoError(err)
 
-	relationship := surrealdb.Relationship{
-		In:       *(*persons)[0].ID,
-		Out:      *(*persons)[1].ID,
-		Relation: "knows",
-		Data: map[string]any{
-			"since": time.Now(),
-		},
-	}
-	err = surrealdb.InsertRelation(s.db, &relationship)
-	s.Require().NoError(err)
-	s.Assert().NotNil(relationship.ID)
+	s.Run("Test 'insert_relation' method", func() {
+		relationship := surrealdb.Relationship{
+			In:       *(*persons)[0].ID,
+			Out:      *(*persons)[1].ID,
+			Relation: "knows",
+			Data: map[string]any{
+				"since": time.Now(),
+			},
+		}
+		err = surrealdb.InsertRelation(s.db, &relationship)
+		s.Require().NoError(err)
+		s.Assert().NotNil(relationship.ID)
+	})
+
+	s.Run("Test 'relate' method", func() {
+		relationship := surrealdb.Relationship{
+			In:       *(*persons)[0].ID,
+			Out:      *(*persons)[1].ID,
+			Relation: "knows",
+			Data: map[string]any{
+				"since": time.Now(),
+			},
+		}
+		err = surrealdb.Relate(s.db, &relationship)
+		s.Require().NoError(err)
+		s.Assert().NotNil(relationship.ID)
+	})
 }
 
-func (s *SurrealDBTestSuite) TestRelate() {
-	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
-		{FirstName: "Mary", LastName: "Doe"},
-		{FirstName: "John", LastName: "Doe"},
-	})
+func (s *SurrealDBTestSuite) TestQueryRaw() {
+	queries := []surrealdb.QueryStmt{
+		{SQL: "CREATE person SET name = 'John'"},
+		{SQL: "SELECT * FROM type::table($tb)", Vars: map[string]interface{}{"tb": "person"}},
+	}
+
+	err := surrealdb.QueryRaw(s.db, &queries)
 	s.Require().NoError(err)
 
-	relationship := surrealdb.Relationship{
-		In:       *(*persons)[0].ID,
-		Out:      *(*persons)[1].ID,
-		Relation: "knows",
-		Data: map[string]any{
-			"since": time.Now(),
-		},
-	}
-	err = surrealdb.Relate(s.db, &relationship)
+	var created []testPerson
+	err = queries[0].GetResult(&created)
 	s.Require().NoError(err)
-	s.Assert().NotNil(relationship.ID)
+
+	var selected []testPerson
+	err = queries[1].GetResult(&selected)
+	s.Require().NoError(err)
+
+	fmt.Println(created)
+	fmt.Println(selected)
 }
