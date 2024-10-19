@@ -58,3 +58,7 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 func (r *RecordID) String() string {
 	return fmt.Sprintf("%s:%s", r.Table, r.ID)
 }
+
+func (r *RecordID) SurrealString() string {
+	return fmt.Sprintf("r'%s'", r.String())
+}

@@ -8,39 +8,70 @@ import (
 )
 
 type BoundIncluded[T any] struct {
-	value T
+	Value T
 }
 
-func (bi BoundIncluded[T]) Value() T {
-	return bi.value
+func (bi *BoundIncluded[T]) MarshalCBOR() ([]byte, error) {
+	return getCborEncoder().Marshal(cbor.Tag{
+		Number:  TagBoundIncluded,
+		Content: bi.Value,
+	})
 }
+
+func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
+	var temp T
+	err := getCborDecoder().Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+
+	bi.Value = temp
+	return nil
+}
+
+//------------------------------------------------------------------------------------------------//
 
 type BoundExcluded[T any] struct {
-	value T
+	Value T
 }
 
-func (be BoundExcluded[T]) Value() T {
-	return be.value
+func (be *BoundExcluded[T]) MarshalCBOR() ([]byte, error) {
+	return getCborEncoder().Marshal(cbor.Tag{
+		Number:  TagBoundExcluded,
+		Content: be.Value,
+	})
 }
+
+func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
+	var temp T
+	err := getCborDecoder().Unmarshal(data, &temp)
+	if err != nil {
+		return err
+	}
+
+	be.Value = temp
+	return nil
+}
+
+//------------------------------------------------------------------------------------------------//
 
 type Bound[T any] interface {
 	BoundIncluded[T] | BoundExcluded[T]
-	Value() T
 }
 
 type Range[T any, TBeg Bound[T], TEnd Bound[T]] struct {
-	begin *TBeg
-	end   *TEnd
+	Begin *TBeg
+	End   *TEnd
 }
 
 func (r *Range[T, TBeg, TEnd]) GetJoinString() string {
 	joinStr := ""
 
-	if reflect.TypeOf(*r.begin) == reflect.TypeOf(BoundExcluded[T]{}) {
+	if reflect.TypeOf(*r.Begin) == reflect.TypeOf(BoundExcluded[T]{}) {
 		joinStr += ">"
 	}
 	joinStr += ".."
-	if reflect.TypeOf(*r.end) == reflect.TypeOf(BoundIncluded[T]{}) {
+	if reflect.TypeOf(*r.End) == reflect.TypeOf(BoundIncluded[T]{}) {
 		joinStr += "="
 	}
 
@@ -52,34 +83,45 @@ func (r *Range[T, TBeg, TEnd]) String() string {
 	beginStr := ""
 	endStr := ""
 
-	// if r.begin != nil {
-	//	//beginStr = fmt.Sprintf("%s", string((*r.begin).Value()))
-	//}
-	//if r.end != nil {
-	//	//endStr = fmt.Sprintf("%s", (*r.end).Value())
-	//}
+	if r.Begin != nil {
+		beginStr = convertToString(r.Begin)
+	}
+	if r.End != nil {
+		endStr = convertToString(r.Begin)
+	}
 
 	return fmt.Sprintf("%s%s%s", beginStr, joinStr, endStr)
 }
 
 func (r *Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-	return enc.Marshal(cbor.Tag{
+	return getCborEncoder().Marshal(cbor.Tag{
 		Number:  TagRange,
-		Content: []interface{}{r.begin, r.end},
+		Content: []interface{}{r.Begin, r.End},
 	})
 }
 
 func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
 	dec := getCborDecoder()
-
-	var temp [2]interface{}
-	err := dec.Unmarshal(data, &temp)
+	var temp [2]cbor.RawTag
+	err := getCborDecoder().Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
 
-	// r.begin = temp[0]
-	// r.end = temp[1]
+	var begin TBeg
+	beginEnc, _ := temp[0].MarshalCBOR()
+	_ = dec.Unmarshal(beginEnc, &begin)
+
+	var end TEnd
+	endEnc, _ := temp[1].MarshalCBOR()
+	_ = dec.Unmarshal(endEnc, &end)
+
+	r.Begin = &begin
+	r.End = &end
 	return nil
+}
+
+func convertToString(v any) string {
+	// todo: implement
+	return ""
 }

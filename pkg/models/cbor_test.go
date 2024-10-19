@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
@@ -98,33 +97,33 @@ func TestForRequestPayload(t *testing.T) {
 
 func TestRange_GetJoinString(t *testing.T) {
 	t.Run("begin excluded, end excluded", func(s *testing.T) {
-		r := Range[int, BoundExcluded[int], BoundExcluded[int]]{
-			begin: &BoundExcluded[int]{0},
-			end:   &BoundExcluded[int]{10},
+		r := &Range[int, BoundExcluded[int], BoundExcluded[int]]{
+			Begin: &BoundExcluded[int]{0},
+			End:   &BoundExcluded[int]{10},
 		}
 		assert.Equal(t, ">..", r.GetJoinString())
 	})
 
 	t.Run("begin excluded, end included", func(t *testing.T) {
 		r := Range[int, BoundExcluded[int], BoundIncluded[int]]{
-			begin: &BoundExcluded[int]{0},
-			end:   &BoundIncluded[int]{10},
+			Begin: &BoundExcluded[int]{0},
+			End:   &BoundIncluded[int]{10},
 		}
 		assert.Equal(t, ">..=", r.GetJoinString())
 	})
 
 	t.Run("begin included, end excluded", func(t *testing.T) {
 		r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
-			begin: &BoundIncluded[int]{0},
-			end:   &BoundExcluded[int]{10},
+			Begin: &BoundIncluded[int]{0},
+			End:   &BoundExcluded[int]{10},
 		}
 		assert.Equal(t, "..", r.GetJoinString())
 	})
 
 	t.Run("begin included, end included", func(t *testing.T) {
 		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{
-			begin: &BoundIncluded[int]{0},
-			end:   &BoundIncluded[int]{10},
+			Begin: &BoundIncluded[int]{0},
+			End:   &BoundIncluded[int]{10},
 		}
 		assert.Equal(t, "..=", r.GetJoinString())
 	})
@@ -137,21 +136,47 @@ func TestCustomDateTime_String(t *testing.T) {
 	assert.Equal(t, "<datetime> '2022-01-21T05:53:19Z'", ct.String())
 }
 
-func TestRange_String(t *testing.T) {
+func TestRange_Bounds(t *testing.T) {
 	em := getCborEncoder()
-	// dm := getCborDecoder()
+	dm := getCborDecoder()
+
+	t.Run("bound included should be marshaled and unmarshaled properly", func(t *testing.T) {
+		bi := BoundIncluded[int]{10}
+		encoded, err := em.Marshal(bi)
+		assert.NoError(t, err)
+
+		var decoded BoundIncluded[int]
+		err = dm.Unmarshal(encoded, &decoded)
+		assert.NoError(t, err)
+		assert.Equal(t, bi, decoded)
+	})
+
+	t.Run("bound excluded should be marshaled and unmarshaled properly", func(t *testing.T) {
+		be := BoundExcluded[int]{10}
+		encoded, err := em.Marshal(be)
+		assert.NoError(t, err)
+
+		var decoded BoundExcluded[int]
+		err = dm.Unmarshal(encoded, &decoded)
+		assert.NoError(t, err)
+		assert.Equal(t, be, decoded)
+	})
+}
+
+func TestRange_CODEC(t *testing.T) {
+	em := getCborEncoder()
+	dm := getCborDecoder()
 
 	r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
-		begin: &BoundIncluded[int]{0},
-		end:   &BoundExcluded[int]{10},
+		Begin: &BoundIncluded[int]{0},
+		End:   &BoundExcluded[int]{10},
 	}
 
 	encoded, err := em.Marshal(r)
 	assert.NoError(t, err)
 
-	fmt.Println(hex.EncodeToString(encoded))
-
-	// r.String()
-	//fmt.Println(r)
-	//assert.Equal(t, "0..10", r.String())
+	var decoded Range[int, BoundIncluded[int], BoundExcluded[int]]
+	err = dm.Unmarshal(encoded, &decoded)
+	assert.NoError(t, err)
+	assert.Equal(t, r, decoded)
 }

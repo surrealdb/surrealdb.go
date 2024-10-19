@@ -52,10 +52,6 @@ func registerCborTags() cbor.TagSet {
 
 		TagSpecBinaryUUID: UUID{},
 
-		TagRange:         Range[any, BoundExcluded[any], BoundExcluded[any]]{},
-		TagBoundIncluded: BoundIncluded[any]{},
-		TagBoundExcluded: BoundExcluded[any]{},
-
 		TagGeometryPoint:        GeometryPoint{},
 		TagGeometryLine:         GeometryLine{},
 		TagGeometryPolygon:      GeometryPolygon{},
@@ -64,7 +60,6 @@ func registerCborTags() cbor.TagSet {
 		TagGeometryMultiPolygon: GeometryMultiPolygon{},
 		TagGeometryCollection:   GeometryCollection{},
 	}
-
 	tags := cbor.NewTagSet()
 	for tag, customType := range customTags {
 		err := tags.Add(
