@@ -121,6 +121,28 @@ func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+//---------------------------------------------------------------------------------------------------------------------//
+
+type RecordRangeID[T any, TBeg Bound[T], TEnd Bound[T]] struct {
+	Range[T, TBeg, TEnd]
+	Table Table
+}
+
+func (rr *RecordRangeID[T, TBeg, TEnd]) String() string {
+	joinStr := rr.GetJoinString()
+	beginStr := ""
+	endStr := ""
+
+	if rr.Begin != nil {
+		beginStr = convertToString(rr.Begin)
+	}
+	if rr.End != nil {
+		endStr = convertToString(rr.Begin)
+	}
+
+	return fmt.Sprintf("%s:%s%s%s", rr.Table, beginStr, joinStr, endStr)
+}
+
 func convertToString(v any) string {
 	// todo: implement
 	return ""

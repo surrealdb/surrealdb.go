@@ -4,8 +4,6 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
-type Table string
-
 type DecimalString string
 
 type CustomNil struct {

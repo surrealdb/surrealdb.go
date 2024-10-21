@@ -180,3 +180,15 @@ func TestRange_CODEC(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, r, decoded)
 }
+
+func Test_CBORTypeStrings(t *testing.T) {
+	t.Run("string value for table", func(t *testing.T) {
+		table := Table("mytesttable")
+		assert.Equal(t, "mytesttable", table.String())
+	})
+
+	t.Run("bound excluded should be marshaled and unmarshaled properly", func(t *testing.T) {
+		rid := RecordID{Table: "mytesttable", ID: "121212121"}
+		assert.Equal(t, "mytesttable:121212121", rid.String())
+	})
+}
