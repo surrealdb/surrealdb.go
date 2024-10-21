@@ -35,7 +35,7 @@ func (r *RecordID) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
 	return enc.Marshal(cbor.Tag{
-		Number:  uint64(RecordIDTag),
+		Number:  TagRecordID,
 		Content: []interface{}{r.Table, r.ID},
 	})
 }
@@ -57,4 +57,8 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 
 func (r *RecordID) String() string {
 	return fmt.Sprintf("%s:%s", r.Table, r.ID)
+}
+
+func (r *RecordID) SurrealString() string {
+	return fmt.Sprintf("r'%s'", r.String())
 }
