@@ -12,7 +12,6 @@ const (
 	// CloseMessageCode identifier the message id for a close request
 	CloseMessageCode = 1000
 	// DefaultTimeout timeout in seconds
-
 	DefaultWSTimeout = 30 * time.Second
 
 	DefaultHTTPTimeout = 10 * time.Second

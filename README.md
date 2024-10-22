@@ -55,7 +55,6 @@ package main
 
 import (
 	"fmt"
-
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -156,32 +155,6 @@ func main() {
 	fmt.Printf("No Selected person: %+v\n", persons)
 }
 ```
-### Doing it your way
-All Data manipulation methods are handled by an undelying `send` function. This function is 
-exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
-methods are:
-- select
-- create
-- insert
-- upsert
-- update
-- patch
-- delete
-- query
-```go
-type UserSelectResult struct {
-	Result []Users
-}
-
-var res UserSelectResult
-// or var res surrealdb.Result[[]Users]
-
-users, err := db.Send(&res, "query", user.ID)
-if err != nil {
-	panic(err)
-}
-	
-```
 
 ### Doing it your way
 All Data manipulation methods are handled by an undelying `send` function. This function is 
@@ -277,7 +250,6 @@ See the [documetation on data models](https://surrealdb.com/docs/surrealql/datam
 | Geometry MultiLine | `surrealdb.GeometryMultiLine{GeometryLine1, GeometryLine2,... }`   |       |
 | Geometry MultiPolygon | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryPolygon2,... }`   |       |
 | Geometry Collection| `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryLine2, GeometryPoint3, GeometryMultiPoint4,... }`   |       |
-
 
 ## Helper Types
 ### surrealdb.O
