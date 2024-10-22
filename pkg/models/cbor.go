@@ -1,12 +1,10 @@
 package models
 
 import (
-	"io"
-	"reflect"
-	"time"
-
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"io"
+	"reflect"
 )
 
 var (
@@ -42,8 +40,8 @@ func registerCborTags() cbor.TagSet {
 		TagTable:    Table(""),
 		TagRecordID: RecordID{},
 
-		TagCustomDatetime: CustomDateTime(time.Now()),
-		TagCustomDuration: CustomDuration(0),
+		TagCustomDatetime: CustomDateTime{},
+		TagCustomDuration: CustomDuration{},
 		TagFuture:         Future{},
 
 		TagStringUUID:     UUIDString(""),

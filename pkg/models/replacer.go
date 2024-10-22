@@ -11,7 +11,7 @@ func replacerBeforeEncode(value interface{}) interface{} {
 
 	if valueType == reflect.TypeOf(time.Duration(0)) {
 		oldVal := value.(time.Duration)
-		newValue := CustomDuration(oldVal.Nanoseconds())
+		newValue := CustomDuration{oldVal}
 		return newValue
 	}
 
@@ -38,9 +38,9 @@ func replacerAfterDecode(value interface{}) interface{} {
 	valueType := reflect.TypeOf(value)
 	valueKind := valueType.Kind()
 
-	if valueType == reflect.TypeOf(CustomDuration(0)) {
+	if valueType == reflect.TypeOf(CustomDuration{}) {
 		oldVal := value.(CustomDuration)
-		newValue := time.Duration(oldVal)
+		newValue := oldVal.Duration
 		return newValue
 	}
 

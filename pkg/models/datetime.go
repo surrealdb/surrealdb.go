@@ -8,12 +8,15 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
-type CustomDateTime time.Time
+// CustomDateTime embeds time.Time
+type CustomDateTime struct {
+	time.Time
+}
 
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
-	totalNS := time.Time(*d).Nanosecond()
+	totalNS := d.Nanosecond()
 
 	s := totalNS / constants.OneSecondToNanoSecond
 	ns := totalNS % constants.OneSecondToNanoSecond
@@ -36,12 +39,16 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	s := temp[0]
 	ns := temp[1]
 
-	*d = CustomDateTime(time.Unix(s, ns))
+	*d = CustomDateTime{time.Unix(s, ns)}
 
 	return nil
 }
 
 func (d *CustomDateTime) String() string {
 	layout := "2006-01-02T15:04:05Z"
-	return fmt.Sprintf("<datetime> '%s'", time.Time(*d).Format(layout))
+	return d.Format(layout)
+}
+
+func (d *CustomDateTime) SurrealString() string {
+	return fmt.Sprintf("<datetime> '%s'", d.String())
 }

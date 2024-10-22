@@ -7,5 +7,9 @@ type Future struct {
 }
 
 func (f *Future) String() string {
-	return fmt.Sprintf("<future> { %s }", f.inner)
+	return f.inner
+}
+
+func (f *Future) SurrealString() string {
+	return fmt.Sprintf("<future> { %s }", f.String())
 }

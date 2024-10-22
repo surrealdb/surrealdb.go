@@ -68,14 +68,14 @@ func TestForRequestPayload(t *testing.T) {
 	params := []interface{}{
 		"SELECT marketing, count() FROM $tb GROUP BY marketing",
 		map[string]interface{}{
-			"tb":       Table("person"),
-			"line":     GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
-			"datetime": time.Now(),
-			"testNone": None,
-			"testNil":  nil,
-			"duration": time.Duration(340),
-			// "custom_duration": CustomDuration(340),
-			"custom_datetime": CustomDateTime(time.Now()),
+			"tb":              Table("person"),
+			"line":            GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
+			"datetime":        time.Now(),
+			"testNone":        None,
+			"testNil":         nil,
+			"duration":        time.Duration(340),
+			"custom_duration": CustomDuration{340},
+			"custom_datetime": CustomDateTime{time.Now()},
 		},
 	}
 
@@ -129,13 +129,6 @@ func TestRange_GetJoinString(t *testing.T) {
 	})
 }
 
-func TestCustomDateTime_String(t *testing.T) {
-	tm, _ := time.Parse("2006-01-02T15:04:05Z", "2022-01-21T05:53:19Z")
-	ct := CustomDateTime(tm)
-
-	assert.Equal(t, "<datetime> '2022-01-21T05:53:19Z'", ct.String())
-}
-
 func TestRange_Bounds(t *testing.T) {
 	em := getCborEncoder()
 	dm := getCborDecoder()
@@ -181,14 +174,38 @@ func TestRange_CODEC(t *testing.T) {
 	assert.Equal(t, r, decoded)
 }
 
-func Test_CBORTypeStrings(t *testing.T) {
-	t.Run("string value for table", func(t *testing.T) {
-		table := Table("mytesttable")
-		assert.Equal(t, "mytesttable", table.String())
-	})
+func TestCustomDateTime_String(t *testing.T) {
+	time1, err := time.Parse("2006-01-02 15:04:05", "2024-10-30 12:05:00")
+	assert.NoError(t, err)
 
-	t.Run("bound excluded should be marshaled and unmarshaled properly", func(t *testing.T) {
-		rid := RecordID{Table: "mytesttable", ID: "121212121"}
-		assert.Equal(t, "mytesttable:121212121", rid.String())
-	})
+	cd := CustomDateTime{time1}
+	assert.Equal(t, "2024-10-30T12:05:00Z", cd.String())
+}
+
+func TestTable_String(t *testing.T) {
+	table := Table("mytesttable")
+	assert.Equal(t, "mytesttable", table.String())
+}
+
+func TestCustomDuration_String(t *testing.T) {
+	cd := CustomDuration{time.Duration(33333333333000000)}
+	assert.Equal(t, "1y2w6d19h15m33s333ms", cd.String())
+}
+
+func TestRecordID_String(t *testing.T) {
+	rid := RecordID{Table: "mytesttable", ID: "121212121"}
+	assert.Equal(t, "mytesttable:121212121", rid.String())
+}
+
+func TestFormatDurationAndParseDuration(t *testing.T) {
+	durationStr := "1y2w6d19h15m33s333ms"
+
+	ns, _ := ParseDuration(durationStr)
+	d := FormatDuration(ns)
+	assert.Equal(t, durationStr, d)
+}
+
+func TestFormatDuration(t *testing.T) {
+	d := FormatDuration(33333333333000000)
+	assert.Equal(t, "1y2w6d19h15m33s333ms", d)
 }
