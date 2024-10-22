@@ -1,10 +1,11 @@
 package models
 
 import (
-	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"io"
 	"reflect"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 )
 
 var (
