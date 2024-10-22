@@ -201,7 +201,7 @@ func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]Que
 	return res.Result, nil
 }
 
-func Create[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Create[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 	if err := db.con.Send(&res, "create", what, data); err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func Create[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data in
 	return res.Result, nil
 }
 
-func Select[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat) (*TResult, error) {
+func Select[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 
 	if err := db.con.Send(&res, "select", what); err != nil {
@@ -226,16 +226,16 @@ func Patch(db *DB, what interface{}, patches []PatchData) (*[]PatchData, error) 
 	return patchRes.Result, err
 }
 
-func Delete[TWhat models.TableOrRecord](db *DB, what TWhat) error {
+func Delete[TWhat TableOrRecord](db *DB, what TWhat) error {
 	return db.con.Send(nil, "delete", what)
 }
 
-func Upsert[TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) error {
+func Upsert[TWhat TableOrRecord](db *DB, what TWhat, data interface{}) error {
 	return db.con.Send(nil, "upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func Update[TResult any, TWhat models.TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Update[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 	if err := db.con.Send(&res, "update", what, data); err != nil {
 		return nil, err

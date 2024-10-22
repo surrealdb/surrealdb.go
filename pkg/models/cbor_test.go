@@ -68,14 +68,14 @@ func TestForRequestPayload(t *testing.T) {
 	params := []interface{}{
 		"SELECT marketing, count() FROM $tb GROUP BY marketing",
 		map[string]interface{}{
-			"tb":       Table("person"),
-			"line":     GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
-			"datetime": time.Now(),
-			"testNone": None,
-			"testNil":  nil,
-			"duration": time.Duration(340),
-			// "custom_duration": CustomDuration(340),
-			"custom_datetime": CustomDateTime(time.Now()),
+			"tb":              Table("person"),
+			"line":            GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
+			"datetime":        time.Now(),
+			"testNone":        None,
+			"testNil":         nil,
+			"duration":        time.Duration(340),
+			"custom_duration": CustomDuration{340},
+			"custom_datetime": CustomDateTime{time.Now()},
 		},
 	}
 
@@ -93,4 +93,119 @@ func TestForRequestPayload(t *testing.T) {
 	assert.Nil(t, err, "should not return an error while diagnosing payload")
 
 	fmt.Println(diagStr)
+}
+
+func TestRange_GetJoinString(t *testing.T) {
+	t.Run("begin excluded, end excluded", func(s *testing.T) {
+		r := &Range[int, BoundExcluded[int], BoundExcluded[int]]{
+			Begin: &BoundExcluded[int]{0},
+			End:   &BoundExcluded[int]{10},
+		}
+		assert.Equal(t, ">..", r.GetJoinString())
+	})
+
+	t.Run("begin excluded, end included", func(t *testing.T) {
+		r := Range[int, BoundExcluded[int], BoundIncluded[int]]{
+			Begin: &BoundExcluded[int]{0},
+			End:   &BoundIncluded[int]{10},
+		}
+		assert.Equal(t, ">..=", r.GetJoinString())
+	})
+
+	t.Run("begin included, end excluded", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
+			Begin: &BoundIncluded[int]{0},
+			End:   &BoundExcluded[int]{10},
+		}
+		assert.Equal(t, "..", r.GetJoinString())
+	})
+
+	t.Run("begin included, end included", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{
+			Begin: &BoundIncluded[int]{0},
+			End:   &BoundIncluded[int]{10},
+		}
+		assert.Equal(t, "..=", r.GetJoinString())
+	})
+}
+
+func TestRange_Bounds(t *testing.T) {
+	em := getCborEncoder()
+	dm := getCborDecoder()
+
+	t.Run("bound included should be marshaled and unmarshaled properly", func(t *testing.T) {
+		bi := BoundIncluded[int]{10}
+		encoded, err := em.Marshal(bi)
+		assert.NoError(t, err)
+
+		var decoded BoundIncluded[int]
+		err = dm.Unmarshal(encoded, &decoded)
+		assert.NoError(t, err)
+		assert.Equal(t, bi, decoded)
+	})
+
+	t.Run("bound excluded should be marshaled and unmarshaled properly", func(t *testing.T) {
+		be := BoundExcluded[int]{10}
+		encoded, err := em.Marshal(be)
+		assert.NoError(t, err)
+
+		var decoded BoundExcluded[int]
+		err = dm.Unmarshal(encoded, &decoded)
+		assert.NoError(t, err)
+		assert.Equal(t, be, decoded)
+	})
+}
+
+func TestRange_CODEC(t *testing.T) {
+	em := getCborEncoder()
+	dm := getCborDecoder()
+
+	r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
+		Begin: &BoundIncluded[int]{0},
+		End:   &BoundExcluded[int]{10},
+	}
+
+	encoded, err := em.Marshal(r)
+	assert.NoError(t, err)
+
+	var decoded Range[int, BoundIncluded[int], BoundExcluded[int]]
+	err = dm.Unmarshal(encoded, &decoded)
+	assert.NoError(t, err)
+	assert.Equal(t, r, decoded)
+}
+
+func TestCustomDateTime_String(t *testing.T) {
+	time1, err := time.Parse("2006-01-02 15:04:05", "2024-10-30 12:05:00")
+	assert.NoError(t, err)
+
+	cd := CustomDateTime{time1}
+	assert.Equal(t, "2024-10-30T12:05:00Z", cd.String())
+}
+
+func TestTable_String(t *testing.T) {
+	table := Table("mytesttable")
+	assert.Equal(t, "mytesttable", table.String())
+}
+
+func TestCustomDuration_String(t *testing.T) {
+	cd := CustomDuration{time.Duration(33333333333000000)}
+	assert.Equal(t, "1y2w6d19h15m33s333ms", cd.String())
+}
+
+func TestRecordID_String(t *testing.T) {
+	rid := RecordID{Table: "mytesttable", ID: "121212121"}
+	assert.Equal(t, "mytesttable:121212121", rid.String())
+}
+
+func TestFormatDurationAndParseDuration(t *testing.T) {
+	durationStr := "1y2w6d19h15m33s333ms"
+
+	ns, _ := ParseDuration(durationStr)
+	d := FormatDuration(ns)
+	assert.Equal(t, durationStr, d)
+}
+
+func TestFormatDuration(t *testing.T) {
+	d := FormatDuration(33333333333000000)
+	assert.Equal(t, "1y2w6d19h15m33s333ms", d)
 }
