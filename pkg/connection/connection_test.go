@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type testUser struct {
@@ -113,5 +114,4 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	var selectRes1 RPCResponse[testUser]
 	err = con.Send(&selectRes1, "select", createRes.Result.ID)
 	s.Require().NoError(err)
-	// s.Assert().Equal(nil, selectRes1.Result)
 }

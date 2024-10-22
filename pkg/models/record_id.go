@@ -17,8 +17,9 @@ type RecordIDType interface {
 }
 
 func ParseRecordID(idStr string) *RecordID {
+	expectedLen := 2
 	bits := strings.Split(idStr, ":")
-	if len(bits) != 2 {
+	if len(bits) != expectedLen {
 		panic(fmt.Errorf("invalid id string. Expected format is 'tablename:indentifier'"))
 	}
 	return &RecordID{
@@ -34,7 +35,7 @@ func (r *RecordID) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
 	return enc.Marshal(cbor.Tag{
-		Number:  uint64(RecordIDTag),
+		Number:  TagRecordID,
 		Content: []interface{}{r.Table, r.ID},
 	})
 }
@@ -56,4 +57,8 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 
 func (r *RecordID) String() string {
 	return fmt.Sprintf("%s:%s", r.Table, r.ID)
+}
+
+func (r *RecordID) SurrealString() string {
+	return fmt.Sprintf("r'%s'", r.String())
 }

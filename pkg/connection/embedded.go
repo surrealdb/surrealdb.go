@@ -9,6 +9,7 @@ import "C"
 
 import (
 	"fmt"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"sync"
 	"unsafe"
 )
@@ -18,6 +19,11 @@ type EmbeddedConnection struct {
 
 	variables sync.Map
 	db        *C.sr_surreal_t
+}
+
+func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
+	//TODO implement me
+	panic("implement me")
 }
 
 func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
@@ -67,9 +73,9 @@ func (h *EmbeddedConnection) Close() error {
 	return nil
 }
 
-func (h *EmbeddedConnection) Send(method string, params ...interface{}) (interface{}, error) {
+func (h *EmbeddedConnection) Send(res interface{}, method string, params ...interface{}) error {
 	if h.baseURL == "" {
-		return nil, fmt.Errorf("connection host not set")
+		return fmt.Errorf("connection host not set")
 	}
 
 	query := C.CString("SELECT * FROM person;")
@@ -85,7 +91,7 @@ func (h *EmbeddedConnection) Send(method string, params ...interface{}) (interfa
 	//	return nil, err
 	//}
 	//
-	return nil, nil
+	return nil
 }
 
 func (h *EmbeddedConnection) Use(namespace, database string) error {

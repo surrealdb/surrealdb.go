@@ -2,14 +2,15 @@ package surrealdb_test
 
 import (
 	"fmt"
+	"github.com/surrealdb/surrealdb.go"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // Default const and vars for testing
@@ -40,6 +41,12 @@ type testUser struct {
 	ID       *models.RecordID `json:"id,omitempty"`
 }
 
+type testPerson struct {
+	FirstName string           `json:"firstname,omitempty"`
+	LastName  string           `json:"lastname,omitempty"`
+	ID        *models.RecordID `json:"id,omitempty"`
+}
+
 // assertContains performs an assertion on a list, asserting that at least one element matches a provided condition.
 // All the matching elements are returned from this function, which can be used as a filter.
 func assertContains[K any](s *SurrealDBTestSuite, input []K, matcher func(K) bool) []K {
@@ -63,6 +70,12 @@ func TestSurrealDBSuite(t *testing.T) {
 // SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
 	err := surrealdb.Delete[models.Table](s.db, "users")
+	s.Require().NoError(err)
+
+	err = surrealdb.Delete[models.Table](s.db, "persons")
+	s.Require().NoError(err)
+
+	err = surrealdb.Delete[models.Table](s.db, "knows")
 	s.Require().NoError(err)
 }
 
@@ -235,7 +248,6 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	s.Require().NoError(e)
 
 	notification := <-notifications
-	fmt.Println(notification)
 	s.Require().Equal(connection.CreateAction, notification.Action)
 	s.Require().Equal(live, notification.ID)
 }
@@ -347,7 +359,6 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			go func(j int) {
 				defer wg.Done()
 				_, _ = surrealdb.Select[testUser](s.db, models.NewRecordID("users", j))
-				// s.Require().Equal(err, constants.ErrNoRow)
 			}(i)
 		}
 		wg.Wait()
@@ -395,4 +406,61 @@ func (s *SurrealDBTestSuite) TestMerge() {
 	s.Require().NoError(err)
 	s.Equal("john999", user.Username) // Ensure username hasn't change.
 	s.Equal("456", user.Password)
+}
+
+func (s *SurrealDBTestSuite) TestRelateAndInsertRelation() {
+	persons, err := surrealdb.Insert[testPerson](s.db, "person", []testPerson{
+		{FirstName: "Mary", LastName: "Doe"},
+		{FirstName: "John", LastName: "Doe"},
+	})
+	s.Require().NoError(err)
+
+	s.Run("Test 'insert_relation' method", func() {
+		relationship := surrealdb.Relationship{
+			In:       *(*persons)[0].ID,
+			Out:      *(*persons)[1].ID,
+			Relation: "knows",
+			Data: map[string]any{
+				"since": time.Now(),
+			},
+		}
+		err = surrealdb.InsertRelation(s.db, &relationship)
+		s.Require().NoError(err)
+		s.Assert().NotNil(relationship.ID)
+	})
+
+	s.Run("Test 'relate' method", func() {
+		relationship := surrealdb.Relationship{
+			In:       *(*persons)[0].ID,
+			Out:      *(*persons)[1].ID,
+			Relation: "knows",
+			Data: map[string]any{
+				"since": time.Now(),
+			},
+		}
+		err = surrealdb.Relate(s.db, &relationship)
+		s.Require().NoError(err)
+		s.Assert().NotNil(relationship.ID)
+	})
+}
+
+func (s *SurrealDBTestSuite) TestQueryRaw() {
+	queries := []surrealdb.QueryStmt{
+		{SQL: "CREATE person SET name = 'John'"},
+		{SQL: "SELECT * FROM type::table($tb)", Vars: map[string]interface{}{"tb": "person"}},
+	}
+
+	err := surrealdb.QueryRaw(s.db, &queries)
+	s.Require().NoError(err)
+
+	var created []testPerson
+	err = queries[0].GetResult(&created)
+	s.Require().NoError(err)
+
+	var selected []testPerson
+	err = queries[1].GetResult(&selected)
+	s.Require().NoError(err)
+
+	fmt.Println(created)
+	fmt.Println(selected)
 }

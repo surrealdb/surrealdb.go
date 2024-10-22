@@ -1,6 +1,11 @@
 package surrealdb
 
-import "github.com/surrealdb/surrealdb.go/v2/pkg/models"
+import (
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
+)
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {
@@ -15,15 +20,26 @@ type QueryResult[T any] struct {
 	Result T      `json:"result"`
 }
 
-type QueryStatement[TResult any] struct {
-	SQL  string
-	Vars map[string]interface{}
+type QueryStmt struct {
+	unmarshaler codec.Unmarshaler
+	SQL         string
+	Vars        map[string]interface{}
+	Result      QueryResult[cbor.RawMessage]
 }
 
-type Relation[T any] struct {
-	ID  string          `json:"id"`
-	In  models.RecordID `json:"in"`
-	Out models.RecordID `json:"out"`
+func (q *QueryStmt) GetResult(dest interface{}) error {
+	if q.unmarshaler == nil {
+		return constants.ErrNoUnmarshaler
+	}
+	return q.unmarshaler.Unmarshal(q.Result.Result, dest)
+}
+
+type Relationship struct {
+	ID       *models.RecordID `json:"id"`
+	In       models.RecordID  `json:"in"`
+	Out      models.RecordID  `json:"out"`
+	Relation models.Table     `json:"relation"`
+	Data     map[string]any   `json:"data"`
 }
 
 // Auth is a struct that holds surrealdb auth data for login.
@@ -35,8 +51,12 @@ type Auth struct {
 	Password  string `json:"pass,omitempty"`
 }
 
-type H map[string]interface{}
+type Obj map[interface{}]interface{}
 
 type Result[T any] struct {
 	T any
+}
+
+type TableOrRecord interface {
+	string | models.Table | models.RecordID | []models.Table | []models.RecordID
 }

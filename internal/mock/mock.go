@@ -3,7 +3,7 @@ package mock
 import (
 	"errors"
 
-	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
 type ws struct {

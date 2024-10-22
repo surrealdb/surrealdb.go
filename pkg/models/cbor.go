@@ -3,60 +3,68 @@ package models
 import (
 	"io"
 	"reflect"
-	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 )
 
-type CustomCBORTag uint64
-
 var (
-	NoneTag                 CustomCBORTag = 6
-	TableNameTag            CustomCBORTag = 7
-	RecordIDTag             CustomCBORTag = 8
-	UUIDStringTag           CustomCBORTag = 9
-	DecimalStringTag        CustomCBORTag = 10
-	DateTimeCompactString   CustomCBORTag = 12
-	DurationStringTag       CustomCBORTag = 13
-	DurationCompactTag      CustomCBORTag = 14
-	BinaryUUIDTag           CustomCBORTag = 37
-	GeometryPointTag        CustomCBORTag = 88
-	GeometryLineTag         CustomCBORTag = 89
-	GeometryPolygonTag      CustomCBORTag = 90
-	GeometryMultiPointTag   CustomCBORTag = 91
-	GeometryMultiLineTag    CustomCBORTag = 92
-	GeometryMultiPolygonTag CustomCBORTag = 93
-	GeometryCollectionTag   CustomCBORTag = 94
+	TagNone           uint64 = 6
+	TagTable          uint64 = 7
+	TagRecordID       uint64 = 8
+	TagCustomDatetime uint64 = 12
+	TagCustomDuration uint64 = 14
+	TagFuture         uint64 = 15
+
+	TagStringUUID     uint64 = 9
+	TagStringDecimal  uint64 = 10
+	TagStringDuration uint64 = 13
+
+	TagSpecBinaryUUID uint64 = 37
+
+	TagRange         uint64 = 49
+	TagBoundIncluded uint64 = 50
+	TagBoundExcluded uint64 = 51
+
+	TagGeometryPoint        uint64 = 88
+	TagGeometryLine         uint64 = 89
+	TagGeometryPolygon      uint64 = 90
+	TagGeometryMultiPoint   uint64 = 91
+	TagGeometryMultiLine    uint64 = 92
+	TagGeometryMultiPolygon uint64 = 93
+	TagGeometryCollection   uint64 = 94
 )
 
 func registerCborTags() cbor.TagSet {
-	customTags := map[CustomCBORTag]interface{}{
-		GeometryPointTag:        GeometryPoint{},
-		GeometryLineTag:         GeometryLine{},
-		GeometryPolygonTag:      GeometryPolygon{},
-		GeometryMultiPointTag:   GeometryMultiPoint{},
-		GeometryMultiLineTag:    GeometryMultiLine{},
-		GeometryMultiPolygonTag: GeometryMultiPolygon{},
-		GeometryCollectionTag:   GeometryCollection{},
+	customTags := map[uint64]interface{}{
+		TagNone:     CustomNil{},
+		TagTable:    Table(""),
+		TagRecordID: RecordID{},
 
-		TableNameTag: Table(""),
-		//UUIDStringTag:    UUID(""),
-		DecimalStringTag: Decimal(""),
-		BinaryUUIDTag:    UUID{},
-		NoneTag:          CustomNil{},
+		TagCustomDatetime: CustomDateTime{},
+		TagCustomDuration: CustomDuration{},
+		TagFuture:         Future{},
 
-		DateTimeCompactString: CustomDateTime(time.Now()),
-		DurationStringTag:     CustomDurationStr("2w"),
-		//DurationCompactTag:    CustomDuration(0),
+		TagStringUUID:     UUIDString(""),
+		TagStringDecimal:  DecimalString(""),
+		TagStringDuration: CustomDurationString(""),
+
+		TagSpecBinaryUUID: UUID{},
+
+		TagGeometryPoint:        GeometryPoint{},
+		TagGeometryLine:         GeometryLine{},
+		TagGeometryPolygon:      GeometryPolygon{},
+		TagGeometryMultiPoint:   GeometryMultiPoint{},
+		TagGeometryMultiLine:    GeometryMultiLine{},
+		TagGeometryMultiPolygon: GeometryMultiPolygon{},
+		TagGeometryCollection:   GeometryCollection{},
 	}
-
 	tags := cbor.NewTagSet()
 	for tag, customType := range customTags {
 		err := tags.Add(
 			cbor.TagOptions{EncTag: cbor.EncTagRequired, DecTag: cbor.DecTagRequired},
 			reflect.TypeOf(customType),
-			uint64(tag),
+			tag,
 		)
 		if err != nil {
 			panic(err)
@@ -70,7 +78,7 @@ type CborMarshaler struct {
 }
 
 func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
-	// v = replacerBeforeEncode(v)
+	v = replacerBeforeEncode(v)
 	em := getCborEncoder()
 	return em.Marshal(v)
 }
@@ -90,7 +98,7 @@ func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 		return err
 	}
 
-	// replacerAfterDecode(&dst)
+	replacerAfterDecode(&dst)
 	return nil
 }
 

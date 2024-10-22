@@ -3,13 +3,15 @@ package connection
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
+
+	"encoding/base64"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response
@@ -52,7 +54,7 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 	httpClient := NewTestClient(func(req *http.Request) *http.Response {
 		s.Assert().Equal(req.URL.String(), "http://test.surreal/rpc")
 
-		respBody, _ := hex.DecodeString("a26269647030484b6746566c657153427563625a44656572726f72a264636f6465186f676d6573736167657354686572652077617320612070726f626c656d")
+		respBody, _ := base64.StdEncoding.DecodeString("omJpZHAwSEtnRlZsZXFTQnVjYlpEZWVycm9yomRjb2RlGG9nbWVzc2FnZXNUaGVyZSB3YXMgYSBwcm9ibGVt")
 		return &http.Response{
 			StatusCode: 400,
 			// Send response to be tested

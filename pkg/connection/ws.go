@@ -3,6 +3,9 @@ package connection
 import (
 	"errors"
 	"fmt"
+
+	"github.com/surrealdb/surrealdb.go/internal/codec"
+
 	"io"
 	"log/slog"
 	"net"
@@ -10,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
 
 	gorilla "github.com/gorilla/websocket"
 )
@@ -46,7 +49,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 
 		Conn:      nil,
 		closeChan: make(chan int),
-		Timeout:   constants.DefaultTimeout * time.Second,
+		Timeout:   constants.DefaultWSTimeout,
 		logger:    logger.New(slog.NewJSONHandler(os.Stdout, nil)),
 	}
 }
@@ -60,10 +63,11 @@ func (ws *WebSocketConnection) Connect() error {
 	dialer.EnableCompression = true
 	dialer.Subprotocols = append(dialer.Subprotocols, "cbor")
 
-	connection, _, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
 		return err
 	}
+	defer res.Body.Close()
 
 	ws.Conn = connection
 
@@ -131,6 +135,10 @@ func (ws *WebSocketConnection) Let(key string, value interface{}) error {
 
 func (ws *WebSocketConnection) Unset(key string) error {
 	return ws.Send(nil, "unset", key)
+}
+
+func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {
+	return ws.unmarshaler
 }
 
 func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
