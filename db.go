@@ -3,12 +3,11 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"github.com/fxamacker/cbor/v2"
 	"log/slog"
 	"net/url"
 	"os"
 	"strings"
-
-	"github.com/fxamacker/cbor/v2"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
@@ -49,6 +48,8 @@ func New(connectionURL string) (*DB, error) {
 		con = connection.NewHTTPConnection(newParams)
 	} else if scheme == "ws" || scheme == "wss" {
 		con = connection.NewWebSocketConnection(newParams)
+	} else if scheme == "mem" || scheme == "surrealkv" {
+		con = connection.NewEmbeddedConnection(newParams)
 	} else {
 		return nil, fmt.Errorf("invalid connection url")
 	}

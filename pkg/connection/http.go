@@ -137,6 +137,7 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
+
 	if err != nil {
 		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}
