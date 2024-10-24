@@ -1,9 +1,9 @@
 package connection
 
 /*
-#cgo CFLAGS: -I./../../libsrc/
-#cgo LDFLAGS: -L./../../libsrc/target/release -lsurrealdb_c
-#include "../../libsrc/surrealdb.h"
+#cgo LDFLAGS: -L./../../libsrc -lsurrealdb_c
+#include <stdlib.h>
+#include "./../../libsrc/surrealdb.h"
 */
 import "C"
 
@@ -17,8 +17,9 @@ import (
 type EmbeddedConnection struct {
 	BaseConnection
 
-	variables sync.Map
-	db        *C.sr_surreal_t
+	variables  sync.Map
+	db         *C.sr_surreal_t
+	surrealRPC *C.struct_sr_surreal_rpc_t
 }
 
 func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
@@ -39,29 +40,29 @@ func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 }
 
 func (h *EmbeddedConnection) Connect() error {
-	if h.baseURL == "" {
-		return fmt.Errorf("base url not set")
-	}
-
-	if h.marshaler == nil {
-		return fmt.Errorf("marshaler is not set")
-	}
-
-	if h.unmarshaler == nil {
-		return fmt.Errorf("unmarshaler is not set")
+	//ctx := context.TODO()
+	if err := h.preConnectionChecks(); err != nil {
+		return err
 	}
 
 	var cErr C.sr_string_t
-	var surreal *C.sr_surreal_t
 	defer C.sr_free_string(cErr)
 
-	endpoint := C.CString(h.baseURL)
-	defer C.free(unsafe.Pointer(endpoint))
+	cEndpoint := C.CString(h.baseURL)
+	defer C.free(unsafe.Pointer(cEndpoint))
 
-	if C.sr_connect(&cErr, &surreal, endpoint) < 0 {
+	var surreal *C.sr_surreal_t
+	if C.sr_connect(&cErr, &surreal, cEndpoint) < 0 {
 		return fmt.Errorf("error connecting to SurrealDB: %s", C.GoString(cErr))
 	}
 	h.db = surreal
+
+	var surrealOptions C.sr_option_t
+	var surrealPtr *C.struct_sr_surreal_rpc_t
+	if C.sr_surreal_rpc_new(&cErr, &surrealPtr, cEndpoint, surrealOptions) < 0 {
+		return fmt.Errorf("error initiating RPC: %s", C.GoString(cErr))
+	}
+	h.surrealRPC = surrealPtr
 
 	return nil
 }
@@ -74,23 +75,7 @@ func (h *EmbeddedConnection) Close() error {
 }
 
 func (h *EmbeddedConnection) Send(res interface{}, method string, params ...interface{}) error {
-	if h.baseURL == "" {
-		return fmt.Errorf("connection host not set")
-	}
 
-	query := C.CString("SELECT * FROM person;")
-	defer C.free(unsafe.Pointer(query))
-	//rpcReq := &RPCRequest{
-	//	ID:     rand.String(RequestIDLength),
-	//	Method: method,
-	//	Params: params,
-	//}
-	//
-	//_, err := h.marshaler.Marshal(rpcReq)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//
 	return nil
 }
 
@@ -103,11 +88,11 @@ func (h *EmbeddedConnection) Use(namespace, database string) error {
 	defer C.free(unsafe.Pointer(ns))
 	defer C.free(unsafe.Pointer(dbName))
 
-	if C.sr_use_ns(h.db, &cErr, ns) > 0 {
+	if C.sr_use_ns(h.db, &cErr, ns) < 0 {
 		return fmt.Errorf("error while setting namespace: %s", C.GoString(cErr))
 	}
 
-	if C.sr_use_db(h.db, &cErr, dbName) > 0 {
+	if C.sr_use_db(h.db, &cErr, dbName) < 0 {
 		return fmt.Errorf("error while setting database: %s", C.GoString(cErr))
 	}
 
@@ -122,4 +107,32 @@ func (h *EmbeddedConnection) Let(key string, value interface{}) error {
 func (h *EmbeddedConnection) Unset(key string) error {
 	h.variables.Delete(key)
 	return nil
+}
+
+func callSrSurrealRPCExecute(self *C.struct_sr_surreal_rpc_t, input []byte) ([]byte, error) {
+	var errPtr C.sr_string_t
+	var resPtr *C.uint8_t
+
+	// Convert Go byte slice to C pointer
+	inputPtr := (*C.uint8_t)(unsafe.Pointer(&input[0]))
+	inputLen := C.int(len(input))
+
+	// Call the C function
+	ret := C.sr_surreal_rpc_execute(self, &errPtr, &resPtr, inputPtr, inputLen)
+
+	// Check for error in return value
+	if ret != 0 {
+		errorMessage := C.GoString(errPtr)
+		return nil, fmt.Errorf("Error: %s", errorMessage)
+	}
+
+	// If successful, process the result (resPtr).
+	// Assuming the result is a null-terminated string, you could use:
+	// GoString or manually manage memory if it’s a different format.
+
+	// Let's assume the result is also a byte array. You can calculate the length
+	// from some additional logic, here I'm assuming the result is another array.
+	resultBytes := C.GoBytes(unsafe.Pointer(resPtr), C.int(len(input))) // or some other length calculation
+
+	return resultBytes, nil
 }

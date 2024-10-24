@@ -1,7 +1,7 @@
 package connection
 
 import (
-	"fmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"testing"
 )
@@ -14,9 +14,21 @@ func TestEmbedded_SendRequest(t *testing.T) {
 	})
 
 	err := con.Connect()
-	fmt.Println(err)
+	assert.NoError(t, err)
 
 	err = con.Use("test", "test")
-	fmt.Println(err)
+	assert.NoError(t, err)
 
+	var signInRes RPCResponse[string]
+	err = con.Send(&signInRes, "signin", map[string]string{
+		"user": "root",
+		"pass": "root",
+	})
+	assert.NoError(t, err)
+
+	//var res RPCResponse[any]
+	//err = con.Send(&res, "info")
+	//assert.NoError(t, err)
+	//
+	//fmt.Sprintf(res)
 }
