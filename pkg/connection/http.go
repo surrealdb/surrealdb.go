@@ -87,7 +87,6 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 		Params: params,
 	}
 	reqBody, err := h.marshaler.Marshal(request)
-
 	if err != nil {
 		return err
 	}

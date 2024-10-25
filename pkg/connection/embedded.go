@@ -8,8 +8,11 @@ package connection
 import "C"
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"sync"
 	"unsafe"
 )
@@ -75,6 +78,34 @@ func (h *EmbeddedConnection) Close() error {
 }
 
 func (h *EmbeddedConnection) Send(res interface{}, method string, params ...interface{}) error {
+	var cErr C.sr_string_t
+	var cRes *C.uint8_t
+
+	request := &RPCRequest{
+		ID:     rand.String(constants.RequestIDLength),
+		Method: method,
+		Params: params,
+	}
+	reqBody, err := h.marshaler.Marshal(request)
+	if err != nil {
+		return err
+	}
+
+	// Convert Go byte slice to C pointer
+	inputPtr := (*C.uint8_t)(unsafe.Pointer(&reqBody))
+	inputLen := C.int(len(reqBody))
+	if C.sr_surreal_rpc_execute(h.surrealRPC, &cErr, &cRes, inputPtr, inputLen) < 0 {
+		return fmt.Errorf("error making RPC request: %v", C.GoString(cErr))
+	}
+
+	// If successful, process the result (resPtr).
+	// Assuming the result is a null-terminated string, you could use:
+	// GoString or manually manage memory if it’s a different format.
+
+	// Let's assume the result is also a byte array. You can calculate the length
+	// from some additional logic, here I'm assuming the result is another array.
+	resultBytes := C.GoBytes(unsafe.Pointer(cRes), C.int(len(reqBody))) // or some other length calculation
+	fmt.Println(hex.EncodeToString(resultBytes))
 
 	return nil
 }
