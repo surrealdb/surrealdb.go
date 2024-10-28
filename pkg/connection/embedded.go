@@ -8,8 +8,8 @@ package connection
 import "C"
 
 import (
-	"encoding/hex"
 	"fmt"
+	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
@@ -21,13 +21,11 @@ type EmbeddedConnection struct {
 	BaseConnection
 
 	variables  sync.Map
-	db         *C.sr_surreal_t
-	surrealRPC *C.struct_sr_surreal_rpc_t
+	surrealRPC *C.sr_surreal_rpc_t
 }
 
 func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
-	//TODO implement me
-	panic("implement me")
+	return h.unmarshaler
 }
 
 func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
@@ -43,7 +41,6 @@ func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 }
 
 func (h *EmbeddedConnection) Connect() error {
-	//ctx := context.TODO()
 	if err := h.preConnectionChecks(); err != nil {
 		return err
 	}
@@ -54,16 +51,10 @@ func (h *EmbeddedConnection) Connect() error {
 	cEndpoint := C.CString(h.baseURL)
 	defer C.free(unsafe.Pointer(cEndpoint))
 
-	var surreal *C.sr_surreal_t
-	if C.sr_connect(&cErr, &surreal, cEndpoint) < 0 {
-		return fmt.Errorf("error connecting to SurrealDB: %s", C.GoString(cErr))
-	}
-	h.db = surreal
-
 	var surrealOptions C.sr_option_t
-	var surrealPtr *C.struct_sr_surreal_rpc_t
-	if C.sr_surreal_rpc_new(&cErr, &surrealPtr, cEndpoint, surrealOptions) < 0 {
-		return fmt.Errorf("error initiating RPC: %s", C.GoString(cErr))
+	var surrealPtr *C.sr_surreal_rpc_t
+	if ret := C.sr_surreal_rpc_new(&cErr, &surrealPtr, cEndpoint, surrealOptions); ret < 0 {
+		return fmt.Errorf("error initiating rpc. %v. return %v", C.GoString(cErr), ret)
 	}
 	h.surrealRPC = surrealPtr
 
@@ -71,16 +62,13 @@ func (h *EmbeddedConnection) Connect() error {
 }
 
 func (h *EmbeddedConnection) Close() error {
-	C.sr_surreal_disconnect(h.db)
+	C.sr_surreal_rpc_free(h.surrealRPC)
 
-	h.db = nil
+	h.surrealRPC = nil
 	return nil
 }
 
 func (h *EmbeddedConnection) Send(res interface{}, method string, params ...interface{}) error {
-	var cErr C.sr_string_t
-	var cRes *C.uint8_t
-
 	request := &RPCRequest{
 		ID:     rand.String(constants.RequestIDLength),
 		Method: method,
@@ -91,79 +79,38 @@ func (h *EmbeddedConnection) Send(res interface{}, method string, params ...inte
 		return err
 	}
 
-	// Convert Go byte slice to C pointer
-	inputPtr := (*C.uint8_t)(unsafe.Pointer(&reqBody))
-	inputLen := C.int(len(reqBody))
-	if C.sr_surreal_rpc_execute(h.surrealRPC, &cErr, &cRes, inputPtr, inputLen) < 0 {
-		return fmt.Errorf("error making RPC request: %v", C.GoString(cErr))
-	}
-
-	// If successful, process the result (resPtr).
-	// Assuming the result is a null-terminated string, you could use:
-	// GoString or manually manage memory if it’s a different format.
-
-	// Let's assume the result is also a byte array. You can calculate the length
-	// from some additional logic, here I'm assuming the result is another array.
-	resultBytes := C.GoBytes(unsafe.Pointer(cRes), C.int(len(reqBody))) // or some other length calculation
-	fmt.Println(hex.EncodeToString(resultBytes))
-
-	return nil
-}
-
-func (h *EmbeddedConnection) Use(namespace, database string) error {
 	var cErr C.sr_string_t
 	defer C.sr_free_string(cErr)
 
-	ns := C.CString(namespace)
-	dbName := C.CString(database)
-	defer C.free(unsafe.Pointer(ns))
-	defer C.free(unsafe.Pointer(dbName))
+	inputPtr := (*C.uint8_t)(unsafe.Pointer(&reqBody[0]))
+	inputLen := C.int(len(reqBody))
 
-	if C.sr_use_ns(h.db, &cErr, ns) < 0 {
-		return fmt.Errorf("error while setting namespace: %s", C.GoString(cErr))
+	var cRes *C.uint8_t
+	defer C.free(unsafe.Pointer(cRes))
+
+	resSize := C.sr_surreal_rpc_execute(h.surrealRPC, &cErr, &cRes, inputPtr, inputLen)
+	if resSize < 0 {
+		return fmt.Errorf("%v", C.GoString(cErr))
 	}
 
-	if C.sr_use_db(h.db, &cErr, dbName) < 0 {
-		return fmt.Errorf("error while setting database: %s", C.GoString(cErr))
+	if res == nil {
+		return nil
 	}
 
-	return nil
+	resultBytes := cbor.RawMessage(C.GoBytes(unsafe.Pointer(cRes), C.int(resSize)))
+
+	rpcRes, _ := h.marshaler.Marshal(RPCResponse[cbor.RawMessage]{ID: request.ID, Result: &resultBytes})
+	return h.unmarshaler.Unmarshal(rpcRes, res)
+}
+
+func (h *EmbeddedConnection) Use(namespace, database string) error {
+	return h.Send(nil, "use", namespace, database)
 }
 
 func (h *EmbeddedConnection) Let(key string, value interface{}) error {
-	h.variables.Store(key, value)
-	return nil
+	return h.Send(nil, "let", key, value)
 }
 
 func (h *EmbeddedConnection) Unset(key string) error {
-	h.variables.Delete(key)
-	return nil
-}
-
-func callSrSurrealRPCExecute(self *C.struct_sr_surreal_rpc_t, input []byte) ([]byte, error) {
-	var errPtr C.sr_string_t
-	var resPtr *C.uint8_t
-
-	// Convert Go byte slice to C pointer
-	inputPtr := (*C.uint8_t)(unsafe.Pointer(&input[0]))
-	inputLen := C.int(len(input))
-
-	// Call the C function
-	ret := C.sr_surreal_rpc_execute(self, &errPtr, &resPtr, inputPtr, inputLen)
-
-	// Check for error in return value
-	if ret != 0 {
-		errorMessage := C.GoString(errPtr)
-		return nil, fmt.Errorf("Error: %s", errorMessage)
-	}
-
-	// If successful, process the result (resPtr).
-	// Assuming the result is a null-terminated string, you could use:
-	// GoString or manually manage memory if it’s a different format.
-
-	// Let's assume the result is also a byte array. You can calculate the length
-	// from some additional logic, here I'm assuming the result is another array.
-	resultBytes := C.GoBytes(unsafe.Pointer(resPtr), C.int(len(input))) // or some other length calculation
-
-	return resultBytes, nil
+	return h.Send(nil, "unset", key)
 }

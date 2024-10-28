@@ -74,6 +74,14 @@ func (bc *BaseConnection) createNotificationChannel(liveQueryID string) (chan No
 	return ch, nil
 }
 
+func (bc *BaseConnection) getNotificationChannel(id string) (chan Notification, bool) {
+	bc.notificationChannelsLock.RLock()
+	defer bc.notificationChannelsLock.RUnlock()
+	ch, ok := bc.notificationChannels[id]
+
+	return ch, ok
+}
+
 func (bc *BaseConnection) removeResponseChannel(id string) {
 	bc.responseChannelsLock.Lock()
 	defer bc.responseChannelsLock.Unlock()
@@ -84,14 +92,6 @@ func (bc *BaseConnection) getResponseChannel(id string) (chan []byte, bool) {
 	bc.responseChannelsLock.RLock()
 	defer bc.responseChannelsLock.RUnlock()
 	ch, ok := bc.responseChannels[id]
-	return ch, ok
-}
-
-func (bc *BaseConnection) getLiveChannel(id string) (chan Notification, bool) {
-	bc.notificationChannelsLock.RLock()
-	defer bc.notificationChannelsLock.RUnlock()
-	ch, ok := bc.notificationChannels[id]
-
 	return ch, ok
 }
 
