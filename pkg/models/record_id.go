@@ -50,7 +50,7 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 	}
 
 	r.Table = temp[0].(string)
-	r.ID = temp[1].(string)
+	r.ID = temp[1]
 
 	return nil
 }
