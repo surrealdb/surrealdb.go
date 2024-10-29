@@ -245,14 +245,17 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 	if rpcRes.Error != nil {
 		err := fmt.Errorf("rpc request err %w", rpcRes.Error)
 		ws.logger.Error(err.Error())
+
 		errChan, ok := ws.getErrorChannel(fmt.Sprintf("%v", rpcRes.ID))
 		if !ok {
 			err := fmt.Errorf("unavailable ErrorChannel %+v", rpcRes.ID)
 			ws.logger.Error(err.Error())
 			return
 		}
+
 		defer close(errChan)
 		errChan <- rpcRes.Error
+
 		return
 	}
 
