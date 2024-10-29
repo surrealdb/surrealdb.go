@@ -159,7 +159,12 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	if err != nil {
 		return err
 	}
+	errorChan, err := ws.createErrorChannel(id)
+	if err != nil {
+		return err
+	}
 	defer ws.removeResponseChannel(id)
+	defer ws.removeErrorChannel(id)
 
 	if err := ws.write(request); err != nil {
 		return err
@@ -177,6 +182,11 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 			return ws.unmarshaler.Unmarshal(resBytes, dest)
 		}
 		return nil
+	case resErr, open := <-errorChan:
+		if !open {
+			return errors.New("error channel closed")
+		}
+		return resErr
 	}
 }
 
@@ -234,6 +244,14 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 	if rpcRes.Error != nil {
 		err := fmt.Errorf("rpc request err %w", rpcRes.Error)
 		ws.logger.Error(err.Error())
+		errChan, ok := ws.getErrorChannel(fmt.Sprintf("%v", rpcRes.ID))
+		if !ok {
+			err := fmt.Errorf("unavailable ErrorChannel %+v", rpcRes.ID)
+			ws.logger.Error(err.Error())
+			return
+		}
+		defer close(errChan)
+		errChan <- rpcRes.Error
 		return
 	}
 

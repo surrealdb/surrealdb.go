@@ -197,6 +197,9 @@ func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]Que
 	if err := db.con.Send(&res, "query", sql, vars); err != nil {
 		return nil, err
 	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
 
 	return res.Result, nil
 }
