@@ -475,5 +475,4 @@ func (s *SurrealDBTestSuite) TestRPCError() {
 		_, err := surrealdb.Query[[]testUser](s.db, "SELEC * FROM users", map[string]interface{}{})
 		s.Require().Error(err)
 	})
-
 }
