@@ -44,6 +44,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 			unmarshaler: p.Unmarshaler,
 
 			responseChannels:     make(map[string]chan []byte),
+			errorChannels:        make(map[string]chan error),
 			notificationChannels: make(map[string]chan Notification),
 		},
 
