@@ -16,14 +16,14 @@ type CustomDateTime struct {
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	enc := getCborEncoder()
 
-	totalNS := d.Nanosecond()
+	totalNS := d.UnixNano()
 
 	s := totalNS / constants.OneSecondToNanoSecond
 	ns := totalNS % constants.OneSecondToNanoSecond
 
 	return enc.Marshal(cbor.Tag{
 		Number:  TagCustomDatetime,
-		Content: [2]int64{int64(s), int64(ns)},
+		Content: [2]int64{s, ns},
 	})
 }
 
