@@ -222,16 +222,29 @@ func Select[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, err
 
 func Patch(db *DB, what interface{}, patches []PatchData) (*[]PatchData, error) {
 	var patchRes connection.RPCResponse[[]PatchData]
-	err := db.con.Send(&patchRes, "patch", what, patches, true)
-	return patchRes.Result, err
+	if err := db.con.Send(&patchRes, "patch", what, patches, true); err != nil {
+		return nil, err
+	}
+
+	return patchRes.Result, nil
 }
 
-func Delete[TWhat TableOrRecord](db *DB, what TWhat) error {
-	return db.con.Send(nil, "delete", what)
+func Delete[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.con.Send(&res, "delete", what); err != nil {
+		return nil, err
+	}
+
+	return res.Result, nil
 }
 
-func Upsert[TWhat TableOrRecord](db *DB, what TWhat, data interface{}) error {
-	return db.con.Send(nil, "upsert", what, data)
+func Upsert[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.con.Send(&res, "upsert", what, data); err != nil {
+		return nil, err
+	}
+
+	return res.Result, nil
 }
 
 // Update a table or record in the database like a PUT request.
@@ -245,7 +258,7 @@ func Update[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge[TResult any](db *DB, what, data interface{}) (*TResult, error) {
+func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 	if err := db.con.Send(&res, "merge", what, data); err != nil {
 		return nil, err
