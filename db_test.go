@@ -464,3 +464,15 @@ func (s *SurrealDBTestSuite) TestQueryRaw() {
 	fmt.Println(created)
 	fmt.Println(selected)
 }
+
+func (s *SurrealDBTestSuite) TestRPCError() {
+	s.Run("Test valid query", func() {
+		_, err := surrealdb.Query[[]testUser](s.db, "SELECT * FROM users", map[string]interface{}{})
+		s.Require().NoError(err)
+	})
+
+	s.Run("Test invalid query", func() {
+		_, err := surrealdb.Query[[]testUser](s.db, "SELEC * FROM users", map[string]interface{}{})
+		s.Require().Error(err)
+	})
+}
