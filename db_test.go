@@ -69,13 +69,13 @@ func TestSurrealDBSuite(t *testing.T) {
 
 // SetupTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
-	err := surrealdb.Delete[models.Table](s.db, "users")
+	_, err := surrealdb.Delete[[]testUser, models.Table](s.db, "users")
 	s.Require().NoError(err)
 
-	err = surrealdb.Delete[models.Table](s.db, "persons")
+	_, err = surrealdb.Delete[[]testUser, models.Table](s.db, "persons")
 	s.Require().NoError(err)
 
-	err = surrealdb.Delete[models.Table](s.db, "knows")
+	_, err = surrealdb.Delete[[]testUser, models.Table](s.db, "knows")
 	s.Require().NoError(err)
 }
 
@@ -129,7 +129,7 @@ func (s *SurrealDBTestSuite) TestDelete() {
 	s.Require().NoError(err)
 
 	// Delete the users...
-	err = surrealdb.Delete(s.db, "users")
+	_, err = surrealdb.Delete[[]testUser](s.db, "users")
 	s.Require().NoError(err)
 }
 
@@ -460,7 +460,16 @@ func (s *SurrealDBTestSuite) TestQueryRaw() {
 	var selected []testPerson
 	err = queries[1].GetResult(&selected)
 	s.Require().NoError(err)
+}
 
-	fmt.Println(created)
-	fmt.Println(selected)
+func (s *SurrealDBTestSuite) TestRPCError() {
+	s.Run("Test valid query", func() {
+		_, err := surrealdb.Query[[]testUser](s.db, "SELECT * FROM users", map[string]interface{}{})
+		s.Require().NoError(err)
+	})
+
+	s.Run("Test invalid query", func() {
+		_, err := surrealdb.Query[[]testUser](s.db, "SELEC * FROM users", map[string]interface{}{})
+		s.Require().Error(err)
+	})
 }

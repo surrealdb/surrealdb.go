@@ -42,6 +42,9 @@ type BaseConnection struct {
 	responseChannels     map[string]chan []byte
 	responseChannelsLock sync.RWMutex
 
+	errorChannels     map[string]chan error
+	errorChannelsLock sync.RWMutex
+
 	notificationChannels     map[string]chan Notification
 	notificationChannelsLock sync.RWMutex
 }
@@ -56,6 +59,20 @@ func (bc *BaseConnection) createResponseChannel(id string) (chan []byte, error) 
 
 	ch := make(chan []byte)
 	bc.responseChannels[id] = ch
+
+	return ch, nil
+}
+
+func (bc *BaseConnection) createErrorChannel(id string) (chan error, error) {
+	bc.errorChannelsLock.Lock()
+	defer bc.errorChannelsLock.Unlock()
+
+	if _, ok := bc.errorChannels[id]; ok {
+		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
+	}
+
+	ch := make(chan error)
+	bc.errorChannels[id] = ch
 
 	return ch, nil
 }
@@ -88,10 +105,31 @@ func (bc *BaseConnection) removeResponseChannel(id string) {
 	delete(bc.responseChannels, id)
 }
 
+func (bc *BaseConnection) removeErrorChannel(id string) {
+	bc.errorChannelsLock.Lock()
+	defer bc.errorChannelsLock.Unlock()
+	delete(bc.errorChannels, id)
+}
+
 func (bc *BaseConnection) getResponseChannel(id string) (chan []byte, bool) {
 	bc.responseChannelsLock.RLock()
 	defer bc.responseChannelsLock.RUnlock()
 	ch, ok := bc.responseChannels[id]
+	return ch, ok
+}
+
+func (bc *BaseConnection) getErrorChannel(id string) (chan error, bool) {
+	bc.errorChannelsLock.RLock()
+	defer bc.errorChannelsLock.RUnlock()
+	ch, ok := bc.errorChannels[id]
+	return ch, ok
+}
+
+func (bc *BaseConnection) getLiveChannel(id string) (chan Notification, bool) {
+	bc.notificationChannelsLock.RLock()
+	defer bc.notificationChannelsLock.RUnlock()
+	ch, ok := bc.notificationChannels[id]
+
 	return ch, ok
 }
 
