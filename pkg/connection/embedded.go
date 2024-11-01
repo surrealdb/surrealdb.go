@@ -20,8 +20,13 @@ import (
 type EmbeddedConnection struct {
 	BaseConnection
 
-	variables  sync.Map
-	surrealRPC *C.sr_surreal_rpc_t
+	variables sync.Map
+
+	surrealRPC    *C.sr_surreal_rpc_t
+	surrealStream *C.sr_RpcStream
+
+	closeChan chan int
+	closeErr  error
 }
 
 func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
@@ -31,10 +36,16 @@ func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
 func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 	con := EmbeddedConnection{
 		BaseConnection: BaseConnection{
+			baseURL: p.BaseURL,
+
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
-			baseURL:     p.BaseURL,
+
+			responseChannels:     make(map[string]chan []byte),
+			notificationChannels: make(map[string]chan Notification),
 		},
+
+		closeChan: make(chan int),
 	}
 
 	return &con
@@ -52,13 +63,50 @@ func (h *EmbeddedConnection) Connect() error {
 	defer C.free(unsafe.Pointer(cEndpoint))
 
 	var surrealOptions C.sr_option_t
-	var surrealPtr *C.sr_surreal_rpc_t
-	if ret := C.sr_surreal_rpc_new(&cErr, &surrealPtr, cEndpoint, surrealOptions); ret < 0 {
+	var surrealRPC *C.sr_surreal_rpc_t
+	if ret := C.sr_surreal_rpc_new(&cErr, &surrealRPC, cEndpoint, surrealOptions); ret < 0 {
 		return fmt.Errorf("error initiating rpc. %v. return %v", C.GoString(cErr), ret)
 	}
-	h.surrealRPC = surrealPtr
+	h.surrealRPC = surrealRPC
+
+	var cStream *C.sr_RpcStream
+	if ret := C.sr_surreal_rpc_notifications(h.surrealRPC, &cErr, &cStream); ret < 0 {
+		return fmt.Errorf("error initiating rpc. %v. return %v", C.GoString(cErr), ret)
+	}
+	h.surrealStream = cStream
+
+	go h.initialize()
 
 	return nil
+}
+
+func (h *EmbeddedConnection) initialize() {
+	for {
+		select {
+		case <-h.closeChan:
+			return
+		default:
+			//var cNotification C.sr_notification_t
+			//ret := C.sr_stream_next(h.surrealStream, &cNotification)
+
+			//_ = h.surrealStream.next()
+			//fmt.Println()
+			//if ret == C.sr_SR_NONE {
+			//	// stream closed
+			//	return
+			//} else if ret < 0 {
+			//	// Stream err
+			//	return
+			//}
+			//
+			//C.sr_print_notification(&cNotification)
+
+		}
+	}
+}
+
+func (h *EmbeddedConnection) handleNotification() {
+
 }
 
 func (h *EmbeddedConnection) Close() error {
