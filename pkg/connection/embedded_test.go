@@ -2,6 +2,8 @@ package connection
 
 import (
 	"fmt"
+	"testing"
+
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -12,11 +14,11 @@ type EmbeddedConnectionTestSuite struct {
 	name string
 }
 
-//func TestEmbeddedConnectionTestSuite(t *testing.T) {
-//	s := new(EmbeddedConnectionTestSuite)
-//	s.name = "Test_Embedded_Connection"
-//	suite.Run(t, s)
-//}
+func TestEmbeddedConnectionTestSuite(t *testing.T) {
+	s := new(EmbeddedConnectionTestSuite)
+	s.name = "Test_Embedded_Connection"
+	suite.Run(t, s)
+}
 
 // SetupSuite is called before the s starts running
 func (s *EmbeddedConnectionTestSuite) SetupSuite() {
@@ -50,14 +52,6 @@ func (s *EmbeddedConnectionTestSuite) TestSendRequest() {
 	var versionRes RPCResponse[string]
 	err = s.con.Send(&versionRes, "version")
 	s.Require().NoError(err)
-
-	//var signInRes RPCResponse[string]
-	//err = con.Send(&signInRes, "signin", map[string]string{
-	//	"user": "root",
-	//	"pass": "root",
-	//})
-	//assert.NoError(t, err)
-	//fmt.Println(signInRes)
 }
 
 func (s *EmbeddedConnectionTestSuite) TestLiveAndNotification() {
@@ -68,7 +62,7 @@ func (s *EmbeddedConnectionTestSuite) TestLiveAndNotification() {
 	err = s.con.Send(&liveRes, "live", "users", false)
 	s.Require().NoError(err, "should not return error on live request")
 
-	liveID := (*liveRes.Result).String()
+	liveID := liveRes.Result.String()
 	defer func() {
 		err = s.con.Send(nil, "kill", liveID)
 		s.Require().NoError(err)
@@ -79,13 +73,5 @@ func (s *EmbeddedConnectionTestSuite) TestLiveAndNotification() {
 
 	fmt.Println(notifications)
 
-	//_, e := surrealdb.Create[testUser](s.db, "users", map[string]interface{}{
-	//	"username": "johnny",
-	//	"password": "123",
-	//})
-	//s.Require().NoError(e)
-	//
-	//notification := <-notifications
-	//s.Require().Equal(connection.CreateAction, notification.Action)
-	//s.Require().Equal(live, notification.ID)
+	// Notification reader not ready on C lib
 }

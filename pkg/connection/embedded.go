@@ -9,12 +9,14 @@ import "C"
 
 import (
 	"fmt"
+	"net/url"
+	"sync"
+	"unsafe"
+
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"sync"
-	"unsafe"
 )
 
 type EmbeddedConnection struct {
@@ -52,7 +54,8 @@ func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 }
 
 func (h *EmbeddedConnection) Connect() error {
-	if err := h.preConnectionChecks(); err != nil {
+	err := h.preConnectionChecks()
+	if err != nil {
 		return err
 	}
 
@@ -60,6 +63,13 @@ func (h *EmbeddedConnection) Connect() error {
 	defer C.sr_free_string(cErr)
 
 	cEndpoint := C.CString(h.baseURL)
+	u, err := url.ParseRequestURI(h.baseURL)
+	if err != nil {
+		return err
+	}
+	if u.Scheme == "mem" || u.Scheme == "memory" {
+		cEndpoint = C.CString("memory")
+	}
 	defer C.free(unsafe.Pointer(cEndpoint))
 
 	var surrealOptions C.sr_option_t
@@ -75,38 +85,7 @@ func (h *EmbeddedConnection) Connect() error {
 	}
 	h.surrealStream = cStream
 
-	go h.initialize()
-
 	return nil
-}
-
-func (h *EmbeddedConnection) initialize() {
-	for {
-		select {
-		case <-h.closeChan:
-			return
-		default:
-			//var cNotification C.sr_notification_t
-			//ret := C.sr_stream_next(h.surrealStream, &cNotification)
-
-			//_ = h.surrealStream.next()
-			//fmt.Println()
-			//if ret == C.sr_SR_NONE {
-			//	// stream closed
-			//	return
-			//} else if ret < 0 {
-			//	// Stream err
-			//	return
-			//}
-			//
-			//C.sr_print_notification(&cNotification)
-
-		}
-	}
-}
-
-func (h *EmbeddedConnection) handleNotification() {
-
 }
 
 func (h *EmbeddedConnection) Close() error {
@@ -145,7 +124,7 @@ func (h *EmbeddedConnection) Send(res interface{}, method string, params ...inte
 		return nil
 	}
 
-	resultBytes := cbor.RawMessage(C.GoBytes(unsafe.Pointer(cRes), C.int(resSize)))
+	resultBytes := cbor.RawMessage(C.GoBytes(unsafe.Pointer(cRes), resSize))
 
 	rpcRes, _ := h.marshaler.Marshal(RPCResponse[cbor.RawMessage]{ID: request.ID, Result: &resultBytes})
 	return h.unmarshaler.Unmarshal(rpcRes, res)

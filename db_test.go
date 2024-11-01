@@ -2,11 +2,12 @@ package surrealdb_test
 
 import (
 	"fmt"
-	"github.com/surrealdb/surrealdb.go"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/surrealdb/surrealdb.go"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"

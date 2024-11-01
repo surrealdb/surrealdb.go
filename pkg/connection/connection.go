@@ -125,14 +125,6 @@ func (bc *BaseConnection) getErrorChannel(id string) (chan error, bool) {
 	return ch, ok
 }
 
-func (bc *BaseConnection) getLiveChannel(id string) (chan Notification, bool) {
-	bc.notificationChannelsLock.RLock()
-	defer bc.notificationChannelsLock.RUnlock()
-	ch, ok := bc.notificationChannels[id]
-
-	return ch, ok
-}
-
 func (bc *BaseConnection) preConnectionChecks() error {
 	if bc.baseURL == "" {
 		return constants.ErrNoBaseURL
