@@ -22,6 +22,7 @@ linters-settings:
       - ifElseChain
       - octalLiteral
       - whyNoLint
+      - dupSubExpr # https://github.com/go-critic/go-critic/issues/897#issuecomment-568896534
   gocyclo:
     min-complexity: 15
   goimports:

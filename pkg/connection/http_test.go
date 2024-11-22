@@ -3,12 +3,14 @@ package connection
 import (
 	"bytes"
 	"context"
+
 	"encoding/base64"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 

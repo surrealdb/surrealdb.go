@@ -216,6 +216,20 @@ or for a secure connection
 db, err := surrealdb.New("https://localhost:8000")
 ```
 
+### Using SurrealKV and Memory
+SurrealKV and Memory also do not support live notifications at this time. This would be updated in the next 
+release.
+
+For Surreal KV
+```go
+db, err := surrealdb.New("surrealkv://path/to/dbfile.kv")
+```
+
+For Memory
+```go
+db, err := surrealdb.New("mem://")
+db, err := surrealdb.New("memory://")
+```
 
 ## Data Models
 This package facilitates communication between client and the backend service using the Concise 

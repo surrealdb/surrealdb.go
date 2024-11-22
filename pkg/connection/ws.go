@@ -122,12 +122,7 @@ func (ws *WebSocketConnection) Close() error {
 }
 
 func (ws *WebSocketConnection) Use(namespace, database string) error {
-	err := ws.Send(nil, "use", namespace, database)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ws.Send(nil, "use", namespace, database)
 }
 
 func (ws *WebSocketConnection) Let(key string, value interface{}) error {
@@ -285,7 +280,7 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 
 		channelID := notificationRes.Result.ID
 
-		LiveNotificationChan, ok := ws.getLiveChannel(channelID.String())
+		LiveNotificationChan, ok := ws.getNotificationChannel(channelID.String())
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", channelID.String())
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
