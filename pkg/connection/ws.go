@@ -20,6 +20,24 @@ import (
 	gorilla "github.com/gorilla/websocket"
 )
 
+var DefaultDialer *gorilla.Dialer
+
+func init() {
+	var subprotocols []string
+
+	subprotocols = append(subprotocols, gorilla.DefaultDialer.Subprotocols...)
+	subprotocols = append(subprotocols, "cbor")
+
+	d := gorilla.Dialer{
+		Proxy:             gorilla.DefaultDialer.Proxy,
+		HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
+		EnableCompression: true,
+		Subprotocols:      subprotocols,
+	}
+
+	DefaultDialer = &d
+}
+
 type Option func(ws *WebSocketConnection) error
 
 type WebSocketConnection struct {
@@ -60,11 +78,7 @@ func (ws *WebSocketConnection) Connect() error {
 		return err
 	}
 
-	dialer := gorilla.DefaultDialer
-	dialer.EnableCompression = true
-	dialer.Subprotocols = append(dialer.Subprotocols, "cbor")
-
-	connection, res, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := DefaultDialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
 		return err
 	}
