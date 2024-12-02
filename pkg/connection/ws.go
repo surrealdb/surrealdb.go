@@ -20,6 +20,18 @@ import (
 	gorilla "github.com/gorilla/websocket"
 )
 
+// DefaultDialer is the default gorilla dialer used by the WebSocketConnection
+//
+// It uses the default gorilla dialer as of gorilla/websocket v1.5.0 with the following modifications:
+// - EnableCompression is set to true
+// - Subprotocols is set to ["cbor"]
+var DefaultDialer = &gorilla.Dialer{
+	Proxy:             gorilla.DefaultDialer.Proxy,
+	HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
+	EnableCompression: true,
+	Subprotocols:      []string{"cbor"},
+}
+
 type Option func(ws *WebSocketConnection) error
 
 type WebSocketConnection struct {
@@ -60,11 +72,7 @@ func (ws *WebSocketConnection) Connect() error {
 		return err
 	}
 
-	dialer := gorilla.DefaultDialer
-	dialer.EnableCompression = true
-	dialer.Subprotocols = append(dialer.Subprotocols, "cbor")
-
-	connection, res, err := dialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := DefaultDialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
 		return err
 	}
