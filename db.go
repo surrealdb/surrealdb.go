@@ -50,7 +50,8 @@ func New(connectionURL string) (*DB, error) {
 	} else if scheme == "ws" || scheme == "wss" {
 		con = connection.NewWebSocketConnection(newParams)
 	} else if scheme == "memory" || scheme == "mem" || scheme == "surrealkv" {
-		con = connection.NewEmbeddedConnection(newParams)
+		return nil, fmt.Errorf("embedded database not enabled")
+		// con = connection.NewEmbeddedConnection(newParams)
 	} else {
 		return nil, fmt.Errorf("invalid connection url")
 	}
