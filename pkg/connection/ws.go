@@ -20,22 +20,16 @@ import (
 	gorilla "github.com/gorilla/websocket"
 )
 
-var DefaultDialer *gorilla.Dialer
-
-func init() {
-	var subprotocols []string
-
-	subprotocols = append(subprotocols, gorilla.DefaultDialer.Subprotocols...)
-	subprotocols = append(subprotocols, "cbor")
-
-	d := gorilla.Dialer{
-		Proxy:             gorilla.DefaultDialer.Proxy,
-		HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
-		EnableCompression: true,
-		Subprotocols:      subprotocols,
-	}
-
-	DefaultDialer = &d
+// DefaultDialer is the default gorilla dialer used by the WebSocketConnection
+//
+// It uses the default gorilla dialer as of gorilla/websocket v1.5.0 with the following modifications:
+// - EnableCompression is set to true
+// - Subprotocols is set to ["cbor"]
+var DefaultDialer = &gorilla.Dialer{
+	Proxy:             gorilla.DefaultDialer.Proxy,
+	HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
+	EnableCompression: true,
+	Subprotocols:      []string{"cbor"},
 }
 
 type Option func(ws *WebSocketConnection) error
