@@ -137,15 +137,19 @@ func main() {
 	}
 	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
+
 	// Delete an entry by ID
-	if err = surrealdb.Delete[models.RecordID](db, *person2.ID); err != nil {
+	_, err = surrealdb.Delete[Person, models.RecordID](db, *person2.ID)
+	if err != nil {
 		panic(err)
 	}
 
 	// Delete all entries
-	if err = surrealdb.Delete[models.Table](db, models.Table("persons")); err != nil {
+	_, err = surrealdb.Delete[[]Person, models.Table](db, models.Table("persons"))
+	if err != nil {
 		panic(err)
 	}
+
 
 	// Confirm empty table
 	persons, err = surrealdb.Select[[]Person](db, models.Table("persons"))
