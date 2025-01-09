@@ -1,0 +1,31 @@
+name: test_embedded
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  embedded-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['ubuntu-latest', 'windows-latest', 'macos-latest']
+        go-version: ['1.21']
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: start surrealdb
+        run: surreal start memory -A --user root --pass root &
+      - name: test
+        run: go test -v -cover ./...
+        env:
+          SURREALDB_URL: mem://
