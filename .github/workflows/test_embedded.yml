@@ -23,8 +23,6 @@ jobs:
           go-version: ${{ matrix.go-version }}
           check-latest: true
           cache-dependency-path: go.sum
-      - name: start surrealdb
-        run: surreal start memory -A --user root --pass root &
       - name: test
         run: go test -v -cover ./...
         env:
