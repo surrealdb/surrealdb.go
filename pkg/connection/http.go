@@ -3,9 +3,12 @@ package connection
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,12 +154,29 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return respBytes, nil
 	}
 
-	var errorResponse RPCResponse[any]
-	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
-	if err != nil {
-		panic(err)
+	switch strings.Split(resp.Header.Get("Content-Type"), ";")[0] {
+	case "application/cbor":
+		var errorResponse RPCResponse[any]
+		err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
+		if err != nil {
+			panic(err)
+		}
+		return nil, errorResponse.Error
+
+	case "application/json":
+		var errorResponse RPCResponse[any]
+		err = json.Unmarshal(respBytes, &errorResponse)
+		if err != nil {
+			panic(err)
+		}
+		return nil, errorResponse.Error
+
+	case "":
+		return nil, errors.New(string(respBytes))
+
+	default:
+		return nil, errors.New(string(respBytes))
 	}
-	return nil, errorResponse.Error
 }
 
 func (h *HTTPConnection) Use(namespace, database string) error {
