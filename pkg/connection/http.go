@@ -172,9 +172,6 @@ func (h *HTTPConnection) Use(namespace, database string) error {
 }
 
 func (h *HTTPConnection) Let(key string, value interface{}) error {
-	if v, ok := value.(*string); ok {
-		value = *v
-	}
 	h.variables.Store(key, value)
 	return nil
 }

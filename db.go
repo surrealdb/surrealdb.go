@@ -111,7 +111,7 @@ func (db *DB) SignIn(authData *Auth) (string, error) {
 		return "", err
 	}
 
-	if err := db.con.Let(constants.AuthTokenKey, token.Result); err != nil {
+	if err := db.con.Let(constants.AuthTokenKey, *token.Result); err != nil {
 		return "", err
 	}
 
