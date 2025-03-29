@@ -112,7 +112,7 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 	}
 
 	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.(*string)))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
 	}
 
 	respData, err := h.MakeRequest(req)
@@ -172,6 +172,9 @@ func (h *HTTPConnection) Use(namespace, database string) error {
 }
 
 func (h *HTTPConnection) Let(key string, value interface{}) error {
+	if v, ok := value.(*string); ok {
+		value = *v
+	}
 	h.variables.Store(key, value)
 	return nil
 }
