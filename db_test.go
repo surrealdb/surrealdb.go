@@ -3,6 +3,7 @@ package surrealdb_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -92,9 +93,9 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 	s.Require().NoError(err, "should not return an error when initializing db")
 	s.db = db
 
+	err = db.Use("test", "test")
 	_ = signIn(s)
 
-	err = db.Use("test", "test")
 	s.Require().NoError(err, "should not return an error when setting namespace and database")
 }
 
@@ -231,6 +232,11 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaMethod() {
+	if strings.HasPrefix(getURL(), "http") {
+		s.T().Skip("Live queries are not supported in HTTP connection")
+		return
+	}
+
 	live, err := surrealdb.Live(s.db, "users", false)
 	s.Require().NoError(err, "should not return error on live request")
 
@@ -254,6 +260,10 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 }
 
 func (s *SurrealDBTestSuite) TestLiveViaQuery() {
+	if strings.HasPrefix(getURL(), "http") {
+		s.T().Skip("Live queries are not supported in HTTP connection")
+		return
+	}
 	res, err := surrealdb.Query[models.UUID](s.db, "LIVE SELECT * FROM users", map[string]interface{}{})
 	s.Require().NoError(err)
 

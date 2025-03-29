@@ -111,7 +111,7 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 	}
 
 	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token.(*string)))
 	}
 
 	respData, err := h.MakeRequest(req)
@@ -154,7 +154,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	var errorResponse RPCResponse[any]
 	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
 	}
 	return nil, errorResponse.Error
 }
