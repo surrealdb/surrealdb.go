@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,6 +152,10 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return respBytes, nil
 	}
 
+	contentType := strings.Split(resp.Header.Get("Content-Type"), ";")[0]
+	if strings.TrimSpace(contentType) == "" {
+		return nil, fmt.Errorf(string(respBytes))
+	}
 	var errorResponse RPCResponse[any]
 	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
