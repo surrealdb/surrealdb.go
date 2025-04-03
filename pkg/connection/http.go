@@ -154,7 +154,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 
 	contentType := strings.Split(resp.Header.Get("Content-Type"), ";")[0]
 	if strings.TrimSpace(contentType) == "" {
-		return nil, fmt.Errorf(string(respBytes))
+		return nil, fmt.Errorf("%s", string(respBytes))
 	}
 	var errorResponse RPCResponse[any]
 	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
