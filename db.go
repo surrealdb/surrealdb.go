@@ -45,13 +45,14 @@ func New(connectionURL string) (*DB, error) {
 	}
 
 	var con connection.Connection
-	if scheme == "http" || scheme == "https" {
+	switch scheme {
+	case "http", "https":
 		con = connection.NewHTTPConnection(newParams)
-	} else if scheme == "ws" || scheme == "wss" {
+	case "ws", "wss":
 		con = connection.NewWebSocketConnection(newParams)
-	} else if scheme == "memory" || scheme == "mem" || scheme == "surrealkv" {
+	case "memory", "mem", "surrealkv":
 		return nil, fmt.Errorf("embedded database not enabled")
-	} else {
+	default:
 		return nil, fmt.Errorf("invalid connection url")
 	}
 

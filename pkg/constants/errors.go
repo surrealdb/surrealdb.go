@@ -4,7 +4,7 @@ import "errors"
 
 // Errors
 var (
-	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:stylecheck
+	InvalidResponse = errors.New("invalid SurrealDB response") //nolint:staticcheck
 	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
 	ErrNoRow        = errors.New("error no row")
 )
