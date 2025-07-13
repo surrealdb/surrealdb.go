@@ -157,7 +157,7 @@ func main() {
 ```
 
 ### Doing it your way
-All Data manipulation methods are handled by an undelying `send` function. This function is 
+All Data manipulation methods are handled by an undelying `send` function. This function is
 exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
 methods are:
 - select
@@ -180,7 +180,7 @@ err := db.Send(&res, "query", user.ID)
 if err != nil {
 	panic(err)
 }
-	
+
 ```
 
 ### Instructions for running the example
@@ -217,8 +217,14 @@ db, err := surrealdb.New("https://localhost:8000")
 ```
 
 ### Using SurrealKV and Memory
-SurrealKV and Memory also do not support live notifications at this time. This would be updated in the next 
+SurrealKV and Memory also do not support live notifications at this time. This would be updated in the next
 release.
+
+> ⚠️ **Note**
+> Although the examples below reference `surrealkv://` and `memory://`, **these modes are currently not supported in the Go SDK**.
+> Support for embedded databases (like SurrealKV and in-memory) is pending future development and is being tracked in [issue #197](https://github.com/surrealdb/surrealdb.go/issues/197).
+>
+> Until then, please use `http://` or `ws://` endpoints to connect to a running SurrealDB server instance.
 
 For Surreal KV
 ```go
@@ -232,10 +238,10 @@ db, err := surrealdb.New("memory://")
 ```
 
 ## Data Models
-This package facilitates communication between client and the backend service using the Concise 
-Binary Object Representation (CBOR) format. It streamlines data serialization and deserialization 
-while ensuring efficient and lightweight communication. The library also provides custom models 
-tailored to specific Data models recognised by SurrealDb, which cannot be covered by idiomatic go, enabling seamless interaction between 
+This package facilitates communication between client and the backend service using the Concise
+Binary Object Representation (CBOR) format. It streamlines data serialization and deserialization
+while ensuring efficient and lightweight communication. The library also provides custom models
+tailored to specific Data models recognised by SurrealDb, which cannot be covered by idiomatic go, enabling seamless interaction between
 the client and the backend.
 
 See the [documetation on data models](https://surrealdb.com/docs/surrealql/datamodel) on support data types
