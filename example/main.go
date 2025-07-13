@@ -92,7 +92,7 @@ func main() {
 	}
 
 	// Delete all entries
-	if _, err := surrealdb.Delete[[]Person](db, models.Table("persons")); err != nil {
+	if _, err = surrealdb.Delete[[]Person](db, models.Table("persons")); err != nil {
 		panic(err)
 	}
 
