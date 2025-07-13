@@ -8,6 +8,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+//nolint:funlen
 func main() {
 	// Connect to SurrealDB
 	db, err := surrealdb.New("ws://localhost:8000")

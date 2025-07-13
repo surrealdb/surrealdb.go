@@ -9,7 +9,7 @@ import (
 )
 
 func ExampleQuery() {
-	db := newSurrealDBConnection("examples", "query", "persons")
+	db := newSurrealDBWSConnection("query", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`
