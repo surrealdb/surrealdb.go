@@ -8,6 +8,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+//nolint:funlen
 func ExampleQuery_embedded_struct() {
 	db := newSurrealDBWSConnection("query", "persons")
 
