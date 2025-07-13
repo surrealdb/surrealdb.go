@@ -8,28 +8,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-type Person struct {
-	ID       *models.RecordID     `json:"id,omitempty"`
-	Name     string               `json:"name"`
-	Surname  string               `json:"surname"`
-	Location models.GeometryPoint `json:"location"`
-}
-
-type CustomRecordID struct {
-	models.RecordID
-}
-
-func (r CustomRecordID) MarshalJSON() ([]byte, error) {
-	return json.Marshal(fmt.Sprintf("%s:%v", r.Table, r.ID))
-}
-
-type PersonWithCustomID struct {
-	ID       CustomRecordID       `json:"id,omitempty"`
-	Name     string               `json:"name"`
-	Surname  string               `json:"surname"`
-	Location models.GeometryPoint `json:"location"`
-}
-
 func main() {
 	// Connect to SurrealDB
 	db, err := surrealdb.New("ws://localhost:8000")
@@ -52,15 +30,17 @@ func main() {
 		panic(err)
 	}
 
-	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
+	// Check token validity.
+	// This is not necessary if you called `SignIn` before.
+	// This authenticates the `db` instance too if sign in was
 	// not previously called
-	if err := db.Authenticate(token); err != nil {
+	if err = db.Authenticate(token); err != nil {
 		panic(err)
 	}
 
 	// And we can later on invalidate the token if desired
-	defer func(token string) {
-		if err := db.Invalidate(); err != nil {
+	defer func(_ string) {
+		if err = db.Invalidate(); err != nil {
 			panic(err)
 		}
 	}(token)
@@ -107,7 +87,7 @@ func main() {
 	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
 	// Delete an entry by ID
-	if _, err := surrealdb.Delete[Person](db, *person2.ID); err != nil {
+	if _, err = surrealdb.Delete[Person](db, *person2.ID); err != nil {
 		panic(err)
 	}
 
