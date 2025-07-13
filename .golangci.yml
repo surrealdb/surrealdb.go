@@ -57,19 +57,6 @@ linters:
       line-length: 140
     misspell:
       locale: US
-    mnd:
-      checks:
-        - argument
-        - case
-        - condition
-        - return
-      ignored-numbers:
-        - "0"
-        - "1"
-        - "2"
-        - "3"
-      ignored-functions:
-        - strings.SplitN
     nolintlint:
       require-explanation: false
       require-specific: false
