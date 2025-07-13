@@ -1,0 +1,36 @@
+package main
+
+import (
+	"fmt"
+
+	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
+)
+
+func ExampleQuery_transaction_let_return() {
+	db := newSurrealDBWSConnection("query", "t")
+
+	createQueryResults, err := surrealdb.Query[[]any](
+		db,
+		`BEGIN;
+		 CREATE t:1 SET name = 'test';
+		 LET $i = SELECT * FROM $id;
+		 RETURN $i.name;
+		 COMMIT
+		`,
+		map[string]any{
+			"id": models.NewRecordID("t", 1),
+		})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Number of query results: %d\n", len(*createQueryResults))
+	fmt.Printf("First query result's status: %+s\n", (*createQueryResults)[0].Status)
+	fmt.Printf("Names contained in the first query result: %+v\n", (*createQueryResults)[0].Result)
+
+	//nolint:lll
+	// Output:
+	// Number of query results: 1
+	// First query result's status: OK
+	// Names contained in the first query result: [test]
+}
