@@ -151,11 +151,37 @@ func (db *DB) Unset(key string) error {
 }
 
 func (db *DB) Version() (*VersionData, error) {
-	var ver connection.RPCResponse[VersionData]
+	var ver connection.RPCResponse[any]
 	if err := db.con.Send(&ver, "version"); err != nil {
 		return nil, err
 	}
-	return ver.Result, nil
+	switch v := (*ver.Result).(type) {
+	case map[string]any:
+		ver, ok := v["version"].(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected version data: %v", v)
+		}
+
+		build, ok := v["build"].(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected build data: %v", v)
+		}
+
+		timestamp, ok := v["timestamp"].(string)
+		if !ok {
+			return nil, fmt.Errorf("unexpected timestamp data: %v", v)
+		}
+		return &VersionData{
+			Version:   ver,
+			Build:     build,
+			Timestamp: timestamp,
+		}, nil
+	case string:
+		ver := strings.TrimPrefix(v, "surrealdb-")
+		return &VersionData{Version: ver}, nil
+	default:
+		return nil, fmt.Errorf("unexpected version data: %s (%T)", v, v)
+	}
 }
 
 func (db *DB) Send(res interface{}, method string, params ...interface{}) error {

@@ -10,8 +10,10 @@ import (
 
 // ExampleQueryReturn demonstrates how to use the RETURN NONE clause in a query.
 // See https://github.com/surrealdb/surrealdb.go/issues/203 for more context.
+//
+//nolint:funlen
 func ExampleQuery_return() {
-	db := newSurrealDBConnection("examples", "query", "persons")
+	db := newSurrealDBWSConnection("query", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`
