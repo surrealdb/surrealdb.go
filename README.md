@@ -156,6 +156,8 @@ func main() {
 }
 ```
 
+Please refer to the [example](./example) directory for more examples.
+
 ### Doing it your way
 All Data manipulation methods are handled by an undelying `send` function. This function is
 exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
