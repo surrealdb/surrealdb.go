@@ -123,7 +123,8 @@ func getCborEncoder() cbor.EncMode {
 func getCborDecoder() cbor.DecMode {
 	tags := registerCborTags()
 	dm, err := cbor.DecOptions{
-		TimeTagToAny: cbor.TimeTagToTime,
+		TimeTagToAny:   cbor.TimeTagToTime,
+		DefaultMapType: reflect.TypeOf(map[string]any(nil)),
 	}.DecModeWithTags(tags)
 	if err != nil {
 		panic(err)
