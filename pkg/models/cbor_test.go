@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -208,4 +209,50 @@ func TestFormatDurationAndParseDuration(t *testing.T) {
 func TestFormatDuration(t *testing.T) {
 	d := FormatDuration(33333333333000000)
 	assert.Equal(t, "1y2w6d19h15m33s333ms", d)
+}
+
+func TestMapDecodingIssue207(t *testing.T) {
+	em := getCborEncoder()
+	dm := getCborDecoder()
+
+	// Test case reproducing issue #207
+	// When decoding maps, they should be decoded as map[string]interface{} for JSON compatibility
+	type DeviceProperties struct {
+		Desired  map[string]any `json:"desired"`
+		Reported map[string]any `json:"reported"`
+	}
+
+	// Create test data with nested maps
+	original := DeviceProperties{
+		Desired: map[string]any{
+			"temperature": 25.5,
+			"humidity":    60,
+			"settings": map[string]any{
+				"mode":  "auto",
+				"level": 3,
+			},
+		},
+		Reported: map[string]any{
+			"temperature": 24.8,
+			"humidity":    58,
+			"status":      "active",
+		},
+	}
+
+	// Although you can obviously round-trip the original struct using cbor...
+
+	encoded, err := em.Marshal(original)
+	assert.NoError(t, err, "Should not error while encoding")
+
+	var decoded DeviceProperties
+	err = dm.Unmarshal(encoded, &decoded)
+	assert.NoError(t, err, "Should not error while decoding")
+
+	// The nested settings map had been decoded as map[inetrface{}]interface{} instead of map[string]interface{}
+	// This is a problem for JSON marshaling, as it expects map[string]interface{}.
+
+	// By doing the following, we ensure that the map[string]interface{} that have nested maps
+	// are properly handled and can be marshaled to JSON without issues.
+	_, err = json.Marshal(decoded)
+	assert.NoError(t, err, "Should be able to marshal decoded struct to JSON")
 }
