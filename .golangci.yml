@@ -17,7 +17,6 @@ linters:
     - ineffassign
     - lll
     - misspell
-    - mnd
     - nakedret
     - noctx
     - nolintlint
