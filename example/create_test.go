@@ -9,7 +9,7 @@ import (
 )
 
 //nolint:funlen
-func ExampleInsert() {
+func ExampleCreate() {
 	db := newSurrealDBWSConnection("query", "persons")
 
 	type Person struct {
@@ -24,10 +24,10 @@ func ExampleInsert() {
 		panic(err)
 	}
 
-	// Unlike Create which returns a pointer to the record itself,
-	// Insert returns a pointer to the array of inserted records.
-	var inserted *[]Person
-	inserted, err = surrealdb.Insert[Person](
+	// Unlike Insert which returns a pointer to the array of inserted records,
+	// Create returns a pointer to the record itself.
+	var inserted *Person
+	inserted, err = surrealdb.Create[Person](
 		db,
 		"persons",
 		map[string]any{
@@ -37,9 +37,11 @@ func ExampleInsert() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Insert result: %+s\n", *inserted)
+	fmt.Printf("Create result: %+s\n", *inserted)
 
-	_, err = surrealdb.Insert[struct{}](
+	// You can throw away the result if you don't need it,
+	// by specifying an empty struct as the type parameter.
+	_, err = surrealdb.Create[struct{}](
 		db,
 		"persons",
 		map[string]any{
@@ -51,7 +53,8 @@ func ExampleInsert() {
 		panic(err)
 	}
 
-	_, err = surrealdb.Insert[struct{}](
+	// You can also create a record by passing a struct directly.
+	_, err = surrealdb.Create[struct{}](
 		db,
 		"persons",
 		Person{
@@ -65,12 +68,16 @@ func ExampleInsert() {
 		panic(err)
 	}
 
-	fourthAsMap, err := surrealdb.Insert[map[string]any](
+	// You can also receive the result as a map[string]any.
+	// It should be handy when you don't want to define a struct type,
+	// in other words, when the schema is not known upfront.
+	var fourthAsMap *map[string]any
+	fourthAsMap, err = surrealdb.Create[map[string]any](
 		db,
 		"persons",
-		Person{
-			Name: "Fourth",
-			CreatedAt: models.CustomDateTime{
+		map[string]any{
+			"name": "Fourth",
+			"created_at": models.CustomDateTime{
 				Time: createdAt,
 			},
 		},
@@ -78,10 +85,10 @@ func ExampleInsert() {
 	if err != nil {
 		panic(err)
 	}
-	if _, ok := (*fourthAsMap)[0]["id"].(models.RecordID); ok {
-		delete((*fourthAsMap)[0], "id")
+	if _, ok := (*fourthAsMap)["id"].(models.RecordID); ok {
+		delete((*fourthAsMap), "id")
 	}
-	fmt.Printf("Insert result: %+s\n", *fourthAsMap)
+	fmt.Printf("Create result: %+s\n", *fourthAsMap)
 
 	selected, err := surrealdb.Select[[]Person](
 		db,
@@ -96,8 +103,8 @@ func ExampleInsert() {
 
 	//nolint:lll
 	// Unordered output:
-	// Insert result: [{First {2023-10-01 12:00:00 +0000 UTC} <nil>}]
-	// Insert result: [map[created_at:{2023-10-01 12:00:00 +0000 UTC} name:Fourth]]
+	// Create result: {First {2023-10-01 12:00:00 +0000 UTC} <nil>}
+	// Create result: map[created_at:{2023-10-01 12:00:00 +0000 UTC} name:Fourth]
 	// Selected person: {First {2023-10-01 12:00:00 +0000 UTC} <nil>}
 	// Selected person: {Second {2023-10-01 12:00:00 +0000 UTC} <nil>}
 	// Selected person: {Third {2023-10-01 12:00:00 +0000 UTC} <nil>}
