@@ -10,9 +10,7 @@ type CustomNil struct {
 }
 
 func (c *CustomNil) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
-	return enc.Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagNone,
 		Content: nil,
 	})

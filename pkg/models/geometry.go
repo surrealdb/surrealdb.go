@@ -1,6 +1,10 @@
 package models
 
-import "github.com/fxamacker/cbor/v2"
+import (
+	"fmt"
+
+	"github.com/fxamacker/cbor/v2"
+)
 
 type GeometryPoint struct {
 	Latitude  float64
@@ -18,19 +22,24 @@ func (gp *GeometryPoint) GetCoordinates() [2]float64 {
 }
 
 func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
-	return enc.Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagGeometryPoint,
 		Content: gp.GetCoordinates(),
 	})
 }
 
 func (gp *GeometryPoint) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagGeometryPoint {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagGeometryPoint)
+	}
 
 	var temp [2]float64
-	err := dec.Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}

@@ -32,19 +32,24 @@ func NewRecordID(tableName string, id any) RecordID {
 }
 
 func (r *RecordID) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
-	return enc.Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagRecordID,
 		Content: []interface{}{r.Table, r.ID},
 	})
 }
 
 func (r *RecordID) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagRecordID {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagRecordID)
+	}
 
 	var temp []interface{}
-	err := dec.Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}

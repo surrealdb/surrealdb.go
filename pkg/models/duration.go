@@ -28,29 +28,34 @@ type CustomDuration struct {
 }
 
 func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
 	totalNS := d.Nanoseconds()
 	s := totalNS / constants.OneSecondToNanoSecond
 	ns := totalNS % constants.OneSecondToNanoSecond
 
-	return enc.Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagCustomDuration,
 		Content: [2]int64{s, ns},
 	})
 }
 
 func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
 
-	var temp [2]interface{}
-	err := dec.Unmarshal(data, &temp)
+	if tag.Number != TagCustomDuration {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDuration)
+	}
+
+	var temp [2]int64
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
 
-	s := temp[0].(int64)
-	ns := temp[1].(int64)
+	s := temp[0]
+	ns := temp[1]
 
 	*d = CustomDuration{time.Duration((float64(s) * constants.OneSecondToNanoSecond) + float64(ns))}
 
@@ -64,8 +69,6 @@ func (d *CustomDuration) String() string {
 func (d *CustomDuration) ToCustomDurationString() CustomDurationString {
 	return CustomDurationString(d.String())
 }
-
-//------------------------------------------------------------------------------------------------------------------------------//
 
 type CustomDurationString string
 
@@ -85,8 +88,6 @@ func (d *CustomDurationString) ToDuration() time.Duration {
 func (d *CustomDurationString) ToCustomDuration() CustomDuration {
 	return CustomDuration{d.ToDuration()}
 }
-
-//------------------------------------------------------------------------------------------------------------------------------//
 
 func FormatDuration(ns int64) string {
 	years := ns / nsPerYear

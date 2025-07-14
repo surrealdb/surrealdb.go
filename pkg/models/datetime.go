@@ -14,24 +14,29 @@ type CustomDateTime struct {
 }
 
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
-	enc := getCborEncoder()
-
 	totalNS := d.UnixNano()
 
 	s := totalNS / constants.OneSecondToNanoSecond
 	ns := totalNS % constants.OneSecondToNanoSecond
 
-	return enc.Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagCustomDatetime,
 		Content: [2]int64{s, ns},
 	})
 }
 
 func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagCustomDatetime {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDatetime)
+	}
 
 	var temp [2]int64
-	err := dec.Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
@@ -39,7 +44,7 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	s := temp[0]
 	ns := temp[1]
 
-	*d = CustomDateTime{time.Unix(s, ns)}
+	*d = CustomDateTime{time.Unix(s, ns).UTC()}
 
 	return nil
 }

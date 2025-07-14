@@ -23,6 +23,19 @@ func TestForGeometryPoint(t *testing.T) {
 
 	assert.Nil(t, err, "Should not encounter an error while decoding")
 	assert.Equal(t, gp, decoded)
+
+	var decoded2 any
+	err = dm.Unmarshal(encoded, &decoded2)
+	assert.Nil(t, err, "Should not encounter an error while decoding to any")
+	assert.IsType(t, GeometryPoint{}, decoded2, "Decoded value should be of type GeometryPoint")
+	assert.Equal(t, gp, decoded2, "Decoded value should match the original GeometryPoint")
+
+	// Note the difference between the standard cbor the custom, SurrealDB-specific cbor tag aware cbor.
+	var decoded3 any
+	err = cbor.Unmarshal(encoded, &decoded3)
+	assert.Nil(t, err, "Should not encounter an error while decoding to any using cbor")
+	assert.IsType(t, cbor.Tag{}, decoded3, "Decoded value should be of type GeometryPoint")
+	assert.Equal(t, cbor.Tag{Number: TagGeometryPoint, Content: []interface{}{12.23, 45.65}}, decoded3)
 }
 
 func TestForGeometryLine(t *testing.T) {

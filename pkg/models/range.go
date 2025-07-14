@@ -12,15 +12,24 @@ type BoundIncluded[T any] struct {
 }
 
 func (bi *BoundIncluded[T]) MarshalCBOR() ([]byte, error) {
-	return getCborEncoder().Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagBoundIncluded,
 		Content: bi.Value,
 	})
 }
 
 func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagBoundIncluded {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagBoundIncluded)
+	}
+
 	var temp T
-	err := getCborDecoder().Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
@@ -29,22 +38,29 @@ func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
-//------------------------------------------------------------------------------------------------//
-
 type BoundExcluded[T any] struct {
 	Value T
 }
 
 func (be *BoundExcluded[T]) MarshalCBOR() ([]byte, error) {
-	return getCborEncoder().Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagBoundExcluded,
 		Content: be.Value,
 	})
 }
 
 func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagBoundExcluded {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagBoundExcluded)
+	}
+
 	var temp T
-	err := getCborDecoder().Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
@@ -52,8 +68,6 @@ func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
 	be.Value = temp
 	return nil
 }
-
-//------------------------------------------------------------------------------------------------//
 
 type Bound[T any] interface {
 	BoundIncluded[T] | BoundExcluded[T]
@@ -94,34 +108,40 @@ func (r *Range[T, TBeg, TEnd]) String() string {
 }
 
 func (r *Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
-	return getCborEncoder().Marshal(cbor.Tag{
+	return cbor.Marshal(cbor.Tag{
 		Number:  TagRange,
 		Content: []interface{}{r.Begin, r.End},
 	})
 }
 
 func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
-	dec := getCborDecoder()
+	var tag cbor.Tag
+	if err := cbor.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+
+	if tag.Number != TagRange {
+		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagRange)
+	}
+
 	var temp [2]cbor.RawTag
-	err := getCborDecoder().Unmarshal(data, &temp)
+	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
 
 	var begin TBeg
 	beginEnc, _ := temp[0].MarshalCBOR()
-	_ = dec.Unmarshal(beginEnc, &begin)
+	_ = cbor.Unmarshal(beginEnc, &begin)
 
 	var end TEnd
 	endEnc, _ := temp[1].MarshalCBOR()
-	_ = dec.Unmarshal(endEnc, &end)
+	_ = cbor.Unmarshal(endEnc, &end)
 
 	r.Begin = &begin
 	r.End = &end
 	return nil
 }
-
-//---------------------------------------------------------------------------------------------------------------------//
 
 type RecordRangeID[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Range[T, TBeg, TEnd]
