@@ -33,27 +33,74 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			data, err := tc.dt.MarshalCBOR()
-			require.NoError(t, err, "failed to marshal CustomDateTime")
+			require.NoError(t, err)
 
-			var decoded CustomDateTime
-			require.NoError(t, decoded.UnmarshalCBOR(data), "failed to unmarshal CustomDateTime")
-			assert.Equal(t, tc.dt.Time, decoded.Time)
+			t.Run("UnmarshalCBOR", func(t *testing.T) {
+				var dt CustomDateTime
+				require.NoError(t, dt.UnmarshalCBOR(data))
+				assert.Equal(t, tc.dt.Time, dt.Time)
+			})
 
-			cborData, err := cbor.Marshal(tc.dt)
-			require.NoError(t, err, "failed to marshal CustomDateTime with cbor")
+			t.Run("cbor.Marshal", func(t *testing.T) {
+				cborData, err := cbor.Marshal(tc.dt)
+				require.NoError(t, err)
+				assert.Equal(t, data, cborData)
+			})
 
-			var decodedCbor CustomDateTime
-			err = cbor.Unmarshal(cborData, &decodedCbor)
-			require.NoError(t, err, "failed to unmarshal CustomDateTime with cbor")
-			assert.Equal(t, tc.dt.Time, decodedCbor.Time)
+			t.Run("cbor.Unmarshal", func(t *testing.T) {
+				var dt CustomDateTime
+				err = cbor.Unmarshal(data, &dt)
+				require.NoError(t, err)
+				assert.Equal(t, tc.dt.Time, dt.Time)
+			})
 
-			surrealCborData, err := getCborEncoder().Marshal(tc.dt)
-			require.NoError(t, err, "failed to marshal CustomDateTime with surreal cbor")
+			t.Run("CborEncoder.Marshal", func(t *testing.T) {
+				surrealCborData, err := getCborEncoder().Marshal(tc.dt)
+				require.NoError(t, err)
+				assert.Equal(t, data, surrealCborData)
+			})
 
-			var decodedSurreal CustomDateTime
-			err = getCborDecoder().Unmarshal(surrealCborData, &decodedSurreal)
-			require.NoError(t, err, "failed to unmarshal CustomDateTime with surreal cbor")
-			assert.Equal(t, tc.dt.Time, decodedSurreal.Time)
+			t.Run("CborDecoder.Unmarshal to CustomDateTime", func(t *testing.T) {
+				var dt CustomDateTime
+				err = getCborDecoder().Unmarshal(data, &dt)
+				require.NoError(t, err)
+				assert.Equal(t, tc.dt.Time, dt.Time)
+			})
+
+			t.Run("CborDecoder.Unmarshal to time.Time", func(t *testing.T) {
+				var dt time.Time
+				err = getCborDecoder().Unmarshal(data, &dt)
+				require.ErrorContains(t, err, "cbor: cannot unmarshal array into Go value of type time.Time")
+			})
+
+			t.Run("CborDecoder.Unmarshal to any", func(t *testing.T) {
+				var dt any
+				err = getCborDecoder().Unmarshal(data, &dt)
+				require.NoError(t, err)
+				assert.Equal(t, tc.dt, dt)
+			})
+
+			t.Run("CborUnmarshaler.Unmarshal to CustomDateTime", func(t *testing.T) {
+				var dt CustomDateTime
+				err = (&CborUnmarshaler{}).Unmarshal(data, &dt)
+				require.NoError(t, err)
+				assert.Equal(t, tc.dt.Time, dt.Time)
+			})
+
+			t.Run("CborUnmarshaler.Unmarshal to time.Time", func(t *testing.T) {
+				var dt time.Time
+				err = (&CborUnmarshaler{}).Unmarshal(data, &dt)
+				// TODO This could probably be handled in the replacerAfterDecode
+				// but for now we just check that it returns an error.
+				require.ErrorContains(t, err, "cbor: cannot unmarshal array into Go value of type time.Time")
+			})
+
+			t.Run("CborUnmarshaler.Unmarshal to any", func(t *testing.T) {
+				var dt any
+				err = (&CborUnmarshaler{}).Unmarshal(data, &dt)
+				require.NoError(t, err)
+				assert.Equal(t, tc.dt, dt)
+			})
 		})
 	}
 }

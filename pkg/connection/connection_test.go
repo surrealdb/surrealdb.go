@@ -30,15 +30,15 @@ func TestConnectionTestSuite(t *testing.T) {
 
 	ts.connImplementations["ws"] = NewWebSocketConnection(NewConnectionParams{
 		BaseURL:     "ws://localhost:8000",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
 	ts.connImplementations["http"] = NewHTTPConnection(NewConnectionParams{
 		BaseURL:     "http://localhost:8000",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 

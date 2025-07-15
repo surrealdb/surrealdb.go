@@ -3,6 +3,7 @@ package models
 import (
 	"io"
 	"reflect"
+	"sync"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
@@ -75,25 +76,34 @@ func registerCborTags() cbor.TagSet {
 }
 
 type CborMarshaler struct {
+	once sync.Once
+	em   cbor.EncMode
 }
 
-func (c CborMarshaler) Marshal(v interface{}) ([]byte, error) {
+func (c *CborMarshaler) Marshal(v interface{}) ([]byte, error) {
 	v = replacerBeforeEncode(v)
-	em := getCborEncoder()
-	return em.Marshal(v)
+	return c.cborEncMode().Marshal(v)
 }
 
-func (c CborMarshaler) NewEncoder(w io.Writer) codec.Encoder {
-	em := getCborEncoder()
-	return em.NewEncoder(w)
+func (c *CborMarshaler) NewEncoder(w io.Writer) codec.Encoder {
+	return c.cborEncMode().NewEncoder(w)
+}
+
+func (c *CborMarshaler) cborEncMode() cbor.EncMode {
+	c.once.Do(func() {
+		c.em = getCborEncoder()
+	})
+
+	return c.em
 }
 
 type CborUnmarshaler struct {
+	once sync.Once
+	dm   cbor.DecMode
 }
 
-func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
-	dm := getCborDecoder()
-	err := dm.Unmarshal(data, dst)
+func (c *CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
+	err := c.cborDecMode().Unmarshal(data, dst)
 	if err != nil {
 		return err
 	}
@@ -102,9 +112,16 @@ func (c CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
 	return nil
 }
 
-func (c CborUnmarshaler) NewDecoder(r io.Reader) codec.Decoder {
-	dm := getCborDecoder()
-	return dm.NewDecoder(r)
+func (c *CborUnmarshaler) NewDecoder(r io.Reader) codec.Decoder {
+	return c.cborDecMode().NewDecoder(r)
+}
+
+func (c *CborUnmarshaler) cborDecMode() cbor.DecMode {
+	c.once.Do(func() {
+		c.dm = getCborDecoder()
+	})
+
+	return c.dm
 }
 
 func getCborEncoder() cbor.EncMode {
