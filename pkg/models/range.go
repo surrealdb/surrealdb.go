@@ -72,7 +72,7 @@ func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
 	// and RawMessage.MarshalCBOR() just returns the raw bytes without any additional encoding.
 	data, err := tag.Content.MarshalCBOR()
 	if err != nil {
-		panic("failed to extract the raw bytes from cbor.Tag.Content: " + err.Error())
+		return fmt.Errorf("failed to extract the raw bytes from cbor tag content of BoundExcluded: %w", err)
 	}
 
 	var temp T
@@ -130,7 +130,7 @@ func (r *Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 }
 
 func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
-	var tag cbor.Tag
+	var tag cbor.RawTag
 	if err := cbor.Unmarshal(data, &tag); err != nil {
 		return err
 	}
@@ -139,9 +139,13 @@ func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
 		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagRange)
 	}
 
-	var temp [2]cbor.RawTag
-	err := cbor.Unmarshal(data, &temp)
+	data, err := tag.Content.MarshalCBOR()
 	if err != nil {
+		return fmt.Errorf("failed to extract the raw bytes from cbor tag content of Range: %w", err)
+	}
+
+	var temp [2]cbor.RawTag
+	if err := cbor.Unmarshal(data, &temp); err != nil {
 		return err
 	}
 
