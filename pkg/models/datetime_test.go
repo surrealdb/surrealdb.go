@@ -42,8 +42,8 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 			})
 
 			t.Run("cbor.Marshal", func(t *testing.T) {
-				cborData, err := cbor.Marshal(tc.dt)
-				require.NoError(t, err)
+				cborData, marshalErr := cbor.Marshal(tc.dt)
+				require.NoError(t, marshalErr)
 				assert.Equal(t, data, cborData)
 			})
 
@@ -55,8 +55,8 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 			})
 
 			t.Run("CborEncoder.Marshal", func(t *testing.T) {
-				surrealCborData, err := getCborEncoder().Marshal(tc.dt)
-				require.NoError(t, err)
+				surrealCborData, marshalErr := getCborEncoder().Marshal(tc.dt)
+				require.NoError(t, marshalErr)
 				assert.Equal(t, data, surrealCborData)
 			})
 
