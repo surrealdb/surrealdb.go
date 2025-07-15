@@ -19,7 +19,7 @@ func (bi *BoundIncluded[T]) MarshalCBOR() ([]byte, error) {
 }
 
 func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
-	var tag cbor.Tag
+	var tag cbor.RawTag
 	if err := cbor.Unmarshal(data, &tag); err != nil {
 		return err
 	}
@@ -28,9 +28,13 @@ func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
 		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagBoundIncluded)
 	}
 
-	var temp T
-	err := cbor.Unmarshal(data, &temp)
+	data, err := tag.Content.MarshalCBOR()
 	if err != nil {
+		return fmt.Errorf("failed to extract the raw bytes from cbor tag content of BoundIncluded: %w", err)
+	}
+
+	var temp T
+	if err := cbor.Unmarshal(data, &temp); err != nil {
 		return err
 	}
 
