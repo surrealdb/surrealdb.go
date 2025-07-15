@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//nolint:funlen
 func TestDateTime_cbor_roundtrip(t *testing.T) {
 	t.Parallel()
 

@@ -29,18 +29,9 @@ func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
 }
 
 func (gp *GeometryPoint) UnmarshalCBOR(data []byte) error {
-	var tag cbor.RawTag
-	if err := cbor.Unmarshal(data, &tag); err != nil {
-		return err
-	}
-
-	if tag.Number != TagGeometryPoint {
-		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagGeometryPoint)
-	}
-
-	data, err := tag.Content.MarshalCBOR()
+	data, err := getTaggedContent(data, TagGeometryPoint)
 	if err != nil {
-		return fmt.Errorf("failed to extract the raw bytes from cbor tag content of GeometryPoint: %w", err)
+		return fmt.Errorf("GeometryPoint: %w", err)
 	}
 
 	var latlon [2]float64
