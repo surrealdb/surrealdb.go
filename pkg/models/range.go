@@ -50,7 +50,7 @@ func (be *BoundExcluded[T]) MarshalCBOR() ([]byte, error) {
 }
 
 func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
-	var tag cbor.Tag
+	var tag cbor.RawTag
 	if err := cbor.Unmarshal(data, &tag); err != nil {
 		return err
 	}
@@ -59,9 +59,24 @@ func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
 		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagBoundExcluded)
 	}
 
-	var temp T
-	err := cbor.Unmarshal(data, &temp)
+	// Note that the below is impossible due to `invalid composite literal type T`:
+	//   var tag cbor.Tag
+	//   cbor.Unmarshal(data, &tag)
+	//   ...
+	//   v, ok := tag.Content.(T)
+	// So all we can do is unmarshal once more into a temporary variable of type T.
+	// This is a workaround for the fact that cbor.Tag do not carry type information for Content.
+
+	// Although this looks marshaling the unmarshaled data againn which might be inefficient,
+	// this is actually not the case because cbor.Tag.Content(RawMessage) is already a raw byte slice
+	// and RawMessage.MarshalCBOR() just returns the raw bytes without any additional encoding.
+	data, err := tag.Content.MarshalCBOR()
 	if err != nil {
+		panic("failed to extract the raw bytes from cbor.Tag.Content: " + err.Error())
+	}
+
+	var temp T
+	if err := cbor.Unmarshal(data, &temp); err != nil {
 		return err
 	}
 
