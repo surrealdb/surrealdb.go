@@ -18,7 +18,7 @@ func NewGeometryPoint(latitude, longitude float64) GeometryPoint {
 }
 
 func (gp *GeometryPoint) GetCoordinates() [2]float64 {
-	return [2]float64{gp.Latitude, gp.Longitude}
+	return [2]float64{gp.Longitude, gp.Latitude}
 }
 
 func (gp *GeometryPoint) MarshalCBOR() ([]byte, error) {
@@ -34,12 +34,12 @@ func (gp *GeometryPoint) UnmarshalCBOR(data []byte) error {
 		return fmt.Errorf("GeometryPoint: %w", err)
 	}
 
-	var latlon [2]float64
-	if err := cbor.Unmarshal(data, &latlon); err != nil {
+	var lonlat [2]float64
+	if err := cbor.Unmarshal(data, &lonlat); err != nil {
 		return fmt.Errorf("failed to unmarshal GeometryPoint coordinates: %w", err)
 	}
-	gp.Latitude = latlon[0]
-	gp.Longitude = latlon[1]
+	gp.Longitude = lonlat[0]
+	gp.Latitude = lonlat[1]
 
 	return nil
 }

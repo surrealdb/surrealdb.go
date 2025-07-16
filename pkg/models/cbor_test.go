@@ -35,7 +35,7 @@ func TestForGeometryPoint(t *testing.T) {
 	err = cbor.Unmarshal(encoded, &decoded3)
 	assert.Nil(t, err, "Should not encounter an error while decoding to any using cbor")
 	assert.IsType(t, cbor.Tag{}, decoded3, "Decoded value should be of type GeometryPoint")
-	assert.Equal(t, cbor.Tag{Number: TagGeometryPoint, Content: []interface{}{12.23, 45.65}}, decoded3)
+	assert.Equal(t, cbor.Tag{Number: TagGeometryPoint, Content: []interface{}{45.65, 12.23}}, decoded3)
 }
 
 func TestForGeometryLine(t *testing.T) {
