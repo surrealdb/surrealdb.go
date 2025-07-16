@@ -16,14 +16,21 @@ func ExampleQuery_bluk_insert() {
 	db := newSurrealDBWSConnection("query", "persons")
 
 	type Person struct {
-		ID   *models.RecordID `json:"id,omitempty"`
-		Note string           `json:"note,omitempty"`
+		ID   *models.RecordID     `json:"id,omitempty"`
+		Note string               `json:"note,omitempty"`
+		Num  int                  `json:"num,omitempty"`
+		Loc  models.GeometryPoint `json:"loc,omitempty"`
 	}
 
 	nthPerson := func(i int) Person {
 		return Person{
 			ID:   &models.RecordID{Table: "persons", ID: fmt.Sprintf("p%d", i)},
 			Note: fmt.Sprintf("inserted%d", i),
+			Num:  i,
+			Loc: models.GeometryPoint{
+				Longitude: 12.34 + float64(i),
+				Latitude:  45.65 + float64(i),
+			},
 		}
 	}
 
@@ -120,15 +127,15 @@ func ExampleQuery_bluk_insert() {
 	// Count   : 1
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:inserted0} {ID:persons:p1 Note:inserted1}]
+	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}}]
 	// # INSERT IGNORE INTO
 	// Count   : 1
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:inserted0} {ID:persons:p1 Note:inserted1} {ID:persons:p2 Note:inserted2}]
+	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}} {ID:persons:p2 Note:inserted2 Num:2 Loc:{Latitude:47.65 Longitude:14.34}}]
 	// # UPSERT CONTENT
 	// Count   : 4
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:updated0} {ID:persons:p1 Note:updated1} {ID:persons:p2 Note:updated2} {ID:persons:p3 Note:inserted3}]
+	// Selected: [{ID:persons:p0 Note:updated0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:updated1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}} {ID:persons:p2 Note:updated2 Num:2 Loc:{Latitude:47.65 Longitude:14.34}} {ID:persons:p3 Note:inserted3 Num:3 Loc:{Latitude:48.65 Longitude:15.34}}]
 }
