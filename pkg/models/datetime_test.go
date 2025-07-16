@@ -129,6 +129,5 @@ func TestDateTime_cbor_local_time(t *testing.T) {
 }
 
 func toLocal(dt CustomDateTime) CustomDateTime {
-	localTime := dt.Time.In(time.Local)
-	return CustomDateTime{Time: localTime}
+	return CustomDateTime{Time: dt.In(time.Local)}
 }
