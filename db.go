@@ -38,8 +38,8 @@ func New(connectionURL string) (*DB, error) {
 	scheme := u.Scheme
 
 	newParams := connection.NewConnectionParams{
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
 		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	}

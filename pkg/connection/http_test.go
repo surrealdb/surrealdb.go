@@ -66,8 +66,8 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 
 	p := NewConnectionParams{
 		BaseURL:     "http://test.surreal",
-		Marshaler:   models.CborMarshaler{},
-		Unmarshaler: models.CborUnmarshaler{},
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
 	}
 
 	httpEngine := NewHTTPConnection(p)
