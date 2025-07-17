@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 const (
@@ -68,7 +67,20 @@ func initConnection(db *surrealdb.DB, namespace, database string, tables ...stri
 
 	// Clean up everything in the specified database
 	for _, table := range tables {
-		if _, err = surrealdb.Delete[[]any](db, models.Table(table)); err != nil {
+		// Note that each of the below queries will fail in their own way:
+		//
+		// - REMOVE TABLE IF EXISTS type::table($tb) will fail with:
+		//
+		//     There was a problem with the database: Parse error: Unexpected token `::`, expected Eof
+		//     REMOVE TABLE IF EXISTS type::table($tb)
+		//                                ^^
+		//
+		// - REMOVE TABLE IF EXISTS $tb will fail with:
+		//
+		//     There was a problem with the database: Parse error: Unexpected token `a parameter`, expected an identifier
+		//     REMOVE TABLE IF EXISTS $tb
+		//							  ^^
+		if _, err = surrealdb.Query[[]any](db, "REMOVE TABLE IF EXISTS "+table, nil); err != nil {
 			panic(err)
 		}
 	}
