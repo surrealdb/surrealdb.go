@@ -196,7 +196,7 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 		}
 
 		if err := ws.unmarshalRes(res, dest); err != nil {
-			return fmt.Errorf("error unmarshalling response: %w", err)
+			return fmt.Errorf("error unmarshaing response: %w", err)
 		}
 
 		return eliminateTypedNilError(res.Error)
@@ -211,7 +211,7 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 	// so it is low-cost.
 	rawCBORBytes, err := res.Result.MarshalCBOR()
 	if err != nil {
-		return fmt.Errorf("Send: error marshalling result: %w", err)
+		return fmt.Errorf("Send: error marshaling result: %w", err)
 	}
 
 	// In the below, we try our best to avoid unmarshaling the entire CBOR response twice,
@@ -254,7 +254,7 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 	// and the unmarshaling of Result happened here.
 	// Finally, we avoided unmarshaling the entire response twice, once in handleResponse and once here.
 	if err := ws.unmarshaler.Unmarshal(rawCBORBytes, destStructDotResult); err != nil {
-		return fmt.Errorf("Send: error unmarshalling result: %w", err)
+		return fmt.Errorf("Send: error unmarshaling result: %w", err)
 	}
 
 	return nil
@@ -364,30 +364,38 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 
 		notificationRes, err := rpcRes.Result.MarshalCBOR()
 		if err != nil {
-			err := fmt.Errorf("error marshalling notification result: %w", err)
-			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			ws.logger.Error(
+				fmt.Sprintf("error marshaling notification result: %v", err),
+				"result", fmt.Sprint(rpcRes.Result),
+			)
 			return
 		}
 
 		var notification Notification
 		if err := ws.unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
-			err := fmt.Errorf("error unmarshalling as notification: %w", err)
-			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			ws.logger.Error(
+				fmt.Sprintf("error unmarshaling as notification: %v", err),
+				"result", fmt.Sprint(rpcRes.Result),
+			)
 			return
 		}
 
 		channelID := notification.ID
 
 		if channelID == nil {
-			err := fmt.Errorf("response did not contain an 'id' field")
-			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			ws.logger.Error(
+				"response did not contain an 'id' field",
+				"result", fmt.Sprint(rpcRes.Result),
+			)
 			return
 		}
 
 		LiveNotificationChan, ok := ws.getNotificationChannel(channelID.String())
 		if !ok {
-			err := fmt.Errorf("unavailable ResponseChannel %+v", channelID.String())
-			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			ws.logger.Error(
+				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
+				"result", fmt.Sprint(rpcRes.Result),
+			)
 			return
 		}
 
