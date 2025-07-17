@@ -3,7 +3,9 @@ package connection
 import (
 	"errors"
 	"fmt"
+	"reflect"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 
 	"io"
@@ -55,8 +57,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 			marshaler:   p.Marshaler,
 			unmarshaler: p.Unmarshaler,
 
-			responseChannels:     make(map[string]chan []byte),
-			errorChannels:        make(map[string]chan error),
+			responseChannels:     make(map[string]chan RPCResponse[cbor.RawMessage]),
 			notificationChannels: make(map[string]chan Notification),
 		},
 
@@ -145,6 +146,13 @@ func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {
 	return ws.unmarshaler
 }
 
+// Send requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`.
+// It could be more obvious if Go allowed us to write it like:
+//
+//	Send[T cbor.Unmarshaller](res *RPCResponse[T], method string, params ...interface{}) error
+//
+// But it doesn't, so we have to use `interface{}`.
+// The caller is responsible for ensuring that `res` is of the correct type.
 func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
 	select {
 	case <-ws.closeChan:
@@ -163,12 +171,7 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	if err != nil {
 		return err
 	}
-	errorChan, err := ws.createErrorChannel(id)
-	if err != nil {
-		return err
-	}
 	defer ws.removeResponseChannel(id)
-	defer ws.removeErrorChannel(id)
 
 	if err := ws.write(request); err != nil {
 		return err
@@ -178,20 +181,121 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	select {
 	case <-timeout:
 		return constants.ErrTimeout
-	case resBytes, open := <-responseChan:
+	case res, open := <-responseChan:
 		if !open {
-			return errors.New("channel closed")
+			return errors.New("response channel closed")
 		}
-		if dest != nil {
-			return ws.unmarshaler.Unmarshal(resBytes, dest)
+
+		// In case the caller designated to throw away the result by specifying `nil` as `dest`,
+		// OR the response Result says its nowherey by being nil,
+		// we cannot proceed with unmarshaling the Result field,
+		// because it would always fail.
+		// The only thing we can do is to return the error if any.
+		if nilOrTypedNil(dest) || res.Result == nil {
+			return eliminateTypedNilError(res.Error)
 		}
-		return nil
-	case resErr, open := <-errorChan:
-		if !open {
-			return errors.New("error channel closed")
+
+		if err := ws.unmarshalRes(res, dest); err != nil {
+			return fmt.Errorf("error unmarshalling response: %w", err)
 		}
-		return resErr
+
+		return eliminateTypedNilError(res.Error)
 	}
+}
+
+func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
+	// Although this looks marshaling unnmarshaled data again, it is not.
+	// The `res.Result` is of type `cbor.RawMessage`, which is
+	// a type that implements `cbor.Unmarshaller` that returns the raw CBOR bytes
+	// contained in the `cbor.RawMessage` itself, instead of actually marshaling anything,
+	// so it is low-cost.
+	rawCBORBytes, err := res.Result.MarshalCBOR()
+	if err != nil {
+		return fmt.Errorf("Send: error marshalling result: %w", err)
+	}
+
+	// In the below, we try our best to avoid unmarshaling the entire CBOR response twice,
+	// once in the WebSocketConnection.handleResponse and once here.
+	//
+	// With the approach below, we only unmarshal the ID and the Error fields of the RPCResponse once in handleResponse,
+	// and then we only unmarshal the Result field here.
+
+	// In case `dest` is RPCResponse[SomeTypeParam] we need to set the ID and Result fields.
+	// Note that we cannot treat it like RPCResponse[any] or RPCResponse[cbor.RawMessage] as well.
+	// The alternative is to use reflection like this.
+	if reflect.TypeOf(dest).Kind() != reflect.Ptr {
+		return fmt.Errorf("Send: dest must be a pointer, got %T", dest)
+	}
+
+	const (
+		FieldID     = "ID"
+		FieldResult = "Result"
+	)
+
+	destStruct := reflect.ValueOf(dest).Elem()
+
+	// At this point, we assume `destStruct` points to a struct with ID and Result fields.
+	// If it does not, we will panic like:
+	//   panic: reflect: call of reflect.Value.FieldByName on interface Value
+
+	destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
+	// `destStructDotResult` is basically `dest.Result` if `dest` was of type `*RPCResponse[T]`.
+	destStructDotResult := destStruct.FieldByName(FieldResult).Interface()
+
+	// destValue could be (*T)nil, like (*string)nil, where (*string)nil != nil!
+	// That's why we nil-check using nilOrTypedNil, rather than just `if destResult == nil`.
+	if nilOrTypedNil(destStructDotResult) {
+		destStructDotResult = reflect.New(destStruct.FieldByName(FieldResult).Type().Elem()).Interface()
+		destStruct.FieldByName(FieldResult).Set(reflect.ValueOf(destStructDotResult))
+	}
+
+	// We unmarshal only the `Result` portion of the response into the `destStructDotResult`.
+	// The unmarshaling of ID and Result happened in handleResponse,
+	// and the unmarshaling of Result happened here.
+	// Finally, we avoided unmarshaling the entire response twice, once in handleResponse and once here.
+	if err := ws.unmarshaler.Unmarshal(rawCBORBytes, destStructDotResult); err != nil {
+		return fmt.Errorf("Send: error unmarshalling result: %w", err)
+	}
+
+	return nil
+}
+
+// eliminatedTypedNilError is required because otherwise the caller cannot just use `if err != nil { ... }`
+// to check for errors, because it would return true for typed nils like (*SomeErrorType)(nil).
+func eliminateTypedNilError(err error) error {
+	if nilOrTypedNil(err) {
+		return nil
+	}
+
+	return err
+}
+
+func nilOrTypedNil(val any) bool {
+	if val == nil {
+		return true
+	}
+
+	return reflectiveNilOrTypedNil(reflect.ValueOf(val))
+}
+
+func reflectiveNilOrTypedNil(v reflect.Value) bool {
+	k := v.Kind()
+	switch k {
+	case reflect.Chan, reflect.Func, reflect.Map,
+		reflect.UnsafePointer, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	case reflect.Pointer:
+		// This is for the case like val is `interface{}(*sometype) nil`
+		if v.IsNil() {
+			return true
+		}
+
+		// This is for the case val is `interface{}(*interface {})*nil`
+		elm := v.Elem()
+		return reflectiveNilOrTypedNil(elm)
+	}
+
+	return false
 }
 
 func (ws *WebSocketConnection) write(v interface{}) error {
@@ -240,26 +344,9 @@ func (ws *WebSocketConnection) handleError(err error) bool {
 }
 
 func (ws *WebSocketConnection) handleResponse(res []byte) {
-	var rpcRes RPCResponse[interface{}]
+	var rpcRes RPCResponse[cbor.RawMessage]
 	if err := ws.unmarshaler.Unmarshal(res, &rpcRes); err != nil {
 		panic(err)
-	}
-
-	if rpcRes.Error != nil {
-		err := fmt.Errorf("rpc request err %w", rpcRes.Error)
-		ws.logger.Error(err.Error())
-
-		errChan, ok := ws.getErrorChannel(fmt.Sprintf("%v", rpcRes.ID))
-		if !ok {
-			err := fmt.Errorf("unavailable ErrorChannel %+v", rpcRes.ID)
-			ws.logger.Error(err.Error())
-			return
-		}
-
-		defer close(errChan)
-		errChan <- rpcRes.Error
-
-		return
 	}
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
@@ -271,7 +358,7 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 			return
 		}
 		defer close(responseChan)
-		responseChan <- res
+		responseChan <- rpcRes
 	} else {
 		// todo: find a surefire way to confirm a notification
 
