@@ -12,14 +12,41 @@ import (
 // with specifying RETURN NONE to avoid unnecessary data transfer and decoding.
 //
 //nolint:funlen
-func ExampleQuery_bluk_insert() {
+func ExampleQuery_bluk_insert_upsert() {
 	db := newSurrealDBWSConnection("query", "persons")
 
+	/// You can make it a schemaful table by defining fields like this:
+	//
+	// _, err := surrealdb.Query[any](
+	// 	db,
+	// 	`DEFINE TABLE persons SCHEMAFULL;
+	// 	DEFINE FIELD note ON persons TYPE string;
+	// 	DEFINE FIELD num ON persons TYPE int;
+	// 	DEFINE FIELD loc ON persons TYPE geometry<point>;
+	// `,
+	// 	nil,
+	// )
+	// if err != nil {
+	// 	panic(err)
+	// }
+	//
+	/// If you do that, ensure that fields do not have `omitempty` json tags!
+	///
+	/// Why?
+	/// Our cbor library reuses `json` tags for CBOR encoding/decoding,
+	/// and `omitempty` skips the encoding of the field if it is empty.
+	///
+	/// For example, if you define an `int` field with `omitempty` tag,
+	/// a value of `0` will not be encoded, resulting in an query error due:
+	///   Found NONE for field `num`, with record `persons:p0`, but expected a int
+
 	type Person struct {
-		ID   *models.RecordID     `json:"id,omitempty"`
-		Note string               `json:"note,omitempty"`
-		Num  int                  `json:"num,omitempty"`
-		Loc  models.GeometryPoint `json:"loc,omitempty"`
+		ID   *models.RecordID `json:"id"`
+		Note string           `json:"note"`
+		// As writte nabove whether it is `json:"num,omitempty"` or `json:"num"` is important,.
+		// depending on what you want to achieve.
+		Num int                  `json:"num"`
+		Loc models.GeometryPoint `json:"loc"`
 	}
 
 	nthPerson := func(i int) Person {
