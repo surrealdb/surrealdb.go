@@ -362,18 +362,27 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 	} else {
 		// todo: find a surefire way to confirm a notification
 
-		var notificationRes RPCResponse[Notification]
-		if err := ws.unmarshaler.Unmarshal(res, &notificationRes); err != nil {
-			panic(err)
-		}
-
-		if notificationRes.Result.ID == nil {
-			err := fmt.Errorf("response did not contain an 'id' field")
+		notificationRes, err := rpcRes.Result.MarshalCBOR()
+		if err != nil {
+			err := fmt.Errorf("error marshalling notification result: %w", err)
 			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
 			return
 		}
 
-		channelID := notificationRes.Result.ID
+		var notification Notification
+		if err := ws.unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
+			err := fmt.Errorf("error unmarshalling as notification: %w", err)
+			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			return
+		}
+
+		channelID := notification.ID
+
+		if channelID == nil {
+			err := fmt.Errorf("response did not contain an 'id' field")
+			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
+			return
+		}
 
 		LiveNotificationChan, ok := ws.getNotificationChannel(channelID.String())
 		if !ok {
@@ -382,13 +391,6 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 			return
 		}
 
-		var notification RPCResponse[Notification]
-		if err := ws.unmarshaler.Unmarshal(res, &notification); err != nil {
-			err := fmt.Errorf("error unmarshalling notification %+v", channelID.String())
-			ws.logger.Error(err.Error(), "result", fmt.Sprint(rpcRes.Result))
-			return
-		}
-
-		LiveNotificationChan <- *notification.Result
+		LiveNotificationChan <- notification
 	}
 }
