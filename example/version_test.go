@@ -5,7 +5,7 @@ import (
 )
 
 //nolint:lll,govet
-func ExampleVersion() {
+func ExampleDB_Version() {
 	ws := newSurrealDBWSConnection("version")
 	v, err := ws.Version()
 	if err != nil {

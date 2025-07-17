@@ -14,7 +14,7 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: ['1.21']
+        surrealdb-version: ['v3.0.0-alpha.7', 'v2.3.7', 'v2.2.7']
     permissions:
       contents: read
       pull-requests: read
@@ -23,13 +23,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: '1.24.1'
           check-latest: true
           cache-dependency-path: go.sum
-      - name: download surrealdb
-        run: curl --proto '=https' --tlsv1.2 -sSf https://install.surrealdb.com | sh -s -- --nightly
-      - name: start surrealdb
-        run: surreal start memory -A --user root --pass root &
+      - name: Start SurrealDB
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:${{ matrix.surrealdb-version }} start --user root --pass root
+          # Wait for SurrealDB to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "SurrealDB is ready"
+              break
+            fi
+            echo "Waiting for SurrealDB to start... ($i/30)"
+            sleep 2
+          done
       - name: test
         run: go test -v -cover ./...
         env:
