@@ -139,7 +139,7 @@ func (db *DB) SignUp(authData interface{}) (string, error) {
 //	db.SignIn(Auth{
 //	  Namespace: "app",
 //	  Database: "app",
-//	  Scope: "user",
+//	  Access: "user",
 //	  Username: "yusuke",
 //	  Password: "VerySecurePassword123!",
 //	})
