@@ -101,7 +101,7 @@ func (db *DB) Info() (map[string]interface{}, error) {
 //	db.SignUp(Auth{
 //	  Namespace: "app",
 //	  Database: "app",
-//	  Scope: "user",
+//	  Access: "user",
 //	  Username: "yusuke",
 //	  Password: "VerySecurePassword123!",
 //	})
