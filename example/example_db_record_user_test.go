@@ -44,7 +44,7 @@ func ExampleDB_record_user_auth_struct() {
 
 	fmt.Println("Database schema setup complete")
 
-	// TODO: We might need to add support for auth data other than Auth struct,
+	// Refer to the next example, `ExampleDB_record_user_custom_struct`,
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNUP.
 	_, err := db.SignUp(&surrealdb.Auth{
 		Namespace: "examples",
@@ -58,8 +58,9 @@ func ExampleDB_record_user_auth_struct() {
 	}
 	fmt.Println("User signed up successfully")
 
-	// TODO: We might need to add support for auth data other than Auth struct,
+	// Refer to the next example, `ExampleDB_record_user_custom_struct`,
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNIN.
+	//
 	// For example, you might want to use `email` and `password` instead of `user` and `pass`.
 	// In that case, you need to something that encodes to a cbor map containing those keys.
 	_, err = db.SignIn(&surrealdb.Auth{
@@ -143,8 +144,6 @@ func ExampleDB_record_user_custom_struct() {
 		Password  string `json:"password"`
 	}
 
-	// TODO: We might need to add support for auth data other than Auth struct,
-	// when you need to use fields other than `user` and `pass` in the query specified for SIGNUP.
 	_, err := db.SignUp(&User{
 		// Corresponds to the SurrealDB namespace
 		Namespace: "examples",
@@ -164,10 +163,6 @@ func ExampleDB_record_user_custom_struct() {
 	}
 	fmt.Println("User signed up successfully")
 
-	// TODO: We might need to add support for auth data other than Auth struct,
-	// when you need to use fields other than `user` and `pass` in the query specified for SIGNIN.
-	// For example, you might want to use `email` and `password` instead of `user` and `pass`.
-	// In that case, you need to something that encodes to a cbor map containing those keys.
 	_, err = db.SignIn(&LoginRequest{
 		Namespace: "examples",
 		Database:  "record_user_custom",
