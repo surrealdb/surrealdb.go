@@ -8,7 +8,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-//nolint:funlen
 func ExampleRelate() {
 	db := newSurrealDBWSConnection("query", "person", "follow")
 
