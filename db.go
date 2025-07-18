@@ -109,9 +109,9 @@ func (db *DB) Info() (map[string]interface{}, error) {
 // Example with map:
 //
 //	db.SignUp(map[string]any{
-//	  "namespace": "app",
-//	  "database": "app",
-//	  "scope": "user",
+//	  "NS": "app",
+//	  "DB": "app",
+//	  "AC": "user",
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
