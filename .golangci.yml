@@ -67,6 +67,11 @@ linters:
       - legacy
       - std-error-handling
     rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - funlen
+          - lll
       - linters:
           - mnd
         path: _test\.go
