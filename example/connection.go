@@ -52,9 +52,9 @@ func initConnection(db *surrealdb.DB, namespace, database string, tables ...stri
 		panic(err)
 	}
 
-	authData := &map[string]any{
-		"username": "root",
-		"password": "root",
+	authData := &surrealdb.Auth{
+		Username: "root",
+		Password: "root",
 	}
 	token, err := db.SignIn(authData)
 	if err != nil {

@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -90,10 +91,37 @@ func (db *DB) Info() (map[string]interface{}, error) {
 	return *info.Result, err
 }
 
-// SignUp is a helper method for signing up a new user.
-func (db *DB) SignUp(authData *map[string]any) (string, error) {
+// SignUp signs up a new user.
+//
+// The authData parameter can be either:
+//   - An Auth struct
+//   - A map[string]any with keys like: "NS", "DB", "SC", "user", "pass"
+//
+// Example with struct:
+//   db.SignUp(Auth{Namespace: "app", Database: "app", Scope: "user", Username: "foo", Password: "bar"})
+//
+// Example with map:
+//   db.SignUp(map[string]any{"NS": "app", "DB": "app", "SC": "user", "user": "foo", "pass": "bar"})
+func (db *DB) SignUp(authData interface{}) (string, error) {
+	var data map[string]any
+
+	switch v := authData.(type) {
+	case *map[string]any:
+		data = *v
+	case map[string]any:
+		data = v
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return "", fmt.Errorf("error serializing auth data: %w", err)
+		}
+		if err := json.Unmarshal(b, &data); err != nil {
+			return "", fmt.Errorf("error deserializing auth data to map: %w", err)
+		}
+	}
+
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(&token, "signup", authData); err != nil {
+	if err := db.con.Send(&token, "signup", data); err != nil {
 		return "", err
 	}
 
@@ -104,10 +132,37 @@ func (db *DB) SignUp(authData *map[string]any) (string, error) {
 	return *token.Result, nil
 }
 
-// SignIn is a helper method for signing in a user.
-func (db *DB) SignIn(authData *map[string]any) (string, error) {
+// SignIn signs in an existing user.
+//
+// The authData parameter can be either:
+//   - An Auth struct
+//   - A map[string]any with keys like: "NS", "DB", "SC", "user", "pass"
+//
+// Example with struct:
+//   db.SignIn(Auth{Namespace: "app", Database: "app", Scope: "user", Username: "foo", Password: "bar"})
+//
+// Example with map:
+//   db.SignIn(map[string]any{"NS": "app", "DB": "app", "SC": "user", "user": "foo", "pass": "bar"})
+func (db *DB) SignIn(authData interface{}) (string, error) {
+	var data map[string]any
+
+	switch v := authData.(type) {
+	case *map[string]any:
+		data = *v
+	case map[string]any:
+		data = v
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return "", fmt.Errorf("error serializing auth data: %w", err)
+		}
+		if err := json.Unmarshal(b, &data); err != nil {
+			return "", fmt.Errorf("error deserializing auth data to map: %w", err)
+		}
+	}
+
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(&token, "signin", authData); err != nil {
+	if err := db.con.Send(&token, "signin", data); err != nil {
 		return "", err
 	}
 

@@ -62,12 +62,12 @@ func ExampleDB_recordAuthentication() {
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNIN.
 	// For example, you might want to use `email` and `password` instead of `user` and `pass`.
 	// In that case, you need to something that encodes to a cbor map containing those keys.
-	_, err = db.SignIn(&map[string]any{
-		"Namespace": "examples",
-		"Database":  "record_auth_demo",
-		"Access":    "user",
-		"Username":  "yusuke",
-		"Password":  "VerySecurePassword123!",
+	_, err = db.SignIn(&surrealdb.Auth{
+		Namespace: "examples",
+		Database:  "record_auth_demo",
+		Access:    "user",
+		Username:  "yusuke",
+		Password:  "VerySecurePassword123!",
 	})
 	if err != nil {
 		panic(err)

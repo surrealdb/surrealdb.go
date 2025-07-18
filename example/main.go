@@ -22,9 +22,9 @@ func main() {
 	}
 
 	// Sign in to authentication `db`
-	authData := &map[string]any{
-		"user": "root", // use your setup username
-		"pass": "root", // use your setup password
+	authData := &surrealdb.Auth{
+		Username: "root", // use your setup username
+		Password: "root", // use your setup password
 	}
 	token, err := db.SignIn(authData)
 	if err != nil {
