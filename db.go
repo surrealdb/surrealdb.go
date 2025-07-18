@@ -146,13 +146,15 @@ func (db *DB) SignUp(authData interface{}) (string, error) {
 //
 // Example with map:
 //
-//	db.SignIn(map[string]any{
-//	  "namespace": "app",
-//	  "database": "app",
-//	  "scope": "user",
-//	  "user": "yusuke",
-//	  "pass": "VerySecurePassword123!",
-//	})
+// _, err := db.SignUp(map[string]any{
+// 		"NS": "examples",
+// 		"DB":  "record_auth_demo",
+// 		"AC":    "user",
+// 		"user":  "yusuke",
+// 		"pass":  "VerySecurePassword123!",
+// 	})
+//
+
 func (db *DB) SignIn(authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.con.Send(&token, "signin", authData); err != nil {
