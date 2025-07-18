@@ -102,7 +102,49 @@ func ExampleInsert_table() {
 	// Selected person: {Fourth {2023-10-01 12:00:00 +0000 UTC} <nil>}
 }
 
-func ExampleInsert_batch_relation_workaround_for_rpcv1() {
+func ExampleInsert_bulk_isnert_record() {
+	db := newSurrealDBWSConnection("query", "person")
+
+	type Person struct {
+		ID models.RecordID `json:"id"`
+	}
+
+	persons := []Person{
+		{ID: models.NewRecordID("person", "a")},
+		{ID: models.NewRecordID("person", "b")},
+		{ID: models.NewRecordID("person", "c")},
+	}
+
+	var inserted *[]Person
+	inserted, err := surrealdb.Insert[Person](
+		db,
+		"person",
+		persons,
+	)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("Inserted: %+s\n", *inserted)
+
+	selected, err := surrealdb.Select[[]Person](
+		db,
+		"person",
+	)
+	if err != nil {
+		panic(err)
+	}
+	for _, person := range *selected {
+		fmt.Printf("Selected person: %+s\n", person)
+	}
+
+	// Output:
+	// Inserted: [{{person a}} {{person b}} {{person c}}]
+	// Selected person: {{person a}}
+	// Selected person: {{person b}}
+	// Selected person: {{person c}}
+}
+
+func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 	db := newSurrealDBWSConnection("query", "person", "follow")
 
 	type Person struct {

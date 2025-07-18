@@ -344,7 +344,11 @@ func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{
 	return res.Result, nil
 }
 
-// Insert a table or a row from the database like a POST request.
+// Insert creates records with either specified IDs or generated IDs.
+//
+// Insert cannot create a relationship. If you want to create a relationship,
+// use InsertRelation if you need to specify the ID of the relationship,
+// or use Relate if you want to create a relationship with a generated ID.
 func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResult, error) {
 	var res connection.RPCResponse[[]TResult]
 	if err := db.con.Send(&res, "insert", what, data); err != nil {
