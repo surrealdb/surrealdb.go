@@ -147,9 +147,9 @@ func (db *DB) SignUp(authData interface{}) (string, error) {
 // Example with map:
 //
 //	db.SignIn(map[string]any{
-//	  "namespace": "app",
-//	  "database": "app",
-//	  "scope": "user",
+//	  "NS": "app",
+//	  "DB": "app",
+//	  "AC": "user",
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
