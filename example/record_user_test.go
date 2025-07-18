@@ -46,12 +46,12 @@ func ExampleDB_recordAuthentication() {
 
 	// TODO: We might need to add support for auth data other than Auth struct,
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNUP.
-	_, err := db.SignUp(&map[string]any{
-		"Namespace": "examples",
-		"Database":  "record_auth_demo",
-		"Access":    "user",
-		"Username":  "yusuke",
-		"Password":  "VerySecurePassword123!",
+_, err := db.SignUp(&surrealdb.Auth{
+		Namespace: "examples",
+		Database:  "record_auth_demo",
+		Access:    "user",
+		Username:  "yusuke",
+		Password:  "VerySecurePassword123!",
 	})
 	if err != nil {
 		panic(err)
