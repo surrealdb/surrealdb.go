@@ -91,7 +91,7 @@ func (db *DB) Info() (map[string]interface{}, error) {
 }
 
 // SignUp is a helper method for signing up a new user.
-func (db *DB) SignUp(authData *Auth) (string, error) {
+func (db *DB) SignUp(authData *map[string]any) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.con.Send(&token, "signup", authData); err != nil {
 		return "", err
@@ -105,7 +105,7 @@ func (db *DB) SignUp(authData *Auth) (string, error) {
 }
 
 // SignIn is a helper method for signing in a user.
-func (db *DB) SignIn(authData *Auth) (string, error) {
+func (db *DB) SignIn(authData *map[string]any) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.con.Send(&token, "signin", authData); err != nil {
 		return "", err
