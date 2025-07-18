@@ -354,6 +354,17 @@ func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResul
 	return res.Result, nil
 }
 
+// Relate creates a relationship between two records in the table,
+// from `in` to `out` with the specified `relation`.
+//
+// The `rellation` is basically a table name, so you can query it directly using SELECT
+// if needed.
+//
+// The relation always get a generated ID. Although you can specify it when creating
+// a relation using by setting Relationship.ID, it is ignored.
+//
+// Relationship.ID is meant for unmarshaling the relation from the database to the Relationship struct,
+// in which case the ID is set to the ID of the relation record.
 func Relate(db *DB, rel *Relationship) error {
 	var res connection.RPCResponse[connection.ResponseID[models.RecordID]]
 	if err := db.con.Send(&res, "relate", rel.In, rel.Relation, rel.Out, rel.Data); err != nil {
