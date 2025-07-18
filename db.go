@@ -90,8 +90,32 @@ func (db *DB) Info() (map[string]interface{}, error) {
 	return *info.Result, err
 }
 
-// SignUp is a helper method for signing up a new user.
-func (db *DB) SignUp(authData *Auth) (string, error) {
+// SignUp signs up a new user.
+//
+// The authData parameter can be either:
+//   - An Auth struct
+//   - A map[string]any with keys like: "namespace", "database", "scope", "user", "pass"
+//
+// Example with struct:
+//
+//	db.SignUp(Auth{
+//	  Namespace: "app",
+//	  Database: "app",
+//	  Access: "user",
+//	  Username: "yusuke",
+//	  Password: "VerySecurePassword123!",
+//	})
+//
+// Example with map:
+//
+//	db.SignUp(map[string]any{
+//	  "NS": "app",
+//	  "DB": "app",
+//	  "AC": "user",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+func (db *DB) SignUp(authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.con.Send(&token, "signup", authData); err != nil {
 		return "", err
@@ -104,8 +128,32 @@ func (db *DB) SignUp(authData *Auth) (string, error) {
 	return *token.Result, nil
 }
 
-// SignIn is a helper method for signing in a user.
-func (db *DB) SignIn(authData *Auth) (string, error) {
+// SignIn signs in an existing user.
+//
+// The authData parameter can be either:
+//   - An Auth struct
+//   - A map[string]any with keys like: "namespace", "database", "scope", "user", "pass"
+//
+// Example with struct:
+//
+//	db.SignIn(Auth{
+//	  Namespace: "app",
+//	  Database: "app",
+//	  Access: "user",
+//	  Username: "yusuke",
+//	  Password: "VerySecurePassword123!",
+//	})
+//
+// Example with map:
+//
+//	db.SignIn(map[string]any{
+//	  "NS": "app",
+//	  "DB": "app",
+//	  "AC": "user",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+func (db *DB) SignIn(authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := db.con.Send(&token, "signin", authData); err != nil {
 		return "", err
