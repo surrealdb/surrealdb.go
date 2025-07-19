@@ -191,7 +191,7 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 		// we cannot proceed with unmarshaling the Result field,
 		// because it would always fail.
 		// The only thing we can do is to return the error if any.
-		if nilOrTypedNil(dest) || res.Result == nil {
+		if nilOrTypedNil(dest) || res.Result == nil || res.Error != nil {
 			return eliminateTypedNilError(res.Error)
 		}
 
