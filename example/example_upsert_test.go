@@ -169,11 +169,20 @@ func ExampleUpsert_rpc_error() {
 		},
 	)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		switch err.Error() {
+		// As of v3.0.0-alpha.7
+		case "There was a problem with the database: Couldn't coerce value for field `name` of `person:a`: Expected `string` but found `123`":
+			fmt.Println("Encountered expected error for either v3.0.0-alpha.7 or v2.3.7")
+			// As of v2.3.7
+		case "There was a problem with the database: Found 123 for field `name`, with record `person:a`, but expected a string":
+			fmt.Println("Encountered expected error for either v3.0.0-alpha.7 or v2.3.7")
+		default:
+			fmt.Printf("Unknown Error: %v\n", err)
+		}
 		fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
 	}
 
 	// Output:
-	// Error: There was a problem with the database: Couldn't coerce value for field `name` of `person:a`: Expected `string` but found `123`
+	// Encountered expected error for either v3.0.0-alpha.7 or v2.3.7
 	// Error is RPCError: true
 }
