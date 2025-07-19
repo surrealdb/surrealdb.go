@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -199,11 +200,12 @@ func (db *DB) Unset(key string) error {
 }
 
 func (db *DB) Version() (*VersionData, error) {
-	var ver connection.RPCResponse[any]
-	if err := db.con.Send(&ver, "version"); err != nil {
+	ver, err := send[any](db, "version")
+	if err != nil {
 		return nil, err
 	}
-	switch v := (*ver.Result).(type) {
+
+	switch v := (*ver).(type) {
 	case map[string]any:
 		ver, ok := v["version"].(string)
 		if !ok {
@@ -232,6 +234,18 @@ func (db *DB) Version() (*VersionData, error) {
 	}
 }
 
+// Send sends a request to the SurrealDB server.
+//
+// It is a wrapper around db.con.Send that is smarter about methods that are allowed to be sent.
+// You usually want to use this method instead of db.con.Send directly.
+//
+// The `res` needs to be of type `*connection.RPCResponse[T]`.
+//
+// It returns an error in the following cases:
+// - Error if the method is not allowed to be sent, which means that the request was not even sent.
+// - Transport error like WebSocket message write timeout, connection closed, etc.
+// - Unmarshal error if the response cannot be unmarshaled into the provided res parameter.
+// - RPCError if the request was processed by SurrealDB but it failed there.
 func (db *DB) Send(res interface{}, method string, params ...interface{}) error {
 	allowedSendMethods := []string{"select", "create", "insert", "update", "upsert", "patch", "delete", "query"}
 
@@ -257,91 +271,111 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notificatio
 //-------------------------------------------------------------------------------------------------------------------//
 
 func Kill(db *DB, id string) error {
-	return db.con.Send(nil, "kill", id)
+	_, err := send[any](db, "kill", id)
+	return err
 }
 
 func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
-	var res connection.RPCResponse[models.UUID]
-	if err := db.con.Send(&res, "live", table, diff); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[models.UUID](db, "live", table, diff)
 }
 
+// Query executes a query against the SurrealDB database.
+//
+// It returns a slice of QueryResult[TResult] where TResult is the type of the result.
+//
+// If the query fails, the returned error will be a `joinError` created by the `errors.Join` function,
+// which contains all the errors that occurred during the query execution.
+// The caller can check the Error field of each QueryResult to see if the query failed,
+// or check the returned error from the Query function to see if the query failed.
+//
+// If the caller wants to handle the query errors, if any, it can check the Error field of each QueryResult,
+// or call errors.Is(err, &QueryError{}) on the returned error to see if it is (or contains) a `QueryError`.
+//
+// If the error is a query error, the caller should NOT retry the query,
+// because the query is already executed and the error is not recoverable,
+// and often times the error is caused by a bug in the query itself.
+//
+// If the error is not a query error, the caller can retry the query.
+// Check for RPCError to retry the query instead of QueryError.
 func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
-	var res connection.RPCResponse[[]QueryResult[TResult]]
-	if err := db.con.Send(&res, "query", sql, vars); err != nil {
+	res, err := send[[]QueryResult[cbor.RawMessage]](db, "query", sql, vars)
+	if err != nil {
 		return nil, err
 	}
 
-	return res.Result, nil
+	// The query errors, if any
+	var (
+		errs error
+	)
+
+	// We unmarshal []QueryResult[cbor.RawMessage] first,
+	// and then unmarshal each cbor.RawMessage to TResult.
+	// This is necessary because the Result field can be a string in case Status is "ERR".
+	// In that case if we directly unmarshaled to TResult using []QueryResult[TResult],
+	// it would fail with "cannot unmarshal UTF-8 text string into Go struct field"
+	// because CBOR string cannot be unmarshaled into TResult except when TResult is a string.
+	qr := make([]QueryResult[TResult], len(*res))
+
+	for i, result := range *res {
+		var (
+			r TResult
+			e *QueryError
+		)
+		if result.Status == "ERR" {
+			var errMsg string
+			if result.Result != nil {
+				if err := db.con.GetUnmarshaler().Unmarshal(result.Result, &errMsg); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
+				}
+			}
+			e = &QueryError{
+				Message: errMsg,
+			}
+			errs = errors.Join(errs, e)
+		} else if result.Result != nil {
+			if err := db.con.GetUnmarshaler().Unmarshal(result.Result, &r); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal result: %w", err)
+			}
+		}
+		qr[i] = QueryResult[TResult]{
+			Status: result.Status,
+			Time:   result.Time,
+			Result: r,
+			Error:  e,
+		}
+	}
+
+	return &qr, errs
 }
 
 func Create[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, "create", what, data); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "create", what, data)
 }
 
 func Select[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-
-	if err := db.con.Send(&res, "select", what); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "select", what)
 }
 
 func Patch(db *DB, what interface{}, patches []PatchData) (*[]PatchData, error) {
-	var patchRes connection.RPCResponse[[]PatchData]
-	if err := db.con.Send(&patchRes, "patch", what, patches, true); err != nil {
-		return nil, err
-	}
-
-	return patchRes.Result, nil
+	return send[[]PatchData](db, "patch", what, patches, true)
 }
 
 func Delete[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, "delete", what); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "delete", what)
 }
 
 func Upsert[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, "upsert", what, data); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
 func Update[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, "update", what, data); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "update", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
 func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, "merge", what, data); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[TResult](db, "merge", what, data)
 }
 
 // Insert creates records with either specified IDs or generated IDs.
@@ -350,12 +384,7 @@ func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{
 // use InsertRelation if you need to specify the ID of the relationship,
 // or use Relate if you want to create a relationship with a generated ID.
 func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResult, error) {
-	var res connection.RPCResponse[[]TResult]
-	if err := db.con.Send(&res, "insert", what, data); err != nil {
-		return nil, err
-	}
-
-	return res.Result, nil
+	return send[[]TResult](db, "insert", what, data)
 }
 
 // Relate creates a relationship between two records in the table,
@@ -370,18 +399,17 @@ func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResul
 // Relationship.ID is meant for unmarshaling the relation from the database to the Relationship struct,
 // in which case the ID is set to the ID of the relation record.
 func Relate(db *DB, rel *Relationship) error {
-	var res connection.RPCResponse[connection.ResponseID[models.RecordID]]
-	if err := db.con.Send(&res, "relate", rel.In, rel.Relation, rel.Out, rel.Data); err != nil {
+	res, err := send[connection.ResponseID[models.RecordID]](db, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
+	if err != nil {
 		return err
 	}
 
-	rel.ID = res.Result.ID
+	rel.ID = res.ID
+
 	return nil
 }
 
 func InsertRelation(db *DB, relationship *Relationship) error {
-	var res connection.RPCResponse[[]connection.ResponseID[models.RecordID]]
-
 	rel := map[string]any{
 		"in":  relationship.In,
 		"out": relationship.Out,
@@ -393,11 +421,12 @@ func InsertRelation(db *DB, relationship *Relationship) error {
 		rel[k] = v
 	}
 
-	if err := db.con.Send(&res, "insert_relation", relationship.Relation, rel); err != nil {
+	res, err := send[[]connection.ResponseID[models.RecordID]](db, "insert_relation", relationship.Relation, rel)
+	if err != nil {
 		return err
 	}
 
-	relationship.ID = (*res.Result)[0].ID
+	relationship.ID = (*res)[0].ID
 	return nil
 }
 
@@ -416,16 +445,28 @@ func QueryRaw(db *DB, queries *[]QueryStmt) error {
 		return fmt.Errorf("no query to run")
 	}
 
-	var res connection.RPCResponse[[]QueryResult[cbor.RawMessage]]
-	if err := db.con.Send(&res, "query", preparedQuery, parameters); err != nil {
+	res, err := send[[]QueryResult[cbor.RawMessage]](db, "query", preparedQuery, parameters)
+	if err != nil {
 		return err
 	}
 
 	for i := 0; i < len(*queries); i++ {
 		// assign results
-		(*queries)[i].Result = (*res.Result)[i]
+		(*queries)[i].Result = (*res)[i]
 		(*queries)[i].unmarshaler = db.con.GetUnmarshaler()
 	}
 
 	return nil
+}
+
+// send is a helper function to send a request to the SurrealDB server
+// in case the expected response is a connection.RPCResponse[TResult].
+// If one expects other types of responses, use db.con.Send directly.
+func send[TResult any](db *DB, method string, params ...any) (*TResult, error) {
+	var res connection.RPCResponse[TResult]
+	if err := db.con.Send(&res, method, params...); err != nil {
+		return nil, err
+	}
+
+	return res.Result, nil
 }

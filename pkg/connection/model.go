@@ -14,6 +14,15 @@ func (r RPCError) Error() string {
 	return r.Message
 }
 
+func (r *RPCError) Is(target error) bool {
+	if target == nil {
+		return r == nil
+	}
+
+	_, ok := target.(*RPCError)
+	return ok
+}
+
 // RPCRequest represents an incoming JSON-RPC request
 type RPCRequest struct {
 	ID     interface{}   `json:"id" msgpack:"id"`

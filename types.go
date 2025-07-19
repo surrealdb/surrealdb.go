@@ -3,9 +3,12 @@ package surrealdb
 import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
+
+type RPCError = connection.RPCError
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {
@@ -15,9 +18,35 @@ type PatchData struct {
 }
 
 type QueryResult[T any] struct {
-	Status string `json:"status"`
-	Time   string `json:"time"`
-	Result T      `json:"result"`
+	Status string      `json:"status"`
+	Time   string      `json:"time"`
+	Result T           `json:"result"`
+	Error  *QueryError `json:"-"`
+}
+
+// QueryError represents an error that occurred during a query execution.
+//
+// The caller can type-assert the return errror to QueryError to see if
+// the error is a query error or not.
+type QueryError struct {
+	Message string
+}
+
+func (e *QueryError) Error() string {
+	if e == nil {
+		return ""
+	}
+
+	return e.Message
+}
+
+func (e *QueryError) Is(target error) bool {
+	if target == nil {
+		return e == nil
+	}
+
+	_, ok := target.(*QueryError)
+	return ok
 }
 
 type QueryStmt struct {
