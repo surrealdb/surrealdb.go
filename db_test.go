@@ -174,7 +174,9 @@ func (s *SurrealDBTestSuite) TestInsert() {
 }
 
 func (s *SurrealDBTestSuite) TestPatch() {
-	_, err := surrealdb.Create[testUser](s.db, *models.ParseRecordID("users:999"), map[string]interface{}{
+	recordID, err := models.ParseRecordID("users:999")
+	s.Require().NoError(err)
+	_, err = surrealdb.Create[testUser](s.db, *recordID, map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
@@ -186,10 +188,10 @@ func (s *SurrealDBTestSuite) TestPatch() {
 	}
 
 	// Update the user
-	_, err = surrealdb.Patch(s.db, models.ParseRecordID("users:999"), patches)
+	_, err = surrealdb.Patch(s.db, recordID, patches)
 	s.Require().NoError(err)
 
-	user2, err := surrealdb.Select[map[string]interface{}](s.db, *models.ParseRecordID("users:999"))
+	user2, err := surrealdb.Select[map[string]interface{}](s.db, *recordID)
 	s.Require().NoError(err)
 
 	username := (*user2)["username"].(string)
@@ -401,19 +403,21 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 }
 
 func (s *SurrealDBTestSuite) TestMerge() {
-	_, err := surrealdb.Create[testUser](s.db, *models.ParseRecordID("users:999"), map[string]interface{}{
+	recordID, err := models.ParseRecordID("users:999")
+	s.Require().NoError(err)
+	_, err = surrealdb.Create[testUser](s.db, *recordID, map[string]interface{}{
 		"username": "john999",
 		"password": "123",
 	})
 	s.NoError(err)
 
 	// Update the user
-	_, err = surrealdb.Merge[testUser](s.db, *models.ParseRecordID("users:999"), map[string]string{
+	_, err = surrealdb.Merge[testUser](s.db, *recordID, map[string]string{
 		"password": "456",
 	})
 	s.Require().NoError(err)
 
-	user, err := surrealdb.Select[testUser](s.db, *models.ParseRecordID("users:999"))
+	user, err := surrealdb.Select[testUser](s.db, *recordID)
 	s.Require().NoError(err)
 	s.Equal("john999", user.Username) // Ensure username hasn't change.
 	s.Equal("456", user.Password)
