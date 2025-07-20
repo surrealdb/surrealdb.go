@@ -17,6 +17,12 @@ body:
       placeholder: A short description of what the bug is.
     validations:
       required: true
+  - type: input
+    id: repro
+    attributes:
+      label: Reproduction
+      description: The location of your repository, GitHub gist, or whatever you can use to reliably reproduce the issue, if any
+      placeholder: https://github.com/USER/REPO
   - type: textarea
     id: steps
     attributes:
@@ -31,6 +37,21 @@ body:
       label: Expected behaviour
       description: What is the behaviour that you would expect to see?
       placeholder: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error
+      description: The exact error message you encountered, if any.
+    validations:
+      required: true
+  - type: input
+    id: sdkversion
+    attributes:
+      label: SDK version
+      description: Refer to `go.mod` for the exact version of the SDK
+      placeholder: v0.0.0
     validations:
       required: true
   - type: input
