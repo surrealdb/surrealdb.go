@@ -295,8 +295,34 @@ func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
 // because the query is already executed and the error is not recoverable,
 // and often times the error is caused by a bug in the query itself.
 //
-// If the error is not a query error, the caller can retry the query.
-// Check for RPCError to retry the query instead of QueryError.
+// When can you safely retry the query when this function returns an error?
+//
+// Generally speaking, automatic retries make sense only when the error is transient,
+// such as a network error, a timeout, or a server error that is not related to the query itself.
+// In such cases, the caller can retry the query by calling the Query function again.
+//
+// For this function, the caller may retry when the error is:
+//   - RPCError: because we should get a RPC error only when the RPC failed due to anything other than the query error
+//   - constants.ErrTimeout: This means we send the HTTP request or a WebSocket message to SurrealDB in timely manner,
+//     which is often due to temporary network issues or server overload.
+//
+// However, if the error is any of the following, the caller should NOT retry the query:
+//   - QueryError: This means the query failed due to a syntax error, a type error, or a logical error in the query itself.
+//   - Unmarshal error: This means the response from the server could not be unmarshaled into the expected type,
+//     which is often due to a bug in the code or a mismatch between the expected type and the actual response type.
+//   - Marshal error: This means the request could not be marshaled using CBOR,
+//     which is often due to a bug in the code that tries to send something that cannot be marshaled or understood by
+//     SurrealDB, such as a struct with unsupported types.
+//   - Anything else: It's just safer to not retry when we aren't sure if the error is whether transient or permanent.
+//
+// Note that RPCError is retriable only for the `query` RPC method,
+// because in other cases, the RPCError may also indicate a query error.
+// For example, if you tried to insert a duplicate record using the `insert` RPC,
+// you may get an RPCError saying so, which is not retriable.
+//
+// If you tried to insert using the `query` RPC method with `INSERT` statement,
+// you may get no RPCError, but a QueryError saying so, enabling you to easily diferentiate
+// between retriable and non-retriable errors.
 func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
 	res, err := send[[]QueryResult[cbor.RawMessage]](db, "query", sql, vars)
 	if err != nil {
