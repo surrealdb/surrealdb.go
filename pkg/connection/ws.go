@@ -203,6 +203,16 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	}
 }
 
+// unmarshalRes try our best to avoid unmarshaling the entire CBOR response twice,
+// once in the WebSocketConnection.handleResponse and once here.
+//
+// With the approach implemented in this function,
+// we only unmarshal the ID and the Error fields of the RPCResponse once in handleResponse,
+// and then we only unmarshal the Result field here.
+//
+// Assuming `dest` points to RPCResponse[SomeTypeParam],
+// we need to set the ID, Error and Result fields of the `dest` struct,
+// so that we can make this function generic enough to work with any RPCResponse[T] type.
 func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
 	// Although this looks marshaling unnmarshaled data again, it is not.
 	// The `res.Result` is of type `cbor.RawMessage`, which is
@@ -214,16 +224,8 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 		return fmt.Errorf("Send: error marshaling result: %w", err)
 	}
 
-	// In the below, we try our best to avoid unmarshaling the entire CBOR response twice,
-	// once in the WebSocketConnection.handleResponse and once here.
-	//
-	// With the approach below, we only unmarshal the ID and the Error fields of the RPCResponse once in handleResponse,
-	// and then we only unmarshal the Result field here.
-
-	// In case `dest` is RPCResponse[SomeTypeParam] we need to set the ID and Result fields.
-	// Note that we cannot treat it like RPCResponse[any] or RPCResponse[cbor.RawMessage] as well.
-	// The alternative is to use reflection like this.
-	if reflect.TypeOf(dest).Kind() != reflect.Ptr {
+	kind := reflect.TypeOf(dest).Kind()
+	if kind != reflect.Ptr {
 		return fmt.Errorf("Send: dest must be a pointer, got %T", dest)
 	}
 
@@ -232,14 +234,48 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 		FieldResult = "Result"
 	)
 
-	destStruct := reflect.ValueOf(dest).Elem()
+	// Depending on how you called it,
+	// dest could be either of the following:
+	// 1. *connection.RPCResponse[T]
+	// 2. *interface {}(*connection.RPCResponse[T])
+	//
+	// For the first case, we need to do reflect.Value.Elem() once to
+	// get the underlying struct type.
+	//
+	// For second case, we need to do it thrice to get the underlying struct type.
+	//
+	// The first case is the most common one, which is when you used Send indirectly from
+	// one of the methods like `Select`, `Create`, `Update`, etc.
+	//
+	// The second case is when you used Send directly, or via a custom method that calls Send.
+	// See https://github.com/surrealdb/surrealdb.go/issues/246 for more context.
+	var destStruct reflect.Value
+	switch structOrIfacePtrStruct := reflect.ValueOf(dest).Elem(); structOrIfacePtrStruct.Kind() {
+	case reflect.Interface:
+		// If dest was a pointer to an interface,
+		// we need to get the underlying pointer that is wrapped in the interface.
+		ptrStruct := structOrIfacePtrStruct.Elem()
+
+		if ptrStruct.Kind() == reflect.Ptr {
+			// If dest is an interface that points to a pointer, we need to get the underlying struct type.
+			destStruct = ptrStruct.Elem()
+		} else {
+			return fmt.Errorf("Send: dest must be a pointer to a struct, got %T", dest)
+		}
+	case reflect.Struct:
+		// If dest was a pointer to a struct,
+		// destStructOrIface is the struct we want to use.
+		destStruct = structOrIfacePtrStruct
+	default:
+		return fmt.Errorf("Send: dest must be a pointer to a struct or an interface, got %T", dest)
+	}
 
 	// At this point, we assume `destStruct` points to a struct with ID and Result fields.
 	// If it does not, we will panic like:
 	//   panic: reflect: call of reflect.Value.FieldByName on interface Value
 
 	destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
-	// `destStructDotResult` is basically `dest.Result` if `dest` was of type `*RPCResponse[T]`.
+	// `destStructDotResult` is basically `dest.Result` in case `dest` was of type `*RPCResponse[T]`.
 	destStructDotResult := destStruct.FieldByName(FieldResult).Interface()
 
 	// destValue could be (*T)nil, like (*string)nil, where (*string)nil != nil!
