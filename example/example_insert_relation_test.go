@@ -5,6 +5,7 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -58,7 +59,7 @@ func ExampleInsertRelation() {
 		fmt.Printf("Person: %+v\n", person)
 	}
 
-	if relateErr := surrealdb.InsertRelation(
+	res, relateErr := surrealdb.InsertRelation[[]connection.ResponseID[models.RecordID]](
 		db,
 		&surrealdb.Relationship{
 			ID:       &models.RecordID{Table: "follow", ID: "first_second"},
@@ -71,8 +72,15 @@ func ExampleInsertRelation() {
 				},
 			},
 		},
-	); relateErr != nil {
+	)
+	if relateErr != nil {
 		panic(relateErr)
+	}
+	if res == nil {
+		panic("relation response is nil")
+	}
+	if (*res)[0].ID.ID != "first_second" {
+		panic("relation ID must be set to 'first_second'")
 	}
 
 	//nolint:lll
