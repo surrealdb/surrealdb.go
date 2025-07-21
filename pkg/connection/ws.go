@@ -161,7 +161,11 @@ func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	go func() {
 		// Set write deadline based on context to prevent indefinite blocking
 		if deadline, ok := ctx.Deadline(); ok {
-			_ = ws.Conn.SetWriteDeadline(deadline)
+			err := ws.Conn.SetWriteDeadline(deadline)
+			if err != nil {
+				writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to set write deadline, although it must always succeed: %w", err)
+				return
+			}
 			defer ws.Conn.SetWriteDeadline(time.Time{}) // Reset deadline
 		}
 
