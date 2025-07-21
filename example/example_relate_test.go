@@ -5,6 +5,7 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -58,7 +59,7 @@ func ExampleRelate() {
 		fmt.Printf("Person: %+v\n", person)
 	}
 
-	if relateErr := surrealdb.Relate(
+	res, relateErr := surrealdb.Relate[connection.ResponseID[models.RecordID]](
 		db,
 		&surrealdb.Relationship{
 			// ID is currently ignored, and the relation will have a generated ID.
@@ -74,8 +75,15 @@ func ExampleRelate() {
 				},
 			},
 		},
-	); relateErr != nil {
+	)
+	if relateErr != nil {
 		panic(relateErr)
+	}
+	if res == nil {
+		panic("relation response is nil")
+	}
+	if res.ID.ID == "first_second" {
+		panic("relation ID should not be set to 'first_second'")
 	}
 
 	//nolint:lll

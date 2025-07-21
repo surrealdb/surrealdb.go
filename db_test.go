@@ -188,7 +188,7 @@ func (s *SurrealDBTestSuite) TestPatch() {
 	}
 
 	// Update the user
-	_, err = surrealdb.Patch(s.db, recordID, patches)
+	_, err = surrealdb.Patch(s.db, *recordID, patches)
 	s.Require().NoError(err)
 
 	user2, err := surrealdb.Select[map[string]interface{}](s.db, *recordID)
@@ -439,9 +439,10 @@ func (s *SurrealDBTestSuite) TestRelateAndInsertRelation() {
 				"since": time.Now(),
 			},
 		}
-		err = surrealdb.InsertRelation(s.db, &relationship)
+		res, err := surrealdb.InsertRelation[[]connection.ResponseID[models.RecordID]](s.db, &relationship)
+		s.Require().NotNil(res)
 		s.Require().NoError(err)
-		s.Assert().NotNil(relationship.ID)
+		s.Assert().NotNil((*res)[0].ID)
 	})
 
 	s.Run("Test 'relate' method", func() {
@@ -453,9 +454,10 @@ func (s *SurrealDBTestSuite) TestRelateAndInsertRelation() {
 				"since": time.Now(),
 			},
 		}
-		err = surrealdb.Relate(s.db, &relationship)
+		res, err := surrealdb.Relate[connection.ResponseID[models.RecordID]](s.db, &relationship)
+		s.Require().NotNil(res)
 		s.Require().NoError(err)
-		s.Assert().NotNil(relationship.ID)
+		s.Assert().NotNil(res.ID)
 	})
 }
 
