@@ -128,16 +128,55 @@ func (ws *WebSocketConnection) SetCompression(compress bool) *WebSocketConnectio
 
 // Close closes the WebSocket connection and stops listening for incoming messages.
 //
-// Note that this method may block until the Close message is sent,
-// even though the provided context is canceled beforehand, for now.
+// The context parameter allows the caller to cancel the close operation if it takes too long.
+// This is useful when the underlying network connection is unreliable.
+// If the context is canceled, the connection will still be closed in the background.
 func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
+
+	// Signal that we're closing so that the goroutine reading from the connection
+	// can stop reading messages and exit.
+	//
+	// TODO: This might not be necessary, because the gorilla.Conn.Close() method
+	// will close the connection and that would result in the ReadMessage call in
+	// ws.initialize() goroutine to return an error, which will stop the goroutine.
 	close(ws.closeChan)
-	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
-	if err != nil {
-		return err
+
+	// Phase 1: Try to send the close message
+	//
+	// We assume this is important to let the server know that we're closing the connection.
+	// If the write fails, we still try to close the connection locally,
+	// so that we don't leak resources locally.
+
+	writeErr := make(chan error, 1)
+	go func() {
+		writeErr <- ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
+	}()
+
+	select {
+	case err := <-writeErr:
+		if err != nil {
+			// Write failed, but we don't return here,
+			// because we try our best to Close the connection anyway,
+			// although it might not be a clean close from the server's perspective.
+			ws.logger.Error("failed to write close message", "error", err)
+		}
+	case <-ctx.Done():
+		// Again, we don't return here, because we try out best to Close the connection anyway,
+		// although it might not be a clean close from the server's perspective.
 	}
+
+	// Phase 2: Close the underlying connection.
+	//
+	// We assume the Close method of the gorilla.Conn is an instantaneous operation,
+	// so we don't need to consider the context here, even
+	// in case the context is already canceled.
+	//
+	// We do this regardless of whether the write of the close message succeeded or not,
+	// because we want to ensure the local resources are cleaned up anyway,
+	// although the lack of a close message write might result in the server not knowing
+	// that the client is closing the connection in a timely manner.
 
 	return ws.Conn.Close()
 }
