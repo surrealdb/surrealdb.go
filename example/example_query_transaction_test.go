@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleQuery_transaction_return() {
@@ -16,7 +17,7 @@ func ExampleQuery_transaction_return() {
 	a, err = surrealdb.Query[bool](
 		db,
 		`BEGIN; CREATE person:1; CREATE person:2; RETURN true; COMMIT;`,
-		nil,
+		map[string]any{},
 	)
 	if err != nil {
 		panic(err)
@@ -97,4 +98,106 @@ func ExampleQuery_transaction_throw() {
 	// Error: The query was not executed due to a failed transaction
 	// Error is RPCError: false
 	// Error is QueryError: true
+}
+
+// See https://github.com/surrealdb/surrealdb.go/issues/177
+func ExampleQuery_transaction_issue_177_return_before_commit() {
+	db := newSurrealDBWSConnection("query", "t")
+
+	var err error
+
+	// Note that you are returning before committing the transaction.
+	// In this case, you get the uncommitted result of the CREATE,
+	// which lacks the ID field becase we aren't sure if the ID is committed or not
+	// at that point.
+	// SurrealDB may be enhanced to handle this, but for now,
+	// you should commit the transaction before returning the result.
+	// See the ExampleQuery_transaction_issue_177_commit function for the correct way to do this.
+	queryResults, err := surrealdb.Query[any](db,
+		`BEGIN;
+		CREATE t:s SET name = 'test';
+		LET $i = SELECT * FROM $id;
+		RETURN $i;
+		COMMIT;`,
+		map[string]any{
+			"id": models.RecordID{Table: "t", ID: "s"},
+		})
+	if err != nil {
+		panic(err)
+	}
+
+	if len(*queryResults) != 1 {
+		panic(fmt.Errorf("expected 1 query result, got %d", len(*queryResults)))
+	}
+
+	rs := (*queryResults)[0].Result.([]any)
+	r := rs[0].(map[string]any)
+
+	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
+	fmt.Printf("r.name: %v\n", r["name"])
+	if id := r["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
+		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
+	}
+
+	// Output:
+	// Status: OK
+	// r.name: test
+}
+
+// See https://github.com/surrealdb/surrealdb.go/issues/177
+func ExampleQuery_transaction_issue_177_commit() {
+	db := newSurrealDBWSConnection("query", "t")
+
+	var err error
+
+	queryResults, err := surrealdb.Query[any](db,
+		`BEGIN;
+		CREATE t:s SET name = 'test1';
+		CREATE t:t SET name = 'test2';
+		SELECT * FROM $id;
+		COMMIT;`,
+		map[string]any{
+			"id": models.RecordID{Table: "t", ID: "s"},
+		})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
+
+	if len(*queryResults) != 3 {
+		panic(fmt.Errorf("expected 3 query results, got %d", len(*queryResults)))
+	}
+
+	var records []map[string]any
+	for i, result := range *queryResults {
+		if result.Status != "OK" {
+			panic(fmt.Errorf("expected OK status for query result %d, got %s", i, result.Status))
+		}
+		if result.Result == nil {
+			panic(fmt.Errorf("expected non-nil result for query result %d", i))
+		}
+		if record, ok := result.Result.([]any); ok && len(record) > 0 {
+			records = append(records, record[0].(map[string]any))
+		} else {
+			panic(fmt.Errorf("expected result to be a slice of maps, got %T", result.Result))
+		}
+	}
+
+	fmt.Printf("result[0].id: %v\n", records[0]["id"])
+	fmt.Printf("result[0].name: %v\n", records[0]["name"])
+	fmt.Printf("result[1].id: %v\n", records[1]["id"])
+	fmt.Printf("result[1].name: %v\n", records[1]["name"])
+	if id := records[2]["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
+		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
+	}
+	fmt.Printf("result[2].name: %v\n", records[2]["name"])
+
+	// Output:
+	// Status: OK
+	// result[0].id: {t s}
+	// result[0].name: test1
+	// result[1].id: {t t}
+	// result[1].name: test2
+	// result[2].name: test1
 }
