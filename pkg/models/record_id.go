@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,15 +17,17 @@ type RecordIDType interface {
 	~int | ~string | []any | map[string]any
 }
 
-func ParseRecordID(idStr string) *RecordID {
+var ErrBadRecordID = errors.New("invalid record ID (want <table>:<identifier>)")
+
+func ParseRecordID(idStr string) (*RecordID, error) {
 	expectedLen := 2
 	bits := strings.Split(idStr, ":")
 	if len(bits) != expectedLen {
-		panic(fmt.Errorf("invalid id string. Expected format is 'tablename:indentifier'"))
+		return nil, fmt.Errorf("%w: %q", ErrBadRecordID, idStr)
 	}
 	return &RecordID{
 		Table: bits[0], ID: bits[1],
-	}
+	}, nil
 }
 
 func NewRecordID(tableName string, id any) RecordID {
