@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"sort"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -131,12 +130,18 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 		panic(fmt.Errorf("expected 1 query result, got %d", len(*queryResults)))
 	}
 
+	rs := (*queryResults)[0].Result.([]any)
+	r := rs[0].(map[string]any)
+
 	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
-	fmt.Printf("Result: %v\n", (*queryResults)[0].Result)
+	fmt.Printf("r.name: %v\n", r["name"])
+	if id := r["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
+		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
+	}
 
 	// Output:
 	// Status: OK
-	// Result: [map[name:test]]
+	// r.name: test
 }
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177
@@ -179,16 +184,14 @@ func ExampleQuery_transaction_issue_177_commit() {
 		}
 	}
 
-	for i, r := range records {
-		var keys []string
-		for key := range r {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			fmt.Printf("result[%d].%s: %v\n", i, key, r[key])
-		}
+	fmt.Printf("result[0].id: %v\n", records[0]["id"])
+	fmt.Printf("result[0].name: %v\n", records[0]["name"])
+	fmt.Printf("result[1].id: %v\n", records[1]["id"])
+	fmt.Printf("result[1].name: %v\n", records[1]["name"])
+	if id := records[2]["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
+		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
 	}
+	fmt.Printf("result[2].name: %v\n", records[2]["name"])
 
 	// Output:
 	// Status: OK
