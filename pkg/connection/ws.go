@@ -166,7 +166,13 @@ func (ws *WebSocketConnection) Close(ctx context.Context) error {
 				writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to set write deadline, although it must always succeed: %w", err)
 				return
 			}
-			defer ws.Conn.SetWriteDeadline(time.Time{}) // Reset deadline
+			defer func() {
+				err := ws.Conn.SetWriteDeadline(time.Time{})
+				if err != nil {
+					writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to reset write deadline, although it must always succeed: %w", err)
+					return
+				}
+			}()
 		}
 
 		err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
