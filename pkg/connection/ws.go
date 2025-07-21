@@ -131,6 +131,13 @@ func (ws *WebSocketConnection) SetCompression(compress bool) *WebSocketConnectio
 // The context parameter allows the caller to cancel the close operation if it takes too long.
 // This is useful when the underlying network connection is unreliable.
 // If the context is canceled, the connection will still be closed in the background.
+//
+// If you want to make the close operation free of resource-leak as much as possible,
+// you should provide a context with a timeout/deadline.
+//
+// We then propagate the deadline to the WebSocket close message write operation,
+// which enables us to clean up everything including the internal goroutine that used to
+// try writing to the WebSocket connection, when this function exists.
 func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
@@ -150,8 +157,24 @@ func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	// so that we don't leak resources locally.
 
 	writeErr := make(chan error, 1)
+
 	go func() {
-		writeErr <- ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
+		// Set write deadline based on context to prevent indefinite blocking
+		if deadline, ok := ctx.Deadline(); ok {
+			_ = ws.Conn.SetWriteDeadline(deadline)
+			defer ws.Conn.SetWriteDeadline(time.Time{}) // Reset deadline
+		}
+
+		err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
+
+		// Try to send the error, but also check if we should abandon the attempt
+		select {
+		case writeErr <- err:
+		case <-ctx.Done():
+			// TODO: This may not be absolutely necessary,
+			// because WriteMessage would fail after we call ws.Conn.Close().
+			// For now, it's here to be extra cautious and to ensure we don't leave the goroutine hanging.
+		}
 	}()
 
 	select {
@@ -163,7 +186,7 @@ func (ws *WebSocketConnection) Close(ctx context.Context) error {
 			ws.logger.Error("failed to write close message", "error", err)
 		}
 	case <-ctx.Done():
-		// Again, we don't return here, because we try out best to Close the connection anyway,
+		// Again, we don't return here, because we try our best to Close the connection anyway,
 		// although it might not be a clean close from the server's perspective.
 	}
 
@@ -174,9 +197,10 @@ func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	// in case the context is already canceled.
 	//
 	// We do this regardless of whether the write of the close message succeeded or not,
-	// because we want to ensure the local resources are cleaned up anyway,
-	// although the lack of a close message write might result in the server not knowing
-	// that the client is closing the connection in a timely manner.
+	// because we want to ensure the local resources are cleaned up anyway.
+	// The lack of a close message write might result in the server not knowing
+	// that the client is closing the connection in a timely manner,
+	// we can't do much about it given we already failed to write it.
 
 	return ws.Conn.Close()
 }
