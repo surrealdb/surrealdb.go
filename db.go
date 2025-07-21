@@ -25,7 +25,6 @@ type VersionData struct {
 
 // DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
-	ctx context.Context
 	con connection.Connection
 }
 
@@ -70,8 +69,8 @@ func New(connectionURL string) (*DB, error) {
 // --------------------------------------------------
 
 // WithContext
+// Deprecated: WithContext is deprecated and does nothing. Use context parameters in individual method calls instead.
 func (db *DB) WithContext(ctx context.Context) *DB {
-	db.ctx = ctx
 	return db
 }
 
@@ -87,7 +86,8 @@ func (db *DB) Use(ns, database string) error {
 
 func (db *DB) Info() (map[string]interface{}, error) {
 	var info connection.RPCResponse[map[string]interface{}]
-	err := db.con.Send(&info, "info")
+	ctx := context.Background()
+	err := db.con.Send(ctx, &info, "info")
 	return *info.Result, err
 }
 
@@ -118,7 +118,8 @@ func (db *DB) Info() (map[string]interface{}, error) {
 //	})
 func (db *DB) SignUp(authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(&token, "signup", authData); err != nil {
+	ctx := context.Background()
+	if err := db.con.Send(ctx, &token, "signup", authData); err != nil {
 		return "", err
 	}
 
@@ -156,7 +157,8 @@ func (db *DB) SignUp(authData interface{}) (string, error) {
 //	})
 func (db *DB) SignIn(authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(&token, "signin", authData); err != nil {
+	ctx := context.Background()
+	if err := db.con.Send(ctx, &token, "signin", authData); err != nil {
 		return "", err
 	}
 
@@ -168,7 +170,8 @@ func (db *DB) SignIn(authData interface{}) (string, error) {
 }
 
 func (db *DB) Invalidate() error {
-	if err := db.con.Send(nil, "invalidate"); err != nil {
+	ctx := context.Background()
+	if err := db.con.Send(ctx, nil, "invalidate"); err != nil {
 		return err
 	}
 
@@ -180,7 +183,8 @@ func (db *DB) Invalidate() error {
 }
 
 func (db *DB) Authenticate(token string) error {
-	if err := db.con.Send(nil, "authenticate", token); err != nil {
+	ctx := context.Background()
+	if err := db.con.Send(ctx, nil, "authenticate", token); err != nil {
 		return err
 	}
 
@@ -261,7 +265,8 @@ func (db *DB) Send(res interface{}, method string, params ...interface{}) error 
 		return fmt.Errorf("provided method is not allowed")
 	}
 
-	return db.con.Send(&res, method, params...)
+	ctx := context.Background()
+	return db.con.Send(ctx, &res, method, params...)
 }
 
 func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
@@ -491,8 +496,9 @@ func QueryRaw(db *DB, queries *[]QueryStmt) error {
 // in case the expected response is a connection.RPCResponse[TResult].
 // If one expects other types of responses, use db.con.Send directly.
 func send[TResult any](db *DB, method string, params ...any) (*TResult, error) {
+	ctx := context.Background()
 	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(&res, method, params...); err != nil {
+	if err := db.con.Send(ctx, &res, method, params...); err != nil {
 		return nil, err
 	}
 

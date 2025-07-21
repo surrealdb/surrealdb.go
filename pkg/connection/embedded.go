@@ -10,6 +10,7 @@ package connection
 import "C"
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sync"
@@ -97,7 +98,13 @@ func (h *EmbeddedConnection) Close() error {
 	return nil
 }
 
-func (h *EmbeddedConnection) Send(res interface{}, method string, params ...interface{}) error {
+func (h *EmbeddedConnection) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
+	// Check if context is done before proceeding
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
 	request := &RPCRequest{
 		ID:     rand.String(constants.RequestIDLength),
 		Method: method,
@@ -133,13 +140,13 @@ func (h *EmbeddedConnection) Send(res interface{}, method string, params ...inte
 }
 
 func (h *EmbeddedConnection) Use(namespace, database string) error {
-	return h.Send(nil, "use", namespace, database)
+	return h.Send(context.Background(), nil, "use", namespace, database)
 }
 
 func (h *EmbeddedConnection) Let(key string, value interface{}) error {
-	return h.Send(nil, "let", key, value)
+	return h.Send(context.Background(), nil, "let", key, value)
 }
 
 func (h *EmbeddedConnection) Unset(key string) error {
-	return h.Send(nil, "unset", key)
+	return h.Send(context.Background(), nil, "unset", key)
 }

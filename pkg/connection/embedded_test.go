@@ -3,6 +3,7 @@
 package connection
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -52,7 +53,7 @@ func (s *EmbeddedConnectionTestSuite) TestSendRequest() {
 	s.Require().NoError(err)
 
 	var versionRes RPCResponse[string]
-	err = s.con.Send(&versionRes, "version")
+	err = s.con.Send(context.Background(), &versionRes, "version")
 	s.Require().NoError(err)
 }
 
@@ -61,12 +62,12 @@ func (s *EmbeddedConnectionTestSuite) TestLiveAndNotification() {
 	s.Require().NoError(err)
 
 	var liveRes RPCResponse[models.UUID]
-	err = s.con.Send(&liveRes, "live", "users", false)
+	err = s.con.Send(context.Background(), &liveRes, "live", "users", false)
 	s.Require().NoError(err, "should not return error on live request")
 
 	liveID := liveRes.Result.String()
 	defer func() {
-		err = s.con.Send(nil, "kill", liveID)
+		err = s.con.Send(context.Background(), nil, "kill", liveID)
 		s.Require().NoError(err)
 	}()
 
