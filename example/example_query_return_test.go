@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -34,6 +35,7 @@ func ExampleQuery_return() {
 	}
 
 	insertQueryResults, err := surrealdb.Query[any](
+		context.Background(),
 		db,
 		`INSERT INTO persons [$content] RETURN NONE`,
 		map[string]any{
@@ -56,6 +58,7 @@ func ExampleQuery_return() {
 	fmt.Printf("Results contained in the first query result: %+v\n", (*insertQueryResults)[0].Result)
 
 	selectQueryResults, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`SELECT * FROM $id`, map[string]any{
 			"id": models.NewRecordID("persons", "yusuke"),

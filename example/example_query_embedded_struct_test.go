@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -35,6 +36,7 @@ func ExampleQuery_embedded_struct() {
 	}
 
 	createQueryResults, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`CREATE type::thing($tb, $id) CONTENT $content`,
 		map[string]any{
@@ -63,6 +65,7 @@ func ExampleQuery_embedded_struct() {
 		panic(err)
 	}
 	updateQueryResults, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`UPDATE $id CONTENT $content`,
 		map[string]any{
@@ -82,6 +85,7 @@ func ExampleQuery_embedded_struct() {
 	fmt.Printf("Persons contained in the update query result: %+v\n", (*updateQueryResults)[0].Result)
 
 	selectQueryResults, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`SELECT * FROM $id`,
 		map[string]any{

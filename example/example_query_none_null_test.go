@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
@@ -11,6 +12,7 @@ func ExampleQuery_none_and_null_handling() {
 	db := newSurrealDBWSConnection("query", "t")
 
 	_, err := surrealdb.Query[[]any](
+		context.Background(),
 		db,
 		`DEFINE TABLE t SCHEMAFULL;
 		 DEFINE FIELD nullable ON t TYPE bool | null;
@@ -36,6 +38,7 @@ func ExampleQuery_none_and_null_handling() {
 	}
 
 	selected, err := surrealdb.Query[[]T](
+		context.Background(),
 		db,
 		`SELECT * FROM t ORDER BY id.id`,
 		nil,

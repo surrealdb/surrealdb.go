@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
@@ -20,6 +21,7 @@ func ExampleDB_send_select() {
 
 	for _, p := range []Person{a, b} {
 		created, err := surrealdb.Create[Person](
+			context.Background(),
 			db,
 			p.ID,
 			map[string]any{},
@@ -32,6 +34,7 @@ func ExampleDB_send_select() {
 
 	var selectedUsingSendSelect connection.RPCResponse[Person]
 	err := db.Send(
+		context.Background(),
 		&selectedUsingSendSelect,
 		"select",
 		a.ID,
@@ -43,6 +46,7 @@ func ExampleDB_send_select() {
 
 	var selectedMultiUsingSendSelect connection.RPCResponse[[]Person]
 	err = db.Send(
+		context.Background(),
 		&selectedMultiUsingSendSelect,
 		"select",
 		"person",
@@ -84,7 +88,7 @@ func ExampleDB_send_select() {
 func customSelect[TResult any, TWhat surrealdb.TableOrRecord](db *surrealdb.DB, what TWhat) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 
-	if err := db.Send(&res, "select", what); err != nil {
+	if err := db.Send(context.Background(), &res, "select", what); err != nil {
 		return nil, err
 	}
 

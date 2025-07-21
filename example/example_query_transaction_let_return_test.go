@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
@@ -11,6 +12,7 @@ func ExampleQuery_transaction_let_return() {
 	db := newSurrealDBWSConnection("query", "t")
 
 	createQueryResults, err := surrealdb.Query[[]any](
+		context.Background(),
 		db,
 		`BEGIN;
 		 CREATE t:1 SET name = 'test';
