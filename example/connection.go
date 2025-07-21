@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -48,7 +49,7 @@ func newSurrealDBHTTPConnection(database string, tables ...string) *surrealdb.DB
 func initConnection(db *surrealdb.DB, namespace, database string, tables ...string) *surrealdb.DB {
 	var err error
 
-	if err = db.Use(namespace, database); err != nil {
+	if err = db.Use(context.Background(), namespace, database); err != nil {
 		panic(err)
 	}
 
@@ -56,12 +57,12 @@ func initConnection(db *surrealdb.DB, namespace, database string, tables ...stri
 		Username: "root",
 		Password: "root",
 	}
-	token, err := db.SignIn(authData)
+	token, err := db.SignIn(context.Background(), authData)
 	if err != nil {
 		panic(err)
 	}
 
-	if err = db.Authenticate(token); err != nil {
+	if err = db.Authenticate(context.Background(), token); err != nil {
 		panic(err)
 	}
 
@@ -80,7 +81,7 @@ func initConnection(db *surrealdb.DB, namespace, database string, tables ...stri
 		//     There was a problem with the database: Parse error: Unexpected token `a parameter`, expected an identifier
 		//     REMOVE TABLE IF EXISTS $tb
 		//							  ^^
-		if _, err = surrealdb.Query[[]any](db, "REMOVE TABLE IF EXISTS "+table, nil); err != nil {
+		if _, err = surrealdb.Query[[]any](context.Background(), db, "REMOVE TABLE IF EXISTS "+table, nil); err != nil {
 			panic(err)
 		}
 	}

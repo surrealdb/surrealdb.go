@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -31,7 +32,7 @@ func ExampleUpdate() {
 	}
 
 	recordID := models.NewRecordID("persons", "yusuke")
-	created, err := surrealdb.Create[Person](db, recordID, map[string]any{
+	created, err := surrealdb.Create[Person](context.Background(), db, recordID, map[string]any{
 		"name": "Yusuke",
 		"nested_struct": NestedStruct{
 			City: "Tokyo",
@@ -50,7 +51,7 @@ func ExampleUpdate() {
 		panic(err)
 	}
 
-	updated, err := surrealdb.Update[Person](db, recordID, map[string]any{
+	updated, err := surrealdb.Update[Person](context.Background(), db, recordID, map[string]any{
 		"name": "Yusuke",
 		"nested_map": map[string]any{
 			"key1": "value1",

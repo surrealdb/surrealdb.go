@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -28,6 +29,7 @@ func ExampleUpsert() {
 	}
 
 	inserted, err := surrealdb.Upsert[Person](
+		context.Background(),
 		db,
 		models.NewRecordID("persons", "yusuke"),
 		map[string]any{
@@ -40,6 +42,7 @@ func ExampleUpsert() {
 	fmt.Printf("Insert via upsert result: %+s\n", *inserted)
 
 	updated, err := surrealdb.Upsert[Person](
+		context.Background(),
 		db,
 		models.NewRecordID("persons", "yusuke"),
 		map[string]any{
@@ -59,6 +62,7 @@ func ExampleUpsert() {
 		panic(err)
 	}
 	updatedFurther, err := surrealdb.Upsert[Person](
+		context.Background(),
 		db,
 		models.NewRecordID("persons", "yusuke"),
 		map[string]any{
@@ -75,6 +79,7 @@ func ExampleUpsert() {
 	fmt.Printf("Update further via upsert result: %+s\n", *updatedFurther)
 
 	_, err = surrealdb.Upsert[struct{}](
+		context.Background(),
 		db,
 		models.NewRecordID("persons", "yusuke"),
 		map[string]any{
@@ -86,6 +91,7 @@ func ExampleUpsert() {
 	}
 
 	selected, err := surrealdb.Select[Person](
+		context.Background(),
 		db,
 		models.NewRecordID("persons", "yusuke"),
 	)
@@ -111,6 +117,7 @@ func ExampleUpsert_unmarshal_error() {
 
 	// This will fail because the record ID is not valid.
 	_, err := surrealdb.Upsert[Person](
+		context.Background(),
 		db,
 		models.Table("person"),
 		map[string]any{
@@ -147,6 +154,7 @@ func ExampleUpsert_rpc_error() {
 	// will result in an error from the database.
 
 	if _, err := surrealdb.Query[any](
+		context.Background(),
 		db,
 		`DEFINE TABLE person SCHEMAFUL;
 		 DEFINE FIELD name ON person TYPE string;`,
@@ -157,6 +165,7 @@ func ExampleUpsert_rpc_error() {
 
 	// This will fail because the record ID is not valid.
 	_, err := surrealdb.Upsert[Person](
+		context.Background(),
 		db,
 		models.Table("person"),
 		map[string]any{

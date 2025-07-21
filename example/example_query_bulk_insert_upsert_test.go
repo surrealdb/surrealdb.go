@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -67,6 +68,7 @@ func ExampleQuery_bluk_insert_upsert() {
 	}
 
 	insert, err := surrealdb.Query[any](
+		context.Background(),
 		db,
 		`INSERT INTO persons $persons RETURN NONE`,
 		map[string]any{
@@ -81,6 +83,7 @@ func ExampleQuery_bluk_insert_upsert() {
 	fmt.Printf("Result  : %+v\n", (*insert)[0].Result)
 
 	select1, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`SELECT * FROM persons ORDER BY id.id`,
 		nil)
@@ -92,6 +95,7 @@ func ExampleQuery_bluk_insert_upsert() {
 	persons = append(persons, nthPerson(2))
 
 	insertIgnore, err := surrealdb.Query[any](
+		context.Background(),
 		db,
 		`INSERT IGNORE INTO persons $persons RETURN NONE`,
 		map[string]any{
@@ -106,6 +110,7 @@ func ExampleQuery_bluk_insert_upsert() {
 	fmt.Printf("Result  : %+v\n", (*insertIgnore)[0].Result)
 
 	select2, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`SELECT * FROM persons ORDER BY id.id`,
 		nil)
@@ -127,6 +132,7 @@ func ExampleQuery_bluk_insert_upsert() {
 		vars[fmt.Sprintf("content%d", i)] = p
 	}
 	upsert, err := surrealdb.Query[any](
+		context.Background(),
 		db,
 		strings.Join(upsertQueries, ";"),
 		vars,
@@ -140,6 +146,7 @@ func ExampleQuery_bluk_insert_upsert() {
 	fmt.Printf("Result  : %+v\n", (*upsert)[0].Result)
 
 	select3, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`SELECT * FROM persons ORDER BY id.id`,
 		nil)

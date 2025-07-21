@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -15,6 +16,7 @@ func ExampleQuery_transaction_return() {
 
 	var a *[]surrealdb.QueryResult[bool]
 	a, err = surrealdb.Query[bool](
+		context.Background(),
 		db,
 		`BEGIN; CREATE person:1; CREATE person:2; RETURN true; COMMIT;`,
 		map[string]any{},
@@ -61,6 +63,7 @@ func ExampleQuery_transaction_throw() {
 	// The caller can check the Error field of each QueryResult to see if the query failed,
 	// or check the returned error from the Query function to see if the query failed.
 	queryResults, err = surrealdb.Query[*int](
+		context.Background(),
 		db,
 		`BEGIN; THROW "test"; RETURN 1; COMMIT;`,
 		nil,
@@ -113,7 +116,7 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 	// SurrealDB may be enhanced to handle this, but for now,
 	// you should commit the transaction before returning the result.
 	// See the ExampleQuery_transaction_issue_177_commit function for the correct way to do this.
-	queryResults, err := surrealdb.Query[any](db,
+	queryResults, err := surrealdb.Query[any](context.Background(), db,
 		`BEGIN;
 		CREATE t:s SET name = 'test';
 		LET $i = SELECT * FROM $id;
@@ -150,7 +153,7 @@ func ExampleQuery_transaction_issue_177_commit() {
 
 	var err error
 
-	queryResults, err := surrealdb.Query[any](db,
+	queryResults, err := surrealdb.Query[any](context.Background(), db,
 		`BEGIN;
 		CREATE t:s SET name = 'test1';
 		CREATE t:t SET name = 'test2';

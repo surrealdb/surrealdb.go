@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
@@ -19,6 +20,7 @@ func ExampleSelect() {
 
 	for _, p := range []Person{a, b} {
 		created, err := surrealdb.Create[Person](
+			context.Background(),
 			db,
 			p.ID,
 			map[string]any{},
@@ -30,6 +32,7 @@ func ExampleSelect() {
 	}
 
 	selectedOneUsingSelect, err := surrealdb.Select[Person](
+		context.Background(),
 		db,
 		a.ID,
 	)
@@ -39,6 +42,7 @@ func ExampleSelect() {
 	fmt.Printf("selectedOneUsingSelect: %+v\n", *selectedOneUsingSelect)
 
 	selectedMultiUsingSelect, err := surrealdb.Select[[]Person](
+		context.Background(),
 		db,
 		"person",
 	)

@@ -74,7 +74,7 @@ func main() {
 	}
 
 	// Set the namespace and database
-	if err = db.Use("testNS", "testDB"); err != nil {
+	if err = db.Use(context.Background(), "testNS", "testDB"); err != nil {
 		panic(err)
 	}
 
@@ -83,26 +83,26 @@ func main() {
 		Username: "root", // use your setup username
 		Password: "root", // use your setup password
 	}
-	token, err := db.SignIn(authData)
+	token, err := db.SignIn(context.Background(), authData)
 	if err != nil {
 		panic(err)
 	}
 
 	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
 	// not previously called
-	if err := db.Authenticate(token); err != nil {
+	if err := db.Authenticate(context.Background(), token); err != nil {
 		panic(err)
 	}
 
 	// And we can later on invalidate the token if desired
 	defer func(token string) {
-		if err := db.Invalidate(); err != nil {
+		if err := db.Invalidate(context.Background()); err != nil {
 			panic(err)
 		}
 	}(token)
 
 	// Create an entry
-	person1, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
+	person1, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
 		"Name":     "John",
 		"Surname":  "Doe",
 		"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -113,7 +113,7 @@ func main() {
 	fmt.Printf("Created person with a map: %+v\n", person1)
 
 	// Or use structs
-	person2, err := surrealdb.Create[Person](db, models.Table("persons"), Person{
+	person2, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), Person{
 		Name:     "John",
 		Surname:  "Doe",
 		Location: models.NewGeometryPoint(-0.11, 22.00),
@@ -124,31 +124,31 @@ func main() {
 	fmt.Printf("Created person with a struvt: %+v\n", person2)
 
 	// Get entry by Record ID
-	person, err := surrealdb.Select[Person, models.RecordID](db, *person1.ID)
+	person, err := surrealdb.Select[Person, models.RecordID](context.Background(), db, *person1.ID)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Selected a person by record id: %+v\n", person)
 
 	// Or retrieve the entire table
-	persons, err := surrealdb.Select[[]Person, models.Table](db, models.Table("persons"))
+	persons, err := surrealdb.Select[[]Person, models.Table](context.Background(), db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
 	// Delete an entry by ID
-	if err = surrealdb.Delete[Person](db, *person2.ID); err != nil {
+	if err = surrealdb.Delete[Person](context.Background(), db, *person2.ID); err != nil {
 		panic(err)
 	}
 
 	// Delete all entries
-	if err = surrealdb.Delete[[]Person]](db, models.Table("persons")); err != nil {
+	if err = surrealdb.Delete[[]Person]](context.Background(), db, models.Table("persons")); err != nil {
 		panic(err)
 	}
 
 	// Confirm empty table
-	persons, err = surrealdb.Select[[]Person](db, models.Table("persons"))
+	persons, err = surrealdb.Select[[]Person](context.Background(), db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
@@ -178,7 +178,7 @@ type UserSelectResult struct {
 var res UserSelectResult
 // or var res surrealdb.Result[[]Users]
 
-err := db.Send(&res, "query", user.ID)
+err := db.Send(context.Background(), &res, "query", user.ID)
 if err != nil {
 	panic(err)
 }
@@ -277,7 +277,7 @@ See the [documetation on data models](https://surrealdb.com/docs/surrealql/datam
 ### surrealdb.O
 For some methods like create, insert, update, you can pass a map instead of an struct value. An example:
 ```go
-person, err := surrealdb.Create[Person](db, models.Table("persons"), map[interface{}]interface{}{
+person, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
 	"Name":     "John",
 	"Surname":  "Doe",
 	"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -285,7 +285,7 @@ person, err := surrealdb.Create[Person](db, models.Table("persons"), map[interfa
 ```
 This can be simplified to:
 ```go
-person, err := surrealdb.Create[Person](db, models.Table("persons"), surrealdb.O{
+person, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), surrealdb.O{
 	"Name":     "John",
 	"Surname":  "Doe",
 	"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -300,7 +300,7 @@ type surrealdb.O map[interface{}]interface{}
 This is useful for the `Send` function where `T` is the expected response type for a request. An example:
 ```go
 var res surrealdb.Result[[]Users]
-err := db.Send(&res, "select", model.Table("users"))
+err := db.Send(context.Background(), &res, "select", model.Table("users"))
 if err != nil {
 	panic(err)
 }

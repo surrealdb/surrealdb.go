@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -28,6 +29,7 @@ func ExampleCreate() {
 	// Create returns a pointer to the record itself.
 	var inserted *Person
 	inserted, err = surrealdb.Create[Person](
+		context.Background(),
 		db,
 		"persons",
 		map[string]any{
@@ -42,6 +44,7 @@ func ExampleCreate() {
 	// You can throw away the result if you don't need it,
 	// by specifying an empty struct as the type parameter.
 	_, err = surrealdb.Create[struct{}](
+		context.Background(),
 		db,
 		"persons",
 		map[string]any{
@@ -55,6 +58,7 @@ func ExampleCreate() {
 
 	// You can also create a record by passing a struct directly.
 	_, err = surrealdb.Create[struct{}](
+		context.Background(),
 		db,
 		"persons",
 		Person{
@@ -73,6 +77,7 @@ func ExampleCreate() {
 	// in other words, when the schema is not known upfront.
 	var fourthAsMap *map[string]any
 	fourthAsMap, err = surrealdb.Create[map[string]any](
+		context.Background(),
 		db,
 		"persons",
 		map[string]any{
@@ -91,6 +96,7 @@ func ExampleCreate() {
 	fmt.Printf("Create result: %+s\n", *fourthAsMap)
 
 	selected, err := surrealdb.Select[[]Person](
+		context.Background(),
 		db,
 		"persons",
 	)

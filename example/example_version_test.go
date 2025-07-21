@@ -1,20 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 )
 
 //nolint:lll,govet
 func ExampleDB_Version() {
 	ws := newSurrealDBWSConnection("version")
-	v, err := ws.Version()
+	v, err := ws.Version(context.Background())
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("VersionData (WebSocket): %+v\n", v)
 
 	http := newSurrealDBHTTPConnection("version")
-	v, err = http.Version()
+	v, err = http.Version(context.Background())
 	if err != nil {
 		panic(err)
 	}

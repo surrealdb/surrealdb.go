@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
@@ -38,7 +39,7 @@ func ExampleDB_record_user_auth_struct() {
 			);
 	`
 
-	if _, err := surrealdb.Query[any](db, setupQuery, nil); err != nil {
+	if _, err := surrealdb.Query[any](context.Background(), db, setupQuery, nil); err != nil {
 		panic(err)
 	}
 
@@ -46,7 +47,7 @@ func ExampleDB_record_user_auth_struct() {
 
 	// Refer to the next example, `ExampleDB_record_user_custom_struct`,
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNUP.
-	_, err := db.SignUp(&surrealdb.Auth{
+	_, err := db.SignUp(context.Background(), &surrealdb.Auth{
 		Namespace: "examples",
 		Database:  "record_auth_demo",
 		Access:    "user",
@@ -63,7 +64,7 @@ func ExampleDB_record_user_auth_struct() {
 	//
 	// For example, you might want to use `email` and `password` instead of `user` and `pass`.
 	// In that case, you need to something that encodes to a cbor map containing those keys.
-	_, err = db.SignIn(&surrealdb.Auth{
+	_, err = db.SignIn(context.Background(), &surrealdb.Auth{
 		Namespace: "examples",
 		Database:  "record_auth_demo",
 		Access:    "user",
@@ -75,7 +76,7 @@ func ExampleDB_record_user_auth_struct() {
 	}
 	fmt.Println("User signed in successfully")
 
-	info, err := db.Info()
+	info, err := db.Info(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -121,7 +122,7 @@ func ExampleDB_record_user_custom_struct() {
 			);
 	`
 
-	if _, err := surrealdb.Query[any](db, setupQuery, nil); err != nil {
+	if _, err := surrealdb.Query[any](context.Background(), db, setupQuery, nil); err != nil {
 		panic(err)
 	}
 
@@ -144,7 +145,7 @@ func ExampleDB_record_user_custom_struct() {
 		Password  string `json:"password"`
 	}
 
-	_, err := db.SignUp(&User{
+	_, err := db.SignUp(context.Background(), &User{
 		// Corresponds to the SurrealDB namespace
 		Namespace: "examples",
 		// Corresponds to the SurrealDB database
@@ -163,7 +164,7 @@ func ExampleDB_record_user_custom_struct() {
 	}
 	fmt.Println("User signed up successfully")
 
-	_, err = db.SignIn(&LoginRequest{
+	_, err = db.SignIn(context.Background(), &LoginRequest{
 		Namespace: "examples",
 		Database:  "record_user_custom",
 		Access:    "user",
@@ -177,7 +178,7 @@ func ExampleDB_record_user_custom_struct() {
 	}
 	fmt.Println("User signed in successfully")
 
-	info, err := db.Info()
+	info, err := db.Info(context.Background())
 	if err != nil {
 		panic(err)
 	}

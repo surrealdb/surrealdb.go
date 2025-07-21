@@ -80,13 +80,12 @@ func (db *DB) Close() error {
 }
 
 // Use is a method to select the namespace and table to use.
-func (db *DB) Use(ns, database string) error {
+func (db *DB) Use(ctx context.Context, ns, database string) error {
 	return db.con.Use(ns, database)
 }
 
-func (db *DB) Info() (map[string]interface{}, error) {
+func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 	var info connection.RPCResponse[map[string]interface{}]
-	ctx := context.Background()
 	err := db.con.Send(ctx, &info, "info")
 	return *info.Result, err
 }
@@ -116,9 +115,8 @@ func (db *DB) Info() (map[string]interface{}, error) {
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
-func (db *DB) SignUp(authData interface{}) (string, error) {
+func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	ctx := context.Background()
 	if err := db.con.Send(ctx, &token, "signup", authData); err != nil {
 		return "", err
 	}
@@ -155,9 +153,8 @@ func (db *DB) SignUp(authData interface{}) (string, error) {
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
-func (db *DB) SignIn(authData interface{}) (string, error) {
+func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	ctx := context.Background()
 	if err := db.con.Send(ctx, &token, "signin", authData); err != nil {
 		return "", err
 	}
@@ -169,8 +166,7 @@ func (db *DB) SignIn(authData interface{}) (string, error) {
 	return *token.Result, nil
 }
 
-func (db *DB) Invalidate() error {
-	ctx := context.Background()
+func (db *DB) Invalidate(ctx context.Context) error {
 	if err := db.con.Send(ctx, nil, "invalidate"); err != nil {
 		return err
 	}
@@ -182,8 +178,7 @@ func (db *DB) Invalidate() error {
 	return nil
 }
 
-func (db *DB) Authenticate(token string) error {
-	ctx := context.Background()
+func (db *DB) Authenticate(ctx context.Context, token string) error {
 	if err := db.con.Send(ctx, nil, "authenticate", token); err != nil {
 		return err
 	}
@@ -195,16 +190,16 @@ func (db *DB) Authenticate(token string) error {
 	return nil
 }
 
-func (db *DB) Let(key string, val interface{}) error {
+func (db *DB) Let(ctx context.Context, key string, val interface{}) error {
 	return db.con.Let(key, val)
 }
 
-func (db *DB) Unset(key string) error {
+func (db *DB) Unset(ctx context.Context, key string) error {
 	return db.con.Unset(key)
 }
 
-func (db *DB) Version() (*VersionData, error) {
-	ver, err := send[any](db, "version")
+func (db *DB) Version(ctx context.Context) (*VersionData, error) {
+	ver, err := send[any](ctx, db, "version")
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +245,7 @@ func (db *DB) Version() (*VersionData, error) {
 // - Transport error like WebSocket message write timeout, connection closed, etc.
 // - Unmarshal error if the response cannot be unmarshaled into the provided res parameter.
 // - RPCError if the request was processed by SurrealDB but it failed there.
-func (db *DB) Send(res interface{}, method string, params ...interface{}) error {
+func (db *DB) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
 	allowedSendMethods := []string{"select", "create", "insert", "update", "upsert", "patch", "delete", "query"}
 
 	allowed := false
@@ -265,7 +260,6 @@ func (db *DB) Send(res interface{}, method string, params ...interface{}) error 
 		return fmt.Errorf("provided method is not allowed")
 	}
 
-	ctx := context.Background()
 	return db.con.Send(ctx, &res, method, params...)
 }
 
@@ -275,13 +269,13 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notificatio
 
 //-------------------------------------------------------------------------------------------------------------------//
 
-func Kill(db *DB, id string) error {
-	_, err := send[any](db, "kill", id)
+func Kill(ctx context.Context, db *DB, id string) error {
+	_, err := send[any](ctx, db, "kill", id)
 	return err
 }
 
-func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
-	return send[models.UUID](db, "live", table, diff)
+func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.UUID, error) {
+	return send[models.UUID](ctx, db, "live", table, diff)
 }
 
 // Query executes a query against the SurrealDB database.
@@ -328,8 +322,8 @@ func Live(db *DB, table models.Table, diff bool) (*models.UUID, error) {
 // If you tried to insert using the `query` RPC method with `INSERT` statement,
 // you may get no RPCError, but a QueryError saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
-func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
-	res, err := send[[]QueryResult[cbor.RawMessage]](db, "query", sql, vars)
+func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", sql, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -379,35 +373,35 @@ func Query[TResult any](db *DB, sql string, vars map[string]interface{}) (*[]Que
 	return &qr, errs
 }
 
-func Create[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	return send[TResult](db, "create", what, data)
+func Create[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+	return send[TResult](ctx, db, "create", what, data)
 }
 
-func Select[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
-	return send[TResult](db, "select", what)
+func Select[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat) (*TResult, error) {
+	return send[TResult](ctx, db, "select", what)
 }
 
 // Patches either all records in a table or a single record with specified patches.
-func Patch[TWhat TableOrRecord](db *DB, what TWhat, patches []PatchData) (*[]PatchData, error) {
-	return send[[]PatchData](db, "patch", what, patches, true)
+func Patch[TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, patches []PatchData) (*[]PatchData, error) {
+	return send[[]PatchData](ctx, db, "patch", what, patches, true)
 }
 
-func Delete[TResult any, TWhat TableOrRecord](db *DB, what TWhat) (*TResult, error) {
-	return send[TResult](db, "delete", what)
+func Delete[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat) (*TResult, error) {
+	return send[TResult](ctx, db, "delete", what)
 }
 
-func Upsert[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	return send[TResult](db, "upsert", what, data)
+func Upsert[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+	return send[TResult](ctx, db, "upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func Update[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	return send[TResult](db, "update", what, data)
+func Update[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+	return send[TResult](ctx, db, "update", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{}) (*TResult, error) {
-	return send[TResult](db, "merge", what, data)
+func Merge[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+	return send[TResult](ctx, db, "merge", what, data)
 }
 
 // Insert creates records with either specified IDs or generated IDs.
@@ -415,8 +409,8 @@ func Merge[TResult any, TWhat TableOrRecord](db *DB, what TWhat, data interface{
 // Insert cannot create a relationship. If you want to create a relationship,
 // use InsertRelation if you need to specify the ID of the relationship,
 // or use Relate if you want to create a relationship with a generated ID.
-func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResult, error) {
-	return send[[]TResult](db, "insert", what, data)
+func Insert[TResult any](ctx context.Context, db *DB, what models.Table, data interface{}) (*[]TResult, error) {
+	return send[[]TResult](ctx, db, "insert", what, data)
 }
 
 // Relate creates a relationship between two records in the table
@@ -435,8 +429,8 @@ func Insert[TResult any](db *DB, what models.Table, data interface{}) (*[]TResul
 //
 // In case you only care about the returned relationship's ID,
 // use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func Relate[TResult any](db *DB, rel *Relationship) (*TResult, error) {
-	return send[TResult](db, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
+func Relate[TResult any](ctx context.Context, db *DB, rel *Relationship) (*TResult, error) {
+	return send[TResult](ctx, db, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
 }
 
 // InsertRelation inserts a relation between two records in the database.
@@ -448,7 +442,7 @@ func Relate[TResult any](db *DB, rel *Relationship) (*TResult, error) {
 //
 // In case you only care about the returned relationship's ID,
 // use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func InsertRelation[TResult any](db *DB, relationship *Relationship) (*TResult, error) {
+func InsertRelation[TResult any](ctx context.Context, db *DB, relationship *Relationship) (*TResult, error) {
 	rel := map[string]any{
 		"in":  relationship.In,
 		"out": relationship.Out,
@@ -460,10 +454,10 @@ func InsertRelation[TResult any](db *DB, relationship *Relationship) (*TResult, 
 		rel[k] = v
 	}
 
-	return send[TResult](db, "insert_relation", relationship.Relation, rel)
+	return send[TResult](ctx, db, "insert_relation", relationship.Relation, rel)
 }
 
-func QueryRaw(db *DB, queries *[]QueryStmt) error {
+func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 	preparedQuery := ""
 	parameters := map[string]interface{}{}
 	for i := 0; i < len(*queries); i++ {
@@ -478,7 +472,7 @@ func QueryRaw(db *DB, queries *[]QueryStmt) error {
 		return fmt.Errorf("no query to run")
 	}
 
-	res, err := send[[]QueryResult[cbor.RawMessage]](db, "query", preparedQuery, parameters)
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", preparedQuery, parameters)
 	if err != nil {
 		return err
 	}
@@ -495,8 +489,7 @@ func QueryRaw(db *DB, queries *[]QueryStmt) error {
 // send is a helper function to send a request to the SurrealDB server
 // in case the expected response is a connection.RPCResponse[TResult].
 // If one expects other types of responses, use db.con.Send directly.
-func send[TResult any](db *DB, method string, params ...any) (*TResult, error) {
-	ctx := context.Background()
+func send[TResult any](ctx context.Context, db *DB, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 	if err := db.con.Send(ctx, &res, method, params...); err != nil {
 		return nil, err

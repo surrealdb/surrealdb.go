@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -30,6 +31,7 @@ func ExampleQuery() {
 	}
 
 	createQueryResults, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		`CREATE type::thing($tb, $id) CONTENT $content`,
 		map[string]any{

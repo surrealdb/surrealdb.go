@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -27,6 +28,7 @@ func ExampleInsert_table() {
 	// Insert returns a pointer to the array of inserted records.
 	var inserted *[]Person
 	inserted, err = surrealdb.Insert[Person](
+		context.Background(),
 		db,
 		"persons",
 		map[string]any{
@@ -39,6 +41,7 @@ func ExampleInsert_table() {
 	fmt.Printf("Insert result: %+s\n", *inserted)
 
 	_, err = surrealdb.Insert[struct{}](
+		context.Background(),
 		db,
 		"persons",
 		map[string]any{
@@ -51,6 +54,7 @@ func ExampleInsert_table() {
 	}
 
 	_, err = surrealdb.Insert[struct{}](
+		context.Background(),
 		db,
 		"persons",
 		Person{
@@ -65,6 +69,7 @@ func ExampleInsert_table() {
 	}
 
 	fourthAsMap, err := surrealdb.Insert[map[string]any](
+		context.Background(),
 		db,
 		"persons",
 		Person{
@@ -83,6 +88,7 @@ func ExampleInsert_table() {
 	fmt.Printf("Insert result: %+s\n", *fourthAsMap)
 
 	selected, err := surrealdb.Select[[]Person](
+		context.Background(),
 		db,
 		"persons",
 	)
@@ -117,6 +123,7 @@ func ExampleInsert_bulk_isnert_record() {
 
 	var inserted *[]Person
 	inserted, err := surrealdb.Insert[Person](
+		context.Background(),
 		db,
 		"person",
 		persons,
@@ -127,6 +134,7 @@ func ExampleInsert_bulk_isnert_record() {
 	fmt.Printf("Inserted: %+s\n", *inserted)
 
 	selected, err := surrealdb.Select[[]Person](
+		context.Background(),
 		db,
 		"person",
 	)
@@ -173,6 +181,7 @@ func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 
 	var insertedPersons *[]Person
 	insertedPersons, err = surrealdb.Insert[Person](
+		context.Background(),
 		db,
 		"person",
 		persons,
@@ -184,6 +193,7 @@ func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 
 	var selectedPersons *[]Person
 	selectedPersons, err = surrealdb.Select[[]Person](
+		context.Background(),
 		db,
 		"person",
 	)
@@ -238,6 +248,7 @@ func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 	// Here, we focus on what you could do the equivalent of
 	// batch insert relation in RPC v2, using the RPC v1 query RPC.
 	_, err = surrealdb.Query[any](
+		context.Background(),
 		db,
 		"INSERT RELATION INTO follow $content",
 		map[string]any{
@@ -250,6 +261,7 @@ func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 
 	var selectedFollows *[]Follow
 	selectedFollows, err = surrealdb.Select[[]Follow](
+		context.Background(),
 		db,
 		"follow",
 	)
@@ -267,6 +279,7 @@ func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
 
 	var followedByA *[]surrealdb.QueryResult[[]PersonWithFollows]
 	followedByA, err = surrealdb.Query[[]PersonWithFollows](
+		context.Background(),
 		db,
 		"SELECT id, <->follow<->person AS follows FROM person ORDER BY id",
 		nil,

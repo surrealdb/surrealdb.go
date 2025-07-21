@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -23,6 +24,7 @@ func ExampleInsertRelation() {
 	}
 
 	first, err := surrealdb.Create[Person](
+		context.Background(),
 		db,
 		"person",
 		map[string]any{
@@ -33,6 +35,7 @@ func ExampleInsertRelation() {
 	}
 
 	second, err := surrealdb.Create[Person](
+		context.Background(),
 		db,
 		"person",
 		map[string]any{
@@ -48,6 +51,7 @@ func ExampleInsertRelation() {
 	}
 
 	persons, err := surrealdb.Query[[]Person](
+		context.Background(),
 		db,
 		"SELECT * FROM person ORDER BY id.id",
 		nil,
@@ -60,6 +64,7 @@ func ExampleInsertRelation() {
 	}
 
 	res, relateErr := surrealdb.InsertRelation[[]connection.ResponseID[models.RecordID]](
+		context.Background(),
 		db,
 		&surrealdb.Relationship{
 			ID:       &models.RecordID{Table: "follow", ID: "first_second"},
@@ -110,6 +115,7 @@ func ExampleInsertRelation() {
 		Follows []models.RecordID `json:"follows,omitempty"`
 	}
 	selected, err := surrealdb.Query[[]PersonWithFollows](
+		context.Background(),
 		db,
 		"SELECT id, name, ->follow->person AS follows FROM $id",
 		map[string]any{
@@ -127,6 +133,7 @@ func ExampleInsertRelation() {
 	// Note we can select the relationships themselves because
 	// RELATE creates a record in the relation table.
 	follows, err := surrealdb.Query[[]Follow](
+		context.Background(),
 		db,
 		"SELECT * from follow",
 		nil,
