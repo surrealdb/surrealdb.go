@@ -76,12 +76,12 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 	}
 }
 
-func (ws *WebSocketConnection) Connect() error {
+func (ws *WebSocketConnection) Connect(ctx context.Context) error {
 	if err := ws.preConnectionChecks(); err != nil {
 		return err
 	}
 
-	connection, res, err := DefaultDialer.Dial(fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.baseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,11 @@ func (ws *WebSocketConnection) SetCompression(compress bool) *WebSocketConnectio
 	return ws
 }
 
-func (ws *WebSocketConnection) Close() error {
+// Close closes the WebSocket connection and stops listening for incoming messages.
+//
+// Note that this method may block until the Close message is sent,
+// even though the provided context is canceled beforehand, for now.
+func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
 	close(ws.closeChan)
@@ -138,16 +142,16 @@ func (ws *WebSocketConnection) Close() error {
 	return ws.Conn.Close()
 }
 
-func (ws *WebSocketConnection) Use(namespace, database string) error {
-	return ws.Send(context.Background(), nil, "use", namespace, database)
+func (ws *WebSocketConnection) Use(ctx context.Context, namespace, database string) error {
+	return ws.Send(ctx, nil, "use", namespace, database)
 }
 
-func (ws *WebSocketConnection) Let(key string, value interface{}) error {
-	return ws.Send(context.Background(), nil, "let", key, value)
+func (ws *WebSocketConnection) Let(ctx context.Context, key string, value interface{}) error {
+	return ws.Send(ctx, nil, "let", key, value)
 }
 
-func (ws *WebSocketConnection) Unset(key string) error {
-	return ws.Send(context.Background(), nil, "unset", key)
+func (ws *WebSocketConnection) Unset(ctx context.Context, key string) error {
+	return ws.Send(ctx, nil, "unset", key)
 }
 
 func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {

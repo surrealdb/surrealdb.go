@@ -57,11 +57,11 @@ func (s *ConnectionTestSuite) SetupSuite() {
 	con := s.connImplementations[s.name]
 
 	// connect
-	err := con.Connect()
+	err := con.Connect(context.Background())
 	s.Require().NoError(err)
 
 	// set namespace, database
-	err = con.Use("test", "test")
+	err = con.Use(context.Background(), "test", "test")
 	s.Require().NoError(err)
 
 	// sign in
@@ -71,12 +71,12 @@ func (s *ConnectionTestSuite) SetupSuite() {
 		"pass": "root",
 	})
 	s.Require().NoError(err)
-	_ = con.Let(constants.AuthTokenKey, *token.Result)
+	_ = con.Let(context.Background(), constants.AuthTokenKey, *token.Result)
 }
 
 func (s *ConnectionTestSuite) TearDownSuite() {
 	con := s.connImplementations[s.name]
-	err := con.Close()
+	err := con.Close(context.Background())
 	s.Require().NoError(err)
 }
 

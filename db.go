@@ -29,7 +29,22 @@ type DB struct {
 }
 
 // New creates a new SurrealDB client.
+//
+// Deprecated: New is deprecated. Use Connect instead to make your
+// application more robust against network issues.
 func New(connectionURL string) (*DB, error) {
+	return Connect(context.Background(), connectionURL)
+}
+
+// Connect creates a new SurrealDB client and connects to the database.
+//
+// This function incurs a network call (currently HTTP request) to the SurrealDB server to check the health of the connection in
+// case of HTTP, or to establish a WebSocket connection in case of WebSocket.
+//
+// The provided `ctx` is used to cancel the connection attempt if needed,
+// so that you control how long you want to block in case the network is not reliable
+// or any other issues like OS network stack issues/settings/etc.
+func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
@@ -56,7 +71,7 @@ func New(connectionURL string) (*DB, error) {
 		return nil, fmt.Errorf("invalid connection url")
 	}
 
-	err = con.Connect()
+	err = con.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -75,13 +90,13 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 }
 
 // Close closes the underlying WebSocket connection.
-func (db *DB) Close() error {
-	return db.con.Close()
+func (db *DB) Close(ctx context.Context) error {
+	return db.con.Close(ctx)
 }
 
 // Use is a method to select the namespace and table to use.
 func (db *DB) Use(ctx context.Context, ns, database string) error {
-	return db.con.Use(ns, database)
+	return db.con.Use(ctx, ns, database)
 }
 
 func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
@@ -121,7 +136,7 @@ func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) 
 		return "", err
 	}
 
-	if err := db.con.Let(constants.AuthTokenKey, token.Result); err != nil {
+	if err := db.con.Let(ctx, constants.AuthTokenKey, token.Result); err != nil {
 		return "", err
 	}
 
@@ -159,7 +174,7 @@ func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) 
 		return "", err
 	}
 
-	if err := db.con.Let(constants.AuthTokenKey, *token.Result); err != nil {
+	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
 		return "", err
 	}
 
@@ -171,7 +186,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 		return err
 	}
 
-	if err := db.con.Unset(constants.AuthTokenKey); err != nil {
+	if err := db.con.Unset(ctx, constants.AuthTokenKey); err != nil {
 		return err
 	}
 
@@ -183,7 +198,7 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 		return err
 	}
 
-	if err := db.con.Let(constants.AuthTokenKey, token); err != nil {
+	if err := db.con.Let(ctx, constants.AuthTokenKey, token); err != nil {
 		return err
 	}
 
@@ -191,11 +206,11 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 }
 
 func (db *DB) Let(ctx context.Context, key string, val interface{}) error {
-	return db.con.Let(key, val)
+	return db.con.Let(ctx, key, val)
 }
 
 func (db *DB) Unset(ctx context.Context, key string) error {
-	return db.con.Unset(key)
+	return db.con.Unset(ctx, key)
 }
 
 func (db *DB) Version(ctx context.Context) (*VersionData, error) {
