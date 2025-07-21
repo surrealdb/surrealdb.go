@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -41,9 +42,16 @@ type WebSocketConnection struct {
 
 	Conn     *gorilla.Conn
 	connLock sync.Mutex
-	Timeout  time.Duration
-	Option   []Option
-	logger   logger.Logger
+	// Timeout is the timeout for receiveing the RPC response after
+	// you've successfully sent the request.
+	//
+	// If the timeout is reached, the Send method will return ErrTimeout.
+	// You can set it to 0 to disable the timeout, and instead use context.Context and context.WithTimeout
+	// to control the timeout. It will be useful if you want to avoid the overhead of wrapping the context
+	// with a timeout.
+	Timeout time.Duration
+	Option  []Option
+	logger  logger.Logger
 
 	closeChan  chan int
 	closeError error
@@ -131,32 +139,48 @@ func (ws *WebSocketConnection) Close() error {
 }
 
 func (ws *WebSocketConnection) Use(namespace, database string) error {
-	return ws.Send(nil, "use", namespace, database)
+	return ws.Send(context.Background(), nil, "use", namespace, database)
 }
 
 func (ws *WebSocketConnection) Let(key string, value interface{}) error {
-	return ws.Send(nil, "let", key, value)
+	return ws.Send(context.Background(), nil, "let", key, value)
 }
 
 func (ws *WebSocketConnection) Unset(key string) error {
-	return ws.Send(nil, "unset", key)
+	return ws.Send(context.Background(), nil, "unset", key)
 }
 
 func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {
 	return ws.unmarshaler
 }
 
-// Send requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`.
-// It could be more obvious if Go allowed us to write it like:
+// Send sends a request to SurrealDB and expects a response.
 //
-//	Send[T cbor.Unmarshaller](res *RPCResponse[T], method string, params ...interface{}) error
+// The `ctx` is wrapped with a timeout if `ws.Timeout` is set.
+// If you want to avoid this, for eliminating the overhead of wrapping the context,
+// you can set `ws.Timeout` to 0.
 //
-// But it doesn't, so we have to use `interface{}`.
-// The caller is responsible for ensuring that `res` is of the correct type.
-func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...interface{}) error {
+// CAUTION: Although this function returns ErrTimeout in case the timeout is reached now,
+// it will instead return context.DeadlineExceeded in upcoming versions of this SDK.
+//
+// The rationale is that it resulted in two different implementations of the Connection interface,
+// HTTP and WebSocket, to behave differently in case of a timeout.
+// The WebSocketConnection would return ErrTimeout, while the HTTPConnection would return context.DeadlineExceeded.
+func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, method string, params ...interface{}) error {
+	if ws.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, ws.Timeout)
+		defer cancel()
+	}
+
 	select {
 	case <-ws.closeChan:
 		return ws.closeError
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return constants.ErrTimeout
+		}
+		return ctx.Err()
 	default:
 	}
 
@@ -176,11 +200,13 @@ func (ws *WebSocketConnection) Send(dest interface{}, method string, params ...i
 	if err := ws.write(request); err != nil {
 		return err
 	}
-	timeout := time.After(ws.Timeout)
 
 	select {
-	case <-timeout:
-		return constants.ErrTimeout
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return constants.ErrTimeout
+		}
+		return ctx.Err()
 	case res, open := <-responseChan:
 		if !open {
 			return errors.New("response channel closed")

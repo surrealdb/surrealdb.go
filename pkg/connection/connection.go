@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -19,12 +20,14 @@ type LiveHandler interface {
 type Connection interface {
 	Connect() error
 	Close() error
-	// Send requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`.
-	// It could be more obvious if Go allowed us to write it like:
-	//   Send[T cbor.Unmarshaller](res *RPCResponse[T], method string, params ...interface{}) error
-	// But it doesn't, so we have to use `interface{}`.
-	// The caller is responsible for ensuring that `res` is of the correct type.
-	Send(res interface{}, method string, params ...interface{}) error
+	// Send sends a request to SurrealDB and expects a response.
+	//
+	// It requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`,
+	// or any type that `cbor.Unmarshal` can decode into.
+	// The `method` is the SurrealDB method to call, and `params` are the parameters for the method.
+	//
+	// The `ctx` is used to cancel the request if the context is canceled.
+	Send(ctx context.Context, res interface{}, method string, params ...interface{}) error
 	Use(namespace string, database string) error
 	Let(key string, value interface{}) error
 	Unset(key string) error

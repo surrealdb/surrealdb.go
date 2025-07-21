@@ -77,7 +77,7 @@ func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
 	return h.unmarshaler
 }
 
-func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) error {
+func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, params ...interface{}) error {
 	if h.baseURL == "" {
 		return constants.ErrNoBaseURL
 	}
@@ -92,7 +92,7 @@ func (h *HTTPConnection) Send(dest any, method string, params ...interface{}) er
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return err
 	}
