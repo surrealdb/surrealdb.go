@@ -10,7 +10,6 @@ var (
 )
 var (
 	ErrIDInUse            = errors.New("id already in use")
-	ErrTimeout            = errors.New("timeout")
 	ErrNoBaseURL          = errors.New("base url not set")
 	ErrNoMarshaler        = errors.New("marshaler is not set")
 	ErrNoUnmarshaler      = errors.New("unmarshaler is not set")
