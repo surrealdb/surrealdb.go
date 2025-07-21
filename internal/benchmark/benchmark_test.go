@@ -18,7 +18,7 @@ type testUser struct {
 }
 
 func SetupMockDB() (*surrealdb.DB, error) {
-	return surrealdb.New("")
+	return surrealdb.Connect(context.Background(), "")
 }
 
 func BenchmarkCreate(b *testing.B) {

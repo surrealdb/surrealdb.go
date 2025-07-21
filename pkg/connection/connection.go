@@ -18,8 +18,8 @@ type LiveHandler interface {
 }
 
 type Connection interface {
-	Connect() error
-	Close() error
+	Connect(ctx context.Context) error
+	Close(ctx context.Context) error
 	// Send sends a request to SurrealDB and expects a response.
 	//
 	// It requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`,
@@ -28,9 +28,9 @@ type Connection interface {
 	//
 	// The `ctx` is used to cancel the request if the context is canceled.
 	Send(ctx context.Context, res interface{}, method string, params ...interface{}) error
-	Use(namespace string, database string) error
-	Let(key string, value interface{}) error
-	Unset(key string) error
+	Use(ctx context.Context, namespace string, database string) error
+	Let(ctx context.Context, key string, value interface{}) error
+	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)
 	GetUnmarshaler() codec.Unmarshaler
 }

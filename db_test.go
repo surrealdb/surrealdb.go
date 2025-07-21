@@ -84,7 +84,7 @@ func (s *SurrealDBTestSuite) TearDownTest() {
 
 // TearDownSuite is called after the s has finished running
 func (s *SurrealDBTestSuite) TearDownSuite() {
-	err := s.db.Close()
+	err := s.db.Close(context.Background())
 	s.Require().NoError(err)
 }
 

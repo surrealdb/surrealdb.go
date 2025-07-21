@@ -56,7 +56,7 @@ func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 	return &con
 }
 
-func (h *EmbeddedConnection) Connect() error {
+func (h *EmbeddedConnection) Connect(ctx context.Context) error {
 	err := h.preConnectionChecks()
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func (h *EmbeddedConnection) Connect() error {
 	return nil
 }
 
-func (h *EmbeddedConnection) Close() error {
+func (h *EmbeddedConnection) Close(ctx context.Context) error {
 	C.sr_surreal_rpc_free(h.surrealRPC)
 
 	h.surrealRPC = nil
@@ -139,14 +139,14 @@ func (h *EmbeddedConnection) Send(ctx context.Context, res interface{}, method s
 	return h.unmarshaler.Unmarshal(rpcRes, res)
 }
 
-func (h *EmbeddedConnection) Use(namespace, database string) error {
-	return h.Send(context.Background(), nil, "use", namespace, database)
+func (h *EmbeddedConnection) Use(ctx context.Context, namespace, database string) error {
+	return h.Send(ctx, nil, "use", namespace, database)
 }
 
-func (h *EmbeddedConnection) Let(key string, value interface{}) error {
-	return h.Send(context.Background(), nil, "let", key, value)
+func (h *EmbeddedConnection) Let(ctx context.Context, key string, value interface{}) error {
+	return h.Send(ctx, nil, "let", key, value)
 }
 
-func (h *EmbeddedConnection) Unset(key string) error {
-	return h.Send(context.Background(), nil, "unset", key)
+func (h *EmbeddedConnection) Unset(ctx context.Context, key string) error {
+	return h.Send(ctx, nil, "unset", key)
 }

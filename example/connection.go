@@ -29,7 +29,7 @@ func getSurrealDBHTTPURL() string {
 }
 
 func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
-	db, err := surrealdb.New(getSurrealDBWSURL())
+	db, err := surrealdb.Connect(context.Background(), getSurrealDBWSURL())
 	if err != nil {
 		panic(err)
 	}
@@ -38,7 +38,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 }
 
 func newSurrealDBHTTPConnection(database string, tables ...string) *surrealdb.DB {
-	db, err := surrealdb.New(getSurrealDBHTTPURL())
+	db, err := surrealdb.Connect(context.Background(), getSurrealDBHTTPURL())
 	if err != nil {
 		panic(err)
 	}

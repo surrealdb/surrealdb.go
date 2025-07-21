@@ -41,8 +41,7 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 	return &con
 }
 
-func (h *HTTPConnection) Connect() error {
-	ctx := context.TODO()
+func (h *HTTPConnection) Connect(ctx context.Context) error {
 	if err := h.preConnectionChecks(); err != nil {
 		return err
 	}
@@ -59,7 +58,7 @@ func (h *HTTPConnection) Connect() error {
 	return nil
 }
 
-func (h *HTTPConnection) Close() error {
+func (h *HTTPConnection) Close(ctx context.Context) error {
 	return nil
 }
 
@@ -164,19 +163,19 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	return nil, errorResponse.Error
 }
 
-func (h *HTTPConnection) Use(namespace, database string) error {
+func (h *HTTPConnection) Use(ctx context.Context, namespace, database string) error {
 	h.variables.Store("namespace", namespace)
 	h.variables.Store("database", database)
 
 	return nil
 }
 
-func (h *HTTPConnection) Let(key string, value interface{}) error {
+func (h *HTTPConnection) Let(ctx context.Context, key string, value interface{}) error {
 	h.variables.Store(key, value)
 	return nil
 }
 
-func (h *HTTPConnection) Unset(key string) error {
+func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil
 }
