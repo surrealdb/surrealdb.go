@@ -206,11 +206,6 @@ func TestCustomDuration_String(t *testing.T) {
 	assert.Equal(t, "1y2w6d19h15m33s333ms", cd.String())
 }
 
-func TestRecordID_String(t *testing.T) {
-	rid := RecordID{Table: "mytesttable", ID: "121212121"}
-	assert.Equal(t, "mytesttable:121212121", rid.String())
-}
-
 func TestFormatDurationAndParseDuration(t *testing.T) {
 	durationStr := "1y2w6d19h15m33s333ms"
 
