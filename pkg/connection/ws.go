@@ -177,9 +177,6 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 	case <-ws.closeChan:
 		return ws.closeError
 	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return constants.ErrTimeout
-		}
 		return ctx.Err()
 	default:
 	}
@@ -203,9 +200,6 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 
 	select {
 	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return constants.ErrTimeout
-		}
 		return ctx.Err()
 	case res, open := <-responseChan:
 		if !open {
