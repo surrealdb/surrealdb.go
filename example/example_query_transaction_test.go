@@ -3,8 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleQuery_transaction_return() {
@@ -16,7 +18,7 @@ func ExampleQuery_transaction_return() {
 	a, err = surrealdb.Query[bool](
 		db,
 		`BEGIN; CREATE person:1; CREATE person:2; RETURN true; COMMIT;`,
-		nil,
+		map[string]any{},
 	)
 	if err != nil {
 		panic(err)
@@ -97,4 +99,102 @@ func ExampleQuery_transaction_throw() {
 	// Error: The query was not executed due to a failed transaction
 	// Error is RPCError: false
 	// Error is QueryError: true
+}
+
+// See https://github.com/surrealdb/surrealdb.go/issues/177
+func ExampleQuery_transaction_issue_177_return_before_commit() {
+	db := newSurrealDBWSConnection("query", "t")
+
+	var err error
+
+	// Note that you are returning before committing the transaction.
+	// In this case, you get the uncommitted result of the CREATE,
+	// which lacks the ID field becase we aren't sure if the ID is committed or not
+	// at that point.
+	// SurrealDB may be enhanced to handle this, but for now,
+	// you should commit the transaction before returning the result.
+	// See the ExampleQuery_transaction_issue_177_commit function for the correct way to do this.
+	queryResults, err := surrealdb.Query[any](db,
+		`BEGIN;
+		CREATE t:s SET name = 'test';
+		LET $i = SELECT * FROM $id;
+		RETURN $i;
+		COMMIT;`,
+		map[string]any{
+			"id": models.RecordID{Table: "t", ID: "s"},
+		})
+	if err != nil {
+		panic(err)
+	}
+
+	if len(*queryResults) != 1 {
+		panic(fmt.Errorf("expected 1 query result, got %d", len(*queryResults)))
+	}
+
+	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
+	fmt.Printf("Result: %v\n", (*queryResults)[0].Result)
+
+	// Output:
+	// Status: OK
+	// Result: [map[name:test]]
+}
+
+// See https://github.com/surrealdb/surrealdb.go/issues/177
+func ExampleQuery_transaction_issue_177_commit() {
+	db := newSurrealDBWSConnection("query", "t")
+
+	var err error
+
+	queryResults, err := surrealdb.Query[any](db,
+		`BEGIN;
+		CREATE t:s SET name = 'test1';
+		CREATE t:t SET name = 'test2';
+		SELECT * FROM $id;
+		COMMIT;`,
+		map[string]any{
+			"id": models.RecordID{Table: "t", ID: "s"},
+		})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
+
+	if len(*queryResults) != 3 {
+		panic(fmt.Errorf("expected 3 query results, got %d", len(*queryResults)))
+	}
+
+	var records []map[string]any
+	for i, result := range *queryResults {
+		if result.Status != "OK" {
+			panic(fmt.Errorf("expected OK status for query result %d, got %s", i, result.Status))
+		}
+		if result.Result == nil {
+			panic(fmt.Errorf("expected non-nil result for query result %d", i))
+		}
+		if record, ok := result.Result.([]any); ok && len(record) > 0 {
+			records = append(records, record[0].(map[string]any))
+		} else {
+			panic(fmt.Errorf("expected result to be a slice of maps, got %T", result.Result))
+		}
+	}
+
+	for i, r := range records {
+		var keys []string
+		for key := range r {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fmt.Printf("result[%d].%s: %v\n", i, key, r[key])
+		}
+	}
+
+	// Output:
+	// Status: OK
+	// result[0].id: {t s}
+	// result[0].name: test1
+	// result[1].id: {t t}
+	// result[1].name: test2
+	// result[2].name: test1
 }
