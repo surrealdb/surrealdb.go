@@ -38,7 +38,11 @@ jobs:
             echo "Waiting for SurrealDB to start... ($i/30)"
             sleep 2
           done
-      - name: test
+      - name: ws test
         run: go test -v -cover ./...
         env:
           SURREALDB_URL: ws://localhost:8000/rpc
+      - name: http test
+        run: go test -v -cover ./...
+        env:
+          SURREALDB_URL: http://localhost:8000
