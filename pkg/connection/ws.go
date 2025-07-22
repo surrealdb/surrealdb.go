@@ -128,16 +128,89 @@ func (ws *WebSocketConnection) SetCompression(compress bool) *WebSocketConnectio
 
 // Close closes the WebSocket connection and stops listening for incoming messages.
 //
-// Note that this method may block until the Close message is sent,
-// even though the provided context is canceled beforehand, for now.
+// The context parameter allows the caller to cancel the close operation if it takes too long.
+// This is useful when the underlying network connection is unreliable.
+// If the context is canceled, the connection will still be closed in the background.
+//
+// If you want to make the close operation free of resource-leak as much as possible,
+// you should provide a context with a timeout/deadline.
+//
+// We then propagate the deadline to the WebSocket close message write operation,
+// which enables us to clean up everything including the internal goroutine that used to
+// try writing to the WebSocket connection, when this function exists.
 func (ws *WebSocketConnection) Close(ctx context.Context) error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
+
+	// Signal that we're closing so that the goroutine reading from the connection
+	// can stop reading messages and exit.
+	//
+	// TODO: This might not be necessary, because the gorilla.Conn.Close() method
+	// will close the connection and that would result in the ReadMessage call in
+	// ws.initialize() goroutine to return an error, which will stop the goroutine.
 	close(ws.closeChan)
-	err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
-	if err != nil {
-		return err
+
+	// Phase 1: Try to send the close message
+	//
+	// We assume this is important to let the server know that we're closing the connection.
+	// If the write fails, we still try to close the connection locally,
+	// so that we don't leak resources locally.
+
+	writeErr := make(chan error, 1)
+
+	go func() {
+		// Set write deadline based on context to prevent indefinite blocking
+		if deadline, ok := ctx.Deadline(); ok {
+			err := ws.Conn.SetWriteDeadline(deadline)
+			if err != nil {
+				writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to set write deadline, although it must always succeed: %w", err)
+				return
+			}
+			defer func() {
+				err := ws.Conn.SetWriteDeadline(time.Time{})
+				if err != nil {
+					writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to reset write deadline, although it must always succeed: %w", err)
+					return
+				}
+			}()
+		}
+
+		err := ws.Conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
+
+		// Try to send the error, but also check if we should abandon the attempt
+		select {
+		case writeErr <- err:
+		case <-ctx.Done():
+			// TODO: This may not be absolutely necessary,
+			// because WriteMessage would fail after we call ws.Conn.Close().
+			// For now, it's here to be extra cautious and to ensure we don't leave the goroutine hanging.
+		}
+	}()
+
+	select {
+	case err := <-writeErr:
+		if err != nil {
+			// Write failed, but we don't return here,
+			// because we try our best to Close the connection anyway,
+			// although it might not be a clean close from the server's perspective.
+			ws.logger.Error("failed to write close message", "error", err)
+		}
+	case <-ctx.Done():
+		// Again, we don't return here, because we try our best to Close the connection anyway,
+		// although it might not be a clean close from the server's perspective.
 	}
+
+	// Phase 2: Close the underlying connection.
+	//
+	// We assume the Close method of the gorilla.Conn is an instantaneous operation,
+	// so we don't need to consider the context here, even
+	// in case the context is already canceled.
+	//
+	// We do this regardless of whether the write of the close message succeeded or not,
+	// because we want to ensure the local resources are cleaned up anyway.
+	// The lack of a close message write might result in the server not knowing
+	// that the client is closing the connection in a timely manner,
+	// we can't do much about it given we already failed to write it.
 
 	return ws.Conn.Close()
 }
