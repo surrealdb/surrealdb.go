@@ -300,6 +300,10 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 	}
 }
 
+func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
+	return unmarshalRes(ws.unmarshaler, res, dest)
+}
+
 // unmarshalRes try our best to avoid unmarshaling the entire CBOR response twice,
 // once in the WebSocketConnection.handleResponse and once here.
 //
@@ -310,7 +314,7 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 // Assuming `dest` points to RPCResponse[SomeTypeParam],
 // we need to set the ID, Error and Result fields of the `dest` struct,
 // so that we can make this function generic enough to work with any RPCResponse[T] type.
-func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
+func unmarshalRes(unmarshaler codec.Unmarshaler, res RPCResponse[cbor.RawMessage], dest interface{}) error {
 	// Although this looks marshaling unnmarshaled data again, it is not.
 	// The `res.Result` is of type `cbor.RawMessage`, which is
 	// a type that implements `cbor.Unmarshaller` that returns the raw CBOR bytes
@@ -371,7 +375,15 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 	// If it does not, we will panic like:
 	//   panic: reflect: call of reflect.Value.FieldByName on interface Value
 
-	destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
+	// HTTP-only:
+	//
+	// This nil check prevents the following panic when this function is unmarshaling the RPC response
+	// over HTTP, where the ID field is not set in the response:
+	//
+	//   panic: reflect: call of reflect.Value.Set on zero Value
+	if res.ID != nil {
+		destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
+	}
 	// `destStructDotResult` is basically `dest.Result` in case `dest` was of type `*RPCResponse[T]`.
 	destStructDotResult := destStruct.FieldByName(FieldResult).Interface()
 
@@ -386,7 +398,7 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 	// The unmarshaling of ID and Result happened in handleResponse,
 	// and the unmarshaling of Result happened here.
 	// Finally, we avoided unmarshaling the entire response twice, once in handleResponse and once here.
-	if err := ws.unmarshaler.Unmarshal(rawCBORBytes, destStructDotResult); err != nil {
+	if err := unmarshaler.Unmarshal(rawCBORBytes, destStructDotResult); err != nil {
 		return fmt.Errorf("Send: error unmarshaling result: %w", err)
 	}
 
