@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 
 	"github.com/surrealdb/surrealdb.go/internal/rand"
@@ -119,16 +120,25 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 		return err
 	}
 
-	var rpcRes RPCResponse[interface{}]
-	if err := h.unmarshaler.Unmarshal(respData, &rpcRes); err != nil {
+	var res RPCResponse[cbor.RawMessage]
+	if err := h.unmarshaler.Unmarshal(respData, &res); err != nil {
 		return err
 	}
-	if rpcRes.Error != nil {
-		return rpcRes.Error
+	if res.Error != nil {
+		return res.Error
 	}
 
-	if dest != nil {
-		return h.unmarshaler.Unmarshal(respData, dest)
+	// In case the caller designated to throw away the result by specifying `nil` as `dest`,
+	// OR the response Result says its nowherey by being nil,
+	// we cannot proceed with unmarshaling the Result field,
+	// because it would always fail.
+	// The only thing we can do is to return the error if any.
+	if nilOrTypedNil(dest) || res.Result == nil || res.Error != nil {
+		return eliminateTypedNilError(res.Error)
+	}
+
+	if err := unmarshalRes(h.unmarshaler, res, dest); err != nil {
+		return fmt.Errorf("error unmarshaing response: %w", err)
 	}
 
 	return nil

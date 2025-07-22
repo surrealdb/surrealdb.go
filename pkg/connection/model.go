@@ -32,6 +32,8 @@ type RPCRequest struct {
 
 // RPCResponse represents an outgoing JSON-RPC response
 type RPCResponse[T any] struct {
+	// ID is the ID of the request this response corresponds to.
+	// Note that this is always nil in case of HTTPConnection.
 	ID     interface{} `json:"id" msgpack:"id"`
 	Error  *RPCError   `json:"error,omitempty" msgpack:"error,omitempty"`
 	Result *T          `json:"result,omitempty" msgpack:"result,omitempty"`
