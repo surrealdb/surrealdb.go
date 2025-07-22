@@ -136,7 +136,7 @@ func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) 
 		return "", err
 	}
 
-	if err := db.con.Let(ctx, constants.AuthTokenKey, token.Result); err != nil {
+	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
 		return "", err
 	}
 
