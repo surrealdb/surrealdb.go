@@ -46,11 +46,15 @@ jobs:
             echo "Waiting for SurrealDB to start... ($i/30)"
             sleep 2
           done
-      - name: ws test
+      - name: Test WebSocket connection
         run: go test -v -cover ./...
         env:
           SURREALDB_URL: ws://localhost:8000/rpc
-      - name: http test
+      # Necessary to actually run the following HTTP tests
+      # Otherwise, everything appear as passing without actually running
+      - name: Expire all test results in the go build cache
+        run: go clean -testcache
+      - name: Test HTTP connection
         run: go test -v -cover ./...
         env:
           SURREALDB_URL: http://localhost:8000
