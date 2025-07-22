@@ -13,16 +13,45 @@ permissions:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         include:
+          # v3.0.0-alpha.7 with Go 1.24.1
           - surrealdb-version: 'v3.0.0-alpha.7'
             go-version: '1.24.1'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v3.0.0-alpha.7'
+            go-version: '1.24.1'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+          # v2.3.7 with Go 1.24.1
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v2.3.7'
+            go-version: '1.24.1'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+          # v2.3.7 with Go 1.23.11
           - surrealdb-version: 'v2.3.7'
             go-version: '1.23.11'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v2.3.7'
+            go-version: '1.23.11'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+          # v2.2.7 with Go 1.24.1
           - surrealdb-version: 'v2.2.7'
             go-version: '1.24.1'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v2.2.7'
+            go-version: '1.24.1'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
     permissions:
       contents: read
       pull-requests: read
@@ -46,15 +75,7 @@ jobs:
             echo "Waiting for SurrealDB to start... ($i/30)"
             sleep 2
           done
-      - name: Test WebSocket connection
+      - name: Test ${{ matrix.connection-type }} connection
         run: go test -v -cover ./...
         env:
-          SURREALDB_URL: ws://localhost:8000/rpc
-      # Necessary to actually run the following HTTP tests
-      # Otherwise, everything appear as passing without actually running
-      - name: Expire all test results in the go build cache
-        run: go clean -testcache
-      - name: Test HTTP connection
-        run: go test -v -cover ./...
-        env:
-          SURREALDB_URL: http://localhost:8000
+          SURREALDB_URL: ${{ matrix.surrealdb-url }}
