@@ -75,6 +75,13 @@ linters:
       - linters:
           - mnd
         path: _test\.go
+      # We assume writing logs to stdout and therefore
+      # chances of blocking are very rare-
+      # Having contexts for every log write would add unnecessary
+      # complexity and overhead to the SDK.
+      - linters:
+          - noctx
+        path: pkg/logger/slog.go
     paths:
       - third_party$
       - builtin$
