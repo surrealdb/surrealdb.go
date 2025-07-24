@@ -17,7 +17,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
-type GwsConnection struct {
+type Connection struct {
 	connection.BaseConnection
 
 	conn     *gws.Conn
@@ -31,10 +31,10 @@ type GwsConnection struct {
 	handler *websocketHandler
 }
 
-var _ connection.Connection = (*GwsConnection)(nil)
+var _ connection.Connection = (*Connection)(nil)
 
 type websocketHandler struct {
-	conn *GwsConnection
+	conn *Connection
 }
 
 func (h *websocketHandler) OnOpen(socket *gws.Conn) {
@@ -69,7 +69,7 @@ func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
 
 }
 
-func (c *GwsConnection) write(v interface{}) error {
+func (c *Connection) write(v interface{}) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func (c *GwsConnection) write(v interface{}) error {
 	return c.conn.WriteMessage(gws.OpcodeBinary, data)
 }
 
-func (c *GwsConnection) handleResponse(data []byte) {
+func (c *Connection) handleResponse(data []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
 	if err := c.Unmarshaler.Unmarshal(data, &rpcRes); err != nil {
 		return
@@ -131,8 +131,9 @@ func eliminateTypedNilError(err error) error {
 	return err
 }
 
-func New(params connection.NewConnectionParams) *GwsConnection {
-	conn := &GwsConnection{
+// New creates a new WebSocket connection based on gws
+func New(params connection.NewConnectionParams) *Connection {
+	conn := &Connection{
 		Timeout: constants.DefaultWSTimeout,
 	}
 	conn.BaseURL = params.BaseURL
@@ -145,13 +146,13 @@ func New(params connection.NewConnectionParams) *GwsConnection {
 }
 
 // SetTimeout sets the timeout for RPC responses
-func (c *GwsConnection) SetTimeout(timeout time.Duration) *GwsConnection {
+func (c *Connection) SetTimeout(timeout time.Duration) *Connection {
 	c.Timeout = timeout
 	return c
 }
 
 // Close implements connection.Connection.
-func (c *GwsConnection) Close(ctx context.Context) error {
+func (c *Connection) Close(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
@@ -180,8 +181,9 @@ func (c *GwsConnection) Close(ctx context.Context) error {
 	return nil
 }
 
-// Connect implements connection.Connection.
-func (c *GwsConnection) Connect(ctx context.Context) error {
+// Connect tries to establish a WebSocket connection to SurrealDB.
+// This method must be called after New and before any other operations.
+func (c *Connection) Connect(ctx context.Context) error {
 	if err := c.PreConnectionChecks(); err != nil {
 		return err
 	}
@@ -216,22 +218,22 @@ func (c *GwsConnection) Connect(ctx context.Context) error {
 }
 
 // GetUnmarshaler implements connection.Connection.
-func (c *GwsConnection) GetUnmarshaler() codec.Unmarshaler {
+func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }
 
 // Let implements connection.Connection.
-func (c *GwsConnection) Let(ctx context.Context, key string, value interface{}) error {
+func (c *Connection) Let(ctx context.Context, key string, value interface{}) error {
 	return c.Send(ctx, nil, "let", key, value)
 }
 
 // LiveNotifications implements connection.Connection.
-func (c *GwsConnection) LiveNotifications(id string) (chan connection.Notification, error) {
+func (c *Connection) LiveNotifications(id string) (chan connection.Notification, error) {
 	return c.CreateNotificationChannel(id)
 }
 
 // Send implements connection.Connection.
-func (c *GwsConnection) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
+func (c *Connection) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
@@ -284,11 +286,11 @@ func (c *GwsConnection) Send(ctx context.Context, res interface{}, method string
 }
 
 // Unset implements connection.Connection.
-func (c *GwsConnection) Unset(ctx context.Context, key string) error {
+func (c *Connection) Unset(ctx context.Context, key string) error {
 	return c.Send(ctx, nil, "unset", key)
 }
 
 // Use implements connection.Connection.
-func (c *GwsConnection) Use(ctx context.Context, namespace string, database string) error {
+func (c *Connection) Use(ctx context.Context, namespace string, database string) error {
 	return c.Send(ctx, nil, "use", namespace, database)
 }
