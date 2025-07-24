@@ -27,9 +27,9 @@ type HTTPConnection struct {
 func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 	con := HTTPConnection{
 		BaseConnection: BaseConnection{
-			marshaler:   p.Marshaler,
-			unmarshaler: p.Unmarshaler,
-			baseURL:     p.BaseURL,
+			Marshaler:   p.Marshaler,
+			Unmarshaler: p.Unmarshaler,
+			BaseURL:     p.BaseURL,
 		},
 	}
 
@@ -43,11 +43,11 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Connect(ctx context.Context) error {
-	if err := h.preConnectionChecks(); err != nil {
+	if err := h.PreConnectionChecks(); err != nil {
 		return err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -74,11 +74,11 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 }
 
 func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
-	return h.unmarshaler
+	return h.Unmarshaler
 }
 
 func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, params ...interface{}) error {
-	if h.baseURL == "" {
+	if h.BaseURL == "" {
 		return constants.ErrNoBaseURL
 	}
 
@@ -87,12 +87,12 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 		Method: method,
 		Params: params,
 	}
-	reqBody, err := h.marshaler.Marshal(request)
+	reqBody, err := h.Marshaler.Marshal(request)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.BaseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 	}
 
 	var res RPCResponse[cbor.RawMessage]
-	if err := h.unmarshaler.Unmarshal(respData, &res); err != nil {
+	if err := h.Unmarshaler.Unmarshal(respData, &res); err != nil {
 		return err
 	}
 	if res.Error != nil {
@@ -137,7 +137,7 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 		return eliminateTypedNilError(res.Error)
 	}
 
-	if err := unmarshalRes(h.unmarshaler, res, dest); err != nil {
+	if err := unmarshalRes(h.Unmarshaler, res, dest); err != nil {
 		return fmt.Errorf("error unmarshaling response: %w", err)
 	}
 
@@ -166,7 +166,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("%s", string(respBytes))
 	}
 	var errorResponse RPCResponse[any]
-	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
+	err = h.Unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
 		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
 	}

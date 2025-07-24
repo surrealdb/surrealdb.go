@@ -56,77 +56,77 @@ type NewConnectionParams struct {
 }
 
 type BaseConnection struct {
-	baseURL     string
-	marshaler   codec.Marshaler
-	unmarshaler codec.Unmarshaler
-	logger      logger.Logger
+	BaseURL     string
+	Marshaler   codec.Marshaler
+	Unmarshaler codec.Unmarshaler
+	Logger      logger.Logger
 
-	responseChannels     map[string]chan RPCResponse[cbor.RawMessage]
-	responseChannelsLock sync.RWMutex
+	ResponseChannels     map[string]chan RPCResponse[cbor.RawMessage]
+	ResponseChannelsLock sync.RWMutex
 
-	notificationChannels     map[string]chan Notification
-	notificationChannelsLock sync.RWMutex
+	NotificationChannels     map[string]chan Notification
+	NotificationChannelsLock sync.RWMutex
 }
 
-func (bc *BaseConnection) createResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
-	bc.responseChannelsLock.Lock()
-	defer bc.responseChannelsLock.Unlock()
+func (bc *BaseConnection) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
+	bc.ResponseChannelsLock.Lock()
+	defer bc.ResponseChannelsLock.Unlock()
 
-	if _, ok := bc.responseChannels[id]; ok {
+	if _, ok := bc.ResponseChannels[id]; ok {
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
 	}
 
 	ch := make(chan RPCResponse[cbor.RawMessage]) // Buffered channel to avoid blocking on send
-	bc.responseChannels[id] = ch
+	bc.ResponseChannels[id] = ch
 
 	return ch, nil
 }
 
-func (bc *BaseConnection) createNotificationChannel(liveQueryID string) (chan Notification, error) {
-	bc.notificationChannelsLock.Lock()
-	defer bc.notificationChannelsLock.Unlock()
+func (bc *BaseConnection) CreateNotificationChannel(liveQueryID string) (chan Notification, error) {
+	bc.NotificationChannelsLock.Lock()
+	defer bc.NotificationChannelsLock.Unlock()
 
-	if _, ok := bc.notificationChannels[liveQueryID]; ok {
+	if _, ok := bc.NotificationChannels[liveQueryID]; ok {
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, liveQueryID)
 	}
 
 	ch := make(chan Notification)
-	bc.notificationChannels[liveQueryID] = ch
+	bc.NotificationChannels[liveQueryID] = ch
 
 	return ch, nil
 }
 
-func (bc *BaseConnection) getNotificationChannel(id string) (chan Notification, bool) {
-	bc.notificationChannelsLock.RLock()
-	defer bc.notificationChannelsLock.RUnlock()
-	ch, ok := bc.notificationChannels[id]
+func (bc *BaseConnection) GetNotificationChannel(id string) (chan Notification, bool) {
+	bc.NotificationChannelsLock.RLock()
+	defer bc.NotificationChannelsLock.RUnlock()
+	ch, ok := bc.NotificationChannels[id]
 
 	return ch, ok
 }
 
-func (bc *BaseConnection) removeResponseChannel(id string) {
-	bc.responseChannelsLock.Lock()
-	defer bc.responseChannelsLock.Unlock()
-	delete(bc.responseChannels, id)
+func (bc *BaseConnection) RemoveResponseChannel(id string) {
+	bc.ResponseChannelsLock.Lock()
+	defer bc.ResponseChannelsLock.Unlock()
+	delete(bc.ResponseChannels, id)
 }
 
-func (bc *BaseConnection) getResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], bool) {
-	bc.responseChannelsLock.RLock()
-	defer bc.responseChannelsLock.RUnlock()
-	ch, ok := bc.responseChannels[id]
+func (bc *BaseConnection) GetResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], bool) {
+	bc.ResponseChannelsLock.RLock()
+	defer bc.ResponseChannelsLock.RUnlock()
+	ch, ok := bc.ResponseChannels[id]
 	return ch, ok
 }
 
-func (bc *BaseConnection) preConnectionChecks() error {
-	if bc.baseURL == "" {
+func (bc *BaseConnection) PreConnectionChecks() error {
+	if bc.BaseURL == "" {
 		return constants.ErrNoBaseURL
 	}
 
-	if bc.marshaler == nil {
+	if bc.Marshaler == nil {
 		return constants.ErrNoMarshaler
 	}
 
-	if bc.unmarshaler == nil {
+	if bc.Unmarshaler == nil {
 		return constants.ErrNoUnmarshaler
 	}
 
@@ -134,9 +134,9 @@ func (bc *BaseConnection) preConnectionChecks() error {
 }
 
 func (bc *BaseConnection) LiveNotifications(liveQueryID string) (chan Notification, error) {
-	c, err := bc.createNotificationChannel(liveQueryID)
+	c, err := bc.CreateNotificationChannel(liveQueryID)
 	if err != nil {
-		bc.logger.Error(err.Error())
+		bc.Logger.Error(err.Error())
 	}
 	return c, err
 }

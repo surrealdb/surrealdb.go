@@ -136,13 +136,13 @@ type WebSocketConnection struct {
 func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 	return &WebSocketConnection{
 		BaseConnection: BaseConnection{
-			baseURL: p.BaseURL,
+			BaseURL: p.BaseURL,
 
-			marshaler:   p.Marshaler,
-			unmarshaler: p.Unmarshaler,
+			Marshaler:   p.Marshaler,
+			Unmarshaler: p.Unmarshaler,
 
-			responseChannels:     make(map[string]chan RPCResponse[cbor.RawMessage]),
-			notificationChannels: make(map[string]chan Notification),
+			ResponseChannels:     make(map[string]chan RPCResponse[cbor.RawMessage]),
+			NotificationChannels: make(map[string]chan Notification),
 		},
 		Timeout: constants.DefaultWSTimeout,
 		logger:  logger.New(slog.NewJSONHandler(os.Stdout, nil)),
@@ -151,7 +151,7 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 }
 
 func (ws *WebSocketConnection) Connect(ctx context.Context) error {
-	if err := ws.preConnectionChecks(); err != nil {
+	if err := ws.PreConnectionChecks(); err != nil {
 		return err
 	}
 
@@ -243,7 +243,7 @@ func (ws *WebSocketConnection) tryConnecting(ctx context.Context) error {
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
 func (ws *WebSocketConnection) connect(ctx context.Context) error {
-	connection, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.baseURL), nil)
+	connection, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.BaseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -434,7 +434,7 @@ func (ws *WebSocketConnection) Unset(ctx context.Context, key string) error {
 }
 
 func (ws *WebSocketConnection) GetUnmarshaler() codec.Unmarshaler {
-	return ws.unmarshaler
+	return ws.Unmarshaler
 }
 
 // Send sends a request to SurrealDB and expects a response.
@@ -471,11 +471,11 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 		Params: params,
 	}
 
-	responseChan, err := ws.createResponseChannel(id)
+	responseChan, err := ws.CreateResponseChannel(id)
 	if err != nil {
 		return err
 	}
-	defer ws.removeResponseChannel(id)
+	defer ws.RemoveResponseChannel(id)
 
 	if err := ws.write(request); err != nil {
 		return err
@@ -507,7 +507,7 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 }
 
 func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
-	return unmarshalRes(ws.unmarshaler, res, dest)
+	return unmarshalRes(ws.Unmarshaler, res, dest)
 }
 
 // unmarshalRes try our best to avoid unmarshaling the entire CBOR response twice,
@@ -650,7 +650,7 @@ func reflectiveNilOrTypedNil(v reflect.Value) bool {
 }
 
 func (ws *WebSocketConnection) write(v interface{}) error {
-	data, err := ws.marshaler.Marshal(v)
+	data, err := ws.Marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -700,13 +700,13 @@ func (ws *WebSocketConnection) handleError(err error) bool {
 
 func (ws *WebSocketConnection) handleResponse(res []byte) {
 	var rpcRes RPCResponse[cbor.RawMessage]
-	if err := ws.unmarshaler.Unmarshal(res, &rpcRes); err != nil {
+	if err := ws.Unmarshaler.Unmarshal(res, &rpcRes); err != nil {
 		panic(err)
 	}
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Try to resolve message as response to query
-		responseChan, ok := ws.getResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
+		responseChan, ok := ws.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", rpcRes.ID)
 			ws.logger.Error(err.Error())
@@ -727,7 +727,7 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 		}
 
 		var notification Notification
-		if err := ws.unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
+		if err := ws.Unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
 			ws.logger.Error(
 				fmt.Sprintf("error unmarshaling as notification: %v", err),
 				"result", fmt.Sprint(rpcRes.Result),
@@ -745,7 +745,7 @@ func (ws *WebSocketConnection) handleResponse(res []byte) {
 			return
 		}
 
-		LiveNotificationChan, ok := ws.getNotificationChannel(channelID.String())
+		LiveNotificationChan, ok := ws.GetNotificationChannel(channelID.String())
 		if !ok {
 			ws.logger.Error(
 				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),

@@ -18,7 +18,7 @@ import (
 )
 
 type GwsConnection struct {
-	BaseConnection
+	connection.BaseConnection
 
 	conn     *gws.Conn
 	connLock sync.Mutex
@@ -70,7 +70,7 @@ func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
 }
 
 func (c *GwsConnection) write(v interface{}) error {
-	data, err := c.marshaler.Marshal(v)
+	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -87,13 +87,13 @@ func (c *GwsConnection) write(v interface{}) error {
 
 func (c *GwsConnection) handleResponse(data []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
-	if err := c.unmarshaler.Unmarshal(data, &rpcRes); err != nil {
+	if err := c.Unmarshaler.Unmarshal(data, &rpcRes); err != nil {
 		return
 	}
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Handle RPC response
-		responseChan, ok := c.getResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
+		responseChan, ok := c.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
 		if !ok {
 			return
 		}
@@ -107,7 +107,7 @@ func (c *GwsConnection) handleResponse(data []byte) {
 		}
 
 		var notification connection.Notification
-		if err := c.unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
+		if err := c.Unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
 			return
 		}
 
@@ -115,7 +115,7 @@ func (c *GwsConnection) handleResponse(data []byte) {
 			return
 		}
 
-		notificationChan, ok := c.getNotificationChannel(notification.ID.String())
+		notificationChan, ok := c.GetNotificationChannel(notification.ID.String())
 		if !ok {
 			return
 		}
@@ -125,7 +125,7 @@ func (c *GwsConnection) handleResponse(data []byte) {
 }
 
 func (c *GwsConnection) unmarshalRes(res connection.RPCResponse[cbor.RawMessage], dest interface{}) error {
-	return unmarshalRes(c.unmarshaler, res, dest)
+	return unmarshalRes(c.Unmarshaler, res, dest)
 }
 
 func unmarshalRes(unmarshaler codec.Unmarshaler, res connection.RPCResponse[cbor.RawMessage], dest interface{}) error {
@@ -188,11 +188,11 @@ func New(params connection.NewConnectionParams) *GwsConnection {
 	conn := &GwsConnection{
 		Timeout: constants.DefaultWSTimeout,
 	}
-	conn.baseURL = params.BaseURL
-	conn.marshaler = params.Marshaler
-	conn.unmarshaler = params.Unmarshaler
-	conn.responseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
-	conn.notificationChannels = make(map[string]chan connection.Notification)
+	conn.BaseURL = params.BaseURL
+	conn.Marshaler = params.Marshaler
+	conn.Unmarshaler = params.Unmarshaler
+	conn.ResponseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
+	conn.NotificationChannels = make(map[string]chan connection.Notification)
 
 	return conn
 }
@@ -235,14 +235,14 @@ func (c *GwsConnection) Close(ctx context.Context) error {
 
 // Connect implements connection.Connection.
 func (c *GwsConnection) Connect(ctx context.Context) error {
-	if err := c.preConnectionChecks(); err != nil {
+	if err := c.PreConnectionChecks(); err != nil {
 		return err
 	}
 
 	c.handler = &websocketHandler{conn: c}
 
 	option := &gws.ClientOption{
-		Addr: fmt.Sprintf("%s/rpc", c.baseURL),
+		Addr: fmt.Sprintf("%s/rpc", c.BaseURL),
 		RequestHeader: http.Header{
 			"Sec-WebSocket-Protocol": []string{"cbor"},
 		},
@@ -270,7 +270,7 @@ func (c *GwsConnection) Connect(ctx context.Context) error {
 
 // GetUnmarshaler implements connection.Connection.
 func (c *GwsConnection) GetUnmarshaler() codec.Unmarshaler {
-	return c.unmarshaler
+	return c.Unmarshaler
 }
 
 // Let implements connection.Connection.
@@ -280,7 +280,7 @@ func (c *GwsConnection) Let(ctx context.Context, key string, value interface{}) 
 
 // LiveNotifications implements connection.Connection.
 func (c *GwsConnection) LiveNotifications(id string) (chan connection.Notification, error) {
-	return c.createNotificationChannel(id)
+	return c.CreateNotificationChannel(id)
 }
 
 // Send implements connection.Connection.
@@ -306,11 +306,11 @@ func (c *GwsConnection) Send(ctx context.Context, res interface{}, method string
 		Params: params,
 	}
 
-	responseChan, err := c.createResponseChannel(id)
+	responseChan, err := c.CreateResponseChannel(id)
 	if err != nil {
 		return err
 	}
-	defer c.removeResponseChannel(id)
+	defer c.RemoveResponseChannel(id)
 
 	if err := c.write(request); err != nil {
 		return err
