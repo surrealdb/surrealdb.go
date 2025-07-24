@@ -29,29 +29,15 @@ type DB struct {
 	con connection.Connection
 }
 
-// New creates a new SurrealDB client.
-//
-// Deprecated: New is deprecated. Use Connect instead to make your
-// application more robust against network issues.
-func New(connectionURL string) (*DB, error) {
-	return Connect(context.Background(), connectionURL)
+// New creates a new SurrealDB client using the provided connection.
+func New(conn connection.Connection) *DB {
+	return &DB{con: conn}
 }
 
-type ConnectOption func(*ConnectConfig) error
-
-type ConnectConfig struct {
-	// ReconnectInterval indicates the interval at which to automatically reconnect
-	// to the SurrealDB server if the connection is considered lost.
-	//
-	// This is effective only when the connection is a WebSocket connection.
-	// If the connection is an HTTP connection, this option is ignored.
-	//
-	// If this option is not set, the reconnection is disabled.
-	ReconnectInterval time.Duration
-}
+type ConnectOption func(*connection.Config) error
 
 func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
-	return func(cfg *ConnectConfig) error {
+	return func(cfg *connection.Config) error {
 		cfg.ReconnectInterval = interval
 		return nil
 	}
@@ -66,36 +52,20 @@ func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
 func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (*DB, error) {
-	u, err := url.ParseRequestURI(connectionURL)
+	newParams, err := Configure(connectionURL)
 	if err != nil {
-		return nil, err
-	}
-
-	var cfg ConnectConfig
-	for _, opt := range opts {
-		if optErr := opt(&cfg); optErr != nil {
-			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
-		}
-	}
-
-	scheme := u.Scheme
-
-	newParams := connection.NewConnectionParams{
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
-		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
-		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
+		return nil, fmt.Errorf("failed to configure connection: %w", err)
 	}
 
 	var con connection.Connection
-	switch scheme {
+
+	switch newParams.URL.Scheme {
 	case "http", "https":
 		con = connection.NewHTTPConnection(newParams)
 	case "ws", "wss":
 		wscon := connection.NewWebSocketConnection(newParams)
-
-		if cfg.ReconnectInterval > 0 {
-			con = connection.NewAutoReconnectingWebSocketConnection(wscon, cfg.ReconnectInterval)
+		if newParams.ReconnectInterval > 0 {
+			con = connection.NewAutoReconnectingWebSocketConnection(wscon, newParams.ReconnectInterval)
 		} else {
 			con = wscon
 		}
@@ -110,7 +80,38 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 		return nil, err
 	}
 
-	return &DB{con: con}, nil
+	return New(con), nil
+}
+
+// Configure creates a new connection config from the provided connection URL and
+// options.
+//
+// This is useful to instantiate a specific connection type directly.
+func Configure(connectionURL string, opts ...ConnectOption) (*connection.Config, error) {
+	u, err := url.ParseRequestURI(connectionURL)
+	if err != nil {
+		return nil, err
+	}
+
+	c := connection.Config{
+		URL:         *u,
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
+		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
+		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
+	}
+
+	for _, opt := range opts {
+		if optErr := opt(&c); optErr != nil {
+			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
+		}
+	}
+
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid connection config: %w", err)
+	}
+
+	return &c, nil
 }
 
 // --------------------------------------------------
@@ -135,7 +136,7 @@ func (db *DB) Use(ctx context.Context, ns, database string) error {
 
 func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 	var info connection.RPCResponse[map[string]interface{}]
-	err := db.con.Send(ctx, &info, "info")
+	err := connection.Send(db.con, ctx, &info, "info")
 	return *info.Result, err
 }
 
@@ -166,7 +167,7 @@ func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 //	})
 func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(ctx, &token, "signup", authData); err != nil {
+	if err := connection.Send(db.con, ctx, &token, "signup", authData); err != nil {
 		return "", err
 	}
 
@@ -204,7 +205,7 @@ func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) 
 //	})
 func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(ctx, &token, "signin", authData); err != nil {
+	if err := connection.Send(db.con, ctx, &token, "signin", authData); err != nil {
 		return "", err
 	}
 
@@ -216,7 +217,7 @@ func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) 
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {
-	if err := db.con.Send(ctx, nil, "invalidate"); err != nil {
+	if err := connection.Send[any](db.con, ctx, nil, "invalidate"); err != nil {
 		return err
 	}
 
@@ -228,7 +229,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 }
 
 func (db *DB) Authenticate(ctx context.Context, token string) error {
-	if err := db.con.Send(ctx, nil, "authenticate", token); err != nil {
+	if err := connection.Send[any](db.con, ctx, nil, "authenticate", token); err != nil {
 		return err
 	}
 
@@ -294,8 +295,12 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 // - Transport error like WebSocket message write timeout, connection closed, etc.
 // - Unmarshal error if the response cannot be unmarshaled into the provided res parameter.
 // - RPCError if the request was processed by SurrealDB but it failed there.
-func (db *DB) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
-	allowedSendMethods := []string{"select", "create", "insert", "update", "upsert", "patch", "delete", "query"}
+func Send[Result any](ctx context.Context, db *DB, res *connection.RPCResponse[Result], method string, params ...interface{}) error {
+	allowedSendMethods := []string{
+		"select", "create", "insert", "insert_relation",
+		"kill", "live", "merge", "relate", "update", "upsert",
+		"patch", "delete", "query",
+	}
 
 	allowed := false
 	for i := 0; i < len(allowedSendMethods); i++ {
@@ -309,7 +314,7 @@ func (db *DB) Send(ctx context.Context, res interface{}, method string, params .
 		return fmt.Errorf("provided method is not allowed")
 	}
 
-	return db.con.Send(ctx, &res, method, params...)
+	return connection.Send(db.con, ctx, res, method, params...)
 }
 
 func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
@@ -540,8 +545,12 @@ func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 // If one expects other types of responses, use db.con.Send directly.
 func send[TResult any](ctx context.Context, db *DB, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(ctx, &res, method, params...); err != nil {
+	if err := connection.Send(db.con, ctx, &res, method, params...); err != nil {
 		return nil, err
+	}
+
+	if res.Error != nil {
+		return nil, res.Error
 	}
 
 	return res.Result, nil

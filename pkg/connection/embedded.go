@@ -23,7 +23,7 @@ import (
 )
 
 type EmbeddedConnection struct {
-	BaseConnection
+	Toolkit
 
 	variables sync.Map
 
@@ -38,9 +38,9 @@ func (h *EmbeddedConnection) GetUnmarshaler() codec.Unmarshaler {
 	return h.unmarshaler
 }
 
-func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
+func NewEmbeddedConnection(p Config) *EmbeddedConnection {
 	con := EmbeddedConnection{
-		BaseConnection: BaseConnection{
+		Toolkit: Toolkit{
 			baseURL: p.BaseURL,
 
 			marshaler:   p.Marshaler,
@@ -57,11 +57,6 @@ func NewEmbeddedConnection(p NewConnectionParams) *EmbeddedConnection {
 }
 
 func (h *EmbeddedConnection) Connect(ctx context.Context) error {
-	err := h.preConnectionChecks()
-	if err != nil {
-		return err
-	}
-
 	var cErr C.sr_string_t
 	defer C.sr_free_string(cErr)
 

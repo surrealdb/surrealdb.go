@@ -33,8 +33,9 @@ func ExampleDB_send_select() {
 	}
 
 	var selectedUsingSendSelect connection.RPCResponse[Person]
-	err := db.Send(
+	err := surrealdb.Send(
 		context.Background(),
+		db,
 		&selectedUsingSendSelect,
 		"select",
 		a.ID,
@@ -45,8 +46,9 @@ func ExampleDB_send_select() {
 	fmt.Printf("selectedUsingSendSelect: %+v\n", *selectedUsingSendSelect.Result)
 
 	var selectedMultiUsingSendSelect connection.RPCResponse[[]Person]
-	err = db.Send(
+	err = surrealdb.Send(
 		context.Background(),
+		db,
 		&selectedMultiUsingSendSelect,
 		"select",
 		"person",
@@ -88,7 +90,7 @@ func ExampleDB_send_select() {
 func customSelect[TResult any, TWhat surrealdb.TableOrRecord](db *surrealdb.DB, what TWhat) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 
-	if err := db.Send(context.Background(), &res, "select", what); err != nil {
+	if err := surrealdb.Send(context.Background(), db, &res, "select", what); err != nil {
 		return nil, err
 	}
 

@@ -90,7 +90,7 @@ func (s *SurrealDBTestSuite) TearDownSuite() {
 
 // SetupSuite is called before the s starts running
 func (s *SurrealDBTestSuite) SetupSuite() {
-	db, err := surrealdb.New(getURL())
+	db, err := surrealdb.Connect(context.Background(), getURL())
 	s.Require().NoError(err, "should not return an error when initializing db")
 	s.db = db
 
@@ -114,12 +114,12 @@ func signIn(s *SurrealDBTestSuite) string {
 
 func (s *SurrealDBTestSuite) TestSend_AllowedMethods() {
 	s.Run("Send method should be rejected", func() {
-		err := s.db.Send(context.Background(), nil, "let")
+		err := surrealdb.Send[any](context.Background(), s.db, nil, "let")
 		s.Require().Error(err)
 	})
 
 	s.Run("Send method should be allowed", func() {
-		err := s.db.Send(context.Background(), nil, "query", "select * from users")
+		err := surrealdb.Send[any](context.Background(), s.db, nil, "query", "select * from users")
 		s.Require().NoError(err)
 	})
 }

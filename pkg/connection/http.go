@@ -3,6 +3,7 @@ package connection
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,19 +19,19 @@ import (
 )
 
 type HTTPConnection struct {
-	BaseConnection
+	BaseURL     string
+	Marshaler   codec.Marshaler
+	Unmarshaler codec.Unmarshaler
 
 	httpClient *http.Client
 	variables  sync.Map
 }
 
-func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
+func NewHTTPConnection(p *Config) *HTTPConnection {
 	con := HTTPConnection{
-		BaseConnection: BaseConnection{
-			marshaler:   p.Marshaler,
-			unmarshaler: p.Unmarshaler,
-			baseURL:     p.BaseURL,
-		},
+		Marshaler:   p.Marshaler,
+		Unmarshaler: p.Unmarshaler,
+		BaseURL:     p.BaseURL,
 	}
 
 	if con.httpClient == nil {
@@ -43,11 +44,7 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Connect(ctx context.Context) error {
-	if err := h.preConnectionChecks(); err != nil {
-		return err
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+"/health", http.NoBody)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
@@ -74,12 +71,12 @@ func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
 }
 
 func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
-	return h.unmarshaler
+	return h.Unmarshaler
 }
 
-func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, params ...interface{}) error {
-	if h.baseURL == "" {
-		return constants.ErrNoBaseURL
+func (h *HTTPConnection) Send(ctx context.Context, method string, params ...interface{}) (*RPCResponse[cbor.RawMessage], error) {
+	if h.BaseURL == "" {
+		return nil, constants.ErrNoBaseURL
 	}
 
 	request := &RPCRequest{
@@ -87,14 +84,14 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 		Method: method,
 		Params: params,
 	}
-	reqBody, err := h.marshaler.Marshal(request)
+	reqBody, err := h.Marshaler.Marshal(request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.baseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.BaseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
@@ -102,13 +99,13 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 	if namespace, ok := h.variables.Load("namespace"); ok {
 		req.Header.Set("Surreal-NS", namespace.(string))
 	} else {
-		return constants.ErrNoNamespaceOrDB
+		return nil, constants.ErrNoNamespaceOrDB
 	}
 
 	if database, ok := h.variables.Load("database"); ok {
 		req.Header.Set("Surreal-DB", database.(string))
 	} else {
-		return constants.ErrNoNamespaceOrDB
+		return nil, constants.ErrNoNamespaceOrDB
 	}
 
 	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
@@ -117,31 +114,18 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 
 	respData, err := h.MakeRequest(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var res RPCResponse[cbor.RawMessage]
-	if err := h.unmarshaler.Unmarshal(respData, &res); err != nil {
-		return err
+	if err := h.Unmarshaler.Unmarshal(respData, &res); err != nil {
+		return nil, err
 	}
 	if res.Error != nil {
-		return res.Error
+		return nil, res.Error
 	}
 
-	// In case the caller designated to throw away the result by specifying `nil` as `dest`,
-	// OR the response Result says its nowherey by being nil,
-	// we cannot proceed with unmarshaling the Result field,
-	// because it would always fail.
-	// The only thing we can do is to return the error if any.
-	if nilOrTypedNil(dest) || res.Result == nil || res.Error != nil {
-		return eliminateTypedNilError(res.Error)
-	}
-
-	if err := unmarshalRes(h.unmarshaler, res, dest); err != nil {
-		return fmt.Errorf("error unmarshaing response: %w", err)
-	}
-
-	return nil
+	return &res, nil
 }
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
@@ -166,7 +150,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("%s", string(respBytes))
 	}
 	var errorResponse RPCResponse[any]
-	err = h.unmarshaler.Unmarshal(respBytes, &errorResponse)
+	err = h.Unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
 		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
 	}
@@ -188,4 +172,8 @@ func (h *HTTPConnection) Let(ctx context.Context, key string, value interface{})
 func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil
+}
+
+func (h *HTTPConnection) LiveNotifications(id string) (chan Notification, error) {
+	return nil, errors.New("live notifications are not supported in HTTP connections")
 }

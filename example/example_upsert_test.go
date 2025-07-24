@@ -137,7 +137,7 @@ func ExampleUpsert_unmarshal_error() {
 	}
 
 	// Output:
-	// Error: error unmarshaing response: Send: error unmarshaling result: cbor: cannot unmarshal array into Go value of type main.Person (cannot decode CBOR array to struct without toarray option)
+	// Error: Send: error unmarshaling result: cbor: cannot unmarshal array into Go value of type main.Person (cannot decode CBOR array to struct without toarray option)
 	// Error is RPCError: false
 }
 

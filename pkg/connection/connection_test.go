@@ -29,14 +29,14 @@ func TestConnectionTestSuite(t *testing.T) {
 	ts := new(ConnectionTestSuite)
 	ts.connImplementations = make(map[string]Connection)
 
-	ts.connImplementations["ws"] = NewWebSocketConnection(NewConnectionParams{
+	ts.connImplementations["ws"] = NewWebSocketConnection(&Config{
 		BaseURL:     "ws://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
-	ts.connImplementations["http"] = NewHTTPConnection(NewConnectionParams{
+	ts.connImplementations["http"] = NewHTTPConnection(&Config{
 		BaseURL:     "http://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
@@ -66,7 +66,7 @@ func (s *ConnectionTestSuite) SetupSuite() {
 
 	// sign in
 	var token RPCResponse[string]
-	err = con.Send(context.Background(), &token, "signin", map[string]interface{}{
+	err = Send(con, context.Background(), &token, "signin", map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
@@ -84,7 +84,7 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	con := s.connImplementations[s.name]
 
 	var createRes RPCResponse[testUser]
-	err := con.Send(context.Background(), &createRes, "create", "users", map[string]interface{}{
+	err := Send(con, context.Background(), &createRes, "create", "users", map[string]interface{}{
 		"username": "remi",
 		"password": "password",
 	})
@@ -94,7 +94,7 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	s.Assert().Equal(createRes.Result.Password, "password")
 
 	var selectRes RPCResponse[testUser]
-	err = con.Send(context.Background(), &selectRes, "select", createRes.Result.ID)
+	err = Send(con, context.Background(), &selectRes, "select", createRes.Result.ID)
 	s.Require().NoError(err)
 
 	s.Assert().Equal(createRes.Result.Username, "remi")
@@ -103,16 +103,16 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	userToUpdate := createRes.Result
 	userToUpdate.Password = "newpassword"
 	var updateRes RPCResponse[testUser]
-	err = con.Send(context.Background(), &updateRes, "update", userToUpdate.ID, userToUpdate)
+	err = Send(con, context.Background(), &updateRes, "update", userToUpdate.ID, userToUpdate)
 	s.Require().NoError(err)
 
 	s.Assert().Equal(userToUpdate.ID, updateRes.Result.ID)
 	s.Assert().Equal(updateRes.Result.Password, "newpassword")
 
-	err = con.Send(context.Background(), nil, "delete", userToUpdate.ID)
+	err = Send[any](con, context.Background(), nil, "delete", userToUpdate.ID)
 	s.Require().NoError(err)
 
 	var selectRes1 RPCResponse[testUser]
-	err = con.Send(context.Background(), &selectRes1, "select", createRes.Result.ID)
+	err = Send(con, context.Background(), &selectRes1, "select", createRes.Result.ID)
 	s.Require().NoError(err)
 }
