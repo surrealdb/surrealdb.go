@@ -96,7 +96,7 @@ const (
 type WebSocketConnectionState int
 
 type WebSocketConnection struct {
-	BaseConnection
+	Toolkit
 
 	Conn *gorilla.Conn
 	// connLock is used to ensure that the Conn is not-nil when we try to read or write to it.
@@ -133,9 +133,9 @@ type WebSocketConnection struct {
 	connCloseError error
 }
 
-func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
+func NewWebSocketConnection(p Config) *WebSocketConnection {
 	return &WebSocketConnection{
-		BaseConnection: BaseConnection{
+		Toolkit: Toolkit{
 			BaseURL: p.BaseURL,
 
 			Marshaler:   p.Marshaler,
@@ -151,10 +151,6 @@ func NewWebSocketConnection(p NewConnectionParams) *WebSocketConnection {
 }
 
 func (ws *WebSocketConnection) Connect(ctx context.Context) error {
-	if err := ws.PreConnectionChecks(); err != nil {
-		return err
-	}
-
 	return ws.tryConnecting(ctx)
 }
 

@@ -37,7 +37,8 @@ type Connection interface {
 	GetUnmarshaler() codec.Unmarshaler
 }
 
-type NewConnectionParams struct {
+// Config holds the configuration for a connection.
+type Config struct {
 	Marshaler   codec.Marshaler
 	Unmarshaler codec.Unmarshaler
 	BaseURL     string
@@ -55,7 +56,10 @@ type NewConnectionParams struct {
 	ReconnectInterval time.Duration
 }
 
-type BaseConnection struct {
+// Toolkit contains common fields and methods that is useful to
+// implement Connection interface for transports that use
+// socket-like connections such as WebSocket.
+type Toolkit struct {
 	BaseURL     string
 	Marshaler   codec.Marshaler
 	Unmarshaler codec.Unmarshaler
@@ -68,7 +72,7 @@ type BaseConnection struct {
 	NotificationChannelsLock sync.RWMutex
 }
 
-func (bc *BaseConnection) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
+func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
 	bc.ResponseChannelsLock.Lock()
 	defer bc.ResponseChannelsLock.Unlock()
 
@@ -82,7 +86,7 @@ func (bc *BaseConnection) CreateResponseChannel(id string) (chan RPCResponse[cbo
 	return ch, nil
 }
 
-func (bc *BaseConnection) CreateNotificationChannel(liveQueryID string) (chan Notification, error) {
+func (bc *Toolkit) CreateNotificationChannel(liveQueryID string) (chan Notification, error) {
 	bc.NotificationChannelsLock.Lock()
 	defer bc.NotificationChannelsLock.Unlock()
 
@@ -96,7 +100,7 @@ func (bc *BaseConnection) CreateNotificationChannel(liveQueryID string) (chan No
 	return ch, nil
 }
 
-func (bc *BaseConnection) GetNotificationChannel(id string) (chan Notification, bool) {
+func (bc *Toolkit) GetNotificationChannel(id string) (chan Notification, bool) {
 	bc.NotificationChannelsLock.RLock()
 	defer bc.NotificationChannelsLock.RUnlock()
 	ch, ok := bc.NotificationChannels[id]
@@ -104,20 +108,20 @@ func (bc *BaseConnection) GetNotificationChannel(id string) (chan Notification, 
 	return ch, ok
 }
 
-func (bc *BaseConnection) RemoveResponseChannel(id string) {
+func (bc *Toolkit) RemoveResponseChannel(id string) {
 	bc.ResponseChannelsLock.Lock()
 	defer bc.ResponseChannelsLock.Unlock()
 	delete(bc.ResponseChannels, id)
 }
 
-func (bc *BaseConnection) GetResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], bool) {
+func (bc *Toolkit) GetResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], bool) {
 	bc.ResponseChannelsLock.RLock()
 	defer bc.ResponseChannelsLock.RUnlock()
 	ch, ok := bc.ResponseChannels[id]
 	return ch, ok
 }
 
-func (bc *BaseConnection) PreConnectionChecks() error {
+func (bc *Config) Validate() error {
 	if bc.BaseURL == "" {
 		return constants.ErrNoBaseURL
 	}
@@ -133,7 +137,7 @@ func (bc *BaseConnection) PreConnectionChecks() error {
 	return nil
 }
 
-func (bc *BaseConnection) LiveNotifications(liveQueryID string) (chan Notification, error) {
+func (bc *Toolkit) LiveNotifications(liveQueryID string) (chan Notification, error) {
 	c, err := bc.CreateNotificationChannel(liveQueryID)
 	if err != nil {
 		bc.Logger.Error(err.Error())

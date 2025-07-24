@@ -3,6 +3,7 @@ package connection
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,19 +19,19 @@ import (
 )
 
 type HTTPConnection struct {
-	BaseConnection
+	BaseURL     string
+	Marshaler   codec.Marshaler
+	Unmarshaler codec.Unmarshaler
 
 	httpClient *http.Client
 	variables  sync.Map
 }
 
-func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
+func NewHTTPConnection(p Config) *HTTPConnection {
 	con := HTTPConnection{
-		BaseConnection: BaseConnection{
-			Marshaler:   p.Marshaler,
-			Unmarshaler: p.Unmarshaler,
-			BaseURL:     p.BaseURL,
-		},
+		Marshaler:   p.Marshaler,
+		Unmarshaler: p.Unmarshaler,
+		BaseURL:     p.BaseURL,
 	}
 
 	if con.httpClient == nil {
@@ -43,10 +44,6 @@ func NewHTTPConnection(p NewConnectionParams) *HTTPConnection {
 }
 
 func (h *HTTPConnection) Connect(ctx context.Context) error {
-	if err := h.PreConnectionChecks(); err != nil {
-		return err
-	}
-
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
@@ -188,4 +185,8 @@ func (h *HTTPConnection) Let(ctx context.Context, key string, value interface{})
 func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil
+}
+
+func (h *HTTPConnection) LiveNotifications(id string) (chan Notification, error) {
+	return nil, errors.New("live notifications are not supported in HTTP connections")
 }

@@ -34,10 +34,10 @@ func New(conn connection.Connection) *DB {
 	return &DB{con: conn}
 }
 
-type ConnectOption func(*connection.NewConnectionParams) error
+type ConnectOption func(*connection.Config) error
 
 func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
-	return func(cfg *connection.NewConnectionParams) error {
+	return func(cfg *connection.Config) error {
 		cfg.ReconnectInterval = interval
 		return nil
 	}
@@ -83,17 +83,17 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 	return New(con), nil
 }
 
-// Configure creates a new connection parameters struct from the provided connection URL and
+// Configure creates a new connection config from the provided connection URL and
 // options.
 //
 // This is useful to instantiate a specific connection type directly.
-func Configure(connectionURL string, opts ...ConnectOption) (*connection.NewConnectionParams, error) {
+func Configure(connectionURL string, opts ...ConnectOption) (*connection.Config, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
 	}
 
-	newParams := connection.NewConnectionParams{
+	c := connection.Config{
 		URL:         *u,
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
@@ -102,12 +102,16 @@ func Configure(connectionURL string, opts ...ConnectOption) (*connection.NewConn
 	}
 
 	for _, opt := range opts {
-		if optErr := opt(&newParams); optErr != nil {
+		if optErr := opt(&c); optErr != nil {
 			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
 		}
 	}
 
-	return &newParams, nil
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid connection config: %w", err)
+	}
+
+	return &c, nil
 }
 
 // --------------------------------------------------

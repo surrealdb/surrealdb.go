@@ -18,7 +18,7 @@ import (
 )
 
 type Connection struct {
-	connection.BaseConnection
+	connection.Toolkit
 
 	conn     *gws.Conn
 	connLock sync.Mutex
@@ -132,7 +132,7 @@ func eliminateTypedNilError(err error) error {
 }
 
 // New creates a new WebSocket connection based on gws
-func New(params connection.NewConnectionParams) *Connection {
+func New(params connection.Config) *Connection {
 	conn := &Connection{
 		Timeout: constants.DefaultWSTimeout,
 	}
@@ -184,10 +184,6 @@ func (c *Connection) Close(ctx context.Context) error {
 // Connect tries to establish a WebSocket connection to SurrealDB.
 // This method must be called after New and before any other operations.
 func (c *Connection) Connect(ctx context.Context) error {
-	if err := c.PreConnectionChecks(); err != nil {
-		return err
-	}
-
 	c.handler = &websocketHandler{conn: c}
 
 	option := &gws.ClientOption{
