@@ -138,7 +138,7 @@ func (h *HTTPConnection) Send(ctx context.Context, dest any, method string, para
 	}
 
 	if err := unmarshalRes(h.unmarshaler, res, dest); err != nil {
-		return fmt.Errorf("error unmarshaing response: %w", err)
+		return fmt.Errorf("error unmarshaling response: %w", err)
 	}
 
 	return nil

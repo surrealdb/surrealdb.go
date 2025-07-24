@@ -499,7 +499,7 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 		}
 
 		if err := ws.unmarshalRes(res, dest); err != nil {
-			return fmt.Errorf("error unmarshaing response: %w", err)
+			return fmt.Errorf("error unmarshaling response: %w", err)
 		}
 
 		return eliminateTypedNilError(res.Error)
