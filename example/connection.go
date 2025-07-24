@@ -42,23 +42,23 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 	}
 
 	var (
-		db  *surrealdb.DB
-		err error
+		db *surrealdb.DB
 	)
 
 	if os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws" {
-		p, err := surrealdb.Configure(getSurrealDBWSURL(),
+		p, confErr := surrealdb.Configure(getSurrealDBWSURL(),
 			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
 		)
-		if err != nil {
-			panic(err)
+		if confErr != nil {
+			panic(confErr)
 		}
 		g := gws.New(*p)
-		if err = g.Connect(context.Background()); err != nil {
-			panic(err)
+		if connErr := g.Connect(context.Background()); connErr != nil {
+			panic(connErr)
 		}
 		db = surrealdb.New(g)
 	} else {
+		var err error
 		db, err = surrealdb.Connect(
 			context.Background(),
 			getSurrealDBWSURL(),
