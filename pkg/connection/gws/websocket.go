@@ -292,6 +292,6 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 }
 
 // Use implements connection.Connection.
-func (c *Connection) Use(ctx context.Context, namespace string, database string) error {
+func (c *Connection) Use(ctx context.Context, namespace, database string) error {
 	return c.Send(ctx, nil, "use", namespace, database)
 }
