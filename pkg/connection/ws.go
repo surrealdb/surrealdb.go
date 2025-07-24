@@ -507,10 +507,12 @@ func (ws *WebSocketConnection) Send(ctx context.Context, dest interface{}, metho
 }
 
 func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], dest interface{}) error {
-	return unmarshalRes(ws.Unmarshaler, res, dest)
+	return UnmarshalResult(ws.Unmarshaler, res, dest)
 }
 
-// unmarshalRes try our best to avoid unmarshaling the entire CBOR response twice,
+// UnmarshalResult unmarshals the RPC response result to the destination's Result field.
+//
+// We try our best to avoid unmarshaling the entire CBOR response twice,
 // once in the WebSocketConnection.handleResponse and once here.
 //
 // With the approach implemented in this function,
@@ -520,20 +522,20 @@ func (ws *WebSocketConnection) unmarshalRes(res RPCResponse[cbor.RawMessage], de
 // Assuming `dest` points to RPCResponse[SomeTypeParam],
 // we need to set the ID, Error and Result fields of the `dest` struct,
 // so that we can make this function generic enough to work with any RPCResponse[T] type.
-func unmarshalRes(unmarshaler codec.Unmarshaler, res RPCResponse[cbor.RawMessage], dest interface{}) error {
+func UnmarshalResult(unmarshaler codec.Unmarshaler, responseRaw RPCResponse[cbor.RawMessage], responseDest interface{}) error {
 	// Although this looks marshaling unnmarshaled data again, it is not.
 	// The `res.Result` is of type `cbor.RawMessage`, which is
 	// a type that implements `cbor.Unmarshaller` that returns the raw CBOR bytes
 	// contained in the `cbor.RawMessage` itself, instead of actually marshaling anything,
 	// so it is low-cost.
-	rawCBORBytes, err := res.Result.MarshalCBOR()
+	rawCBORBytes, err := responseRaw.Result.MarshalCBOR()
 	if err != nil {
 		return fmt.Errorf("Send: error marshaling result: %w", err)
 	}
 
-	kind := reflect.TypeOf(dest).Kind()
+	kind := reflect.TypeOf(responseDest).Kind()
 	if kind != reflect.Ptr {
-		return fmt.Errorf("Send: dest must be a pointer, got %T", dest)
+		return fmt.Errorf("Send: dest must be a pointer, got %T", responseDest)
 	}
 
 	const (
@@ -557,7 +559,7 @@ func unmarshalRes(unmarshaler codec.Unmarshaler, res RPCResponse[cbor.RawMessage
 	// The second case is when you used Send directly, or via a custom method that calls Send.
 	// See https://github.com/surrealdb/surrealdb.go/issues/246 for more context.
 	var destStruct reflect.Value
-	switch structOrIfacePtrStruct := reflect.ValueOf(dest).Elem(); structOrIfacePtrStruct.Kind() {
+	switch structOrIfacePtrStruct := reflect.ValueOf(responseDest).Elem(); structOrIfacePtrStruct.Kind() {
 	case reflect.Interface:
 		// If dest was a pointer to an interface,
 		// we need to get the underlying pointer that is wrapped in the interface.
@@ -567,14 +569,14 @@ func unmarshalRes(unmarshaler codec.Unmarshaler, res RPCResponse[cbor.RawMessage
 			// If dest is an interface that points to a pointer, we need to get the underlying struct type.
 			destStruct = ptrStruct.Elem()
 		} else {
-			return fmt.Errorf("Send: dest must be a pointer to a struct, got %T", dest)
+			return fmt.Errorf("Send: dest must be a pointer to a struct, got %T", responseDest)
 		}
 	case reflect.Struct:
 		// If dest was a pointer to a struct,
 		// destStructOrIface is the struct we want to use.
 		destStruct = structOrIfacePtrStruct
 	default:
-		return fmt.Errorf("Send: dest must be a pointer to a struct or an interface, got %T", dest)
+		return fmt.Errorf("Send: dest must be a pointer to a struct or an interface, got %T", responseDest)
 	}
 
 	// At this point, we assume `destStruct` points to a struct with ID and Result fields.
@@ -587,8 +589,8 @@ func unmarshalRes(unmarshaler codec.Unmarshaler, res RPCResponse[cbor.RawMessage
 	// over HTTP, where the ID field is not set in the response:
 	//
 	//   panic: reflect: call of reflect.Value.Set on zero Value
-	if res.ID != nil {
-		destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
+	if responseRaw.ID != nil {
+		destStruct.FieldByName(FieldID).Set(reflect.ValueOf(responseRaw.ID))
 	}
 	// `destStructDotResult` is basically `dest.Result` in case `dest` was of type `*RPCResponse[T]`.
 	destStructDotResult := destStruct.FieldByName(FieldResult).Interface()

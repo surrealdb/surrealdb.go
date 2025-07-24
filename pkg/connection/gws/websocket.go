@@ -124,59 +124,6 @@ func (c *GwsConnection) handleResponse(data []byte) {
 	}
 }
 
-func (c *GwsConnection) unmarshalRes(res connection.RPCResponse[cbor.RawMessage], dest interface{}) error {
-	return unmarshalRes(c.Unmarshaler, res, dest)
-}
-
-func unmarshalRes(unmarshaler codec.Unmarshaler, res connection.RPCResponse[cbor.RawMessage], dest interface{}) error {
-	rawCBORBytes, err := res.Result.MarshalCBOR()
-	if err != nil {
-		return fmt.Errorf("Send: error marshaling result: %w", err)
-	}
-
-	kind := reflect.TypeOf(dest).Kind()
-	if kind != reflect.Ptr {
-		return fmt.Errorf("Send: dest must be a pointer, got %T", dest)
-	}
-
-	const (
-		FieldID     = "ID"
-		FieldResult = "Result"
-	)
-
-	var destStruct reflect.Value
-	switch structOrIfacePtrStruct := reflect.ValueOf(dest).Elem(); structOrIfacePtrStruct.Kind() {
-	case reflect.Interface:
-		ptrStruct := structOrIfacePtrStruct.Elem()
-		if ptrStruct.Kind() == reflect.Ptr {
-			destStruct = ptrStruct.Elem()
-		} else {
-			return fmt.Errorf("Send: dest must be a pointer to a struct, got %T", dest)
-		}
-	case reflect.Struct:
-		destStruct = structOrIfacePtrStruct
-	default:
-		return fmt.Errorf("Send: dest must be a pointer to a struct or an interface, got %T", dest)
-	}
-
-	if res.ID != nil {
-		destStruct.FieldByName(FieldID).Set(reflect.ValueOf(res.ID))
-	}
-
-	destStructDotResult := destStruct.FieldByName(FieldResult).Interface()
-
-	if destStructDotResult == nil || reflect.ValueOf(destStructDotResult).IsNil() {
-		destStructDotResult = reflect.New(destStruct.FieldByName(FieldResult).Type().Elem()).Interface()
-		destStruct.FieldByName(FieldResult).Set(reflect.ValueOf(destStructDotResult))
-	}
-
-	if err := unmarshaler.Unmarshal(rawCBORBytes, destStructDotResult); err != nil {
-		return fmt.Errorf("Send: error unmarshaling result: %w", err)
-	}
-
-	return nil
-}
-
 func eliminateTypedNilError(err error) error {
 	if err == nil || reflect.ValueOf(err).IsNil() {
 		return nil
@@ -328,7 +275,7 @@ func (c *GwsConnection) Send(ctx context.Context, res interface{}, method string
 			return eliminateTypedNilError(rpcRes.Error)
 		}
 
-		if err := c.unmarshalRes(rpcRes, res); err != nil {
+		if err := connection.UnmarshalResult(c.Unmarshaler, rpcRes, res); err != nil {
 			return fmt.Errorf("error unmarshaling response: %w", err)
 		}
 
