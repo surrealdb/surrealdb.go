@@ -27,7 +27,7 @@ type HTTPConnection struct {
 	variables  sync.Map
 }
 
-func NewHTTPConnection(p Config) *HTTPConnection {
+func NewHTTPConnection(p *Config) *HTTPConnection {
 	con := HTTPConnection{
 		Marshaler:   p.Marshaler,
 		Unmarshaler: p.Unmarshaler,

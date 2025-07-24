@@ -64,7 +64,7 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 		}
 	})
 
-	p := Config{
+	p := &Config{
 		BaseURL:     "http://test.surreal",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},

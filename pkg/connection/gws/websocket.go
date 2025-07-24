@@ -132,7 +132,7 @@ func eliminateTypedNilError(err error) error {
 }
 
 // New creates a new WebSocket connection based on gws
-func New(params connection.Config) *Connection {
+func New(params *connection.Config) *Connection {
 	conn := &Connection{
 		Timeout: constants.DefaultWSTimeout,
 	}

@@ -133,7 +133,7 @@ type WebSocketConnection struct {
 	connCloseError error
 }
 
-func NewWebSocketConnection(p Config) *WebSocketConnection {
+func NewWebSocketConnection(p *Config) *WebSocketConnection {
 	return &WebSocketConnection{
 		Toolkit: Toolkit{
 			BaseURL: p.BaseURL,

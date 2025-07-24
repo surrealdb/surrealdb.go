@@ -29,14 +29,14 @@ func TestConnectionTestSuite(t *testing.T) {
 	ts := new(ConnectionTestSuite)
 	ts.connImplementations = make(map[string]Connection)
 
-	ts.connImplementations["ws"] = NewWebSocketConnection(Config{
+	ts.connImplementations["ws"] = NewWebSocketConnection(&Config{
 		BaseURL:     "ws://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
-	ts.connImplementations["http"] = NewHTTPConnection(Config{
+	ts.connImplementations["http"] = NewHTTPConnection(&Config{
 		BaseURL:     "http://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},

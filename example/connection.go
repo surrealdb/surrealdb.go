@@ -52,7 +52,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 		if confErr != nil {
 			panic(confErr)
 		}
-		g := gws.New(*p)
+		g := gws.New(p)
 		if connErr := g.Connect(context.Background()); connErr != nil {
 			panic(connErr)
 		}

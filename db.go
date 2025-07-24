@@ -61,9 +61,9 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 
 	switch newParams.URL.Scheme {
 	case "http", "https":
-		con = connection.NewHTTPConnection(*newParams)
+		con = connection.NewHTTPConnection(newParams)
 	case "ws", "wss":
-		wscon := connection.NewWebSocketConnection(*newParams)
+		wscon := connection.NewWebSocketConnection(newParams)
 		if newParams.ReconnectInterval > 0 {
 			con = connection.NewAutoReconnectingWebSocketConnection(wscon, newParams.ReconnectInterval)
 		} else {
