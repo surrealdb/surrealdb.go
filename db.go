@@ -136,7 +136,7 @@ func (db *DB) Use(ctx context.Context, ns, database string) error {
 
 func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 	var info connection.RPCResponse[map[string]interface{}]
-	err := db.con.Send(ctx, &info, "info")
+	err := connection.Send(db.con, ctx, &info, "info")
 	return *info.Result, err
 }
 
@@ -167,7 +167,7 @@ func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 //	})
 func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(ctx, &token, "signup", authData); err != nil {
+	if err := connection.Send(db.con, ctx, &token, "signup", authData); err != nil {
 		return "", err
 	}
 
@@ -205,7 +205,7 @@ func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) 
 //	})
 func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) {
 	var token connection.RPCResponse[string]
-	if err := db.con.Send(ctx, &token, "signin", authData); err != nil {
+	if err := connection.Send(db.con, ctx, &token, "signin", authData); err != nil {
 		return "", err
 	}
 
@@ -217,7 +217,7 @@ func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) 
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {
-	if err := db.con.Send(ctx, nil, "invalidate"); err != nil {
+	if err := connection.Send[any](db.con, ctx, nil, "invalidate"); err != nil {
 		return err
 	}
 
@@ -229,7 +229,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 }
 
 func (db *DB) Authenticate(ctx context.Context, token string) error {
-	if err := db.con.Send(ctx, nil, "authenticate", token); err != nil {
+	if err := connection.Send[any](db.con, ctx, nil, "authenticate", token); err != nil {
 		return err
 	}
 
@@ -295,8 +295,12 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 // - Transport error like WebSocket message write timeout, connection closed, etc.
 // - Unmarshal error if the response cannot be unmarshaled into the provided res parameter.
 // - RPCError if the request was processed by SurrealDB but it failed there.
-func (db *DB) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
-	allowedSendMethods := []string{"select", "create", "insert", "update", "upsert", "patch", "delete", "query"}
+func Send[Result any](ctx context.Context, db *DB, res *connection.RPCResponse[Result], method string, params ...interface{}) error {
+	allowedSendMethods := []string{
+		"select", "create", "insert", "insert_relation",
+		"kill", "live", "merge", "relate", "update", "upsert",
+		"patch", "delete", "query",
+	}
 
 	allowed := false
 	for i := 0; i < len(allowedSendMethods); i++ {
@@ -310,7 +314,7 @@ func (db *DB) Send(ctx context.Context, res interface{}, method string, params .
 		return fmt.Errorf("provided method is not allowed")
 	}
 
-	return db.con.Send(ctx, &res, method, params...)
+	return connection.Send(db.con, ctx, res, method, params...)
 }
 
 func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
@@ -541,8 +545,12 @@ func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 // If one expects other types of responses, use db.con.Send directly.
 func send[TResult any](ctx context.Context, db *DB, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
-	if err := db.con.Send(ctx, &res, method, params...); err != nil {
+	if err := connection.Send(db.con, ctx, &res, method, params...); err != nil {
 		return nil, err
+	}
+
+	if res.Error != nil {
+		return nil, res.Error
 	}
 
 	return res.Result, nil

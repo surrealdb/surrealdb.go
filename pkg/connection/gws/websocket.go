@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"sync"
 	"time"
 
@@ -124,13 +123,6 @@ func (c *Connection) handleResponse(data []byte) {
 	}
 }
 
-func eliminateTypedNilError(err error) error {
-	if err == nil || reflect.ValueOf(err).IsNil() {
-		return nil
-	}
-	return err
-}
-
 // New creates a new WebSocket connection based on gws
 func New(params *connection.Config) *Connection {
 	conn := &Connection{
@@ -227,7 +219,7 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 
 // Let implements connection.Connection.
 func (c *Connection) Let(ctx context.Context, key string, value interface{}) error {
-	return c.Send(ctx, nil, "let", key, value)
+	return connection.Send[any](c, ctx, nil, "let", key, value)
 }
 
 // LiveNotifications implements connection.Connection.
@@ -236,7 +228,7 @@ func (c *Connection) LiveNotifications(id string) (chan connection.Notification,
 }
 
 // Send implements connection.Connection.
-func (c *Connection) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
+func (c *Connection) Send(ctx context.Context, method string, params ...interface{}) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
@@ -245,9 +237,9 @@ func (c *Connection) Send(ctx context.Context, res interface{}, method string, p
 
 	select {
 	case <-c.connCloseCh:
-		return c.connCloseError
+		return nil, c.connCloseError
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	default:
 	}
 
@@ -260,40 +252,32 @@ func (c *Connection) Send(ctx context.Context, res interface{}, method string, p
 
 	responseChan, err := c.CreateResponseChannel(id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer c.RemoveResponseChannel(id)
 
 	if err := c.write(request); err != nil {
-		return err
+		return nil, err
 	}
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	case rpcRes, open := <-responseChan:
 		if !open {
-			return errors.New("response channel closed")
+			return nil, errors.New("response channel closed")
 		}
 
-		if res == nil || rpcRes.Result == nil || rpcRes.Error != nil {
-			return eliminateTypedNilError(rpcRes.Error)
-		}
-
-		if err := connection.UnmarshalResult(c.Unmarshaler, rpcRes, res); err != nil {
-			return fmt.Errorf("error unmarshaling response: %w", err)
-		}
-
-		return eliminateTypedNilError(rpcRes.Error)
+		return &rpcRes, nil
 	}
 }
 
 // Unset implements connection.Connection.
 func (c *Connection) Unset(ctx context.Context, key string) error {
-	return c.Send(ctx, nil, "unset", key)
+	return connection.Send[any](c, ctx, nil, "unset", key)
 }
 
 // Use implements connection.Connection.
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
-	return c.Send(ctx, nil, "use", namespace, database)
+	return connection.Send[any](c, ctx, nil, "use", namespace, database)
 }

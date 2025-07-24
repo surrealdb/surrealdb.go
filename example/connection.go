@@ -16,6 +16,7 @@ const (
 
 var currentURL = os.Getenv("SURREALDB_URL")
 var reconnect = os.Getenv("SURREALDB_RECONNECTION_CHECK_INTERVAL")
+var useGWS = os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws"
 
 func getSurrealDBWSURL() string {
 	if currentURL == "" {
@@ -45,7 +46,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 		db *surrealdb.DB
 	)
 
-	if os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws" {
+	if useGWS {
 		p, confErr := surrealdb.Configure(getSurrealDBWSURL(),
 			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
 		)

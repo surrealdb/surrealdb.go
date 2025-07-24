@@ -114,12 +114,12 @@ func signIn(s *SurrealDBTestSuite) string {
 
 func (s *SurrealDBTestSuite) TestSend_AllowedMethods() {
 	s.Run("Send method should be rejected", func() {
-		err := s.db.Send(context.Background(), nil, "let")
+		err := surrealdb.Send[any](context.Background(), s.db, nil, "let")
 		s.Require().Error(err)
 	})
 
 	s.Run("Send method should be allowed", func() {
-		err := s.db.Send(context.Background(), nil, "query", "select * from users")
+		err := surrealdb.Send[any](context.Background(), s.db, nil, "query", "select * from users")
 		s.Require().NoError(err)
 	})
 }

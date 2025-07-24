@@ -24,12 +24,10 @@ type Connection interface {
 	Close(ctx context.Context) error
 	// Send sends a request to SurrealDB and expects a response.
 	//
-	// It requires `res` to be of type `*RPCResponse[T]` where T is a type that implements `cbor.Unmarshaller`,
-	// or any type that `cbor.Unmarshal` can decode into.
 	// The `method` is the SurrealDB method to call, and `params` are the parameters for the method.
 	//
 	// The `ctx` is used to cancel the request if the context is canceled.
-	Send(ctx context.Context, res interface{}, method string, params ...interface{}) error
+	Send(ctx context.Context, method string, params ...interface{}) (*RPCResponse[cbor.RawMessage], error)
 	Use(ctx context.Context, namespace string, database string) error
 	Let(ctx context.Context, key string, value interface{}) error
 	Unset(ctx context.Context, key string) error
