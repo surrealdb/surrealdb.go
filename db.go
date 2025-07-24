@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -36,6 +37,26 @@ func New(connectionURL string) (*DB, error) {
 	return Connect(context.Background(), connectionURL)
 }
 
+type ConnectOption func(*ConnectConfig) error
+
+type ConnectConfig struct {
+	// ReconnectInterval indicates the interval at which to automatically reconnect
+	// to the SurrealDB server if the connection is considered lost.
+	//
+	// This is effective only when the connection is a WebSocket connection.
+	// If the connection is an HTTP connection, this option is ignored.
+	//
+	// If this option is not set, the reconnection is disabled.
+	ReconnectInterval time.Duration
+}
+
+func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
+	return func(cfg *ConnectConfig) error {
+		cfg.ReconnectInterval = interval
+		return nil
+	}
+}
+
 // Connect creates a new SurrealDB client and connects to the database.
 //
 // This function incurs a network call (currently HTTP request) to the SurrealDB server to check the health of the connection in
@@ -44,10 +65,17 @@ func New(connectionURL string) (*DB, error) {
 // The provided `ctx` is used to cancel the connection attempt if needed,
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
-func Connect(ctx context.Context, connectionURL string) (*DB, error) {
+func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (*DB, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
+	}
+
+	var cfg ConnectConfig
+	for _, opt := range opts {
+		if optErr := opt(&cfg); optErr != nil {
+			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
+		}
 	}
 
 	scheme := u.Scheme
@@ -64,7 +92,13 @@ func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 	case "http", "https":
 		con = connection.NewHTTPConnection(newParams)
 	case "ws", "wss":
-		con = connection.NewWebSocketConnection(newParams)
+		wscon := connection.NewWebSocketConnection(newParams)
+
+		if cfg.ReconnectInterval > 0 {
+			con = connection.NewAutoReconnectingWebSocketConnection(wscon, cfg.ReconnectInterval)
+		} else {
+			con = wscon
+		}
 	case "memory", "mem", "surrealkv":
 		return nil, fmt.Errorf("embedded database not enabled")
 	default:
