@@ -196,7 +196,12 @@ func (c *Connection) Connect(ctx context.Context) error {
 		},
 	}
 
-	conn, _, err := gws.NewClient(c.handler, option)
+	conn, resp, err := gws.NewClient(c.handler, option)
+	if resp != nil {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.Logger.Error("failed to close response body", "error", closeErr)
+		}
+	}
 	if err != nil {
 		return err
 	}
