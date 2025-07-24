@@ -172,10 +172,12 @@ func (c *Connection) Close(ctx context.Context) error {
 
 	err := c.conn.WriteClose(constants.CloseMessageCode, []byte(""))
 	if err != nil {
-		// Log error but continue with close
+		c.Logger.Error("failed to close WebSocket connection", "error", err)
 	}
 
-	c.conn.NetConn().Close()
+	if err := c.conn.NetConn().Close(); err != nil {
+		c.Logger.Error("failed to close underlying network connection", "error", err)
+	}
 	c.conn = nil
 
 	return nil
