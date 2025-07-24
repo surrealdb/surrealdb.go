@@ -7,6 +7,7 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
 
 const (
@@ -40,13 +41,32 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 		}
 	}
 
-	db, err := surrealdb.Connect(
-		context.Background(),
-		getSurrealDBWSURL(),
-		surrealdb.WithReconnectionCheckInterval(reconnectDuration),
+	var (
+		db  *surrealdb.DB
+		err error
 	)
-	if err != nil {
-		panic(err)
+
+	if os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws" {
+		p, err := surrealdb.Configure(getSurrealDBWSURL(),
+			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
+		)
+		if err != nil {
+			panic(err)
+		}
+		g := gws.New(*p)
+		if err = g.Connect(context.Background()); err != nil {
+			panic(err)
+		}
+		db = surrealdb.New(g)
+	} else {
+		db, err = surrealdb.Connect(
+			context.Background(),
+			getSurrealDBWSURL(),
+			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
+		)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return initConnection(db, "examples", database, tables...)

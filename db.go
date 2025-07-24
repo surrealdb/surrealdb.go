@@ -29,29 +29,15 @@ type DB struct {
 	con connection.Connection
 }
 
-// New creates a new SurrealDB client.
-//
-// Deprecated: New is deprecated. Use Connect instead to make your
-// application more robust against network issues.
-func New(connectionURL string) (*DB, error) {
-	return Connect(context.Background(), connectionURL)
+// New creates a new SurrealDB client using the provided connection.
+func New(conn connection.Connection) *DB {
+	return &DB{con: conn}
 }
 
-type ConnectOption func(*ConnectConfig) error
-
-type ConnectConfig struct {
-	// ReconnectInterval indicates the interval at which to automatically reconnect
-	// to the SurrealDB server if the connection is considered lost.
-	//
-	// This is effective only when the connection is a WebSocket connection.
-	// If the connection is an HTTP connection, this option is ignored.
-	//
-	// If this option is not set, the reconnection is disabled.
-	ReconnectInterval time.Duration
-}
+type ConnectOption func(*connection.NewConnectionParams) error
 
 func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
-	return func(cfg *ConnectConfig) error {
+	return func(cfg *connection.NewConnectionParams) error {
 		cfg.ReconnectInterval = interval
 		return nil
 	}
@@ -66,36 +52,20 @@ func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
 func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (*DB, error) {
-	u, err := url.ParseRequestURI(connectionURL)
+	newParams, err := Configure(connectionURL)
 	if err != nil {
-		return nil, err
-	}
-
-	var cfg ConnectConfig
-	for _, opt := range opts {
-		if optErr := opt(&cfg); optErr != nil {
-			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
-		}
-	}
-
-	scheme := u.Scheme
-
-	newParams := connection.NewConnectionParams{
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
-		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
-		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
+		return nil, fmt.Errorf("failed to configure connection: %w", err)
 	}
 
 	var con connection.Connection
-	switch scheme {
-	case "http", "https":
-		con = connection.NewHTTPConnection(newParams)
-	case "ws", "wss":
-		wscon := connection.NewWebSocketConnection(newParams)
 
-		if cfg.ReconnectInterval > 0 {
-			con = connection.NewAutoReconnectingWebSocketConnection(wscon, cfg.ReconnectInterval)
+	switch newParams.URL.Scheme {
+	case "http", "https":
+		con = connection.NewHTTPConnection(*newParams)
+	case "ws", "wss":
+		wscon := connection.NewWebSocketConnection(*newParams)
+		if newParams.ReconnectInterval > 0 {
+			con = connection.NewAutoReconnectingWebSocketConnection(wscon, newParams.ReconnectInterval)
 		} else {
 			con = wscon
 		}
@@ -110,7 +80,34 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 		return nil, err
 	}
 
-	return &DB{con: con}, nil
+	return New(con), nil
+}
+
+// Configure creates a new connection parameters struct from the provided connection URL and
+// options.
+//
+// This is useful to instantiate a specific connection type directly.
+func Configure(connectionURL string, opts ...ConnectOption) (*connection.NewConnectionParams, error) {
+	u, err := url.ParseRequestURI(connectionURL)
+	if err != nil {
+		return nil, err
+	}
+
+	newParams := connection.NewConnectionParams{
+		URL:         *u,
+		Marshaler:   &models.CborMarshaler{},
+		Unmarshaler: &models.CborUnmarshaler{},
+		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
+		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
+	}
+
+	for _, opt := range opts {
+		if optErr := opt(&newParams); optErr != nil {
+			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
+		}
+	}
+
+	return &newParams, nil
 }
 
 // --------------------------------------------------

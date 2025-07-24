@@ -3,7 +3,9 @@ package connection
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"sync"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
@@ -40,6 +42,17 @@ type NewConnectionParams struct {
 	Unmarshaler codec.Unmarshaler
 	BaseURL     string
 	Logger      logger.Logger
+
+	URL url.URL
+
+	// ReconnectInterval indicates the interval at which to automatically reconnect
+	// to the SurrealDB server if the connection is considered lost.
+	//
+	// This is effective only when the connection is a WebSocket connection.
+	// If the connection is an HTTP connection, this option is ignored.
+	//
+	// If this option is not set, the reconnection is disabled.
+	ReconnectInterval time.Duration
 }
 
 type BaseConnection struct {
