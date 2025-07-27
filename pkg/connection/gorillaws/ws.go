@@ -239,7 +239,7 @@ func (ws *Connection) tryConnecting(ctx context.Context) error {
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
 func (ws *Connection) connect(ctx context.Context) error {
-	connection, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.BaseURL), nil)
+	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.BaseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -250,7 +250,7 @@ func (ws *Connection) connect(ctx context.Context) error {
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
 
-	ws.Conn = connection
+	ws.Conn = conn
 
 	for _, option := range ws.Option {
 		if err := option(ws); err != nil {

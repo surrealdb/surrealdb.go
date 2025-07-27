@@ -90,13 +90,13 @@ var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
 func New[C connection.WebSocketConnection](
 	connect func(context.Context) (C, error),
 	checkInterval time.Duration,
-	logger logger.Logger,
+	log logger.Logger,
 ) *Connection[C] {
 	return &Connection[C]{
 		CheckInterval: checkInterval,
 		connect:       connect,
 		state:         StateDisconnected,
-		logger:        logger,
+		logger:        log,
 	}
 }
 

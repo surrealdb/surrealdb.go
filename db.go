@@ -69,8 +69,8 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 			con = rews.New(func(ctx context.Context) (*gorillaws.Connection, error) {
 				ws := gorillaws.New(newParams)
 
-				if err := ws.Connect(ctx); err != nil {
-					return nil, fmt.Errorf("failed to connect: %w", err)
+				if connErr := ws.Connect(ctx); connErr != nil {
+					return nil, fmt.Errorf("failed to connect: %w", connErr)
 				}
 
 				return ws, nil
