@@ -80,7 +80,7 @@ func (h *HTTPConnection) Send(ctx context.Context, method string, params ...inte
 	}
 
 	request := &RPCRequest{
-		ID:     rand.String(constants.RequestIDLength),
+		ID:     rand.NewRequestID(constants.RequestIDLength),
 		Method: method,
 		Params: params,
 	}

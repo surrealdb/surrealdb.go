@@ -460,7 +460,7 @@ func (ws *Connection) Send(ctx context.Context, method string, params ...interfa
 	default:
 	}
 
-	id := rand.String(constants.RequestIDLength)
+	id := rand.NewRequestID(constants.RequestIDLength)
 	request := &connection.RPCRequest{
 		ID:     id,
 		Method: method,
