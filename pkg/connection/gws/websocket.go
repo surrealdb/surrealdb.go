@@ -16,6 +16,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
+type State int
+
 type Connection struct {
 	connection.Toolkit
 
@@ -24,8 +26,9 @@ type Connection struct {
 
 	Timeout time.Duration
 
-	connCloseCh    chan struct{}
-	connCloseError error
+	closeCh    chan struct{}
+	closeError error
+	closed     bool
 
 	handler *websocketHandler
 }
@@ -40,19 +43,23 @@ func (h *websocketHandler) OnOpen(socket *gws.Conn) {
 	// Connection opened successfully
 }
 
+// Received a close frame from the other end of the network connection, or disconnected voluntarily due to an error in the IO process
+// In the former case, err can be asserted as *gws.CloseError.
 func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
 	h.conn.connLock.Lock()
 	defer h.conn.connLock.Unlock()
 
-	if h.conn.connCloseCh != nil {
+	if h.conn.closeCh != nil {
 		select {
-		case <-h.conn.connCloseCh:
+		case <-h.conn.closeCh:
 			// Already closed
 		default:
-			close(h.conn.connCloseCh)
-			h.conn.connCloseError = err
+			close(h.conn.closeCh)
+			h.conn.closeError = err
 		}
 	}
+
+	h.conn.closed = true
 }
 
 func (h *websocketHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
@@ -153,12 +160,12 @@ func (c *Connection) Close(ctx context.Context) error {
 	}
 
 	// Signal closing
-	if c.connCloseCh != nil {
+	if c.closeCh != nil {
 		select {
-		case <-c.connCloseCh:
+		case <-c.closeCh:
 			// Already closed
 		default:
-			close(c.connCloseCh)
+			close(c.closeCh)
 		}
 	}
 
@@ -175,8 +182,31 @@ func (c *Connection) Close(ctx context.Context) error {
 	return nil
 }
 
+func (c *Connection) IsClosed() bool {
+	return c.closed
+}
+
 // Connect tries to establish a WebSocket connection to SurrealDB.
 // This method must be called after New and before any other operations.
+//
+// For simplicity, this method does not check if the connection is already being
+// established, has been established, or has been closed.
+// It will always try to establish a new connection.
+// So, it is the caller's responsibility to ensure that
+// this method is called only when the connection is not established yet.
+//
+// Do not call this method to reconnect already closed connections.
+// To reconnect, you should create a new instance of Connection
+// and call Connect on it.
+//
+// This is to prevent it to have many internal states that would lead to complexity and bugs.
+// You should assume gws.Connection to have only three states:
+// 1. Pending: gws.Connection is instantiated but not connected yet, or it is in the process of connecting.
+// 2. Connected: gws.Connection is connected and ready to use.
+// 3. Closed: gws.Connection is closed and cannot be used anymore.
+//
+// Once you reach 3, you can use IsClosed to check if the connection is closed,
+// so that a high-level feature can be implemented to reconnect automatically.
 func (c *Connection) Connect(ctx context.Context) error {
 	c.handler = &websocketHandler{conn: c}
 
@@ -204,7 +234,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	defer c.connLock.Unlock()
 
 	c.conn = conn
-	c.connCloseCh = make(chan struct{})
+	c.closeCh = make(chan struct{})
 
 	// Start reading messages
 	go conn.ReadLoop()
@@ -236,8 +266,8 @@ func (c *Connection) Send(ctx context.Context, method string, params ...interfac
 	}
 
 	select {
-	case <-c.connCloseCh:
-		return nil, c.connCloseError
+	case <-c.closeCh:
+		return nil, c.closeError
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
