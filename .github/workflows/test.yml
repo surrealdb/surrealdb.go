@@ -48,14 +48,14 @@ jobs:
           # v2.3.7 with Go 1.24.1 with gws
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
-            connection-type: 'http'
-            surrealdb-url: 'http://localhost:8000'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
           # v2.3.7 with Go 1.24.1 with gws and reconnection
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
-            connection-type: 'http'
-            surrealdb-url: 'http://localhost:8000'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
             surrealdb-reconnection-check-interval: '1s'
           # v2.3.7 with Go 1.23.11
