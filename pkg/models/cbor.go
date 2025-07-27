@@ -9,7 +9,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 )
 
-var (
+const (
 	TagNone           uint64 = 6
 	TagTable          uint64 = 7
 	TagRecordID       uint64 = 8
