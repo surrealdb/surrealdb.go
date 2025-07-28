@@ -21,7 +21,7 @@ body:
     id: repro
     attributes:
       label: Reproduction
-      description: Code snippet, the location of your repository, GitHub gist, or whatever you can use to reliably reproduce the issue, if any
+      description: Code snippet, the location of your repository, GitHub gist, or whatever you can use to reliably reproduce the issue
       placeholder: Example code or https://github.com/USER/REPO
     validations:
       required: true
@@ -29,7 +29,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: What are the steps necessary to reproduce this bug?
+      description: Given the reproduction code, what are the steps necessary to reproduce this bug?
       placeholder: Detail the steps taken to reproduce the behaviour.
     validations:
       required: true
