@@ -3,7 +3,6 @@ package connection
 import (
 	"bytes"
 	"context"
-
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -41,11 +40,9 @@ func TestHttpTestSuite(t *testing.T) {
 
 // SetupSuite is called before the s starts running
 func (s *HTTPTestSuite) SetupSuite() {
-
 }
 
 func (s *HTTPTestSuite) TearDownSuite() {
-
 }
 
 func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {

@@ -14,9 +14,11 @@ const (
 	defaultURL = "ws://localhost:8000"
 )
 
-var currentURL = os.Getenv("SURREALDB_URL")
-var reconnect = os.Getenv("SURREALDB_RECONNECTION_CHECK_INTERVAL")
-var useGWS = os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws"
+var (
+	currentURL = os.Getenv("SURREALDB_URL")
+	reconnect  = os.Getenv("SURREALDB_RECONNECTION_CHECK_INTERVAL")
+	useGWS     = os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws"
+)
 
 func getSurrealDBWSURL() string {
 	if currentURL == "" {
@@ -42,9 +44,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 		}
 	}
 
-	var (
-		db *surrealdb.DB
-	)
+	var db *surrealdb.DB
 
 	if useGWS {
 		p, confErr := surrealdb.Configure(getSurrealDBWSURL(),

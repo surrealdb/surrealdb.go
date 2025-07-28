@@ -68,7 +68,7 @@ func (s *ConnectionTestSuite) SetupSuite() {
 
 	// sign in
 	var token connection.RPCResponse[string]
-	err = connection.Send(con, context.Background(), &token, "signin", map[string]interface{}{
+	err = connection.Send(con, context.Background(), &token, "signin", map[string]any{
 		"user": "root",
 		"pass": "root",
 	})
@@ -86,7 +86,7 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	con := s.connImplementations[s.name]
 
 	var createRes connection.RPCResponse[testUser]
-	err := connection.Send(con, context.Background(), &createRes, "create", "users", map[string]interface{}{
+	err := connection.Send(con, context.Background(), &createRes, "create", "users", map[string]any{
 		"username": "remi",
 		"password": "password",
 	})

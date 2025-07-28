@@ -2,9 +2,7 @@ package constants
 
 import "time"
 
-var (
-	AuthTokenKey = "auth_token"
-)
+var AuthTokenKey = "auth_token"
 
 const (
 	// RequestIDLength size of id sent on WS request

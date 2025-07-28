@@ -138,7 +138,7 @@ func (s *SurrealDBTestSuite) TestDelete() {
 
 func (s *SurrealDBTestSuite) TestInsert() {
 	s.Run("raw map works", func() {
-		insert, err := surrealdb.Insert[testUser](context.Background(), s.db, "users", map[string]interface{}{
+		insert, err := surrealdb.Insert[testUser](context.Background(), s.db, "users", map[string]any{
 			"username": "johnny",
 			"password": "123",
 		})
@@ -177,7 +177,7 @@ func (s *SurrealDBTestSuite) TestInsert() {
 func (s *SurrealDBTestSuite) TestPatch() {
 	recordID, err := models.ParseRecordID("users:999")
 	s.Require().NoError(err)
-	_, err = surrealdb.Create[testUser](context.Background(), s.db, *recordID, map[string]interface{}{
+	_, err = surrealdb.Create[testUser](context.Background(), s.db, *recordID, map[string]any{
 		"username": "john999",
 		"password": "123",
 	})
@@ -192,7 +192,7 @@ func (s *SurrealDBTestSuite) TestPatch() {
 	_, err = surrealdb.Patch(context.Background(), s.db, *recordID, patches)
 	s.Require().NoError(err)
 
-	user2, err := surrealdb.Select[map[string]interface{}](context.Background(), s.db, *recordID)
+	user2, err := surrealdb.Select[map[string]any](context.Background(), s.db, *recordID)
 	s.Require().NoError(err)
 
 	username := (*user2)["username"].(string)
@@ -251,7 +251,7 @@ func (s *SurrealDBTestSuite) TestLiveViaMethod() {
 	notifications, err := s.db.LiveNotifications(live.String())
 	s.Require().NoError(err)
 
-	_, e := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]interface{}{
+	_, e := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]any{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -267,7 +267,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 		s.T().Skip("Live queries are not supported in HTTP connection")
 		return
 	}
-	res, err := surrealdb.Query[models.UUID](context.Background(), s.db, "LIVE SELECT * FROM users", map[string]interface{}{})
+	res, err := surrealdb.Query[models.UUID](context.Background(), s.db, "LIVE SELECT * FROM users", map[string]any{})
 	s.Require().NoError(err)
 
 	liveID := (*res)[0].Result.String()
@@ -281,7 +281,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 	}()
 
 	// create user
-	_, e := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]interface{}{
+	_, e := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]any{
 		"username": "johnny",
 		"password": "123",
 	})
@@ -294,7 +294,7 @@ func (s *SurrealDBTestSuite) TestLiveViaQuery() {
 
 func (s *SurrealDBTestSuite) TestCreate() {
 	s.Run("raw map works", func() {
-		user, err := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]interface{}{
+		user, err := surrealdb.Create[testUser](context.Background(), s.db, "users", map[string]any{
 			"username": "johnny",
 			"password": "123",
 		})
@@ -406,7 +406,7 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 func (s *SurrealDBTestSuite) TestMerge() {
 	recordID, err := models.ParseRecordID("users:999")
 	s.Require().NoError(err)
-	_, err = surrealdb.Create[testUser](context.Background(), s.db, *recordID, map[string]interface{}{
+	_, err = surrealdb.Create[testUser](context.Background(), s.db, *recordID, map[string]any{
 		"username": "john999",
 		"password": "123",
 	})
@@ -465,7 +465,7 @@ func (s *SurrealDBTestSuite) TestRelateAndInsertRelation() {
 func (s *SurrealDBTestSuite) TestQueryRaw() {
 	queries := []surrealdb.QueryStmt{
 		{SQL: "CREATE person SET name = 'John'"},
-		{SQL: "SELECT * FROM type::table($tb)", Vars: map[string]interface{}{"tb": "person"}},
+		{SQL: "SELECT * FROM type::table($tb)", Vars: map[string]any{"tb": "person"}},
 	}
 
 	err := surrealdb.QueryRaw(context.Background(), s.db, &queries)
@@ -482,12 +482,12 @@ func (s *SurrealDBTestSuite) TestQueryRaw() {
 
 func (s *SurrealDBTestSuite) TestRPCError() {
 	s.Run("Test valid query", func() {
-		_, err := surrealdb.Query[[]testUser](context.Background(), s.db, "SELECT * FROM users", map[string]interface{}{})
+		_, err := surrealdb.Query[[]testUser](context.Background(), s.db, "SELECT * FROM users", map[string]any{})
 		s.Require().NoError(err)
 	})
 
 	s.Run("Test invalid query", func() {
-		_, err := surrealdb.Query[[]testUser](context.Background(), s.db, "SELEC * FROM users", map[string]interface{}{})
+		_, err := surrealdb.Query[[]testUser](context.Background(), s.db, "SELEC * FROM users", map[string]any{})
 		s.Require().Error(err)
 	})
 }

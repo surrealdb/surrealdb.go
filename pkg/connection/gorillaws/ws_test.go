@@ -20,9 +20,7 @@ func TestWsTestSuite(t *testing.T) {
 
 // SetupSuite is called before the s starts running
 func (s *WsTestSuite) SetupSuite() {
-
 }
 
 func (s *WsTestSuite) TearDownSuite() {
-
 }

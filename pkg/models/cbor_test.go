@@ -35,7 +35,7 @@ func TestForGeometryPoint(t *testing.T) {
 	err = cbor.Unmarshal(encoded, &decoded3)
 	assert.Nil(t, err, "Should not encounter an error while decoding to any using cbor")
 	assert.IsType(t, cbor.Tag{}, decoded3, "Decoded value should be of type GeometryPoint")
-	assert.Equal(t, cbor.Tag{Number: TagGeometryPoint, Content: []interface{}{45.65, 12.23}}, decoded3)
+	assert.Equal(t, cbor.Tag{Number: TagGeometryPoint, Content: []any{45.65, 12.23}}, decoded3)
 }
 
 func TestForGeometryLine(t *testing.T) {
@@ -79,9 +79,9 @@ func TestForGeometryPolygon(t *testing.T) {
 func TestForRequestPayload(t *testing.T) {
 	em := getCborEncoder()
 
-	params := []interface{}{
+	params := []any{
 		"SELECT marketing, count() FROM $tb GROUP BY marketing",
-		map[string]interface{}{
+		map[string]any{
 			"tb":              Table("person"),
 			"line":            GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
 			"datetime":        time.Now(),
@@ -93,7 +93,7 @@ func TestForRequestPayload(t *testing.T) {
 		},
 	}
 
-	requestPayload := map[string]interface{}{
+	requestPayload := map[string]any{
 		"id":     "2",
 		"method": "query",
 		"params": params,
@@ -224,7 +224,7 @@ func TestMapDecodingIssue207(t *testing.T) {
 	dm := getCborDecoder()
 
 	// Test case reproducing issue #207
-	// When decoding maps, they should be decoded as map[string]interface{} for JSON compatibility
+	// When decoding maps, they should be decoded as map[string]any for JSON compatibility
 	type DeviceProperties struct {
 		Desired  map[string]any `json:"desired"`
 		Reported map[string]any `json:"reported"`
@@ -256,10 +256,10 @@ func TestMapDecodingIssue207(t *testing.T) {
 	err = dm.Unmarshal(encoded, &decoded)
 	assert.NoError(t, err, "Should not error while decoding")
 
-	// The nested settings map had been decoded as map[inetrface{}]interface{} instead of map[string]interface{}
-	// This is a problem for JSON marshaling, as it expects map[string]interface{}.
+	// The nested settings map had been decoded as map[inetrface{}]any instead of map[string]any
+	// This is a problem for JSON marshaling, as it expects map[string]any.
 
-	// By doing the following, we ensure that the map[string]interface{} that have nested maps
+	// By doing the following, we ensure that the map[string]any that have nested maps
 	// are properly handled and can be marshaled to JSON without issues.
 	_, err = json.Marshal(decoded)
 	assert.NoError(t, err, "Should be able to marshal decoded struct to JSON")

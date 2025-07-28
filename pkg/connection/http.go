@@ -74,7 +74,7 @@ func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
 	return h.Unmarshaler
 }
 
-func (h *HTTPConnection) Send(ctx context.Context, method string, params ...interface{}) (*RPCResponse[cbor.RawMessage], error) {
+func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error) {
 	if h.BaseURL == "" {
 		return nil, constants.ErrNoBaseURL
 	}
@@ -130,7 +130,6 @@ func (h *HTTPConnection) Send(ctx context.Context, method string, params ...inte
 
 func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	resp, err := h.httpClient.Do(req)
-
 	if err != nil {
 		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}
@@ -164,7 +163,7 @@ func (h *HTTPConnection) Use(ctx context.Context, namespace, database string) er
 	return nil
 }
 
-func (h *HTTPConnection) Let(ctx context.Context, key string, value interface{}) error {
+func (h *HTTPConnection) Let(ctx context.Context, key string, value any) error {
 	h.variables.Store(key, value)
 	return nil
 }

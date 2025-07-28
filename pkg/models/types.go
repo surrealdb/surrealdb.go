@@ -6,8 +6,7 @@ import (
 
 type DecimalString string
 
-type CustomNil struct {
-}
+type CustomNil struct{}
 
 func (c *CustomNil) MarshalCBOR() ([]byte, error) {
 	return cbor.Marshal(cbor.Tag{

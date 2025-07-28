@@ -39,7 +39,6 @@ func (s *EmbeddedConnectionTestSuite) SetupSuite() {
 
 // TearDownTest is called after each test
 func (s *EmbeddedConnectionTestSuite) TearDownTest() {
-
 }
 
 // TearDownSuite is called after the s has finished running

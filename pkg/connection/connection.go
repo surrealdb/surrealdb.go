@@ -27,9 +27,9 @@ type Connection interface {
 	// The `method` is the SurrealDB method to call, and `params` are the parameters for the method.
 	//
 	// The `ctx` is used to cancel the request if the context is canceled.
-	Send(ctx context.Context, method string, params ...interface{}) (*RPCResponse[cbor.RawMessage], error)
+	Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error)
 	Use(ctx context.Context, namespace string, database string) error
-	Let(ctx context.Context, key string, value interface{}) error
+	Let(ctx context.Context, key string, value any) error
 	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)
 	GetUnmarshaler() codec.Unmarshaler

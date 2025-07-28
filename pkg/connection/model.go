@@ -25,25 +25,25 @@ func (r *RPCError) Is(target error) bool {
 
 // RPCRequest represents an incoming JSON-RPC request
 type RPCRequest struct {
-	ID     interface{}   `json:"id" msgpack:"id"`
-	Method string        `json:"method,omitempty" msgpack:"method,omitempty"`
-	Params []interface{} `json:"params,omitempty" msgpack:"params,omitempty"`
+	ID     any    `json:"id" msgpack:"id"`
+	Method string `json:"method,omitempty" msgpack:"method,omitempty"`
+	Params []any  `json:"params,omitempty" msgpack:"params,omitempty"`
 }
 
 // RPCResponse represents an outgoing JSON-RPC response
 type RPCResponse[T any] struct {
 	// ID is the ID of the request this response corresponds to.
 	// Note that this is always nil in case of HTTPConnection.
-	ID     interface{} `json:"id" msgpack:"id"`
-	Error  *RPCError   `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result *T          `json:"result,omitempty" msgpack:"result,omitempty"`
+	ID     any       `json:"id" msgpack:"id"`
+	Error  *RPCError `json:"error,omitempty" msgpack:"error,omitempty"`
+	Result *T        `json:"result,omitempty" msgpack:"result,omitempty"`
 }
 
 // RPCNotification represents an outgoing JSON-RPC notification
 type RPCNotification struct {
-	ID     interface{}   `json:"id" msgpack:"id"`
-	Method string        `json:"method,omitempty" msgpack:"method,omitempty"`
-	Params []interface{} `json:"params,omitempty" msgpack:"params,omitempty"`
+	ID     any    `json:"id" msgpack:"id"`
+	Method string `json:"method,omitempty" msgpack:"method,omitempty"`
+	Params []any  `json:"params,omitempty" msgpack:"params,omitempty"`
 }
 
 type RPCFunction string

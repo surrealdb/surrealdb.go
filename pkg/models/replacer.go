@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func replacerBeforeEncode(value interface{}) interface{} {
+func replacerBeforeEncode(value any) any {
 	valueType := reflect.TypeOf(value)
 	valueKind := valueType.Kind()
 
@@ -16,8 +16,8 @@ func replacerBeforeEncode(value interface{}) interface{} {
 	}
 
 	if valueKind == reflect.Map {
-		oldValue := value.(map[string]interface{})
-		newValue := make(map[interface{}]interface{})
+		oldValue := value.(map[string]any)
+		newValue := make(map[any]any)
 		for k, v := range oldValue {
 			newKey := replacerBeforeEncode(k)
 			newVal := replacerBeforeEncode(v)
@@ -34,7 +34,7 @@ func replacerBeforeEncode(value interface{}) interface{} {
 	return value
 }
 
-func replacerAfterDecode(value interface{}) interface{} {
+func replacerAfterDecode(value any) any {
 	valueType := reflect.TypeOf(value)
 	valueKind := valueType.Kind()
 
@@ -45,8 +45,8 @@ func replacerAfterDecode(value interface{}) interface{} {
 	}
 
 	if valueKind == reflect.Map {
-		oldValue := value.(map[string]interface{})
-		newValue := make(map[interface{}]interface{})
+		oldValue := value.(map[string]any)
+		newValue := make(map[any]any)
 		for k, v := range oldValue {
 			newKey := replacerAfterDecode(k)
 			newVal := replacerAfterDecode(v)

@@ -4,16 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/fxamacker/cbor/v2"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -421,7 +420,7 @@ func (ws *Connection) Use(ctx context.Context, namespace, database string) error
 	return connection.Send[any](ws, ctx, nil, "use", namespace, database)
 }
 
-func (ws *Connection) Let(ctx context.Context, key string, value interface{}) error {
+func (ws *Connection) Let(ctx context.Context, key string, value any) error {
 	return connection.Send[any](ws, ctx, nil, "let", key, value)
 }
 
@@ -445,7 +444,7 @@ func (ws *Connection) GetUnmarshaler() codec.Unmarshaler {
 // The rationale is that it resulted in two different implementations of the Connection interface,
 // HTTP and WebSocket, to behave differently in case of a timeout.
 // The WebSocketConnection would return ErrTimeout, while the HTTPConnection would return context.DeadlineExceeded.
-func (ws *Connection) Send(ctx context.Context, method string, params ...interface{}) (*connection.RPCResponse[cbor.RawMessage], error) {
+func (ws *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if ws.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, ws.Timeout)
@@ -489,7 +488,7 @@ func (ws *Connection) Send(ctx context.Context, method string, params ...interfa
 	}
 }
 
-func (ws *Connection) write(v interface{}) error {
+func (ws *Connection) write(v any) error {
 	data, err := ws.Marshaler.Marshal(v)
 	if err != nil {
 		return err

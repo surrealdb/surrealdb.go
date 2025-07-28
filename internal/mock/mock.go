@@ -6,8 +6,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
-type ws struct {
-}
+type ws struct{}
 
 func (w *ws) Connect(url string) error {
 	return nil
