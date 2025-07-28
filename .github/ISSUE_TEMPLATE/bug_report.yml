@@ -17,12 +17,14 @@ body:
       placeholder: A short description of what the bug is.
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: repro
     attributes:
       label: Reproduction
-      description: The location of your repository, GitHub gist, or whatever you can use to reliably reproduce the issue, if any
-      placeholder: https://github.com/USER/REPO
+      description: Code snippet, the location of your repository, GitHub gist, or whatever you can use to reliably reproduce the issue, if any
+      placeholder: Example code or https://github.com/USER/REPO
+    validations:
+      required: true
   - type: textarea
     id: steps
     attributes:
