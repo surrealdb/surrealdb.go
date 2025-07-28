@@ -68,11 +68,9 @@ func (h *websocketHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
 }
 
 func (h *websocketHandler) OnPing(socket *gws.Conn, payload []byte) {
-
 }
 
 func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
-
 }
 
 func (c *Connection) write(v any) error {

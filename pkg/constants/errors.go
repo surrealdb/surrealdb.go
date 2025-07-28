@@ -8,6 +8,7 @@ var (
 	ErrQuery        = errors.New("error occurred processing the SurrealDB query")
 	ErrNoRow        = errors.New("error no row")
 )
+
 var (
 	ErrIDInUse            = errors.New("id already in use")
 	ErrNoBaseURL          = errors.New("base url not set")

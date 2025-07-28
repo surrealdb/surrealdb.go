@@ -67,7 +67,7 @@ func ExampleQuery_none_and_null_handling() {
 	}
 
 	// Output:
-	//ID: t:a, Nullable: null, Option: none
+	// ID: t:a, Nullable: null, Option: none
 	// ID: t:b, Nullable: true, Option: none
 	// ID: t:c, Nullable: true, Option: false
 	// ID: t:d, Nullable: false, Option: true
