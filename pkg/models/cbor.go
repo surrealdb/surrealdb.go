@@ -37,7 +37,7 @@ const (
 )
 
 func registerCborTags() cbor.TagSet {
-	customTags := map[uint64]interface{}{
+	customTags := map[uint64]any{
 		TagNone:     CustomNil{},
 		TagTable:    Table(""),
 		TagRecordID: RecordID{},
@@ -80,7 +80,7 @@ type CborMarshaler struct {
 	em   cbor.EncMode
 }
 
-func (c *CborMarshaler) Marshal(v interface{}) ([]byte, error) {
+func (c *CborMarshaler) Marshal(v any) ([]byte, error) {
 	v = replacerBeforeEncode(v)
 	return c.cborEncMode().Marshal(v)
 }
@@ -102,7 +102,7 @@ type CborUnmarshaler struct {
 	dm   cbor.DecMode
 }
 
-func (c *CborUnmarshaler) Unmarshal(data []byte, dst interface{}) error {
+func (c *CborUnmarshaler) Unmarshal(data []byte, dst any) error {
 	err := c.cborDecMode().Unmarshal(data, dst)
 	if err != nil {
 		return err

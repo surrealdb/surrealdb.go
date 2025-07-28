@@ -75,7 +75,7 @@ func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
 
 }
 
-func (c *Connection) write(v interface{}) error {
+func (c *Connection) write(v any) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
@@ -248,7 +248,7 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 }
 
 // Let implements connection.Connection.
-func (c *Connection) Let(ctx context.Context, key string, value interface{}) error {
+func (c *Connection) Let(ctx context.Context, key string, value any) error {
 	return connection.Send[any](c, ctx, nil, "let", key, value)
 }
 
@@ -258,7 +258,7 @@ func (c *Connection) LiveNotifications(id string) (chan connection.Notification,
 }
 
 // Send implements connection.Connection.
-func (c *Connection) Send(ctx context.Context, method string, params ...interface{}) (*connection.RPCResponse[cbor.RawMessage], error) {
+func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)

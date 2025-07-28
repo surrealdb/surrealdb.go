@@ -52,11 +52,11 @@ func (e *QueryError) Is(target error) bool {
 type QueryStmt struct {
 	unmarshaler codec.Unmarshaler
 	SQL         string
-	Vars        map[string]interface{}
+	Vars        map[string]any
 	Result      QueryResult[cbor.RawMessage]
 }
 
-func (q *QueryStmt) GetResult(dest interface{}) error {
+func (q *QueryStmt) GetResult(dest any) error {
 	if q.unmarshaler == nil {
 		return constants.ErrNoUnmarshaler
 	}
@@ -81,7 +81,7 @@ type Auth struct {
 	Password  string `json:"pass,omitempty"`
 }
 
-type Obj map[interface{}]interface{}
+type Obj map[any]any
 
 type Result[T any] struct {
 	T any

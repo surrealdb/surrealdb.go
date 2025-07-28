@@ -143,8 +143,8 @@ func (db *DB) Use(ctx context.Context, ns, database string) error {
 	return db.con.Use(ctx, ns, database)
 }
 
-func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
-	var info connection.RPCResponse[map[string]interface{}]
+func (db *DB) Info(ctx context.Context) (map[string]any, error) {
+	var info connection.RPCResponse[map[string]any]
 	err := connection.Send(db.con, ctx, &info, "info")
 	return *info.Result, err
 }
@@ -174,7 +174,7 @@ func (db *DB) Info(ctx context.Context) (map[string]interface{}, error) {
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
-func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) {
+func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := connection.Send(db.con, ctx, &token, "signup", authData); err != nil {
 		return "", err
@@ -212,7 +212,7 @@ func (db *DB) SignUp(ctx context.Context, authData interface{}) (string, error) 
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
-func (db *DB) SignIn(ctx context.Context, authData interface{}) (string, error) {
+func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
 	var token connection.RPCResponse[string]
 	if err := connection.Send(db.con, ctx, &token, "signin", authData); err != nil {
 		return "", err
@@ -249,7 +249,7 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 	return nil
 }
 
-func (db *DB) Let(ctx context.Context, key string, val interface{}) error {
+func (db *DB) Let(ctx context.Context, key string, val any) error {
 	return db.con.Let(ctx, key, val)
 }
 
@@ -304,7 +304,7 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 // - Transport error like WebSocket message write timeout, connection closed, etc.
 // - Unmarshal error if the response cannot be unmarshaled into the provided res parameter.
 // - RPCError if the request was processed by SurrealDB but it failed there.
-func Send[Result any](ctx context.Context, db *DB, res *connection.RPCResponse[Result], method string, params ...interface{}) error {
+func Send[Result any](ctx context.Context, db *DB, res *connection.RPCResponse[Result], method string, params ...any) error {
 	allowedSendMethods := []string{
 		"select", "create", "insert", "insert_relation",
 		"kill", "live", "merge", "relate", "update", "upsert",
@@ -385,7 +385,7 @@ func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.U
 // If you tried to insert using the `query` RPC method with `INSERT` statement,
 // you may get no RPCError, but a QueryError saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
-func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string]interface{}) (*[]QueryResult[TResult], error) {
+func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
 	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", sql, vars)
 	if err != nil {
 		return nil, err
@@ -436,7 +436,7 @@ func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string
 	return &qr, errs
 }
 
-func Create[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Create[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
 	return send[TResult](ctx, db, "create", what, data)
 }
 
@@ -453,17 +453,17 @@ func Delete[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what 
 	return send[TResult](ctx, db, "delete", what)
 }
 
-func Upsert[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Upsert[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
 	return send[TResult](ctx, db, "upsert", what, data)
 }
 
 // Update a table or record in the database like a PUT request.
-func Update[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Update[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
 	return send[TResult](ctx, db, "update", what, data)
 }
 
 // Merge a table or record in the database like a PATCH request.
-func Merge[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data interface{}) (*TResult, error) {
+func Merge[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
 	return send[TResult](ctx, db, "merge", what, data)
 }
 
@@ -472,7 +472,7 @@ func Merge[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what T
 // Insert cannot create a relationship. If you want to create a relationship,
 // use InsertRelation if you need to specify the ID of the relationship,
 // or use Relate if you want to create a relationship with a generated ID.
-func Insert[TResult any](ctx context.Context, db *DB, what models.Table, data interface{}) (*[]TResult, error) {
+func Insert[TResult any](ctx context.Context, db *DB, what models.Table, data any) (*[]TResult, error) {
 	return send[[]TResult](ctx, db, "insert", what, data)
 }
 
@@ -522,7 +522,7 @@ func InsertRelation[TResult any](ctx context.Context, db *DB, relationship *Rela
 
 func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 	preparedQuery := ""
-	parameters := map[string]interface{}{}
+	parameters := map[string]any{}
 	for i := 0; i < len(*queries); i++ {
 		// append query
 		preparedQuery += fmt.Sprintf("%s;", (*queries)[i].SQL)

@@ -46,8 +46,10 @@ go get github.com/surrealdb/surrealdb.go
 
 ## Getting started
 
-[//]: # (In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records.)
+[//]: # "In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records."
+
 In the example provided below, we are going to connect and authenticate on a SurrealDB server, set the namespace and make several data manipulation requests.
+
 > This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
 ```go
@@ -102,7 +104,7 @@ func main() {
 	}(token)
 
 	// Create an entry
-	person1, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
+	person1, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[any]any{
 		"Name":     "John",
 		"Surname":  "Doe",
 		"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -159,17 +161,20 @@ func main() {
 Please refer to the [example](./example) directory for more examples.
 
 ### Doing it your way
+
 All Data manipulation methods are handled by an undelying `send` function. This function is
 exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
 methods are:
-- select
-- create
-- insert
-- upsert
-- update
-- patch
-- delete
-- query
+
+-   select
+-   create
+-   insert
+-   upsert
+-   update
+-   patch
+-   delete
+-   query
+
 ```go
 type UserSelectResult struct {
 	Result []Users
@@ -187,38 +192,47 @@ if err != nil {
 
 ### Instructions for running the example
 
-- In a new folder, create a file called `main.go` and paste the above code
-- Run `go mod init github.com/<github-username>/<project-name>` to initialise a `go.mod` file
-- Run `go mod tidy` to download the `surrealdb.go` dependency
-- Run `go run main.go` to run the example.
+-   In a new folder, create a file called `main.go` and paste the above code
+-   Run `go mod init github.com/<github-username>/<project-name>` to initialise a `go.mod` file
+-   Run `go mod tidy` to download the `surrealdb.go` dependency
+-   Run `go run main.go` to run the example.
 
 ## Connection Engines
+
 There are 2 different connection engines you can use to connect to SurrealDb backend. You can do so via Websocket or through HTTP
 connections
 
 ### Via Websocket
+
 ```go
 db, err := surrealdb.New("ws://localhost:8000")
 ```
+
 or for a secure connection
+
 ```go
 db, err := surrealdb.New("wss://localhost:8000")
 ```
 
 ### Via HTTP
+
 There are some functions that are not available on RPC when using HTTP but on Websocket. All these except
 the "live" endpoint are effectively implemented in the HTTP library and provides the same result as though
 it is natively available on HTTP. While using the HTTP connection engine, note that live queries will still
 use a websocket connection if the backend supports it
+
 ```go
 db, err := surrealdb.New("http://localhost:8000")
 ```
+
 or for a secure connection
+
 ```go
 db, err := surrealdb.New("https://localhost:8000")
 ```
 
 ### Using SurrealKV and Memory
+
 SurrealKV and Memory also do not support live notifications at this time. This would be updated in the next
 release.
 
@@ -229,17 +243,20 @@ release.
 > Until then, please use `http://` or `ws://` endpoints to connect to a running SurrealDB server instance.
 
 For Surreal KV
+
 ```go
 db, err := surrealdb.New("surrealkv://path/to/dbfile.kv")
 ```
 
 For Memory
+
 ```go
 db, err := surrealdb.New("mem://")
 db, err := surrealdb.New("memory://")
 ```
 
 ## Data Models
+
 This package facilitates communication between client and the backend service using the Concise
 Binary Object Representation (CBOR) format. It streamlines data serialization and deserialization
 while ensuring efficient and lightweight communication. The library also provides custom models
@@ -248,42 +265,47 @@ the client and the backend.
 
 See the [documetation on data models](https://surrealdb.com/docs/surrealql/datamodel) on support data types
 
-| CBOR Type         |  Go Representation | Example                    |
-|-------------------|-----------------------------|----------------------------|
-| Null              | `nil`                       | `var x interface{} = nil`  |
-| None              | `surrealdb.None`           | `map[string]interface{}{"customer": surrealdb.None}`  |
-| Boolean           | `bool`                      | `true`, `false`            |
-| Array             | `[]interface{}`             | `[]MyStruct{item1, item2}`  |
-| Date/Time         | `time.Time`                 | `time.Now()`               |
-| Duration         | `time.Duration`              | `time.Duration(8821356)`        |
-| UUID (string representation)  | `surrealdb.UUID(string)` | `surrealdb.UUID("123e4567-e89b-12d3-a456-426614174000")` |
-| UUID (binary representation)  | `surrealdb.UUIDBin([]bytes)`| `surrealdb.UUIDBin([]byte{0x01, 0x02, ...}`)` |
-| Integer  | `uint`, `uint64`,  `int`, `int64`            | `42`, `uint64(100000)`,  `-42`, `int64(-100000)`  |
-| Floating Point    | `float32`, `float64`         | `3.14`, `float64(2.71828)` |
-| Byte String, Binary Encoded Data       | `[]byte`                    | `[]byte{0x01, 0x02}`       |
-| Text String | `string`            | `"Hello, World!"`          |
-| Map   | `map[interface{}]interface{}`   | `map[string]float64{"one": 1.0}` |
-| Table name| `surrealdb.Table(name)`   | `surrealdb.Table("users")`          |
-| Record ID| `surrealdb.RecordID{Table: string, ID: interface{}}`   | `surrealdb.RecordID{Table: "customers", ID: 1}, surrealdb.NewRecordID("customers", 1)`          |
-| Geometry Point | `surrealdb.GeometryPoint{Latitude: float64, Longitude: float64}`                    | `surrealdb.GeometryPoint{Latitude: 11.11, Longitude: 22.22`          |
-| Geometry Line | `surrealdb.GeometryLine{GeometricPoint1, GeometricPoint2,... }`                    |       |
-| Geometry Polygon | `surrealdb.GeometryPolygon{GeometryLine1, GeometryLine2,... }`                    |       |
-| Geometry Multipoint | `surrealdb.GeometryMultiPoint{GeometryPoint1, GeometryPoint2,... }`   |       |
-| Geometry MultiLine | `surrealdb.GeometryMultiLine{GeometryLine1, GeometryLine2,... }`   |       |
-| Geometry MultiPolygon | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryPolygon2,... }`   |       |
-| Geometry Collection| `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryLine2, GeometryPoint3, GeometryMultiPoint4,... }`   |       |
+| CBOR Type                        | Go Representation                                                                                           | Example                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Null                             | `nil`                                                                                                       | `var x any = nil`                                                                      |
+| None                             | `surrealdb.None`                                                                                            | `map[string]any{"customer": surrealdb.None}`                                           |
+| Boolean                          | `bool`                                                                                                      | `true`, `false`                                                                        |
+| Array                            | `[]any`                                                                                                     | `[]MyStruct{item1, item2}`                                                             |
+| Date/Time                        | `time.Time`                                                                                                 | `time.Now()`                                                                           |
+| Duration                         | `time.Duration`                                                                                             | `time.Duration(8821356)`                                                               |
+| UUID (string representation)     | `surrealdb.UUID(string)`                                                                                    | `surrealdb.UUID("123e4567-e89b-12d3-a456-426614174000")`                               |
+| UUID (binary representation)     | `surrealdb.UUIDBin([]bytes)`                                                                                | `surrealdb.UUIDBin([]byte{0x01, 0x02, ...}`)`                                          |
+| Integer                          | `uint`, `uint64`, `int`, `int64`                                                                            | `42`, `uint64(100000)`, `-42`, `int64(-100000)`                                        |
+| Floating Point                   | `float32`, `float64`                                                                                        | `3.14`, `float64(2.71828)`                                                             |
+| Byte String, Binary Encoded Data | `[]byte`                                                                                                    | `[]byte{0x01, 0x02}`                                                                   |
+| Text String                      | `string`                                                                                                    | `"Hello, World!"`                                                                      |
+| Map                              | `map[any]any`                                                                                               | `map[string]float64{"one": 1.0}`                                                       |
+| Table name                       | `surrealdb.Table(name)`                                                                                     | `surrealdb.Table("users")`                                                             |
+| Record ID                        | `surrealdb.RecordID{Table: string, ID: any}`                                                                | `surrealdb.RecordID{Table: "customers", ID: 1}, surrealdb.NewRecordID("customers", 1)` |
+| Geometry Point                   | `surrealdb.GeometryPoint{Latitude: float64, Longitude: float64}`                                            | `surrealdb.GeometryPoint{Latitude: 11.11, Longitude: 22.22`                            |
+| Geometry Line                    | `surrealdb.GeometryLine{GeometricPoint1, GeometricPoint2,... }`                                             |                                                                                        |
+| Geometry Polygon                 | `surrealdb.GeometryPolygon{GeometryLine1, GeometryLine2,... }`                                              |                                                                                        |
+| Geometry Multipoint              | `surrealdb.GeometryMultiPoint{GeometryPoint1, GeometryPoint2,... }`                                         |                                                                                        |
+| Geometry MultiLine               | `surrealdb.GeometryMultiLine{GeometryLine1, GeometryLine2,... }`                                            |                                                                                        |
+| Geometry MultiPolygon            | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryPolygon2,... }`                                   |                                                                                        |
+| Geometry Collection              | `surrealdb.GeometryMultiPolygon{GeometryPolygon1, GeometryLine2, GeometryPoint3, GeometryMultiPoint4,... }` |                                                                                        |
 
 ## Helper Types
+
 ### surrealdb.O
+
 For some methods like create, insert, update, you can pass a map instead of an struct value. An example:
+
 ```go
-person, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
+person, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[any]any{
 	"Name":     "John",
 	"Surname":  "Doe",
 	"Location": models.NewGeometryPoint(-0.11, 22.00),
 })
 ```
+
 This can be simplified to:
+
 ```go
 person, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), surrealdb.O{
 	"Name":     "John",
@@ -291,13 +313,17 @@ person, err := surrealdb.Create[Person](context.Background(), db, models.Table("
 	"Location": models.NewGeometryPoint(-0.11, 22.00),
 })
 ```
+
 Where surrealdb.O is defined below. There is no special advantage in using this other than simplicity/legibility.
+
 ```go
-type surrealdb.O map[interface{}]interface{}
+type surrealdb.O map[any]any
 ```
 
 ### surrealdb.Result[T]
+
 This is useful for the `Send` function where `T` is the expected response type for a request. An example:
+
 ```go
 var res surrealdb.Result[[]Users]
 err := db.Send(context.Background(), &res, "select", model.Table("users"))
@@ -306,6 +332,7 @@ if err != nil {
 }
 fmt.Printf("users: %+v\n", users.R)
 ```
+
 ## Contributing
 
 You can run the Makefile commands to run and build the project
@@ -318,8 +345,3 @@ make lint
 
 You also need to be running SurrealDB alongside the tests.
 We recommend using the nightly build, as development may rely on the latest functionality.
-
-
-
-
-

@@ -93,7 +93,7 @@ func (h *EmbeddedConnection) Close(ctx context.Context) error {
 	return nil
 }
 
-func (h *EmbeddedConnection) Send(ctx context.Context, res interface{}, method string, params ...interface{}) error {
+func (h *EmbeddedConnection) Send(ctx context.Context, res any, method string, params ...any) error {
 	// Check if context is done before proceeding
 	select {
 	case <-ctx.Done():
@@ -138,7 +138,7 @@ func (h *EmbeddedConnection) Use(ctx context.Context, namespace, database string
 	return h.Send(ctx, nil, "use", namespace, database)
 }
 
-func (h *EmbeddedConnection) Let(ctx context.Context, key string, value interface{}) error {
+func (h *EmbeddedConnection) Let(ctx context.Context, key string, value any) error {
 	return h.Send(ctx, nil, "let", key, value)
 }
 
