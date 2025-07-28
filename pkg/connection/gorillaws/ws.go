@@ -218,18 +218,43 @@ func (ws *Connection) transitionToDisconnecting() error {
 	return nil
 }
 
+// transitionToDisconnectedWithError safely transitions the connection to disconnected state
+// when an error occurs that indicates the connection is closed.
+func (ws *Connection) transitionToDisconnectedWithError(err error) {
+	ws.stateLock.Lock()
+	defer ws.stateLock.Unlock()
+
+	// Only transition if we're currently connected
+	// This prevents overwriting the state if we're already disconnecting or disconnected
+	if ws.state == StateConnected {
+		ws.state = StateDisconnected
+		ws.connCloseError = err
+		ws.logger.Error("WebSocketConnection disconnected due to error", "error", err)
+
+		// Close the connCloseCh if it's not already closed
+		select {
+		case <-ws.connCloseCh:
+			// Already closed
+		default:
+			close(ws.connCloseCh)
+		}
+	}
+}
+
 func (ws *Connection) tryConnecting(ctx context.Context) error {
 	if err := ws.transitionToConnecting(); err != nil {
 		return err
 	}
 
 	if err := ws.connect(ctx); err != nil {
-		ws.state = StateDisconnected
-		ws.logger.Error("failed to connect WebSocketConnection", "error", err)
+		ws.transitionToDisconnectedWithError(err)
 		return err
 	}
 
+	// Safely transition to connected state
+	ws.stateLock.Lock()
 	ws.state = StateConnected
+	ws.stateLock.Unlock()
 	ws.logger.Debug("WebSocketConnection is connected")
 
 	return nil
@@ -516,7 +541,16 @@ func (ws *Connection) write(v any) error {
 
 	ws.connLock.Lock()
 	defer ws.connLock.Unlock()
-	return ws.Conn.WriteMessage(gorilla.BinaryMessage, data)
+	err = ws.Conn.WriteMessage(gorilla.BinaryMessage, data)
+
+	// Check if we got ErrCloseSent, which means the connection is closed
+	if errors.Is(err, gorilla.ErrCloseSent) {
+		// Transition to disconnected state so IsClosed() returns true
+		// This allows rews to detect the closed connection and reconnect
+		go ws.transitionToDisconnectedWithError(err)
+	}
+
+	return err
 }
 
 func (ws *Connection) readLoop() {
@@ -529,8 +563,7 @@ func (ws *Connection) readLoop() {
 			if err != nil {
 				shouldExit := ws.handleError(err)
 				if shouldExit {
-					ws.state = StateDisconnected
-					ws.logger.Error("WebSocketConnection readLoop: connection closed", "error", err)
+					ws.transitionToDisconnectedWithError(err)
 					return
 				}
 				continue
