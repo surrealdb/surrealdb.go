@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -22,21 +24,21 @@ type testUser struct {
 type ConnectionTestSuite struct {
 	suite.Suite
 	name                string
-	connImplementations map[string]Connection
+	connImplementations map[string]connection.Connection
 }
 
 func TestConnectionTestSuite(t *testing.T) {
 	ts := new(ConnectionTestSuite)
-	ts.connImplementations = make(map[string]Connection)
+	ts.connImplementations = make(map[string]connection.Connection)
 
-	ts.connImplementations["ws"] = NewWebSocketConnection(&Config{
+	ts.connImplementations["ws"] = gorillaws.New(&connection.Config{
 		BaseURL:     "ws://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
-	ts.connImplementations["http"] = NewHTTPConnection(&Config{
+	ts.connImplementations["http"] = connection.NewHTTPConnection(&connection.Config{
 		BaseURL:     "http://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
@@ -65,8 +67,8 @@ func (s *ConnectionTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	// sign in
-	var token RPCResponse[string]
-	err = Send(con, context.Background(), &token, "signin", map[string]interface{}{
+	var token connection.RPCResponse[string]
+	err = connection.Send(con, context.Background(), &token, "signin", map[string]interface{}{
 		"user": "root",
 		"pass": "root",
 	})
@@ -83,8 +85,8 @@ func (s *ConnectionTestSuite) TearDownSuite() {
 func (s *ConnectionTestSuite) Test_CRUD() {
 	con := s.connImplementations[s.name]
 
-	var createRes RPCResponse[testUser]
-	err := Send(con, context.Background(), &createRes, "create", "users", map[string]interface{}{
+	var createRes connection.RPCResponse[testUser]
+	err := connection.Send(con, context.Background(), &createRes, "create", "users", map[string]interface{}{
 		"username": "remi",
 		"password": "password",
 	})
@@ -93,8 +95,8 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 	s.Assert().Equal(createRes.Result.Username, "remi")
 	s.Assert().Equal(createRes.Result.Password, "password")
 
-	var selectRes RPCResponse[testUser]
-	err = Send(con, context.Background(), &selectRes, "select", createRes.Result.ID)
+	var selectRes connection.RPCResponse[testUser]
+	err = connection.Send(con, context.Background(), &selectRes, "select", createRes.Result.ID)
 	s.Require().NoError(err)
 
 	s.Assert().Equal(createRes.Result.Username, "remi")
@@ -102,17 +104,17 @@ func (s *ConnectionTestSuite) Test_CRUD() {
 
 	userToUpdate := createRes.Result
 	userToUpdate.Password = "newpassword"
-	var updateRes RPCResponse[testUser]
-	err = Send(con, context.Background(), &updateRes, "update", userToUpdate.ID, userToUpdate)
+	var updateRes connection.RPCResponse[testUser]
+	err = connection.Send(con, context.Background(), &updateRes, "update", userToUpdate.ID, userToUpdate)
 	s.Require().NoError(err)
 
 	s.Assert().Equal(userToUpdate.ID, updateRes.Result.ID)
 	s.Assert().Equal(updateRes.Result.Password, "newpassword")
 
-	err = Send[any](con, context.Background(), nil, "delete", userToUpdate.ID)
+	err = connection.Send[any](con, context.Background(), nil, "delete", userToUpdate.ID)
 	s.Require().NoError(err)
 
-	var selectRes1 RPCResponse[testUser]
-	err = Send(con, context.Background(), &selectRes1, "select", createRes.Result.ID)
+	var selectRes1 connection.RPCResponse[testUser]
+	err = connection.Send(con, context.Background(), &selectRes1, "select", createRes.Result.ID)
 	s.Require().NoError(err)
 }

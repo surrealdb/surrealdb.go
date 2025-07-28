@@ -13,6 +13,8 @@ import (
 	"github.com/fxamacker/cbor/v2"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -63,11 +65,18 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 	case "http", "https":
 		con = connection.NewHTTPConnection(newParams)
 	case "ws", "wss":
-		wscon := connection.NewWebSocketConnection(newParams)
 		if newParams.ReconnectInterval > 0 {
-			con = connection.NewAutoReconnectingWebSocketConnection(wscon, newParams.ReconnectInterval)
+			con = rews.New(func(ctx context.Context) (*gorillaws.Connection, error) {
+				ws := gorillaws.New(newParams)
+
+				if connErr := ws.Connect(ctx); connErr != nil {
+					return nil, fmt.Errorf("failed to connect: %w", connErr)
+				}
+
+				return ws, nil
+			}, newParams.ReconnectInterval, newParams.Logger)
 		} else {
-			con = wscon
+			con = gorillaws.New(newParams)
 		}
 	case "memory", "mem", "surrealkv":
 		return nil, fmt.Errorf("embedded database not enabled")
