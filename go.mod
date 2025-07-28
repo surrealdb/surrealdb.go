@@ -1,6 +1,6 @@
 module github.com/surrealdb/surrealdb.go
 
-go 1.20
+go 1.22
 
 require (
 	github.com/fxamacker/cbor/v2 v2.7.0
