@@ -35,6 +35,15 @@ func NewRecordID(tableName string, id any) RecordID {
 }
 
 func (r *RecordID) MarshalCBOR() ([]byte, error) {
+	// We must prevent returning an invalid RecordID,
+	// because it results in SurrealDB returning an error without the response ID
+	// if the RPC is made over WebSocket, and
+	// we cannot distinguish it from a notification,
+	// nor can we return an error to the caller.
+	// See https://github.com/surrealdb/surrealdb.go/issues/273
+	if r.Table == "" || r.ID == nil {
+		return nil, fmt.Errorf("cannot marshal RecordID with empty table or ID: want <table>:<identifier> but got %s:%v", r.Table, r.ID)
+	}
 	return cbor.Marshal(cbor.Tag{
 		Number:  TagRecordID,
 		Content: []interface{}{r.Table, r.ID},
