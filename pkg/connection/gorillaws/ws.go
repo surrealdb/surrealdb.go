@@ -484,6 +484,9 @@ func (ws *Connection) Send(ctx context.Context, method string, params ...any) (*
 			return nil, errors.New("response channel closed")
 		}
 
+		if res.Error != nil {
+			return nil, res.Error
+		}
 		return &res, nil
 	}
 }

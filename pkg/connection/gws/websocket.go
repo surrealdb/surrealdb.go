@@ -296,6 +296,9 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 			return nil, errors.New("response channel closed")
 		}
 
+		if rpcRes.Error != nil {
+			return nil, rpcRes.Error
+		}
 		return &rpcRes, nil
 	}
 }
