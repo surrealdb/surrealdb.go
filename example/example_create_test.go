@@ -116,3 +116,27 @@ func ExampleCreate() {
 	// Selected person: {Third {2023-10-01 12:00:00 +0000 UTC} <nil>}
 	// Selected person: {Fourth {2023-10-01 12:00:00 +0000 UTC} <nil>}
 }
+
+func ExampleCreate_server_unmarshal_error() {
+	db := newSurrealDBWSConnection("query", "person")
+
+	type Person struct {
+		ID   models.RecordID `json:"id,omitempty"`
+		Name string          `json:"name"`
+	}
+
+	_, err := surrealdb.Create[Person](
+		context.Background(),
+		db,
+		"persons",
+		Person{
+			Name: "Test",
+		},
+	)
+	if err != nil {
+		fmt.Printf("Expected error: %v\n", err)
+	}
+
+	// Output:
+	// Expected error: cannot marshal RecordID with empty table or ID: want <table>:<identifier> but got :<nil>
+}
