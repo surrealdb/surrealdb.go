@@ -103,6 +103,23 @@ func (c *Connection) handleResponse(data []byte) {
 		}
 		defer close(responseChan)
 		responseChan <- rpcRes
+	} else if rpcRes.Result == nil && rpcRes.Error != nil {
+		// Some error cases result in the lack of an ID field in the response,
+		// so we handle the error here,
+		// rather than unintentionally treating it as a notification.
+		// See https://github.com/surrealdb/surrealdb.go/issues/273
+
+		// Note that we cannot send the response to the response channel,
+		// because the response did not have an ID field,
+		// so we cannot find the response channel to send it to.
+		// Instead, we just log the error and return,
+		// in the hope that the caller notices the programming error
+		// by the RPC timing out, and the error being logged here.
+		c.Logger.Error(
+			fmt.Sprintf("error in response: %v", rpcRes.Error),
+			"result", fmt.Sprint(rpcRes.Result),
+		)
+		return
 	} else {
 		// Handle notification
 		notificationRes, err := rpcRes.Result.MarshalCBOR()
