@@ -558,9 +558,5 @@ func send[TResult any](ctx context.Context, db *DB, method string, params ...any
 		return nil, err
 	}
 
-	if res.Error != nil {
-		return nil, res.Error
-	}
-
 	return res.Result, nil
 }
