@@ -14,44 +14,68 @@ type State int
 
 const (
 	StateUnknown State = iota
+	StateDisconnected
 	StateConnecting
 	StateConnected
-	StateDisconnecting
-	StateDisconnected
+	StateClosing
+	StateClosed
 )
 
-func (s State) TransitionTo(
-	newState State,
-) (State, error) {
-	switch s {
+func (state State) String() string {
+	switch state {
+	case StateUnknown:
+		return "Unknown"
+	case StateDisconnected:
+		return "Disconnected"
 	case StateConnecting:
-		switch newState {
-		case StateConnected, StateDisconnected:
-			return newState, nil
-		}
+		return "Connecting"
 	case StateConnected:
-		switch newState {
-		case StateDisconnecting, StateDisconnected:
-			return newState, nil
-		}
-	case StateDisconnecting:
-		if newState == StateDisconnected {
-			return newState, nil
-		}
+		return "Connected"
+	case StateClosing:
+		return "Closing"
+	case StateClosed:
+		return "Closed"
+	default:
+		return "InvalidState"
+	}
+}
+
+func (s State) validateTransitionTo(newState State) error {
+	switch s {
 	case StateDisconnected:
 		switch newState {
 		case StateConnecting, StateDisconnected:
-			return newState, nil
+			return nil
+		}
+	case StateConnecting:
+		switch newState {
+		case StateConnected, StateDisconnected:
+			return nil
+		}
+	case StateConnected:
+		switch newState {
+		// Connected to Connecting is possible when the connection is lost
+		// after the connection is established.
+		case StateConnecting, StateClosing, StateDisconnected:
+			return nil
+		}
+	case StateClosing:
+		if newState == StateClosed {
+			return nil
 		}
 	}
 
-	return StateUnknown, fmt.Errorf("invalid state transition from %v to %v", s, newState)
+	return fmt.Errorf("invalid state transition from %v to %v", s, newState)
 }
 
 type Connection[C connection.WebSocketConnection] struct {
 	connection.WebSocketConnection
 
-	connect func(context.Context) (C, error)
+	// ConnectFunc is a function that establishes the WebSocket connection.
+	// It is used to create a new WebSocket connection when the initial
+	// connection is made, or when the reconnection is needed.
+	// The function should return a WebSocket connection and an error.
+	ConnectFunc func(context.Context) (C, error)
 
 	// CheckInterval is the interval at which the reconnection attempts are made.
 	// It is used to avoid busy-waiting and to control the frequency of reconnection
@@ -71,17 +95,50 @@ type Connection[C connection.WebSocketConnection] struct {
 	// connCloseCh signals that the connection is being closed
 	connCloseCh chan int
 
+	// reconnLoopCloseCh is used to signal that the reconnection loop is closed,
+	// by closing the channel.
+	//
+	// This is used solely to ensure that the reconnection loop stops
+	// before Close() returns.
 	reconnLoopCloseCh chan int
 
 	// logger is used to log the state transitions and errors.
 	logger logger.Logger
 
+	// once is used to ensure that the reconnection loop is started only once.
+	// This is to prevent multiple reconnection loops from being started
+	// on second and subsequent Connect() calls for reconnection.
+	once sync.Once
+
+	// state is the current state of the connection.
+	// It is used to track the state of the connection and to ensure that
+	// the state transitions are valid.
 	state State
 
-	mu sync.Mutex
+	// stateMu is used to protect the state transitions and checks.
+	// It is a mutex to ensure that the state transitions are atomic
+	// and that the state checks are consistent.
+	stateMu sync.Mutex
+
+	// sessionVars is a map that holds the session variables.
+	// It is used to store the session variables that are set by the user
+	// and to restore them on reconnection.
+	sessionVars map[string]any
+
+	// sessionToken is the token used for authentication.
+	// It is used to store the token that is returned by a successful SignIn or SignUp, or
+	// used by a successful Authenticate call.
+	// It is used to re-authenticate on reconnection.
+	sessionToken string
+
+	// sessionNS and sessionDB are the namespace and database used for the session.
+	// They are used to restore the namespace and database on reconnection.
+	sessionNS string
+	sessionDB string
 }
 
 var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
+var _ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
 
 // New creates a new auto-reconnecting WebSocket connection.
 //
@@ -94,31 +151,34 @@ func New[C connection.WebSocketConnection](
 ) *Connection[C] {
 	return &Connection[C]{
 		CheckInterval: checkInterval,
-		connect:       connect,
+		ConnectFunc:   connect,
 		state:         StateDisconnected,
 		logger:        log,
+		sessionVars:   make(map[string]any),
 	}
 }
 
 func (arws *Connection[C]) transitionTo(newState State) error {
-	arws.mu.Lock()
-	defer arws.mu.Unlock()
+	arws.stateMu.Lock()
+	defer arws.stateMu.Unlock()
 
-	newState, err := arws.state.TransitionTo(newState)
-	if err != nil {
+	if err := arws.state.validateTransitionTo(newState); err != nil {
 		return err
 	}
 
 	arws.state = newState
-	arws.logger.Debug("ReconnectingWebSocketConnection state transitioned", "new_state", newState)
+	arws.logger.Debug("rews.Connection state transitioned", "new_state", newState)
 
 	return nil
 }
 
-func (arws *Connection[C]) mustTransitionTo(newState State) {
-	if err := arws.transitionTo(newState); err != nil {
-		panic(fmt.Sprintf("BUG: %v", err))
-	}
+// IsClosed returns true if this reconnecting WebSocket connection is closed.
+// Once closed, it cannot be used to establish a new connection.
+func (arws *Connection[C]) IsClosed() bool {
+	arws.stateMu.Lock()
+	defer arws.stateMu.Unlock()
+
+	return arws.state == StateClosed
 }
 
 // Connect establishes the WebSocket connection and starts the reconnection loop.
@@ -148,20 +208,128 @@ func (arws *Connection[C]) Connect(ctx context.Context) error {
 
 	var err error
 
-	arws.WebSocketConnection, err = arws.connect(ctx)
+	arws.WebSocketConnection, err = arws.ConnectFunc(ctx)
 	if err != nil {
-		arws.mustTransitionTo(StateDisconnected)
-		return fmt.Errorf("failed to connect: %w", err)
+		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
+			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+		}
+		return fmt.Errorf("rews.Connection failed to connect: %w", err)
 	}
 
-	arws.connCloseCh = make(chan int, 1)
-	arws.reconnLoopCloseCh = make(chan int, 1)
+	arws.once.Do(func() {
+		arws.logger.Debug("rews.Connection is starting reconnection loop")
 
-	go arws.reconnectionLoop()
+		arws.connCloseCh = make(chan int, 1)
+		arws.reconnLoopCloseCh = make(chan int, 1)
 
-	arws.mustTransitionTo(StateConnected)
+		go arws.reconnectionLoop()
+	})
+
+	if err := arws.transitionTo(StateConnected); err != nil {
+		panic(fmt.Sprintf("BUG: rews.Connection failed to transition to connected state: %v", err))
+	}
 
 	return nil
+}
+
+// reconnect attempts to reconnect the WebSocket connection.
+//
+// This enhances the Connect method by re-authenticating with the token in the following cases:
+// - SignUp succeeded before the reconnection (SignUp returns a token and it can be used for re-authentication).
+// - SignIn succeeded before the reconnection (SignIn returns a token and it can be used for re-authentication).
+// - Authenticate succeeded before the reconnection (Authenticate accepts the token and it can be used for re-authentication)
+//
+// The token might be expired or invalid which could result in an re-authentication failure.
+// But rews does not handle the re-authentication failure.
+// It is the caller's responsibility to handle the re-authentication failure.
+func (arws *Connection[C]) reconnect(ctx context.Context) error {
+	if err := arws.Connect(ctx); err != nil {
+		arws.logger.Error("rews.Connection failed to reconnect", "error", err)
+		return fmt.Errorf("rews.Connection failed to reconnect: %w", err)
+	}
+
+	if arws.sessionNS != "" && arws.sessionDB != "" {
+		arws.logger.Debug("rews.Connection is restoring namespace and database", "namespace", arws.sessionNS, "database", arws.sessionDB)
+		if err := arws.Use(ctx, arws.sessionNS, arws.sessionDB); err != nil {
+			arws.logger.Error("rews.Connection failed to restore namespace and database", "error", err)
+			return fmt.Errorf("rews.Connection failed to restore namespace and database: %w", err)
+		}
+		arws.logger.Debug("rews.Connection restored namespace and database successfully")
+	}
+
+	if arws.sessionToken != "" {
+		arws.logger.Debug("rews.Connection is re-authenticating with the session token")
+		if err := arws.Authenticate(ctx, arws.sessionToken); err != nil {
+			arws.logger.Error("rews.Connection failed to re-authenticate with the session token", "error", err)
+			return fmt.Errorf("rews.Connection failed to re-authenticate with the session token: %w", err)
+		}
+		arws.logger.Debug("rews.Connection re-authenticated successfully with the session token")
+	}
+
+	for key, value := range arws.sessionVars {
+		arws.logger.Debug("rews.Connection is restoring session variable", "key", key, "value", value)
+		if err := arws.Let(ctx, key, value); err != nil {
+			arws.logger.Error("rews.Connection failed to restore session variable", "key", key, "error", err)
+			return fmt.Errorf("rews.Connection failed to restore session variable %s: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
+func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
+	if err := arws.WebSocketConnection.Use(ctx, namespace, database); err != nil {
+		return fmt.Errorf("rews.Connection failed to use namespace and database: %w", err)
+	}
+	arws.sessionNS = namespace
+	arws.sessionDB = database
+	return nil
+}
+
+func (arws *Connection[C]) Authenticate(ctx context.Context, token string) error {
+	if err := arws.WebSocketConnection.Authenticate(ctx, token); err != nil {
+		return fmt.Errorf("rews.Connection failed to authenticate: %w", err)
+	}
+
+	arws.sessionToken = token
+
+	return nil
+}
+
+func (arws *Connection[C]) Let(ctx context.Context, key string, value any) error {
+	if err := arws.WebSocketConnection.Let(ctx, key, value); err != nil {
+		return fmt.Errorf("rews.Connection failed to set session variable %s: %w", key, err)
+	}
+	arws.sessionVars[key] = value
+	return nil
+}
+
+func (arws *Connection[C]) Unset(ctx context.Context, key string) error {
+	if err := arws.WebSocketConnection.Unset(ctx, key); err != nil {
+		return fmt.Errorf("rews.Connection failed to unset session variable %s: %w", key, err)
+	}
+	delete(arws.sessionVars, key)
+	return nil
+}
+
+func (arws *Connection[C]) SignUp(ctx context.Context, authData any) (string, error) {
+	token, err := arws.WebSocketConnection.SignUp(ctx, authData)
+	if err != nil {
+		return "", fmt.Errorf("rews.Connection failed to sign up: %w", err)
+	}
+
+	arws.sessionToken = token
+	return token, nil
+}
+
+func (arws *Connection[C]) SignIn(ctx context.Context, authData any) (string, error) {
+	token, err := arws.WebSocketConnection.SignIn(ctx, authData)
+	if err != nil {
+		return "", fmt.Errorf("rews.Connection failed to sign in: %w", err)
+	}
+
+	arws.sessionToken = token
+	return token, nil
 }
 
 // Close stops the reconnection loop and closes the WebSocket connection.
@@ -177,24 +345,26 @@ func (arws *Connection[C]) Connect(ctx context.Context) error {
 // because those leaked resources can be eventually cleaned up by the operation system
 // once the application process exits.
 func (arws *Connection[C]) Close(ctx context.Context) error {
-	if err := arws.transitionTo(StateDisconnecting); err != nil {
-		return fmt.Errorf("Connection is already closing or closed: %w", err)
+	if err := arws.transitionTo(StateClosing); err != nil {
+		return fmt.Errorf("rews.Connection is already closing or closed: %w", err)
 	}
 
 	defer func() {
-		arws.mustTransitionTo(StateDisconnected)
+		if err := arws.transitionTo(StateClosed); err != nil {
+			arws.logger.Error("BUG: rews.Connection failed to transition to closed state", "error", err)
+		}
 	}()
 
 	// Ensure the reconnection loop stops first,
-	// so that it doesn't try to reconnect after the connection is closed.
+	// so that it doesn't try to reconnect after the this reconnecting connection is closed.
 	//
 	// This implies a possible edge case where the reconnection loop
 	// stops even though Close failed.
 	//
 	// But we accept this trade-off for simplicity,
-	// assuming that the user would call AutoReconnectingWebSocketconnection.Close
+	// assuming that the user would call rews.Connection.Close()
 	// only when the connection is absolutely not needed anymore,
-	// like when gracefully shutting things down before exiting the program.
+	// like the app is gracefully shutting down before exiting the program.
 	close(arws.connCloseCh)
 	<-arws.reconnLoopCloseCh
 
@@ -216,19 +386,19 @@ func (arws *Connection[C]) reconnectionLoop() {
 	}()
 
 	for {
-		arws.logger.Debug("ReconnectingWebSocketconnection: waiting for reconnection check interval", "interval", checkInterval)
+		arws.logger.Debug("rews.Connection is waiting for reconnection check interval", "interval", checkInterval)
 		select {
 		case <-arws.connCloseCh:
 			return
 		case <-time.After(checkInterval):
 		}
 
-		if arws.IsClosed() {
-			arws.logger.Info("ReconnectingWebSocketConnection: attempting to reconnect")
-			if err := arws.WebSocketConnection.Connect(context.Background()); err != nil {
-				arws.logger.Error("ReconnectingWebSocketConnection: failed to reconnect", "error", err)
-			} else {
-				arws.logger.Info("ReconnectingWebSocketConnection: reconnected successfully")
+		if arws.WebSocketConnection.IsClosed() {
+			arws.logger.Info("rews.Connection is attempting to reconnect")
+
+			if err := arws.reconnect(context.Background()); err != nil {
+				arws.logger.Error("rews.Connection failed to reconnect", "error", err)
+				continue
 			}
 		}
 	}
