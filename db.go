@@ -176,16 +176,7 @@ func (db *DB) Info(ctx context.Context) (map[string]any, error) {
 //	  "pass": "VerySecurePassword123!",
 //	})
 func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
-	var token connection.RPCResponse[string]
-	if err := connection.Send(db.con, ctx, &token, "signup", authData); err != nil {
-		return "", err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
-		return "", err
-	}
-
-	return *token.Result, nil
+	return db.con.SignUp(ctx, authData)
 }
 
 // SignIn signs in an existing user.

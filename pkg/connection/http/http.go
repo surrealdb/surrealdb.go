@@ -182,6 +182,19 @@ func (h *HTTPConnection) Authenticate(ctx context.Context, token string) error {
 	return nil
 }
 
+func (h *HTTPConnection) SignUp(ctx context.Context, authData any) (string, error) {
+	token, err := rpc.SignUp(h, ctx, authData)
+	if err != nil {
+		return "", err
+	}
+
+	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
 func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil

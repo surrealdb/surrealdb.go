@@ -429,6 +429,10 @@ func (ws *Connection) Authenticate(ctx context.Context, token string) error {
 	return rpc.Authenticate(ws, ctx, token)
 }
 
+func (ws *Connection) SignUp(ctx context.Context, authData any) (string, error) {
+	return rpc.SignUp(ws, ctx, authData)
+}
+
 func (ws *Connection) Unset(ctx context.Context, key string) error {
 	return connection.Send[any](ws, ctx, nil, "unset", key)
 }
