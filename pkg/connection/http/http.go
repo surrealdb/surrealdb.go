@@ -195,6 +195,19 @@ func (h *HTTPConnection) SignUp(ctx context.Context, authData any) (string, erro
 	return token, nil
 }
 
+func (h *HTTPConnection) SignIn(ctx context.Context, authData any) (string, error) {
+	token, err := rpc.SignIn(h, ctx, authData)
+	if err != nil {
+		return "", err
+	}
+
+	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
 func (h *HTTPConnection) Invalidate(ctx context.Context) error {
 	if err := rpc.Invalidate(h, ctx); err != nil {
 		return err

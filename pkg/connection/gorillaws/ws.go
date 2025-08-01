@@ -433,6 +433,10 @@ func (ws *Connection) SignUp(ctx context.Context, authData any) (string, error) 
 	return rpc.SignUp(ws, ctx, authData)
 }
 
+func (ws *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	return rpc.SignIn(ws, ctx, authData)
+}
+
 func (ws *Connection) Invalidate(ctx context.Context) error {
 	return rpc.Invalidate(ws, ctx)
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -205,16 +204,7 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 //	  "pass": "VerySecurePassword123!",
 //	})
 func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
-	var token connection.RPCResponse[string]
-	if err := connection.Send(db.con, ctx, &token, "signin", authData); err != nil {
-		return "", err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
-		return "", err
-	}
-
-	return *token.Result, nil
+	return db.con.SignIn(ctx, authData)
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {

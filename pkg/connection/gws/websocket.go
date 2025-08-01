@@ -276,6 +276,10 @@ func (c *Connection) SignUp(ctx context.Context, authData any) (string, error) {
 	return rpc.SignUp(c, ctx, authData)
 }
 
+func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	return rpc.SignIn(c, ctx, authData)
+}
+
 func (c *Connection) Invalidate(ctx context.Context) error {
 	return rpc.Invalidate(c, ctx)
 }
