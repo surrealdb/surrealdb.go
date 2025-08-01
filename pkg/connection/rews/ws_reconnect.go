@@ -210,8 +210,8 @@ func (arws *Connection[C]) Connect(ctx context.Context) error {
 
 	arws.WebSocketConnection, err = arws.ConnectFunc(ctx)
 	if err != nil {
-		if err := arws.transitionTo(StateDisconnected); err != nil {
-			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", err)
+		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
+			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
 		}
 		return fmt.Errorf("rews.Connection failed to connect: %w", err)
 	}
@@ -277,7 +277,7 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	return nil
 }
 
-func (arws *Connection[C]) Use(ctx context.Context, namespace string, database string) error {
+func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
 	if err := arws.WebSocketConnection.Use(ctx, namespace, database); err != nil {
 		return fmt.Errorf("rews.Connection failed to use namespace and database: %w", err)
 	}

@@ -42,7 +42,11 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		err := server.Start()
 		require.NoError(t, err)
-		defer server.Stop()
+		defer func() {
+			if stopErr := server.Stop(); stopErr != nil {
+				t.Fatalf("Failed to stop server: %v", stopErr)
+			}
+		}()
 
 		// Connect to server
 		db, err := surrealdb.Connect(ctx, "ws://"+server.Address())
@@ -98,7 +102,11 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		err := server.Start()
 		require.NoError(t, err)
-		defer server.Stop()
+		defer func() {
+			if stopErr := server.Stop(); stopErr != nil {
+				t.Fatalf("Failed to stop server: %v", stopErr)
+			}
+		}()
 
 		// Connect first client and sign in
 		db1, err := surrealdb.Connect(ctx, "ws://"+server.Address())
@@ -152,7 +160,11 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		err := server.Start()
 		require.NoError(t, err)
-		defer server.Stop()
+		defer func() {
+			if stopErr := server.Stop(); stopErr != nil {
+				t.Fatalf("Failed to stop server: %v", stopErr)
+			}
+		}()
 
 		// Generate token with short expiration
 		token, err := server.GenerateTokenWithExpiration("testuser", "mytoken", 100*time.Millisecond)
@@ -189,7 +201,11 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		err := server.Start()
 		require.NoError(t, err)
-		defer server.Stop()
+		defer func() {
+			if stopErr := server.Stop(); stopErr != nil {
+				t.Fatalf("Failed to stop server: %v", stopErr)
+			}
+		}()
 
 		// Connect to server
 		db, err := surrealdb.Connect(ctx, "ws://"+server.Address())

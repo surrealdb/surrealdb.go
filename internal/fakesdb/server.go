@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	mathrand "math/rand"
+	"math/big"
 	"net"
 	"sync"
 	"time"
@@ -28,6 +28,30 @@ import (
 	"github.com/lxzan/gws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
+
+// cryptoRandInt generates a cryptographically secure random integer in [0, max)
+func cryptoRandInt(rMax int) int {
+	if rMax <= 0 {
+		return 0
+	}
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(rMax)))
+	return int(n.Int64())
+}
+
+// cryptoRandInt64 generates a cryptographically secure random int64 in [0, max)
+func cryptoRandInt64(rMax int64) int64 {
+	if rMax <= 0 {
+		return 0
+	}
+	n, _ := rand.Int(rand.Reader, big.NewInt(rMax))
+	return n.Int64()
+}
+
+// cryptoRandFloat64 generates a cryptographically secure random float64 in [0.0, 1.0)
+func cryptoRandFloat64() float64 {
+	n, _ := rand.Int(rand.Reader, big.NewInt(1<<53))
+	return float64(n.Int64()) / float64(1<<53)
+}
 
 // FailureType represents the type of failure to inject during request processing
 type FailureType string
@@ -92,7 +116,7 @@ type FailureConfig struct {
 	// MaxDelay is the maximum delay for delay-based failures
 	MaxDelay time.Duration
 	// CloseCode is the WebSocket close code for FailureWebSocketClose
-	CloseCode int
+	CloseCode uint16
 	// CloseReason is the WebSocket close reason for FailureWebSocketClose
 	CloseReason string
 }
@@ -196,7 +220,7 @@ func (s *Server) AddStubResponse(stub StubResponse) {
 
 // GenerateTokenWithExpiration creates a new token session with specified expiration.
 // This is useful for testing authentication flows and token expiration scenarios.
-func (s *Server) GenerateTokenWithExpiration(username string, token string, duration time.Duration) (string, error) {
+func (s *Server) GenerateTokenWithExpiration(username, token string, duration time.Duration) (string, error) {
 	if token == "" {
 		return "", fmt.Errorf("GenerateTokenWithExpiration: token cannot be empty")
 	}
@@ -270,8 +294,6 @@ func (h *Handler) OnOpen(socket *gws.Conn) {
 	h.server.connections[socket] = true
 	// Connection starts without a session until Use is called
 	h.server.mu.Unlock()
-
-	socket.SetDeadline(time.Time{})
 }
 
 func (h *Handler) OnClose(socket *gws.Conn, err error) {
@@ -282,12 +304,15 @@ func (h *Handler) OnClose(socket *gws.Conn, err error) {
 }
 
 func (h *Handler) OnPing(socket *gws.Conn, payload []byte) {
-	socket.WritePong(payload)
+	if err := socket.WritePong(payload); err != nil {
+		log.Printf("Error writing Pong: %v", err)
+	}
 }
 
 func (h *Handler) OnPong(socket *gws.Conn, payload []byte) {
 }
 
+//nolint:gocyclo,funlen
 func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	defer message.Close()
 
@@ -355,7 +380,9 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 
 	if session.Namespace == "" || session.Database == "" {
-		h.sendError(socket, req.ID, -32000, "There was a problem with the database: There was a problem with authentication: Specify a namespace and database")
+		h.sendError(socket, req.ID, -32000,
+			"There was a problem with the database: There was a problem with authentication: Specify a namespace and database",
+		)
 		return
 	}
 
@@ -396,6 +423,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	})
 }
 
+//nolint:gocyclo,funlen
 func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *connection.RPCRequest, stub *StubResponse) error {
 	switch failure.Type {
 	case FailureRequestDelay:
@@ -418,24 +446,32 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 
 	case FailureInvalidResponse:
 		data := make([]byte, 100)
-		rand.Read(data)
-		socket.WriteMessage(gws.OpcodeBinary, data)
+		if _, err := rand.Read(data); err != nil {
+			log.Printf("Error generating invalid response: %v", err)
+		}
+		if err := socket.WriteMessage(gws.OpcodeBinary, data); err != nil {
+			log.Printf("Error writing invalid response: %v", err)
+		}
 		return fmt.Errorf("invalid response sent")
 
 	case FailureTCPTimeout:
-		if conn, ok := socket.NetConn().(net.Conn); ok {
-			conn.SetReadDeadline(time.Now())
-			conn.SetWriteDeadline(time.Now())
+		conn := socket.NetConn()
+		if err := conn.SetReadDeadline(time.Now()); err != nil {
+			log.Printf("Error setting TCP read deadline: %v", err)
+		}
+		if err := conn.SetWriteDeadline(time.Now()); err != nil {
+			log.Printf("Error setting TCP write deadline: %v", err)
 		}
 		return fmt.Errorf("tcp timeout")
 
 	case FailureTCPReset:
-		if conn, ok := socket.NetConn().(net.Conn); ok {
-			if tcpConn, ok := conn.(*net.TCPConn); ok {
-				tcpConn.SetLinger(0)
+		conn := socket.NetConn()
+		if tcpConn, ok := conn.(*net.TCPConn); ok {
+			if err := tcpConn.SetLinger(0); err != nil {
+				log.Printf("Error setting TCP linger: %v", err)
 			}
-			conn.Close()
 		}
+		conn.Close()
 		return fmt.Errorf("tcp reset")
 
 	case FailureWebSocketClose:
@@ -447,11 +483,11 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 		if reason == "" {
 			reason = "failure injection"
 		}
-		socket.WriteClose(uint16(code), []byte(reason))
+		socket.WriteClose(code, []byte(reason))
 		return fmt.Errorf("websocket close")
 
 	case FailureRandomDelay:
-		delay := time.Duration(mathrand.Int63n(int64(5 * time.Second)))
+		delay := time.Duration(cryptoRandInt64(int64(5 * time.Second)))
 		time.Sleep(delay)
 
 	case FailureDropConnection:
@@ -464,9 +500,16 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 			resp.ID = req.ID
 			resp.Result = &stub.Response
 
-			data, _ := cbor.Marshal(resp)
+			data, err := cbor.Marshal(resp)
+			if err != nil {
+				log.Printf("Error marshaling partial message: %v", err)
+				return fmt.Errorf("failed to send partial message: %w", err)
+			}
 			partialLen := len(data) / 2
-			socket.WriteMessage(gws.OpcodeBinary, data[:partialLen])
+			if err := socket.WriteMessage(gws.OpcodeBinary, data[:partialLen]); err != nil {
+				log.Printf("Error writing partial message: %v", err)
+				return fmt.Errorf("failed to send partial message: %w", err)
+			}
 			return fmt.Errorf("partial message sent")
 		}
 
@@ -476,11 +519,18 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 			resp.ID = req.ID
 			resp.Result = &stub.Response
 
-			data, _ := cbor.Marshal(resp)
-			for i := 0; i < len(data) && i < 10; i++ {
-				data[mathrand.Intn(len(data))] = byte(mathrand.Intn(256))
+			data, err := cbor.Marshal(resp)
+			if err != nil {
+				log.Printf("Error marshaling corrupted message: %v", err)
+				return fmt.Errorf("failed to send corrupted message: %w", err)
 			}
-			socket.WriteMessage(gws.OpcodeBinary, data)
+			for i := 0; i < len(data) && i < 10; i++ {
+				data[cryptoRandInt(len(data))] = byte(cryptoRandInt(256))
+			}
+			if err := socket.WriteMessage(gws.OpcodeBinary, data); err != nil {
+				log.Printf("Error writing corrupted message: %v", err)
+				return fmt.Errorf("failed to send corrupted message: %w", err)
+			}
 			return fmt.Errorf("corrupted message sent")
 		}
 	}
@@ -488,7 +538,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 	return nil
 }
 
-func (h *Handler) sendResponse(socket *gws.Conn, id any, result any) {
+func (h *Handler) sendResponse(socket *gws.Conn, id, result any) {
 	var resp connection.RPCResponse[any]
 	resp.ID = id
 	resp.Result = &result
@@ -499,7 +549,10 @@ func (h *Handler) sendResponse(socket *gws.Conn, id any, result any) {
 		return
 	}
 
-	socket.WriteMessage(gws.OpcodeBinary, data)
+	if err := socket.WriteMessage(gws.OpcodeBinary, data); err != nil {
+		log.Printf("Error writing response: %v", err)
+		return
+	}
 }
 
 func (h *Handler) sendError(socket *gws.Conn, id any, code int, message string) {
@@ -516,7 +569,10 @@ func (h *Handler) sendError(socket *gws.Conn, id any, code int, message string) 
 		return
 	}
 
-	socket.WriteMessage(gws.OpcodeBinary, responseData)
+	if err := socket.WriteMessage(gws.OpcodeBinary, responseData); err != nil {
+		log.Printf("Error writing error response: %v", err)
+		return
+	}
 }
 
 func shouldTriggerFailure(probability float64) bool {
@@ -526,14 +582,14 @@ func shouldTriggerFailure(probability float64) bool {
 	if probability >= 1 {
 		return true
 	}
-	return mathrand.Float64() < probability
+	return cryptoRandFloat64() < probability
 }
 
-func randomDuration(min, max time.Duration) time.Duration {
-	if min >= max {
-		return min
+func randomDuration(dMin, dMax time.Duration) time.Duration {
+	if dMin >= dMax {
+		return dMin
 	}
-	return min + time.Duration(mathrand.Int63n(int64(max-min)))
+	return dMin + time.Duration(cryptoRandInt64(int64(dMax-dMin)))
 }
 
 // MatchMethod creates a RequestMatcher that matches only by method name

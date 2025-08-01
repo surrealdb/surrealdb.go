@@ -50,7 +50,11 @@ func TestServerFailureResponseDelay(t *testing.T) {
 	// Start server
 	err := server.Start()
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() {
+		if stopErr := server.Stop(); stopErr != nil {
+			t.Fatalf("Failed to stop server: %v", stopErr)
+		}
+	}()
 
 	wsURL := "ws://" + server.Address()
 

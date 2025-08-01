@@ -3,6 +3,7 @@ package fakesdb_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/surrealdb/surrealdb.go/internal/fakesdb"
@@ -59,7 +60,11 @@ func ExampleServer() {
 	if err := server.Start(); err != nil {
 		panic(err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			log.Printf("Failed to stop server: %v", err)
+		}
+	}()
 
 	// Get the server address for client connection
 	addr := server.Address()
@@ -123,7 +128,11 @@ func ExampleServer_connectionFailures() {
 	if err := server.Start(); err != nil {
 		panic(err)
 	}
-	defer server.Stop()
+	defer func() {
+		if err := server.Stop(); err != nil {
+			log.Printf("Failed to stop server: %v", err)
+		}
+	}()
 
 	// Get the server address for client connection
 	addr := server.Address()

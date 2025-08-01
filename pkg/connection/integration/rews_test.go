@@ -104,7 +104,11 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, connectFunc
 	// Start server
 	err := server.Start()
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() {
+		if stopErr := server.Stop(); stopErr != nil {
+			t.Fatalf("Failed to stop server: %v", stopErr)
+		}
+	}()
 
 	// Configure connection with auto-reconnection
 	wsURL := "ws://" + server.Address()
@@ -146,12 +150,12 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, connectFunc
 	// First two selects should work
 	for i := 0; i < 2; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
 		result, err := surrealdb.Select[TestRecord](
 			ctx,
 			db,
 			models.NewRecordID("test", "1"),
 		)
+		cancel()
 		require.NoError(t, err, "Select %d should succeed", i+1)
 		assert.NotNil(t, result)
 		assert.Equal(t, "test", result.ID.Table)
@@ -189,12 +193,12 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, connectFunc
 		time.Sleep(600 * time.Millisecond)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-		defer cancel()
 		result, lastErr = surrealdb.Select[TestRecord](
 			ctx,
 			db,
 			models.NewRecordID("test", "1"),
 		)
+		cancel()
 
 		if lastErr == nil {
 			t.Logf("Select succeeded on retry %d", retry+1)
@@ -265,7 +269,11 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 
 	err := server.Start()
 	require.NoError(t, err)
-	defer server.Stop()
+	defer func() {
+		if stopErr := server.Stop(); stopErr != nil {
+			t.Fatalf("Failed to stop server: %v", stopErr)
+		}
+	}()
 
 	// Use regular connection WITHOUT auto-reconnect
 	p, err := surrealdb.Configure("ws://" + server.Address())
