@@ -1,4 +1,4 @@
-package connection
+package http
 
 import (
 	"bytes"
@@ -15,6 +15,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 
 	"github.com/surrealdb/surrealdb.go/internal/rand"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
@@ -27,7 +29,7 @@ type HTTPConnection struct {
 	variables  sync.Map
 }
 
-func NewHTTPConnection(p *Config) *HTTPConnection {
+func New(p *connection.Config) *HTTPConnection {
 	con := HTTPConnection{
 		Marshaler:   p.Marshaler,
 		Unmarshaler: p.Unmarshaler,
@@ -74,12 +76,12 @@ func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
 	return h.Unmarshaler
 }
 
-func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error) {
+func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if h.BaseURL == "" {
 		return nil, constants.ErrNoBaseURL
 	}
 
-	request := &RPCRequest{
+	request := &connection.RPCRequest{
 		ID:     rand.NewRequestID(constants.RequestIDLength),
 		Method: method,
 		Params: params,
@@ -117,7 +119,7 @@ func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any)
 		return nil, err
 	}
 
-	var res RPCResponse[cbor.RawMessage]
+	var res connection.RPCResponse[cbor.RawMessage]
 	if err := h.Unmarshaler.Unmarshal(respData, &res); err != nil {
 		return nil, err
 	}
@@ -148,7 +150,7 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 	if strings.TrimSpace(contentType) == "" {
 		return nil, fmt.Errorf("%s", string(respBytes))
 	}
-	var errorResponse RPCResponse[any]
+	var errorResponse connection.RPCResponse[any]
 	err = h.Unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
 		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
@@ -168,11 +170,23 @@ func (h *HTTPConnection) Let(ctx context.Context, key string, value any) error {
 	return nil
 }
 
+func (h *HTTPConnection) Authenticate(ctx context.Context, token string) error {
+	if err := rpc.Authenticate(h, ctx, token); err != nil {
+		return err
+	}
+
+	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil
 }
 
-func (h *HTTPConnection) LiveNotifications(id string) (chan Notification, error) {
+func (h *HTTPConnection) LiveNotifications(id string) (chan connection.Notification, error) {
 	return nil, errors.New("live notifications are not supported in HTTP connections")
 }

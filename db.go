@@ -14,6 +14,7 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -63,7 +64,7 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 
 	switch newParams.URL.Scheme {
 	case "http", "https":
-		con = connection.NewHTTPConnection(newParams)
+		con = http.New(newParams)
 	case "ws", "wss":
 		if newParams.ReconnectInterval > 0 {
 			con = rews.New(func(ctx context.Context) (*gorillaws.Connection, error) {
@@ -238,15 +239,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 }
 
 func (db *DB) Authenticate(ctx context.Context, token string) error {
-	if err := connection.Send[any](db.con, ctx, nil, "authenticate", token); err != nil {
-		return err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, token); err != nil {
-		return err
-	}
-
-	return nil
+	return db.con.Authenticate(ctx, token)
 }
 
 func (db *DB) Let(ctx context.Context, key string, val any) error {

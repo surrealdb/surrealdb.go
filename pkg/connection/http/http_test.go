@@ -1,4 +1,4 @@
-package connection
+package http
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -61,13 +62,13 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 		}
 	})
 
-	p := &Config{
+	p := &connection.Config{
 		BaseURL:     "http://test.surreal",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},
 	}
 
-	httpEngine := NewHTTPConnection(p)
+	httpEngine := New(p)
 	httpEngine.SetHTTPClient(httpClient)
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://test.surreal/rpc", http.NoBody)
