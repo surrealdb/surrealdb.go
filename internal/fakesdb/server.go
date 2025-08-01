@@ -253,7 +253,8 @@ func (s *Server) SetGlobalFailures(failures []FailureConfig) {
 // Start starts the server and begins accepting WebSocket connections.
 // Returns an error if the server cannot bind to the specified address.
 func (s *Server) Start() error {
-	listener, err := net.Listen("tcp", s.addr)
+	var lc net.ListenConfig
+	listener, err := lc.Listen(context.Background(), "tcp", s.addr)
 	if err != nil {
 		return err
 	}
