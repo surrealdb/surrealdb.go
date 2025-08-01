@@ -13,6 +13,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
@@ -265,6 +266,22 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 // Let implements connection.Connection.
 func (c *Connection) Let(ctx context.Context, key string, value any) error {
 	return connection.Send[any](c, ctx, nil, "let", key, value)
+}
+
+func (c *Connection) Authenticate(ctx context.Context, token string) error {
+	return rpc.Authenticate(c, ctx, token)
+}
+
+func (c *Connection) SignUp(ctx context.Context, authData any) (string, error) {
+	return rpc.SignUp(c, ctx, authData)
+}
+
+func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	return rpc.SignIn(c, ctx, authData)
+}
+
+func (c *Connection) Invalidate(ctx context.Context) error {
+	return rpc.Invalidate(c, ctx)
 }
 
 // LiveNotifications implements connection.Connection.

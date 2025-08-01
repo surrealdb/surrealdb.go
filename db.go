@@ -14,8 +14,8 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -63,7 +63,7 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 
 	switch newParams.URL.Scheme {
 	case "http", "https":
-		con = connection.NewHTTPConnection(newParams)
+		con = http.New(newParams)
 	case "ws", "wss":
 		if newParams.ReconnectInterval > 0 {
 			con = rews.New(func(ctx context.Context) (*gorillaws.Connection, error) {
@@ -175,16 +175,7 @@ func (db *DB) Info(ctx context.Context) (map[string]any, error) {
 //	  "pass": "VerySecurePassword123!",
 //	})
 func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
-	var token connection.RPCResponse[string]
-	if err := connection.Send(db.con, ctx, &token, "signup", authData); err != nil {
-		return "", err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
-		return "", err
-	}
-
-	return *token.Result, nil
+	return db.con.SignUp(ctx, authData)
 }
 
 // SignIn signs in an existing user.
@@ -213,40 +204,15 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 //	  "pass": "VerySecurePassword123!",
 //	})
 func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
-	var token connection.RPCResponse[string]
-	if err := connection.Send(db.con, ctx, &token, "signin", authData); err != nil {
-		return "", err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, *token.Result); err != nil {
-		return "", err
-	}
-
-	return *token.Result, nil
+	return db.con.SignIn(ctx, authData)
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {
-	if err := connection.Send[any](db.con, ctx, nil, "invalidate"); err != nil {
-		return err
-	}
-
-	if err := db.con.Unset(ctx, constants.AuthTokenKey); err != nil {
-		return err
-	}
-
-	return nil
+	return db.con.Invalidate(ctx)
 }
 
 func (db *DB) Authenticate(ctx context.Context, token string) error {
-	if err := connection.Send[any](db.con, ctx, nil, "authenticate", token); err != nil {
-		return err
-	}
-
-	if err := db.con.Let(ctx, constants.AuthTokenKey, token); err != nil {
-		return err
-	}
-
-	return nil
+	return db.con.Authenticate(ctx, token)
 }
 
 func (db *DB) Let(ctx context.Context, key string, val any) error {

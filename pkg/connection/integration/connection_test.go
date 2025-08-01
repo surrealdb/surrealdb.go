@@ -10,6 +10,7 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -38,7 +39,7 @@ func TestConnectionTestSuite(t *testing.T) {
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
-	ts.connImplementations["http"] = connection.NewHTTPConnection(&connection.Config{
+	ts.connImplementations["http"] = http.New(&connection.Config{
 		BaseURL:     "http://localhost:8000",
 		Marshaler:   &models.CborMarshaler{},
 		Unmarshaler: &models.CborUnmarshaler{},

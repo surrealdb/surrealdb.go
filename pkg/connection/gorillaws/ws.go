@@ -16,6 +16,7 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 
@@ -422,6 +423,22 @@ func (ws *Connection) Use(ctx context.Context, namespace, database string) error
 
 func (ws *Connection) Let(ctx context.Context, key string, value any) error {
 	return connection.Send[any](ws, ctx, nil, "let", key, value)
+}
+
+func (ws *Connection) Authenticate(ctx context.Context, token string) error {
+	return rpc.Authenticate(ws, ctx, token)
+}
+
+func (ws *Connection) SignUp(ctx context.Context, authData any) (string, error) {
+	return rpc.SignUp(ws, ctx, authData)
+}
+
+func (ws *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	return rpc.SignIn(ws, ctx, authData)
+}
+
+func (ws *Connection) Invalidate(ctx context.Context) error {
+	return rpc.Invalidate(ws, ctx)
 }
 
 func (ws *Connection) Unset(ctx context.Context, key string) error {

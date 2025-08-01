@@ -30,6 +30,10 @@ type Connection interface {
 	Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error)
 	Use(ctx context.Context, namespace string, database string) error
 	Let(ctx context.Context, key string, value any) error
+	Authenticate(ctx context.Context, token string) error
+	SignUp(ctx context.Context, authData any) (string, error)
+	SignIn(ctx context.Context, authData any) (string, error)
+	Invalidate(ctx context.Context) error
 	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)
 	GetUnmarshaler() codec.Unmarshaler
