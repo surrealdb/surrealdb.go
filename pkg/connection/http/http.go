@@ -195,6 +195,18 @@ func (h *HTTPConnection) SignUp(ctx context.Context, authData any) (string, erro
 	return token, nil
 }
 
+func (h *HTTPConnection) Invalidate(ctx context.Context) error {
+	if err := rpc.Invalidate(h, ctx); err != nil {
+		return err
+	}
+
+	if err := h.Unset(ctx, constants.AuthTokenKey); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
 	h.variables.Delete(key)
 	return nil

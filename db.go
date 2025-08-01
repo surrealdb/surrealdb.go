@@ -218,15 +218,7 @@ func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {
-	if err := connection.Send[any](db.con, ctx, nil, "invalidate"); err != nil {
-		return err
-	}
-
-	if err := db.con.Unset(ctx, constants.AuthTokenKey); err != nil {
-		return err
-	}
-
-	return nil
+	return db.con.Invalidate(ctx)
 }
 
 func (db *DB) Authenticate(ctx context.Context, token string) error {

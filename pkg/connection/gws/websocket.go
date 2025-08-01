@@ -276,6 +276,10 @@ func (c *Connection) SignUp(ctx context.Context, authData any) (string, error) {
 	return rpc.SignUp(c, ctx, authData)
 }
 
+func (c *Connection) Invalidate(ctx context.Context) error {
+	return rpc.Invalidate(c, ctx)
+}
+
 // LiveNotifications implements connection.Connection.
 func (c *Connection) LiveNotifications(id string) (chan connection.Notification, error) {
 	return c.CreateNotificationChannel(id)
