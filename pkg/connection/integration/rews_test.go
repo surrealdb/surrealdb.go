@@ -116,12 +116,9 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	// Create auto-reconnecting connection
 	conn := rews.New(newConnFunc(wsURL), checkInterval, logger.New(slog.NewTextHandler(os.Stdout, nil)))
 
-	// Initial connection
-	err = conn.Connect(context.Background())
-	require.NoError(t, err)
-
 	// Create DB instance
-	db := surrealdb.FromConnection(conn)
+	db, err := surrealdb.FromConnection(context.Background(), conn)
+	require.NoError(t, err)
 	defer db.Close(context.Background())
 
 	// Setup
@@ -279,10 +276,9 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 
 	// Create connection with timeout to prevent hanging
 	ws := gorillaws.New(p).SetTimeOut(2 * time.Second)
-	err = ws.Connect(context.Background())
-	require.NoError(t, err)
 
-	db := surrealdb.FromConnection(ws)
+	db, err := surrealdb.FromConnection(context.Background(), ws)
+	require.NoError(t, err)
 	defer db.Close(context.Background())
 
 	err = db.Use(context.Background(), "test", "test")

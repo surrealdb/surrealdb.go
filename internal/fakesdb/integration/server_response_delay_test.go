@@ -68,10 +68,8 @@ func TestServerFailureResponseDelay(t *testing.T) {
 	ws := gorillaws.New(p).
 		SetTimeOut(100 * time.Millisecond) // Short request timeout
 
-	err = ws.Connect(context.Background())
+	db, err := surrealdb.FromConnection(context.Background(), ws)
 	require.NoError(t, err)
-
-	db := surrealdb.FromConnection(ws)
 	defer db.Close(context.Background())
 
 	// Setup

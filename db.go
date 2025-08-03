@@ -26,14 +26,23 @@ type DB struct {
 	con connection.Connection
 }
 
+// New creates a new SurrealDB client.
+//
+// Deprecated: New is deprecated. Use FromEndpointURLString instead.
+func New(connectionURL string) (*DB, error) {
+	return FromEndpointURLString(context.Background(), connectionURL)
+}
+
 // FromConnection creates a new SurrealDB client using the provided connection.
 //
-// It is the caller's responsibility to ensure that the provided connection is connected to the SurrealDB server.
-//
-// If the connection is not connected, the SDK will NOT attempt to connect to the SurrealDB server,
-// and the behavior is undefined.
-func FromConnection(conn connection.Connection) *DB {
-	return &DB{con: conn}
+// Note that this function calls `conn.Connect(ctx)` for you,
+// so you don't need to call it manually.
+func FromConnection(ctx context.Context, conn connection.Connection) (*DB, error) {
+	if err := conn.Connect(ctx); err != nil {
+		return nil, err
+	}
+
+	return &DB{con: conn}, nil
 }
 
 // Deprecated: Use FromEndpointURLString instead.
@@ -74,12 +83,7 @@ func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, erro
 		return nil, fmt.Errorf("invalid connection url")
 	}
 
-	err = con.Connect(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	return FromConnection(con), nil
+	return FromConnection(ctx, con)
 }
 
 // --------------------------------------------------
