@@ -17,8 +17,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
-type State int
-
 type Connection struct {
 	connection.Toolkit
 

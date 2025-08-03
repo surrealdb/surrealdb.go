@@ -37,64 +37,6 @@ var DefaultDialer = &gorilla.Dialer{
 
 type Option func(ws *Connection) error
 
-const (
-	// StateUnknown indicates that the WebSocket connection is unknown.
-	//
-	// This is intentionally the zero value of WebSocketConnectionState,
-	// so that we can use it as an indicator that WebSocketConnection has been
-	// initialized in an unexpected way.
-	StateUnknown State = iota
-	// StatePending indicates that the WebSocket connection is pending.
-	//
-	// This is the initial state of the WebSocketConnection before it has been connected.
-	// It will transition to StateConnecting once it starts connecting.
-	//
-	// To make the connection usable, you must call Connect to transition from this state
-	// to StateConnecting (and then to StateConnected).
-	StatePending
-	// StateConnecting indicates that the WebSocket connection is in the process of connecting.
-	//
-	// It will transition to StateConnected once the connection is established,
-	// or to StateDisconnected if the connection fails.
-	StateConnecting
-	// StateConnected indicates that the WebSocket connection is established and ready to use.
-	//
-	// It will transition to StateDisconnected if the connection is closed manually or due to an error.
-	StateConnected
-	// StateDisconnecting indicates that the WebSocket connection is being manually disconnected.
-	StateDisconnecting
-	// StateDisconnected indicates that the WebSocket connection is closed or disconnected,
-	// either manually or due to an error.
-	//
-	// It can transition to StateConnecting if a reconnection attempt is made.
-	StateDisconnected
-)
-
-// State represents the state of the WebSocket connection.
-//
-// We assume the following state transitions:
-//
-//	StatePending
-//	  -> StateConnecting (Initial connection attempt)
-//
-//	StateConnecting
-//	  -> StateConnected (Successful connection)
-//	  -> StateDisconnected (Failed connection attempt)
-//
-//	StateConnected
-//	  -> StateDisconnecting (Manual disconnection attempt)
-//	  -> StateDisconnected (Disconnected by an error)
-//
-//	StateDisconnecting
-//	  -> StateDisconnected (Graceful disconnection process completed)
-//
-//	StateDisconnected
-//	  -> StateConnecting (Reconnection attempt)
-//
-// Any other states and transitions are considered invalid
-// and may result in an error.
-type State int
-
 type Connection struct {
 	connection.Toolkit
 
@@ -106,12 +48,6 @@ type Connection struct {
 	// This is to avoid non-cancellable blocking on the connection read/write operations, like Send.
 	connLock sync.Mutex
 
-	// stateLock is used to ensure that we don't try to reconnect while we're already reconnecting.
-	// This is intentionally a separate lock from connLock,
-	// because we want to allow multiple goroutines to try read/write to an already failed connection
-	// via Send, and receive errors immediately, without waiting dozens of seconds for the reconnection to finish.
-	stateLock sync.RWMutex
-
 	// Timeout is the timeout for receiveing the RPC response after
 	// you've successfully sent the request.
 	//
@@ -121,8 +57,6 @@ type Connection struct {
 	// with a timeout.
 	Timeout time.Duration
 
-	state State
-
 	Option []Option
 	logger logger.Logger
 
@@ -131,6 +65,14 @@ type Connection struct {
 	connCloseCh chan int
 
 	connCloseError error
+
+	// closed is used to indicate whether the connection is closed.
+	// It is set to true when the connection is closed, and false otherwise.
+	// Once this is set to true, it cannot be set to false again.
+	//
+	// To reconnect, you should create a new instance of Connection
+	// and call Connect on it.
+	closed bool
 }
 
 func New(p *connection.Config) *Connection {
@@ -146,124 +88,20 @@ func New(p *connection.Config) *Connection {
 		},
 		Timeout: constants.DefaultWSTimeout,
 		logger:  logger.New(slog.NewJSONHandler(os.Stdout, nil)),
-		state:   StatePending,
 	}
-}
-
-func (c *Connection) Connect(ctx context.Context) error {
-	return c.tryConnecting(ctx)
 }
 
 // IsClosed checks if the WebSocket connection is disconnected.
 // This is useful to enable the consumer of WebSocketConnection
 // to trigger reconnection attempts if the connection is disconnected unexpectedly.
 func (c *Connection) IsClosed() bool {
-	c.stateLock.RLock()
-	defer c.stateLock.RUnlock()
-
-	return c.state == StateDisconnected
+	return c.closed
 }
 
-func (c *Connection) transitionToConnecting() error {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
-
-	switch c.state {
-	case StateConnected:
-		c.logger.Debug("WebSocketConnection is already connected, skipping reconnection")
-		return errors.New("WebSocketConnection is already connected")
-	case StateConnecting:
-		c.logger.Debug("WebSocketConnection is already connecting, skipping reconnection")
-		return errors.New("WebSocketConnection is already connecting")
-	case StateDisconnected:
-		c.logger.Debug("WebSocketConnection is disconnected, trying to reconnect")
-	case StatePending:
-		c.logger.Debug("WebSocketConnection is pending, trying to connect")
-	default:
-		c.logger.Warn("BUG: WebSocketConnection is in an unknown state, trying to reconnect anyway",
-			"state", c.state,
-		)
-	}
-
-	c.state = StateConnecting
-
-	return nil
-}
-
-func (c *Connection) transitionToDisconnecting() error {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
-
-	switch c.state {
-	case StateConnected:
-		c.logger.Debug("WebSocketConnection is connected, trying to disconnect")
-	case StateConnecting:
-		c.logger.Debug("WebSocketConnection is connecting, but we cannot disconnect until it is connected")
-		return errors.New("WebSocketConnection is connecting, cannot disconnect")
-	case StateDisconnected:
-		c.logger.Debug("WebSocketConnection is already disconnected, skipping disconnection")
-		return errors.New("WebSocketConnection is already disconnected")
-	case StatePending:
-		c.logger.Debug("WebSocketConnection is pending, no need to disconnect")
-		return errors.New("WebSocketConnection is pending, no need to disconnect")
-	default:
-		c.logger.Warn("BUG: WebSocketConnection is in an unknown state, nothing to do",
-			"state", c.state,
-		)
-		return errors.New("WebSocketConnection is in an unknown state, nothing to do")
-	}
-
-	c.state = StateDisconnecting
-
-	return nil
-}
-
-// transitionToDisconnectedWithError safely transitions the connection to disconnected state
-// when an error occurs that indicates the connection is closed.
-func (c *Connection) transitionToDisconnectedWithError(err error) {
-	c.stateLock.Lock()
-	defer c.stateLock.Unlock()
-
-	// Only transition if we're currently connected
-	// This prevents overwriting the state if we're already disconnecting or disconnected
-	if c.state == StateConnected {
-		c.state = StateDisconnected
-		c.connCloseError = err
-		c.logger.Error("WebSocketConnection disconnected due to error", "error", err)
-
-		// Close the connCloseCh if it's not already closed
-		select {
-		case <-c.connCloseCh:
-			// Already closed
-		default:
-			close(c.connCloseCh)
-		}
-	}
-}
-
-func (c *Connection) tryConnecting(ctx context.Context) error {
-	if err := c.transitionToConnecting(); err != nil {
-		return err
-	}
-
-	if err := c.connect(ctx); err != nil {
-		c.transitionToDisconnectedWithError(err)
-		return err
-	}
-
-	// Safely transition to connected state
-	c.stateLock.Lock()
-	c.state = StateConnected
-	c.stateLock.Unlock()
-	c.logger.Debug("WebSocketConnection is connected")
-
-	return nil
-}
-
-// connect establishes the WebSocket connection to the SurrealDB server.
+// Connect establishes the WebSocket connection to the SurrealDB server.
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
-func (c *Connection) connect(ctx context.Context) error {
+func (c *Connection) Connect(ctx context.Context) error {
 	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
 	if err != nil {
 		return err
@@ -334,27 +172,9 @@ func (c *Connection) SetCompression(compress bool) *Connection {
 // which enables us to clean up everything including the internal goroutine that used to
 // try writing to the WebSocket connection, when this function exists.
 func (c *Connection) Close(ctx context.Context) error {
-	if err := c.transitionToDisconnecting(); err != nil {
-		return err
+	if c.IsClosed() {
+		return nil
 	}
-	defer func() {
-		// We assume the connection is disconnected anyway,
-		// regardless of whether the write of the close message succeeded or not,
-		// or the connection close succeeded or not.
-		//
-		// It may theoretically result in a resource leak in the lower layers of the system,
-		// like the OS or the network stack.
-		//
-		// But we accept this risk, because we want to prioritize enabling the caller to
-		// choose reconnecting in the hope that the connection will be re-established successfully,
-		// reducing the downtime.
-
-		// Also note that we have no need to lock the stateLock here,
-		// because we already locked it in transitionToDisconnecting,
-		// and while StateDisconnecting is set,
-		// no other goroutine can try to connect or disconnect.
-		c.state = StateDisconnected
-	}()
 
 	// Signal that we're closing so that the goroutine reading from the connection
 	// can stop reading messages and exit.
@@ -547,10 +367,25 @@ func (c *Connection) write(v any) error {
 	if errors.Is(err, gorilla.ErrCloseSent) {
 		// Transition to disconnected state so IsClosed() returns true
 		// This allows rews to detect the closed connection and reconnect
-		go c.transitionToDisconnectedWithError(err)
+		c.closeWithError(err)
 	}
 
 	return err
+}
+
+func (c *Connection) closeWithError(err error) {
+	if c.closed {
+		return
+	}
+
+	c.closed = true
+	c.connCloseError = err
+	select {
+	case <-c.connCloseCh:
+		// Already closed
+	default:
+		close(c.connCloseCh)
+	}
 }
 
 func (c *Connection) readLoop() {
@@ -563,7 +398,7 @@ func (c *Connection) readLoop() {
 			if err != nil {
 				shouldExit := c.handleError(err)
 				if shouldExit {
-					c.transitionToDisconnectedWithError(err)
+					c.closeWithError(err)
 					return
 				}
 				continue
