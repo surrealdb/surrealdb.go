@@ -21,11 +21,11 @@ func ExampleConnection_gws() {
 	conf.Logger = nil // Disable logging for this example
 
 	conn := gws.New(conf)
-	if connErr := conn.Connect(context.Background()); connErr != nil {
-		panic(fmt.Sprintf("Failed to connect: %v", connErr))
-	}
 
-	db := surrealdb.FromConnection(conn)
+	db, err := surrealdb.FromConnection(context.Background(), conn)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to connect: %v", err))
+	}
 
 	// Attempt to sign in without setting namespace or database
 	// This should fail with an error, whose message will depend on the connection type.

@@ -110,19 +110,13 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 				connect = func(ctx context.Context) (*surrealdb.DB, error) {
 					gwsConn := gws.New(conf)
 
-					if err := gwsConn.Connect(ctx); err != nil {
-						return nil, fmt.Errorf("failed to connect to gws: %w", err)
-					}
-					return surrealdb.FromConnection(gwsConn), nil
+					return surrealdb.FromConnection(ctx, gwsConn)
 				}
 			} else {
 				connect = func(ctx context.Context) (*surrealdb.DB, error) {
 					wsConn := gorillaws.New(conf)
 
-					if err := wsConn.Connect(ctx); err != nil {
-						return nil, fmt.Errorf("failed to connect to gorillaws: %w", err)
-					}
-					return surrealdb.FromConnection(wsConn), nil
+					return surrealdb.FromConnection(ctx, wsConn)
 				}
 			}
 		case "http", "https":
