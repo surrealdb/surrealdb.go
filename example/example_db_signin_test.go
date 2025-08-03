@@ -9,7 +9,7 @@ import (
 )
 
 func ExampleDB_signin_failure() {
-	db, err := surrealdb.Connect(
+	db, err := surrealdb.FromEndpointURLString(
 		context.Background(),
 		testenv.GetSurrealDBWSURL(),
 	)

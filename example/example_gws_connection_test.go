@@ -3,27 +3,29 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
 
 func ExampleConnection_gws() {
-	conf, err := surrealdb.Configure(
-		testenv.GetSurrealDBWSURL(),
-	)
-	conf.Logger = nil // Disable logging for this example
+	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Failed to parse URL: %v", err))
 	}
+
+	conf := connection.NewConfig(u)
+	conf.Logger = nil // Disable logging for this example
 
 	conn := gws.New(conf)
 	if connErr := conn.Connect(context.Background()); connErr != nil {
 		panic(fmt.Sprintf("Failed to connect: %v", connErr))
 	}
 
-	db := surrealdb.New(conn)
+	db := surrealdb.FromConnection(conn)
 
 	// Attempt to sign in without setting namespace or database
 	// This should fail with an error, whose message will depend on the connection type.

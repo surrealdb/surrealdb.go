@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -24,10 +25,11 @@ import (
 func TestRewsGorillaWsDoReconnect(t *testing.T) {
 	testDoReconnect(t, func(wsURL string) func(context.Context) (*gorillaws.Connection, error) {
 		return func(ctx context.Context) (*gorillaws.Connection, error) {
-			p, err := surrealdb.Configure(wsURL)
+			u, err := url.ParseRequestURI(wsURL)
 			if err != nil {
 				return nil, err
 			}
+			p := connection.NewConfig(u)
 			ws := gorillaws.New(p)
 
 			return ws, nil
@@ -38,10 +40,11 @@ func TestRewsGorillaWsDoReconnect(t *testing.T) {
 func TestRewsGwsDoReconnect(t *testing.T) {
 	testDoReconnect(t, func(wsURL string) func(context.Context) (*gws.Connection, error) {
 		return func(ctx context.Context) (*gws.Connection, error) {
-			p, err := surrealdb.Configure(wsURL)
+			u, err := url.ParseRequestURI(wsURL)
 			if err != nil {
 				return nil, err
 			}
+			p := connection.NewConfig(u)
 			ws := gws.New(p)
 			ws.Logger = logger.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -118,7 +121,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	require.NoError(t, err)
 
 	// Create DB instance
-	db := surrealdb.New(conn)
+	db := surrealdb.FromConnection(conn)
 	defer db.Close(context.Background())
 
 	// Setup
@@ -270,7 +273,8 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 	}()
 
 	// Use regular connection WITHOUT auto-reconnect
-	p, err := surrealdb.Configure("ws://" + server.Address())
+	u, err := url.ParseRequestURI("ws://" + server.Address())
+	p := connection.NewConfig(u)
 	require.NoError(t, err)
 
 	// Create connection with timeout to prevent hanging
@@ -278,7 +282,7 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 	err = ws.Connect(context.Background())
 	require.NoError(t, err)
 
-	db := surrealdb.New(ws)
+	db := surrealdb.FromConnection(ws)
 	defer db.Close(context.Background())
 
 	err = db.Use(context.Background(), "test", "test")

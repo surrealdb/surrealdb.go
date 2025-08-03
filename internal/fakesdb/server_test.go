@@ -49,7 +49,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		}()
 
 		// Connect to server
-		db, err := surrealdb.Connect(ctx, "ws://"+server.Address())
+		db, err := surrealdb.FromEndpointURLString(ctx, "ws://"+server.Address())
 		require.NoError(t, err)
 		defer db.Close(ctx)
 
@@ -109,7 +109,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		}()
 
 		// Connect first client and sign in
-		db1, err := surrealdb.Connect(ctx, "ws://"+server.Address())
+		db1, err := surrealdb.FromEndpointURLString(ctx, "ws://"+server.Address())
 		require.NoError(t, err)
 		defer db1.Close(ctx)
 
@@ -124,7 +124,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		require.Equal(t, server.TokenSignIn, token)
 
 		// Connect second client and authenticate with token
-		db2, err := surrealdb.Connect(ctx, "ws://"+server.Address())
+		db2, err := surrealdb.FromEndpointURLString(ctx, "ws://"+server.Address())
 		require.NoError(t, err)
 		defer db2.Close(ctx)
 
@@ -172,7 +172,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		require.Equal(t, "mytoken", token)
 
 		// Connect and authenticate
-		db, err := surrealdb.Connect(ctx, "ws://"+server.Address())
+		db, err := surrealdb.FromEndpointURLString(ctx, "ws://"+server.Address())
 		require.NoError(t, err)
 		defer db.Close(ctx)
 
@@ -208,7 +208,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		}()
 
 		// Connect to server
-		db, err := surrealdb.Connect(ctx, "ws://"+server.Address())
+		db, err := surrealdb.FromEndpointURLString(ctx, "ws://"+server.Address())
 		require.NoError(t, err)
 		defer db.Close(ctx)
 
