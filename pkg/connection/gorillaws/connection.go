@@ -47,26 +47,26 @@ const (
 	// StatePending indicates that the WebSocket connection is pending.
 	//
 	// This is the initial state of the WebSocketConnection before it has been connected.
-	// It will transition to WebSocketStateConnecting once it starts connecting.
+	// It will transition to StateConnecting once it starts connecting.
 	//
 	// To make the connection usable, you must call Connect to transition from this state
-	// to WebSocketStateConnecting (and then to WebSocketStateConnected).
+	// to StateConnecting (and then to StateConnected).
 	StatePending
 	// StateConnecting indicates that the WebSocket connection is in the process of connecting.
 	//
-	// It will transition to WebSocketStateConnected once the connection is established,
-	// or to WebSocketStateDisconnected if the connection fails.
+	// It will transition to StateConnected once the connection is established,
+	// or to StateDisconnected if the connection fails.
 	StateConnecting
 	// StateConnected indicates that the WebSocket connection is established and ready to use.
 	//
-	// It will transition to WebSocketStateDisconnected if the connection is closed manually or due to an error.
+	// It will transition to StateDisconnected if the connection is closed manually or due to an error.
 	StateConnected
 	// StateDisconnecting indicates that the WebSocket connection is being manually disconnected.
 	StateDisconnecting
 	// StateDisconnected indicates that the WebSocket connection is closed or disconnected,
 	// either manually or due to an error.
 	//
-	// It can transition to WebSocketStateConnecting if a reconnection attempt is made.
+	// It can transition to StateConnecting if a reconnection attempt is made.
 	StateDisconnected
 )
 
@@ -74,22 +74,22 @@ const (
 //
 // We assume the following state transitions:
 //
-//	WebSocketStatePending
-//	  -> WebSocketStateConnecting (Initial connection attempt)
+//	StatePending
+//	  -> StateConnecting (Initial connection attempt)
 //
-//	WebSocketStateConnecting
-//	  -> WebSocketStateConnected (Successful connection)
-//	  -> WebSocketStateDisconnected (Failed connection attempt)
+//	StateConnecting
+//	  -> StateConnected (Successful connection)
+//	  -> StateDisconnected (Failed connection attempt)
 //
-//	WebSocketStateConnected
-//	  -> WebSocketStateDisconnecting (Manual disconnection attempt)
-//	  -> WebSocketStateDisconnected (Disconnected by an error)
+//	StateConnected
+//	  -> StateDisconnecting (Manual disconnection attempt)
+//	  -> StateDisconnected (Disconnected by an error)
 //
-//	WebSocketStateDisconnecting
-//	  -> WebSocketStateDisconnected (Graceful disconnection process completed)
+//	StateDisconnecting
+//	  -> StateDisconnected (Graceful disconnection process completed)
 //
-//	WebSocketStateDisconnected
-//	  -> WebSocketStateConnecting (Reconnection attempt)
+//	StateDisconnected
+//	  -> StateConnecting (Reconnection attempt)
 //
 // Any other states and transitions are considered invalid
 // and may result in an error.
@@ -150,112 +150,112 @@ func New(p *connection.Config) *Connection {
 	}
 }
 
-func (ws *Connection) Connect(ctx context.Context) error {
-	return ws.tryConnecting(ctx)
+func (c *Connection) Connect(ctx context.Context) error {
+	return c.tryConnecting(ctx)
 }
 
 // IsClosed checks if the WebSocket connection is disconnected.
 // This is useful to enable the consumer of WebSocketConnection
 // to trigger reconnection attempts if the connection is disconnected unexpectedly.
-func (ws *Connection) IsClosed() bool {
-	ws.stateLock.RLock()
-	defer ws.stateLock.RUnlock()
+func (c *Connection) IsClosed() bool {
+	c.stateLock.RLock()
+	defer c.stateLock.RUnlock()
 
-	return ws.state == StateDisconnected
+	return c.state == StateDisconnected
 }
 
-func (ws *Connection) transitionToConnecting() error {
-	ws.stateLock.Lock()
-	defer ws.stateLock.Unlock()
+func (c *Connection) transitionToConnecting() error {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
-	switch ws.state {
+	switch c.state {
 	case StateConnected:
-		ws.logger.Debug("WebSocketConnection is already connected, skipping reconnection")
+		c.logger.Debug("WebSocketConnection is already connected, skipping reconnection")
 		return errors.New("WebSocketConnection is already connected")
 	case StateConnecting:
-		ws.logger.Debug("WebSocketConnection is already connecting, skipping reconnection")
+		c.logger.Debug("WebSocketConnection is already connecting, skipping reconnection")
 		return errors.New("WebSocketConnection is already connecting")
 	case StateDisconnected:
-		ws.logger.Debug("WebSocketConnection is disconnected, trying to reconnect")
+		c.logger.Debug("WebSocketConnection is disconnected, trying to reconnect")
 	case StatePending:
-		ws.logger.Debug("WebSocketConnection is pending, trying to connect")
+		c.logger.Debug("WebSocketConnection is pending, trying to connect")
 	default:
-		ws.logger.Warn("BUG: WebSocketConnection is in an unknown state, trying to reconnect anyway",
-			"state", ws.state,
+		c.logger.Warn("BUG: WebSocketConnection is in an unknown state, trying to reconnect anyway",
+			"state", c.state,
 		)
 	}
 
-	ws.state = StateConnecting
+	c.state = StateConnecting
 
 	return nil
 }
 
-func (ws *Connection) transitionToDisconnecting() error {
-	ws.stateLock.Lock()
-	defer ws.stateLock.Unlock()
+func (c *Connection) transitionToDisconnecting() error {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
-	switch ws.state {
+	switch c.state {
 	case StateConnected:
-		ws.logger.Debug("WebSocketConnection is connected, trying to disconnect")
+		c.logger.Debug("WebSocketConnection is connected, trying to disconnect")
 	case StateConnecting:
-		ws.logger.Debug("WebSocketConnection is connecting, but we cannot disconnect until it is connected")
+		c.logger.Debug("WebSocketConnection is connecting, but we cannot disconnect until it is connected")
 		return errors.New("WebSocketConnection is connecting, cannot disconnect")
 	case StateDisconnected:
-		ws.logger.Debug("WebSocketConnection is already disconnected, skipping disconnection")
+		c.logger.Debug("WebSocketConnection is already disconnected, skipping disconnection")
 		return errors.New("WebSocketConnection is already disconnected")
 	case StatePending:
-		ws.logger.Debug("WebSocketConnection is pending, no need to disconnect")
+		c.logger.Debug("WebSocketConnection is pending, no need to disconnect")
 		return errors.New("WebSocketConnection is pending, no need to disconnect")
 	default:
-		ws.logger.Warn("BUG: WebSocketConnection is in an unknown state, nothing to do",
-			"state", ws.state,
+		c.logger.Warn("BUG: WebSocketConnection is in an unknown state, nothing to do",
+			"state", c.state,
 		)
 		return errors.New("WebSocketConnection is in an unknown state, nothing to do")
 	}
 
-	ws.state = StateDisconnecting
+	c.state = StateDisconnecting
 
 	return nil
 }
 
 // transitionToDisconnectedWithError safely transitions the connection to disconnected state
 // when an error occurs that indicates the connection is closed.
-func (ws *Connection) transitionToDisconnectedWithError(err error) {
-	ws.stateLock.Lock()
-	defer ws.stateLock.Unlock()
+func (c *Connection) transitionToDisconnectedWithError(err error) {
+	c.stateLock.Lock()
+	defer c.stateLock.Unlock()
 
 	// Only transition if we're currently connected
 	// This prevents overwriting the state if we're already disconnecting or disconnected
-	if ws.state == StateConnected {
-		ws.state = StateDisconnected
-		ws.connCloseError = err
-		ws.logger.Error("WebSocketConnection disconnected due to error", "error", err)
+	if c.state == StateConnected {
+		c.state = StateDisconnected
+		c.connCloseError = err
+		c.logger.Error("WebSocketConnection disconnected due to error", "error", err)
 
 		// Close the connCloseCh if it's not already closed
 		select {
-		case <-ws.connCloseCh:
+		case <-c.connCloseCh:
 			// Already closed
 		default:
-			close(ws.connCloseCh)
+			close(c.connCloseCh)
 		}
 	}
 }
 
-func (ws *Connection) tryConnecting(ctx context.Context) error {
-	if err := ws.transitionToConnecting(); err != nil {
+func (c *Connection) tryConnecting(ctx context.Context) error {
+	if err := c.transitionToConnecting(); err != nil {
 		return err
 	}
 
-	if err := ws.connect(ctx); err != nil {
-		ws.transitionToDisconnectedWithError(err)
+	if err := c.connect(ctx); err != nil {
+		c.transitionToDisconnectedWithError(err)
 		return err
 	}
 
 	// Safely transition to connected state
-	ws.stateLock.Lock()
-	ws.state = StateConnected
-	ws.stateLock.Unlock()
-	ws.logger.Debug("WebSocketConnection is connected")
+	c.stateLock.Lock()
+	c.state = StateConnected
+	c.stateLock.Unlock()
+	c.logger.Debug("WebSocketConnection is connected")
 
 	return nil
 }
@@ -263,8 +263,8 @@ func (ws *Connection) tryConnecting(ctx context.Context) error {
 // connect establishes the WebSocket connection to the SurrealDB server.
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
-func (ws *Connection) connect(ctx context.Context) error {
-	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", ws.BaseURL), nil)
+func (c *Connection) connect(ctx context.Context) error {
+	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -272,53 +272,53 @@ func (ws *Connection) connect(ctx context.Context) error {
 
 	// Delaying the lock until this point reduces
 	// the max time Send is blocked on the connLock negligible.
-	ws.connLock.Lock()
-	defer ws.connLock.Unlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
-	ws.Conn = conn
+	c.Conn = conn
 
-	for _, option := range ws.Option {
-		if err := option(ws); err != nil {
+	for _, option := range c.Option {
+		if err := option(c); err != nil {
 			return err
 		}
 	}
 
-	ws.connCloseCh = make(chan int)
+	c.connCloseCh = make(chan int)
 
 	// Start a goroutine to read messages from the WebSocket connection.
 	// This will run in the background and handle incoming messages,
 	// until closeChan is closed, or a read error indicating
 	// lost connection occurs.
-	go ws.readLoop()
+	go c.readLoop()
 
 	return nil
 }
 
-func (ws *Connection) SetTimeOut(timeout time.Duration) *Connection {
-	ws.Option = append(ws.Option, func(ws *Connection) error {
+func (c *Connection) SetTimeOut(timeout time.Duration) *Connection {
+	c.Option = append(c.Option, func(ws *Connection) error {
 		ws.Timeout = timeout
 		return nil
 	})
-	return ws
+	return c
 }
 
 // If path is empty it will use os.stdout/os.stderr
-func (ws *Connection) Logger(logData logger.Logger) *Connection {
-	ws.logger = logData
-	return ws
+func (c *Connection) Logger(logData logger.Logger) *Connection {
+	c.logger = logData
+	return c
 }
 
-func (ws *Connection) RawLogger(logData logger.Logger) *Connection {
-	ws.logger = logData
-	return ws
+func (c *Connection) RawLogger(logData logger.Logger) *Connection {
+	c.logger = logData
+	return c
 }
 
-func (ws *Connection) SetCompression(compress bool) *Connection {
-	ws.Option = append(ws.Option, func(ws *Connection) error {
+func (c *Connection) SetCompression(compress bool) *Connection {
+	c.Option = append(c.Option, func(ws *Connection) error {
 		ws.Conn.EnableWriteCompression(compress)
 		return nil
 	})
-	return ws
+	return c
 }
 
 // Close closes the WebSocket connection and stops listening for incoming messages.
@@ -333,8 +333,8 @@ func (ws *Connection) SetCompression(compress bool) *Connection {
 // We then propagate the deadline to the WebSocket close message write operation,
 // which enables us to clean up everything including the internal goroutine that used to
 // try writing to the WebSocket connection, when this function exists.
-func (ws *Connection) Close(ctx context.Context) error {
-	if err := ws.transitionToDisconnecting(); err != nil {
+func (c *Connection) Close(ctx context.Context) error {
+	if err := c.transitionToDisconnecting(); err != nil {
 		return err
 	}
 	defer func() {
@@ -351,9 +351,9 @@ func (ws *Connection) Close(ctx context.Context) error {
 
 		// Also note that we have no need to lock the stateLock here,
 		// because we already locked it in transitionToDisconnecting,
-		// and while WebSocketStateDisconnecting is set,
+		// and while StateDisconnecting is set,
 		// no other goroutine can try to connect or disconnect.
-		ws.state = StateDisconnected
+		c.state = StateDisconnected
 	}()
 
 	// Signal that we're closing so that the goroutine reading from the connection
@@ -367,15 +367,15 @@ func (ws *Connection) Close(ctx context.Context) error {
 	// and try writing a message.
 	//
 	// This also serves as a guardrail to prevent Send proceeding to write to nil ws.Conn
-	close(ws.connCloseCh)
+	close(c.connCloseCh)
 
 	// We defer locking connLock until this point and do state check
 	// to prevent Close blocking on repeated Close calls.
-	ws.connLock.Lock()
-	defer ws.connLock.Unlock()
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
 
-	conn := ws.Conn
-	ws.Conn = nil
+	conn := c.Conn
+	c.Conn = nil
 
 	// Phase 1: Try to send the close message
 	//
@@ -420,7 +420,7 @@ func (ws *Connection) Close(ctx context.Context) error {
 			// Write failed, but we don't return here,
 			// because we try our best to Close the connection anyway,
 			// although it might not be a clean close from the server's perspective.
-			ws.logger.Error("failed to write close message", "error", err)
+			c.logger.Error("failed to write close message", "error", err)
 		}
 	case <-ctx.Done():
 		// Again, we don't return here, because we try our best to Close the connection anyway,
@@ -442,36 +442,36 @@ func (ws *Connection) Close(ctx context.Context) error {
 	return conn.Close()
 }
 
-func (ws *Connection) Use(ctx context.Context, namespace, database string) error {
-	return connection.Send[any](ws, ctx, nil, "use", namespace, database)
+func (c *Connection) Use(ctx context.Context, namespace, database string) error {
+	return connection.Send[any](c, ctx, nil, "use", namespace, database)
 }
 
-func (ws *Connection) Let(ctx context.Context, key string, value any) error {
-	return connection.Send[any](ws, ctx, nil, "let", key, value)
+func (c *Connection) Let(ctx context.Context, key string, value any) error {
+	return connection.Send[any](c, ctx, nil, "let", key, value)
 }
 
-func (ws *Connection) Authenticate(ctx context.Context, token string) error {
-	return rpc.Authenticate(ws, ctx, token)
+func (c *Connection) Authenticate(ctx context.Context, token string) error {
+	return rpc.Authenticate(c, ctx, token)
 }
 
-func (ws *Connection) SignUp(ctx context.Context, authData any) (string, error) {
-	return rpc.SignUp(ws, ctx, authData)
+func (c *Connection) SignUp(ctx context.Context, authData any) (string, error) {
+	return rpc.SignUp(c, ctx, authData)
 }
 
-func (ws *Connection) SignIn(ctx context.Context, authData any) (string, error) {
-	return rpc.SignIn(ws, ctx, authData)
+func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	return rpc.SignIn(c, ctx, authData)
 }
 
-func (ws *Connection) Invalidate(ctx context.Context) error {
-	return rpc.Invalidate(ws, ctx)
+func (c *Connection) Invalidate(ctx context.Context) error {
+	return rpc.Invalidate(c, ctx)
 }
 
-func (ws *Connection) Unset(ctx context.Context, key string) error {
-	return connection.Send[any](ws, ctx, nil, "unset", key)
+func (c *Connection) Unset(ctx context.Context, key string) error {
+	return connection.Send[any](c, ctx, nil, "unset", key)
 }
 
-func (ws *Connection) GetUnmarshaler() codec.Unmarshaler {
-	return ws.Unmarshaler
+func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
+	return c.Unmarshaler
 }
 
 // Send sends a request to SurrealDB and expects a response.
@@ -486,16 +486,16 @@ func (ws *Connection) GetUnmarshaler() codec.Unmarshaler {
 // The rationale is that it resulted in two different implementations of the Connection interface,
 // HTTP and WebSocket, to behave differently in case of a timeout.
 // The WebSocketConnection would return ErrTimeout, while the HTTPConnection would return context.DeadlineExceeded.
-func (ws *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
-	if ws.Timeout > 0 {
+func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	if c.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, ws.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
 		defer cancel()
 	}
 
 	select {
-	case <-ws.connCloseCh:
-		return nil, ws.connCloseError
+	case <-c.connCloseCh:
+		return nil, c.connCloseError
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
@@ -508,13 +508,13 @@ func (ws *Connection) Send(ctx context.Context, method string, params ...any) (*
 		Params: params,
 	}
 
-	responseChan, err := ws.CreateResponseChannel(id)
+	responseChan, err := c.CreateResponseChannel(id)
 	if err != nil {
 		return nil, err
 	}
-	defer ws.RemoveResponseChannel(id)
+	defer c.RemoveResponseChannel(id)
 
-	if err := ws.write(request); err != nil {
+	if err := c.write(request); err != nil {
 		return nil, err
 	}
 
@@ -533,75 +533,75 @@ func (ws *Connection) Send(ctx context.Context, method string, params ...any) (*
 	}
 }
 
-func (ws *Connection) write(v any) error {
-	data, err := ws.Marshaler.Marshal(v)
+func (c *Connection) write(v any) error {
+	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	ws.connLock.Lock()
-	defer ws.connLock.Unlock()
-	err = ws.Conn.WriteMessage(gorilla.BinaryMessage, data)
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
+	err = c.Conn.WriteMessage(gorilla.BinaryMessage, data)
 
 	// Check if we got ErrCloseSent, which means the connection is closed
 	if errors.Is(err, gorilla.ErrCloseSent) {
 		// Transition to disconnected state so IsClosed() returns true
 		// This allows rews to detect the closed connection and reconnect
-		go ws.transitionToDisconnectedWithError(err)
+		go c.transitionToDisconnectedWithError(err)
 	}
 
 	return err
 }
 
-func (ws *Connection) readLoop() {
+func (c *Connection) readLoop() {
 	for {
 		select {
-		case <-ws.connCloseCh:
+		case <-c.connCloseCh:
 			return
 		default:
-			_, data, err := ws.Conn.ReadMessage()
+			_, data, err := c.Conn.ReadMessage()
 			if err != nil {
-				shouldExit := ws.handleError(err)
+				shouldExit := c.handleError(err)
 				if shouldExit {
-					ws.transitionToDisconnectedWithError(err)
+					c.transitionToDisconnectedWithError(err)
 					return
 				}
 				continue
 			}
-			go ws.handleResponse(data)
+			go c.handleResponse(data)
 		}
 	}
 }
 
 // handleError returns true if the error indicates that the connection is closed
 // and the readLoop should exit, false otherwise.
-func (ws *Connection) handleError(err error) bool {
+func (c *Connection) handleError(err error) bool {
 	if errors.Is(err, net.ErrClosed) {
-		ws.connCloseError = net.ErrClosed
+		c.connCloseError = net.ErrClosed
 		return true
 	}
 	if gorilla.IsUnexpectedCloseError(err) {
-		ws.connCloseError = io.ErrClosedPipe
-		<-ws.connCloseCh
+		c.connCloseError = io.ErrClosedPipe
+		<-c.connCloseCh
 		return true
 	}
 
-	ws.logger.Error(err.Error())
+	c.logger.Error(err.Error())
 	return false
 }
 
-func (ws *Connection) handleResponse(res []byte) {
+func (c *Connection) handleResponse(res []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
-	if err := ws.Unmarshaler.Unmarshal(res, &rpcRes); err != nil {
+	if err := c.Unmarshaler.Unmarshal(res, &rpcRes); err != nil {
 		panic(err)
 	}
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Try to resolve message as response to query
-		responseChan, ok := ws.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
+		responseChan, ok := c.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
 		if !ok {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", rpcRes.ID)
-			ws.logger.Error(err.Error())
+			c.logger.Error(err.Error())
 			return
 		}
 		defer close(responseChan)
@@ -618,7 +618,7 @@ func (ws *Connection) handleResponse(res []byte) {
 		// Instead, we just log the error and return,
 		// in the hope that the caller notices the programming error
 		// by the RPC timing out, and the error being logged here.
-		ws.logger.Error(
+		c.logger.Error(
 			fmt.Sprintf("error in response: %v", rpcRes.Error),
 			"result", fmt.Sprint(rpcRes.Result),
 		)
@@ -628,7 +628,7 @@ func (ws *Connection) handleResponse(res []byte) {
 
 		notificationRes, err := rpcRes.Result.MarshalCBOR()
 		if err != nil {
-			ws.logger.Error(
+			c.logger.Error(
 				fmt.Sprintf("error marshaling notification result: %v", err),
 				"result", fmt.Sprint(rpcRes.Result),
 			)
@@ -636,8 +636,8 @@ func (ws *Connection) handleResponse(res []byte) {
 		}
 
 		var notification connection.Notification
-		if err := ws.Unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
-			ws.logger.Error(
+		if err := c.Unmarshaler.Unmarshal(notificationRes, &notification); err != nil {
+			c.logger.Error(
 				fmt.Sprintf("error unmarshaling as notification: %v", err),
 				"result", fmt.Sprint(rpcRes.Result),
 			)
@@ -647,16 +647,16 @@ func (ws *Connection) handleResponse(res []byte) {
 		channelID := notification.ID
 
 		if channelID == nil {
-			ws.logger.Error(
+			c.logger.Error(
 				"response did not contain an 'id' field",
 				"result", fmt.Sprint(rpcRes.Result),
 			)
 			return
 		}
 
-		LiveNotificationChan, ok := ws.GetNotificationChannel(channelID.String())
+		LiveNotificationChan, ok := c.GetNotificationChannel(channelID.String())
 		if !ok {
-			ws.logger.Error(
+			c.logger.Error(
 				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
 				"result", fmt.Sprint(rpcRes.Result),
 			)

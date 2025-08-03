@@ -20,7 +20,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
-type HTTPConnection struct {
+type Connection struct {
 	BaseURL     string
 	Marshaler   codec.Marshaler
 	Unmarshaler codec.Unmarshaler
@@ -29,8 +29,8 @@ type HTTPConnection struct {
 	variables  sync.Map
 }
 
-func New(p *connection.Config) *HTTPConnection {
-	con := HTTPConnection{
+func New(p *connection.Config) *Connection {
+	con := Connection{
 		Marshaler:   p.Marshaler,
 		Unmarshaler: p.Unmarshaler,
 		BaseURL:     p.BaseURL,
@@ -45,12 +45,12 @@ func New(p *connection.Config) *HTTPConnection {
 	return &con
 }
 
-func (h *HTTPConnection) Connect(ctx context.Context) error {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BaseURL+"/health", http.NoBody)
+func (c *Connection) Connect(ctx context.Context) error {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/health", http.NoBody)
 	if err != nil {
 		return err
 	}
-	_, err = h.MakeRequest(httpReq)
+	_, err = c.MakeRequest(httpReq)
 	if err != nil {
 		return err
 	}
@@ -58,26 +58,26 @@ func (h *HTTPConnection) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (h *HTTPConnection) Close(ctx context.Context) error {
+func (c *Connection) Close(ctx context.Context) error {
 	return nil
 }
 
-func (h *HTTPConnection) SetTimeout(timeout time.Duration) *HTTPConnection {
-	h.httpClient.Timeout = timeout
-	return h
+func (c *Connection) SetTimeout(timeout time.Duration) *Connection {
+	c.httpClient.Timeout = timeout
+	return c
 }
 
-func (h *HTTPConnection) SetHTTPClient(client *http.Client) *HTTPConnection {
-	h.httpClient = client
-	return h
+func (c *Connection) SetHTTPClient(client *http.Client) *Connection {
+	c.httpClient = client
+	return c
 }
 
-func (h *HTTPConnection) GetUnmarshaler() codec.Unmarshaler {
-	return h.Unmarshaler
+func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
+	return c.Unmarshaler
 }
 
-func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
-	if h.BaseURL == "" {
+func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	if c.BaseURL == "" {
 		return nil, constants.ErrNoBaseURL
 	}
 
@@ -86,41 +86,41 @@ func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any)
 		Method: method,
 		Params: params,
 	}
-	reqBody, err := h.Marshaler.Marshal(request)
+	reqBody, err := c.Marshaler.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.BaseURL+"/rpc", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/rpc", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
-	if namespace, ok := h.variables.Load("namespace"); ok {
+	if namespace, ok := c.variables.Load("namespace"); ok {
 		req.Header.Set("Surreal-NS", namespace.(string))
 	} else {
 		return nil, constants.ErrNoNamespaceOrDB
 	}
 
-	if database, ok := h.variables.Load("database"); ok {
+	if database, ok := c.variables.Load("database"); ok {
 		req.Header.Set("Surreal-DB", database.(string))
 	} else {
 		return nil, constants.ErrNoNamespaceOrDB
 	}
 
-	if token, ok := h.variables.Load(constants.AuthTokenKey); ok {
+	if token, ok := c.variables.Load(constants.AuthTokenKey); ok {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
 	}
 
-	respData, err := h.MakeRequest(req)
+	respData, err := c.MakeRequest(req)
 	if err != nil {
 		return nil, err
 	}
 
 	var res connection.RPCResponse[cbor.RawMessage]
-	if err := h.Unmarshaler.Unmarshal(respData, &res); err != nil {
+	if err := c.Unmarshaler.Unmarshal(respData, &res); err != nil {
 		return nil, err
 	}
 	if res.Error != nil {
@@ -130,8 +130,8 @@ func (h *HTTPConnection) Send(ctx context.Context, method string, params ...any)
 	return &res, nil
 }
 
-func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
-	resp, err := h.httpClient.Do(req)
+func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}
@@ -151,80 +151,80 @@ func (h *HTTPConnection) MakeRequest(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("%s", string(respBytes))
 	}
 	var errorResponse connection.RPCResponse[any]
-	err = h.Unmarshaler.Unmarshal(respBytes, &errorResponse)
+	err = c.Unmarshaler.Unmarshal(respBytes, &errorResponse)
 	if err != nil {
 		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
 	}
 	return nil, errorResponse.Error
 }
 
-func (h *HTTPConnection) Use(ctx context.Context, namespace, database string) error {
-	h.variables.Store("namespace", namespace)
-	h.variables.Store("database", database)
+func (c *Connection) Use(ctx context.Context, namespace, database string) error {
+	c.variables.Store("namespace", namespace)
+	c.variables.Store("database", database)
 
 	return nil
 }
 
-func (h *HTTPConnection) Let(ctx context.Context, key string, value any) error {
-	h.variables.Store(key, value)
+func (c *Connection) Let(ctx context.Context, key string, value any) error {
+	c.variables.Store(key, value)
 	return nil
 }
 
-func (h *HTTPConnection) Authenticate(ctx context.Context, token string) error {
-	if err := rpc.Authenticate(h, ctx, token); err != nil {
+func (c *Connection) Authenticate(ctx context.Context, token string) error {
+	if err := rpc.Authenticate(c, ctx, token); err != nil {
 		return err
 	}
 
-	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+	if err := c.Let(ctx, constants.AuthTokenKey, token); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (h *HTTPConnection) SignUp(ctx context.Context, authData any) (string, error) {
-	token, err := rpc.SignUp(h, ctx, authData)
+func (c *Connection) SignUp(ctx context.Context, authData any) (string, error) {
+	token, err := rpc.SignUp(c, ctx, authData)
 	if err != nil {
 		return "", err
 	}
 
-	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+	if err := c.Let(ctx, constants.AuthTokenKey, token); err != nil {
 		return "", err
 	}
 
 	return token, nil
 }
 
-func (h *HTTPConnection) SignIn(ctx context.Context, authData any) (string, error) {
-	token, err := rpc.SignIn(h, ctx, authData)
+func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
+	token, err := rpc.SignIn(c, ctx, authData)
 	if err != nil {
 		return "", err
 	}
 
-	if err := h.Let(ctx, constants.AuthTokenKey, token); err != nil {
+	if err := c.Let(ctx, constants.AuthTokenKey, token); err != nil {
 		return "", err
 	}
 
 	return token, nil
 }
 
-func (h *HTTPConnection) Invalidate(ctx context.Context) error {
-	if err := rpc.Invalidate(h, ctx); err != nil {
+func (c *Connection) Invalidate(ctx context.Context) error {
+	if err := rpc.Invalidate(c, ctx); err != nil {
 		return err
 	}
 
-	if err := h.Unset(ctx, constants.AuthTokenKey); err != nil {
+	if err := c.Unset(ctx, constants.AuthTokenKey); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (h *HTTPConnection) Unset(ctx context.Context, key string) error {
-	h.variables.Delete(key)
+func (c *Connection) Unset(ctx context.Context, key string) error {
+	c.variables.Delete(key)
 	return nil
 }
 
-func (h *HTTPConnection) LiveNotifications(id string) (chan connection.Notification, error) {
+func (c *Connection) LiveNotifications(id string) (chan connection.Notification, error) {
 	return nil, errors.New("live notifications are not supported in HTTP connections")
 }
