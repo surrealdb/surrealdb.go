@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -14,7 +15,7 @@ import (
 //
 //nolint:funlen
 func ExampleQuery_bluk_insert_upsert() {
-	db := newSurrealDBWSConnection("query", "persons")
+	db := testenv.MustNew("query", "persons")
 
 	/// You can make it a schemaful table by defining fields like this:
 	//

@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleQuery_none_and_null_handling() {
-	db := newSurrealDBWSConnection("query", "t")
+	db := testenv.MustNew("query", "t")
 
 	_, err := surrealdb.Query[[]any](
 		context.Background(),

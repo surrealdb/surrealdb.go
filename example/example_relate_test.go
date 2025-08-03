@@ -6,12 +6,13 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleRelate() {
-	db := newSurrealDBWSConnection("query", "person", "follow")
+	db := testenv.MustNew("query", "person", "follow")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`

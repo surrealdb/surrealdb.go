@@ -71,11 +71,11 @@ func (s State) validateTransitionTo(newState State) error {
 type Connection[C connection.WebSocketConnection] struct {
 	connection.WebSocketConnection
 
-	// ConnectFunc is a function that establishes the WebSocket connection.
-	// It is used to create a new WebSocket connection when the initial
+	// NewFunc is a function that initializes the WebSocket connection.
+	// It is used to create a new WebSocket connection object when the initial
 	// connection is made, or when the reconnection is needed.
 	// The function should return a WebSocket connection and an error.
-	ConnectFunc func(context.Context) (C, error)
+	NewFunc func(context.Context) (C, error)
 
 	// CheckInterval is the interval at which the reconnection attempts are made.
 	// It is used to avoid busy-waiting and to control the frequency of reconnection
@@ -145,13 +145,13 @@ var _ connection.WebSocketConnection = (*Connection[connection.WebSocketConnecti
 // It takes a function that establishes the WebSocket connection,
 // a check interval for reconnection attempts, and a logger.
 func New[C connection.WebSocketConnection](
-	connect func(context.Context) (C, error),
+	newConn func(context.Context) (C, error),
 	checkInterval time.Duration,
 	log logger.Logger,
 ) *Connection[C] {
 	return &Connection[C]{
 		CheckInterval: checkInterval,
-		ConnectFunc:   connect,
+		NewFunc:       newConn,
 		state:         StateDisconnected,
 		logger:        log,
 		sessionVars:   make(map[string]any),
@@ -208,13 +208,23 @@ func (arws *Connection[C]) Connect(ctx context.Context) error {
 
 	var err error
 
-	arws.WebSocketConnection, err = arws.ConnectFunc(ctx)
+	conn, err := arws.NewFunc(ctx)
+	if err != nil {
+		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
+			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+		}
+		return fmt.Errorf("rews.Connection failed to create a new connection: %w", err)
+	}
+
+	err = conn.Connect(ctx)
 	if err != nil {
 		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
 			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
 		}
 		return fmt.Errorf("rews.Connection failed to connect: %w", err)
 	}
+
+	arws.WebSocketConnection = conn
 
 	arws.once.Do(func() {
 		arws.logger.Debug("rews.Connection is starting reconnection loop")

@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
 //nolint:funlen
 func ExampleDB_record_user_auth_struct() {
-	db := newSurrealDBWSConnection("record_auth_demo", "user")
+	db := testenv.MustNew("record_auth_demo", "user")
 
 	setupQuery := `
 		-- Define the user table with schema
@@ -90,7 +91,7 @@ func ExampleDB_record_user_auth_struct() {
 }
 
 func ExampleDB_record_user_custom_struct() {
-	db := newSurrealDBWSConnection("record_user_custom", "user")
+	db := testenv.MustNew("record_user_custom", "user")
 
 	setupQuery := `
 		-- Define the user table with schema

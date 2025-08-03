@@ -6,6 +6,7 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -14,7 +15,7 @@ import (
 //
 //nolint:funlen
 func ExampleQuery_return() {
-	db := newSurrealDBWSConnection("query", "persons")
+	db := testenv.MustNew("query", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`

@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
 
 func ExampleConnection_gws() {
 	conf, err := surrealdb.Configure(
-		getSurrealDBWSURL(),
+		testenv.GetSurrealDBWSURL(),
 	)
 	conf.Logger = nil // Disable logging for this example
 	if err != nil {

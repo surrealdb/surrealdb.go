@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
 func ExampleDB_signin_failure() {
 	db, err := surrealdb.Connect(
 		context.Background(),
-		getSurrealDBURL(),
+		testenv.GetSurrealDBWSURL(),
 	)
 	if err != nil {
 		panic(err)

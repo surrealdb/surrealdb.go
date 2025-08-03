@@ -5,11 +5,12 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleSelect() {
-	db := newSurrealDBWSConnection("update", "person")
+	db := testenv.MustNew("update", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`
