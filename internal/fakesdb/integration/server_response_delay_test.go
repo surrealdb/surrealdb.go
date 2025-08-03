@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/internal/fakesdb"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -58,8 +60,10 @@ func TestServerFailureResponseDelay(t *testing.T) {
 
 	wsURL := "ws://" + server.Address()
 
-	p, err := surrealdb.Configure(wsURL)
+	u, err := url.ParseRequestURI(wsURL)
 	require.NoError(t, err)
+
+	p := connection.NewConfig(u)
 
 	ws := gorillaws.New(p).
 		SetTimeOut(100 * time.Millisecond) // Short request timeout
@@ -67,7 +71,7 @@ func TestServerFailureResponseDelay(t *testing.T) {
 	err = ws.Connect(context.Background())
 	require.NoError(t, err)
 
-	db := surrealdb.New(ws)
+	db := surrealdb.FromConnection(ws)
 	defer db.Close(context.Background())
 
 	// Setup

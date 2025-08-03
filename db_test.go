@@ -90,7 +90,7 @@ func (s *SurrealDBTestSuite) TearDownSuite() {
 
 // SetupSuite is called before the s starts running
 func (s *SurrealDBTestSuite) SetupSuite() {
-	db, err := surrealdb.Connect(context.Background(), getURL())
+	db, err := surrealdb.FromEndpointURLString(context.Background(), getURL())
 	s.Require().NoError(err, "should not return an error when initializing db")
 	s.db = db
 

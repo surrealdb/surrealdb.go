@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
@@ -14,7 +12,6 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -29,12 +26,22 @@ type DB struct {
 	con connection.Connection
 }
 
-// New creates a new SurrealDB client using the provided connection.
-func New(conn connection.Connection) *DB {
+// FromConnection creates a new SurrealDB client using the provided connection.
+//
+// It is the caller's responsibility to ensure that the provided connection is connected to the SurrealDB server.
+//
+// If the connection is not connected, the SDK will NOT attempt to connect to the SurrealDB server,
+// and the behavior is undefined.
+func FromConnection(conn connection.Connection) *DB {
 	return &DB{con: conn}
 }
 
-// Connect creates a new SurrealDB client and connects to the database.
+// Deprecated: Use FromEndpointURLString instead.
+func Connect(ctx context.Context, connectionURL string) (*DB, error) {
+	return FromEndpointURLString(ctx, connectionURL)
+}
+
+// FromEndpointURLString creates a new SurrealDB client and connects to the database.
 //
 // This function incurs a network call (currently HTTP request) to the SurrealDB server to check the health of the connection in
 // case of HTTP, or to establish a WebSocket connection in case of WebSocket.
@@ -42,19 +49,25 @@ func New(conn connection.Connection) *DB {
 // The provided `ctx` is used to cancel the connection attempt if needed,
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
-func Connect(ctx context.Context, connectionURL string) (*DB, error) {
-	newParams, err := Configure(connectionURL)
+func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, error) {
+	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to configure connection: %w", err)
+		return nil, err
+	}
+
+	conf := connection.NewConfig(u)
+
+	if confErr := conf.Validate(); confErr != nil {
+		return nil, fmt.Errorf("invalid connection config: %w", confErr)
 	}
 
 	var con connection.Connection
 
-	switch newParams.URL.Scheme {
+	switch conf.URL.Scheme {
 	case "http", "https":
-		con = http.New(newParams)
+		con = http.New(conf)
 	case "ws", "wss":
-		con = gorillaws.New(newParams)
+		con = gorillaws.New(conf)
 	case "memory", "mem", "surrealkv":
 		return nil, fmt.Errorf("embedded database not enabled")
 	default:
@@ -66,32 +79,7 @@ func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 		return nil, err
 	}
 
-	return New(con), nil
-}
-
-// Configure creates a new connection config from the provided connection URL and
-// options.
-//
-// This is useful to instantiate a specific connection type directly.
-func Configure(connectionURL string) (*connection.Config, error) {
-	u, err := url.ParseRequestURI(connectionURL)
-	if err != nil {
-		return nil, err
-	}
-
-	c := connection.Config{
-		URL:         *u,
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
-		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
-		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
-	}
-
-	if err := c.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid connection config: %w", err)
-	}
-
-	return &c, nil
+	return FromConnection(con), nil
 }
 
 // --------------------------------------------------

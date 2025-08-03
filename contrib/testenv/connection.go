@@ -8,11 +8,13 @@ package testenv
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
@@ -95,10 +97,12 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 	var connect func(ctx context.Context) (*surrealdb.DB, error)
 
 	if reconnectDuration > 0 {
-		conf, confErr := surrealdb.Configure(getSurrealDBURL())
-		if confErr != nil {
-			return nil, fmt.Errorf("failed to configure SurrealDB connection: %w", confErr)
+		u, err := url.ParseRequestURI(getSurrealDBURL())
+		if err != nil {
+			return nil, err
 		}
+
+		conf := connection.NewConfig(u)
 
 		switch conf.URL.Scheme {
 		case "ws", "wss":
@@ -109,7 +113,7 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 					if err := gwsConn.Connect(ctx); err != nil {
 						return nil, fmt.Errorf("failed to connect to gws: %w", err)
 					}
-					return surrealdb.New(gwsConn), nil
+					return surrealdb.FromConnection(gwsConn), nil
 				}
 			} else {
 				connect = func(ctx context.Context) (*surrealdb.DB, error) {
@@ -118,7 +122,7 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 					if err := wsConn.Connect(ctx); err != nil {
 						return nil, fmt.Errorf("failed to connect to gorillaws: %w", err)
 					}
-					return surrealdb.New(wsConn), nil
+					return surrealdb.FromConnection(wsConn), nil
 				}
 			}
 		case "http", "https":
@@ -128,7 +132,7 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 		}
 	} else {
 		connect = func(ctx context.Context) (*surrealdb.DB, error) {
-			httpConn, err := surrealdb.Connect(ctx, getSurrealDBHTTPURL())
+			httpConn, err := surrealdb.FromEndpointURLString(ctx, getSurrealDBHTTPURL())
 			if err != nil {
 				return nil, err
 			}
@@ -153,7 +157,7 @@ func MustNewHTTP(database string, tables ...string) *surrealdb.DB {
 }
 
 func NewHTTP(database string, tables ...string) (*surrealdb.DB, error) {
-	db, err := surrealdb.Connect(
+	db, err := surrealdb.FromEndpointURLString(
 		context.Background(),
 		getSurrealDBHTTPURL(),
 	)
