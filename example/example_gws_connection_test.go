@@ -5,16 +5,24 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
 
-func ExampleDB_signin_failure() {
-	db, err := surrealdb.Connect(
-		context.Background(),
+func ExampleConnection_gws() {
+	conf, err := surrealdb.Configure(
 		getSurrealDBWSURL(),
 	)
+	conf.Logger = nil // Disable logging for this example
 	if err != nil {
 		panic(err)
 	}
+
+	conn := gws.New(conf)
+	if connErr := conn.Connect(context.Background()); connErr != nil {
+		panic(fmt.Sprintf("Failed to connect: %v", connErr))
+	}
+
+	db := surrealdb.New(conn)
 
 	// Attempt to sign in without setting namespace or database
 	// This should fail with an error, whose message will depend on the connection type.
