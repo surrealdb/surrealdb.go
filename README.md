@@ -70,7 +70,7 @@ type Person struct {
 
 func main() {
 	// Connect to SurrealDB
-	db, err := surrealdb.Connect(context.Background(), "ws://localhost:8000")
+	db, err := surrealdb.FromEndpointURLString(context.Background(), "ws://localhost:8000")
 	if err != nil {
 		panic(err)
 	}
