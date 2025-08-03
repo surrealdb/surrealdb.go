@@ -10,7 +10,7 @@ import (
 func ExampleDB_signin_failure() {
 	db, err := surrealdb.Connect(
 		context.Background(),
-		getSurrealDBWSURL(),
+		getSurrealDBURL(),
 	)
 	if err != nil {
 		panic(err)
