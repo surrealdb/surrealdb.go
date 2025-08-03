@@ -3,18 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
 //nolint:lll,govet
 func ExampleDB_Version() {
-	ws := newSurrealDBWSConnection("version")
+	ws := testenv.MustNew("version")
 	v, err := ws.Version(context.Background())
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("VersionData (WebSocket): %+v\n", v)
 
-	http := newSurrealDBHTTPConnection("version")
+	http := testenv.MustNew("version")
 	v, err = http.Version(context.Background())
 	if err != nil {
 		panic(err)

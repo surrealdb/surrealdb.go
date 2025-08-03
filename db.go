@@ -8,14 +8,12 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/fxamacker/cbor/v2"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -36,15 +34,6 @@ func New(conn connection.Connection) *DB {
 	return &DB{con: conn}
 }
 
-type ConnectOption func(*connection.Config) error
-
-func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
-	return func(cfg *connection.Config) error {
-		cfg.ReconnectInterval = interval
-		return nil
-	}
-}
-
 // Connect creates a new SurrealDB client and connects to the database.
 //
 // This function incurs a network call (currently HTTP request) to the SurrealDB server to check the health of the connection in
@@ -53,7 +42,7 @@ func WithReconnectionCheckInterval(interval time.Duration) ConnectOption {
 // The provided `ctx` is used to cancel the connection attempt if needed,
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
-func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (*DB, error) {
+func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 	newParams, err := Configure(connectionURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure connection: %w", err)
@@ -65,19 +54,7 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 	case "http", "https":
 		con = http.New(newParams)
 	case "ws", "wss":
-		if newParams.ReconnectInterval > 0 {
-			con = rews.New(func(ctx context.Context) (*gorillaws.Connection, error) {
-				ws := gorillaws.New(newParams)
-
-				if connErr := ws.Connect(ctx); connErr != nil {
-					return nil, fmt.Errorf("failed to connect: %w", connErr)
-				}
-
-				return ws, nil
-			}, newParams.ReconnectInterval, newParams.Logger)
-		} else {
-			con = gorillaws.New(newParams)
-		}
+		con = gorillaws.New(newParams)
 	case "memory", "mem", "surrealkv":
 		return nil, fmt.Errorf("embedded database not enabled")
 	default:
@@ -96,7 +73,7 @@ func Connect(ctx context.Context, connectionURL string, opts ...ConnectOption) (
 // options.
 //
 // This is useful to instantiate a specific connection type directly.
-func Configure(connectionURL string, opts ...ConnectOption) (*connection.Config, error) {
+func Configure(connectionURL string) (*connection.Config, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
@@ -108,12 +85,6 @@ func Configure(connectionURL string, opts ...ConnectOption) (*connection.Config,
 		Unmarshaler: &models.CborUnmarshaler{},
 		BaseURL:     fmt.Sprintf("%s://%s", u.Scheme, u.Host),
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
-	}
-
-	for _, opt := range opts {
-		if optErr := opt(&c); optErr != nil {
-			return nil, fmt.Errorf("failed to apply connect option: %w", optErr)
-		}
 	}
 
 	if err := c.Validate(); err != nil {

@@ -6,12 +6,13 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 //nolint:funlen // ExampleUpdate demonstrates how to update records in SurrealDB.
 func ExampleUpdate() {
-	db := newSurrealDBWSConnection("update", "persons")
+	db := testenv.MustNew("update", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`

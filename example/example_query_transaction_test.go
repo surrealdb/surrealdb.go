@@ -6,11 +6,12 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleQuery_transaction_return() {
-	db := newSurrealDBWSConnection("query", "person")
+	db := testenv.MustNew("query", "person")
 
 	var err error
 
@@ -33,7 +34,7 @@ func ExampleQuery_transaction_return() {
 }
 
 func ExampleQuery_transaction_throw() {
-	db := newSurrealDBWSConnection("query", "person")
+	db := testenv.MustNew("query", "person")
 
 	var (
 		queryResults *[]surrealdb.QueryResult[*int]
@@ -105,7 +106,7 @@ func ExampleQuery_transaction_throw() {
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177
 func ExampleQuery_transaction_issue_177_return_before_commit() {
-	db := newSurrealDBWSConnection("query", "t")
+	db := testenv.MustNew("query", "t")
 
 	var err error
 
@@ -149,7 +150,7 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177
 func ExampleQuery_transaction_issue_177_commit() {
-	db := newSurrealDBWSConnection("query", "t")
+	db := testenv.MustNew("query", "t")
 
 	var err error
 

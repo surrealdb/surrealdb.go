@@ -6,11 +6,12 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleInsert_table() {
-	db := newSurrealDBWSConnection("query", "persons")
+	db := testenv.MustNew("query", "persons")
 
 	type Person struct {
 		Name string `json:"name"`
@@ -109,7 +110,7 @@ func ExampleInsert_table() {
 }
 
 func ExampleInsert_bulk_isnert_record() {
-	db := newSurrealDBWSConnection("query", "person")
+	db := testenv.MustNew("query", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id"`
@@ -153,7 +154,7 @@ func ExampleInsert_bulk_isnert_record() {
 }
 
 func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
-	db := newSurrealDBWSConnection("query", "person", "follow")
+	db := testenv.MustNew("query", "person", "follow")
 
 	type Person struct {
 		ID models.RecordID `json:"id"`

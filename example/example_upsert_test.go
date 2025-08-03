@@ -7,12 +7,13 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 //nolint:funlen
 func ExampleUpsert() {
-	db := newSurrealDBWSConnection("query", "persons")
+	db := testenv.MustNew("query", "persons")
 
 	type Person struct {
 		ID   *models.RecordID `json:"id,omitempty"`
@@ -109,7 +110,7 @@ func ExampleUpsert() {
 }
 
 func ExampleUpsert_unmarshal_error() {
-	db := newSurrealDBWSConnection("query", "person")
+	db := testenv.MustNew("query", "person")
 
 	type Person struct {
 		Name string `json:"name"`
@@ -142,7 +143,7 @@ func ExampleUpsert_unmarshal_error() {
 }
 
 func ExampleUpsert_rpc_error() {
-	db := newSurrealDBWSConnection("query", "person")
+	db := testenv.MustNew("query", "person")
 
 	type Person struct {
 		Name string `json:"name"`

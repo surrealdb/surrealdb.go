@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/rews"
 	"github.com/surrealdb/surrealdb.go/internal/fakesdb"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/rews"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -30,9 +30,6 @@ func TestRewsGorillaWsDoReconnect(t *testing.T) {
 			}
 			ws := gorillaws.New(p)
 
-			if err := ws.Connect(ctx); err != nil {
-				return nil, err
-			}
 			return ws, nil
 		}
 	})
@@ -48,9 +45,6 @@ func TestRewsGwsDoReconnect(t *testing.T) {
 			ws := gws.New(p)
 			ws.Logger = logger.New(slog.NewTextHandler(os.Stdout, nil))
 
-			if err := ws.Connect(ctx); err != nil {
-				return nil, err
-			}
 			return ws, nil
 		}
 	})
@@ -62,7 +56,7 @@ func TestRewsGwsDoReconnect(t *testing.T) {
 // It simulates a connection drop and verifies that the rews package
 // automatically reconnects and resumes operations,
 // with any underlying connection implementation that supports the WebSocketConnection interface.
-func testDoReconnect[C connection.WebSocketConnection](t *testing.T, connectFunc func(wsURL string) func(context.Context) (C, error)) {
+func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc func(wsURL string) func(context.Context) (C, error)) {
 	t.Helper()
 
 	server := fakesdb.NewServer("127.0.0.1:0")
@@ -117,7 +111,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, connectFunc
 	checkInterval := 100 * time.Millisecond
 
 	// Create auto-reconnecting connection
-	conn := rews.New(connectFunc(wsURL), checkInterval, logger.New(slog.NewTextHandler(os.Stdout, nil)))
+	conn := rews.New(newConnFunc(wsURL), checkInterval, logger.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	// Initial connection
 	err = conn.Connect(context.Background())
