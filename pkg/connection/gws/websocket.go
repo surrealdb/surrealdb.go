@@ -116,7 +116,7 @@ func (c *Connection) handleResponse(data []byte) {
 		// Instead, we just log the error and return,
 		// in the hope that the caller notices the programming error
 		// by the RPC timing out, and the error being logged here.
-		c.Logger.Error(
+		c.logError(
 			fmt.Sprintf("error in response: %v", rpcRes.Error),
 			"result", fmt.Sprint(rpcRes.Result),
 		)
@@ -156,6 +156,7 @@ func New(params *connection.Config) *Connection {
 	conn.Unmarshaler = params.Unmarshaler
 	conn.ResponseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
 	conn.NotificationChannels = make(map[string]chan connection.Notification)
+	conn.Logger = params.Logger
 
 	return conn
 }
@@ -187,11 +188,11 @@ func (c *Connection) Close(ctx context.Context) error {
 
 	err := c.conn.WriteClose(constants.CloseMessageCode, []byte(""))
 	if err != nil {
-		c.Logger.Error("failed to close WebSocket connection", "error", err)
+		c.logError("failed to close WebSocket connection", "error", err)
 	}
 
 	if err := c.conn.NetConn().Close(); err != nil {
-		c.Logger.Error("failed to close underlying network connection", "error", err)
+		c.logError("failed to close underlying network connection", "error", err)
 	}
 	c.conn = nil
 
@@ -239,7 +240,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	conn, resp, err := gws.NewClient(c.handler, option)
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			c.Logger.Error("failed to close response body", "error", closeErr)
+			c.logError("failed to close response body", "error", closeErr)
 		}
 	}
 	if err != nil {
@@ -345,4 +346,10 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 // Use implements connection.Connection.
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
 	return connection.Send[any](c, ctx, nil, "use", namespace, database)
+}
+
+func (c *Connection) logError(msg string, args ...any) {
+	if c.Logger != nil {
+		c.Logger.Error(msg, args...)
+	}
 }

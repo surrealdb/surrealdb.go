@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultURL = "ws://localhost:8000"
+	defaultWSURL = "ws://localhost:8000"
 )
 
 var (
@@ -20,9 +20,9 @@ var (
 	useGWS     = os.Getenv("SURREALDB_CONNECTION_IMPL") == "gws"
 )
 
-func getSurrealDBWSURL() string {
+func getSurrealDBURL() string {
 	if currentURL == "" {
-		return defaultURL
+		return defaultWSURL
 	}
 	return currentURL
 }
@@ -32,6 +32,13 @@ func getSurrealDBHTTPURL() string {
 		return "http://localhost:8000"
 	}
 	return strings.ReplaceAll(currentURL, "ws", "http")
+}
+
+func getSurrealDBWSURL() string {
+	if currentURL == "" {
+		return defaultWSURL
+	}
+	return strings.ReplaceAll(currentURL, "http", "ws")
 }
 
 func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
@@ -47,7 +54,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 	var db *surrealdb.DB
 
 	if useGWS {
-		p, confErr := surrealdb.Configure(getSurrealDBWSURL(),
+		p, confErr := surrealdb.Configure(getSurrealDBURL(),
 			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
 		)
 		if confErr != nil {
@@ -62,7 +69,7 @@ func newSurrealDBWSConnection(database string, tables ...string) *surrealdb.DB {
 		var err error
 		db, err = surrealdb.Connect(
 			context.Background(),
-			getSurrealDBWSURL(),
+			getSurrealDBURL(),
 			surrealdb.WithReconnectionCheckInterval(reconnectDuration),
 		)
 		if err != nil {
