@@ -51,17 +51,17 @@ func ExampleQuery_count_groupAll() {
 		C int `json:"c,omitempty"`
 	}
 
-	res, err := surrealdb.Query[CountResult](
+	res, err := surrealdb.Query[[]CountResult](
 		context.Background(),
 		db,
-		"SELECT COUNT() as c FROM ONLY product GROUP ALL",
+		"SELECT COUNT() as c FROM product GROUP ALL",
 		map[string]any{},
 	)
 	if err != nil {
 		panic(err)
 	}
 
-	countResult := (*res)[0].Result
+	countResult := (*res)[0].Result[0]
 
 	fmt.Printf("Count: %d\n", countResult.C)
 
