@@ -16,7 +16,7 @@ func TestEscapeIdent(t *testing.T) {
 		{"user:id", "`user:id`"},
 		{"SELECT", "`SELECT`"},
 		{"select", "`select`"},
-		{"my`table", "`my``table`"},
+		{"my`table", "`my\\`table`"},
 	}
 
 	for _, tt := range tests {
