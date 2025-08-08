@@ -39,7 +39,7 @@ func ExampleInsert_table() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Insert result: %+s\n", *inserted)
+	fmt.Printf("Insert result: %v\n", *inserted)
 
 	_, err = surrealdb.Insert[struct{}](
 		context.Background(),
@@ -86,7 +86,7 @@ func ExampleInsert_table() {
 	if _, ok := (*fourthAsMap)[0]["id"].(models.RecordID); ok {
 		delete((*fourthAsMap)[0], "id")
 	}
-	fmt.Printf("Insert result: %+s\n", *fourthAsMap)
+	fmt.Printf("Insert result: %v\n", *fourthAsMap)
 
 	selected, err := surrealdb.Select[[]Person](
 		context.Background(),
@@ -97,7 +97,7 @@ func ExampleInsert_table() {
 		panic(err)
 	}
 	for _, person := range *selected {
-		fmt.Printf("Selected person: %+s\n", person)
+		fmt.Printf("Selected person: %v\n", person)
 	}
 
 	// Unordered output:
