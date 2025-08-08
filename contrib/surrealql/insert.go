@@ -264,16 +264,15 @@ func (q *InsertQuery) String() string {
 
 // InsertBuilder provides a fluent interface for building complex insert data
 type InsertBuilder struct {
-	data    map[string]any
-	setsRaw []string
 	baseQuery
+	setsBuilder
 }
 
 // NewRelationData creates a new insert data builder
 func NewRelationData() *InsertBuilder {
 	return &InsertBuilder{
-		data:      make(map[string]any),
-		baseQuery: newBaseQuery(),
+		baseQuery:   newBaseQuery(),
+		setsBuilder: newSetsBuilder(),
 	}
 }
 
@@ -281,41 +280,25 @@ func NewRelationData() *InsertBuilder {
 // Can be used for simple assignment: Set("name", "value")
 // Or for compound operations: Set("count += ?", 1)
 func (b *InsertBuilder) Set(expr string, args ...any) *InsertBuilder {
-	// Check if this is a simple field assignment or an expression
-	if len(args) == 1 && !strings.ContainsAny(expr, "?+=<>!-*/") {
-		// Simple field assignment
-		b.data[expr] = args[0]
-	} else if len(args) > 0 {
-		// Expression with placeholders
-		processedExpr := expr
-		for _, arg := range args {
-			paramName := b.generateParamName("param")
-			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
-			b.addParam(paramName, arg)
-		}
-		b.setsRaw = append(b.setsRaw, processedExpr)
-	} else {
-		// Raw expression without placeholders
-		b.setsRaw = append(b.setsRaw, expr)
-	}
+	b.addSet(expr, args, &b.baseQuery, "param")
 	return b
 }
 
 // SetIn sets the 'in' field for relation inserts
 func (b *InsertBuilder) SetIn(record string) *InsertBuilder {
-	b.data["in"] = record
+	b.sets["in"] = record
 	return b
 }
 
 // SetOut sets the 'out' field for relation inserts
 func (b *InsertBuilder) SetOut(record string) *InsertBuilder {
-	b.data["out"] = record
+	b.sets["out"] = record
 	return b
 }
 
 // SetID sets the 'id' field for relation inserts
 func (b *InsertBuilder) SetID(id string) *InsertBuilder {
-	b.data["id"] = id
+	b.sets["id"] = id
 	return b
 }
 
@@ -324,5 +307,5 @@ func (b *InsertBuilder) SetID(id string) *InsertBuilder {
 // The raw expressions are not included in the returned map.
 func (b *InsertBuilder) Build() map[string]any {
 	// TODO: Consider returning both data and raw expressions in a future version
-	return b.data
+	return b.sets
 }
