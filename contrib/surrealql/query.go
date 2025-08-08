@@ -57,7 +57,8 @@ func (q *baseQuery) generateParamName(prefix string) string {
 func escapeIdent(ident string) string {
 	// If the identifier contains special characters, wrap it in backticks
 	if strings.ContainsAny(ident, " -:`") || isReservedWord(ident) {
-		return "`" + strings.ReplaceAll(ident, "`", "``") + "`"
+		// Escape any backticks in the identifier with backslash
+		return "`" + strings.ReplaceAll(ident, "`", "\\`") + "`"
 	}
 	return ident
 }
