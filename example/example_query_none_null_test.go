@@ -9,6 +9,11 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+const (
+	NullString = "null"
+	NoneString = "none"
+)
+
 func ExampleQuery_none_and_null_handling_allExistingFields() {
 	db := testenv.MustNewDeprecated("query", "t")
 
@@ -52,14 +57,14 @@ func ExampleQuery_none_and_null_handling_allExistingFields() {
 
 		var nullable string
 		if t.Nulabble == nil {
-			nullable = "null"
+			nullable = NullString
 		} else {
 			nullable = fmt.Sprintf("%t", *t.Nulabble)
 		}
 
 		var option string
 		if t.Option == nil {
-			option = "none"
+			option = NoneString
 		} else {
 			option = fmt.Sprintf("%t", *t.Option)
 		}
@@ -119,14 +124,14 @@ func ExampleQuery_none_and_null_handling_explicitFields() {
 
 		var nullable string
 		if t.Nulabble == nil {
-			nullable = "null"
+			nullable = NullString
 		} else {
 			nullable = fmt.Sprintf("%t", *t.Nulabble)
 		}
 
 		var option string
 		if t.Option == nil {
-			option = "none"
+			option = NoneString
 		} else {
 			option = fmt.Sprintf("%t", *t.Option)
 		}
@@ -186,14 +191,14 @@ func ExampleQuery_none_and_null_handling_explicitFields_ints() {
 
 		var nullable string
 		if t.Nulabble == nil {
-			nullable = "null"
+			nullable = NullString
 		} else {
 			nullable = fmt.Sprintf("%v", *t.Nulabble)
 		}
 
 		var option string
 		if t.Option == nil {
-			option = "none"
+			option = NoneString
 		} else {
 			option = fmt.Sprintf("%v", *t.Option)
 		}
@@ -257,14 +262,14 @@ func ExampleQuery_create_none_null_fields() {
 
 		var nullable string
 		if t.Nulabble == nil {
-			nullable = "null"
+			nullable = NullString
 		} else {
 			nullable = fmt.Sprintf("%t", *t.Nulabble)
 		}
 
 		var option string
 		if t.Option == nil {
-			option = "none"
+			option = NoneString
 		} else {
 			option = fmt.Sprintf("%t", *t.Option)
 		}
