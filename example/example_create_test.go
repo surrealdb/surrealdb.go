@@ -12,7 +12,7 @@ import (
 
 //nolint:funlen
 func ExampleCreate() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNew("example_create", "persons")
 
 	type Person struct {
 		Name string `json:"name"`
