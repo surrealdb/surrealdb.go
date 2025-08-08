@@ -12,7 +12,7 @@ import (
 )
 
 func ExampleRelate() {
-	db := testenv.MustNew("query", "person", "follow")
+	db := testenv.MustNewDeprecated("query", "person", "follow")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`

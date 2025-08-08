@@ -12,7 +12,7 @@ import (
 
 //nolint:funlen
 func ExampleQuery_embedded_struct() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNewDeprecated("query", "persons")
 
 	type Base struct {
 		ID *models.RecordID `json:"id,omitempty"`

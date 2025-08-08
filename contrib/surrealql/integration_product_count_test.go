@@ -39,7 +39,7 @@ func setupProductData(t *testing.T, ctx context.Context, db *surrealdb.DB, table
 }
 
 func TestIntegrationCount_All(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "products_all")
+	db := testenv.MustNewDeprecated("surrealql_test", "products_all")
 	ctx := context.Background()
 
 	// Setup test data
@@ -92,7 +92,7 @@ func TestIntegrationCount_All(t *testing.T) {
 }
 
 func TestIntegrationCount_WithWhere(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "products_where")
+	db := testenv.MustNewDeprecated("surrealql_test", "products_where")
 	ctx := context.Background()
 
 	// Setup test data
@@ -121,7 +121,7 @@ func TestIntegrationCount_WithWhere(t *testing.T) {
 }
 
 func TestIntegrationCount_GroupBy(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "products_group")
+	db := testenv.MustNewDeprecated("surrealql_test", "products_group")
 	ctx := context.Background()
 
 	// Setup test data

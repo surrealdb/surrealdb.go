@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleQuery() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNewDeprecated("query", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`

@@ -12,7 +12,7 @@ import (
 
 //nolint:funlen // ExampleUpdate demonstrates how to update records in SurrealDB.
 func ExampleUpdate() {
-	db := testenv.MustNew("update", "persons")
+	db := testenv.MustNewDeprecated("update", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`

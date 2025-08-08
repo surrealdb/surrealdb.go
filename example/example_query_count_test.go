@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleQuery_count_groupAll() {
-	db := testenv.MustNew("querytest", "product")
+	db := testenv.MustNewDeprecated("querytest", "product")
 
 	type Product struct {
 		ID       models.RecordID `json:"id,omitempty"`
@@ -73,7 +73,7 @@ func ExampleQuery_count_groupAll() {
 }
 
 func ExampleQuery_count_groupBy() {
-	db := testenv.MustNew("querytest", "product")
+	db := testenv.MustNewDeprecated("querytest", "product")
 
 	type Product struct {
 		ID       models.RecordID `json:"id,omitempty"`

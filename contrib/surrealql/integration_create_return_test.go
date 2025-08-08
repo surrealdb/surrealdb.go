@@ -13,7 +13,8 @@ import (
 )
 
 func TestIntegrationReturnClauses(t *testing.T) {
-	db := testenv.MustNew("surrealql_test_return_test", "tasks")
+	// Use a unique database/namespace to avoid conflicts with other tests
+	db := testenv.MustNew("surrealql", "return_clauses", "tasks")
 
 	ctx := context.Background()
 

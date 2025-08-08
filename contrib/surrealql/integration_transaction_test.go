@@ -11,7 +11,7 @@ import (
 )
 
 func TestIntegrationTransaction(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "accounts")
+	db := testenv.MustNewDeprecated("surrealql_test", "accounts")
 
 	ctx := context.Background()
 

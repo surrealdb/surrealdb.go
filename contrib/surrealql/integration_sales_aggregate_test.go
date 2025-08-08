@@ -46,7 +46,7 @@ func setupSalesData(t *testing.T, ctx context.Context, db *surrealdb.DB, table s
 }
 
 func TestIntegrationAggregate_Sum(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "sales_sum")
+	db := testenv.MustNewDeprecated("surrealql_test", "sales_sum")
 	ctx := context.Background()
 
 	// Setup test data
@@ -93,7 +93,7 @@ func TestIntegrationAggregate_Sum(t *testing.T) {
 }
 
 func TestIntegrationAggregate_Average(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "sales_avg")
+	db := testenv.MustNewDeprecated("surrealql_test", "sales_avg")
 	ctx := context.Background()
 
 	// Setup test data
@@ -126,7 +126,7 @@ func TestIntegrationAggregate_Average(t *testing.T) {
 }
 
 func TestIntegrationAggregate_MinMax(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "sales_minmax")
+	db := testenv.MustNewDeprecated("surrealql_test", "sales_minmax")
 	ctx := context.Background()
 
 	// Setup test data

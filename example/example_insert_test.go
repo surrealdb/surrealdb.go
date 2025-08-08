@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleInsert_table() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNewDeprecated("query", "persons")
 
 	type Person struct {
 		Name string `json:"name"`
@@ -110,7 +110,7 @@ func ExampleInsert_table() {
 }
 
 func ExampleInsert_bulk_isnert_record() {
-	db := testenv.MustNew("query", "person")
+	db := testenv.MustNewDeprecated("query", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id"`
@@ -154,7 +154,7 @@ func ExampleInsert_bulk_isnert_record() {
 }
 
 func ExampleInsert_bulk_insert_relation_workaround_for_rpcv1() {
-	db := testenv.MustNew("query", "person", "follow")
+	db := testenv.MustNewDeprecated("query", "person", "follow")
 
 	type Person struct {
 		ID models.RecordID `json:"id"`

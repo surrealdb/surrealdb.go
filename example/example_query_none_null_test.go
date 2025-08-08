@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleQuery_none_and_null_handling() {
-	db := testenv.MustNew("query", "t")
+	db := testenv.MustNewDeprecated("query", "t")
 
 	_, err := surrealdb.Query[[]any](
 		context.Background(),

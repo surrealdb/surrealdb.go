@@ -65,8 +65,16 @@ func GetSurrealDBWSURL() string {
 	return strings.ReplaceAll(currentURL, "http", "ws")
 }
 
-func MustNew(database string, tables ...string) *surrealdb.DB {
-	db, err := New(database, tables...)
+func MustNewDeprecated(database string, tables ...string) *surrealdb.DB {
+	db, err := New("examples", database, tables...)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create SurrealDB connection: %v", err))
+	}
+	return db
+}
+
+func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
+	db, err := New(namespace, database, tables...)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create SurrealDB connection: %v", err))
 	}
@@ -76,7 +84,7 @@ func MustNew(database string, tables ...string) *surrealdb.DB {
 // New creates a new SurrealDB connection with the specified database and tables.
 // The connection information is derived from environment variables.
 // It supports both WebSocket and HTTP connections based on the URL scheme.
-func New(database string, tables ...string) (*surrealdb.DB, error) {
+func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
 	if database == "" {
 		return nil, fmt.Errorf("database name must be specified")
 	}
@@ -139,7 +147,7 @@ func New(database string, tables ...string) (*surrealdb.DB, error) {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
 	}
 
-	return initConnection(db, "examples", database, tables...)
+	return initConnection(db, namespace, database, tables...)
 }
 
 func MustNewHTTP(database string, tables ...string) *surrealdb.DB {

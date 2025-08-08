@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleSelect() {
-	db := testenv.MustNew("update", "person")
+	db := testenv.MustNewDeprecated("update", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`

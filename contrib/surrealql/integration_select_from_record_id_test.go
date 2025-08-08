@@ -13,7 +13,7 @@ import (
 )
 
 func TestIntegrationSelectFromRecordID(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "select_from_record_id_test")
+	db := testenv.MustNewDeprecated("surrealql_test", "select_from_record_id_test")
 	ctx := context.Background()
 
 	tableName := "record_test_data"

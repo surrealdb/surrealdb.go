@@ -37,7 +37,7 @@ func setupUserData(t *testing.T, ctx context.Context, db *surrealdb.DB, table st
 }
 
 func TestIntegrationSelect_All(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "users_all")
+	db := testenv.MustNewDeprecated("surrealql_test", "users_all")
 	ctx := context.Background()
 
 	// Setup test data
@@ -66,7 +66,7 @@ func TestIntegrationSelect_All(t *testing.T) {
 }
 
 func TestIntegrationSelect_WhereEq(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "users_whereeq")
+	db := testenv.MustNewDeprecated("surrealql_test", "users_whereeq")
 	ctx := context.Background()
 
 	// Setup test data
@@ -96,7 +96,7 @@ func TestIntegrationSelect_WhereEq(t *testing.T) {
 }
 
 func TestIntegrationSelect_WhereWithParams(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "users_params")
+	db := testenv.MustNewDeprecated("surrealql_test", "users_params")
 	ctx := context.Background()
 
 	// Setup test data
@@ -125,7 +125,7 @@ func TestIntegrationSelect_WhereWithParams(t *testing.T) {
 }
 
 func TestIntegrationSelect_WithPagination(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "users_page")
+	db := testenv.MustNewDeprecated("surrealql_test", "users_page")
 	ctx := context.Background()
 
 	// Setup test data
