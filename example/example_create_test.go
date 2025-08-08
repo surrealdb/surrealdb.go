@@ -40,7 +40,7 @@ func ExampleCreate() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Create result: %+s\n", *inserted)
+	fmt.Printf("Create result: %v\n", *inserted)
 
 	// You can throw away the result if you don't need it,
 	// by specifying an empty struct as the type parameter.
@@ -94,7 +94,7 @@ func ExampleCreate() {
 	if _, ok := (*fourthAsMap)["id"].(models.RecordID); ok {
 		delete((*fourthAsMap), "id")
 	}
-	fmt.Printf("Create result: %+s\n", *fourthAsMap)
+	fmt.Printf("Create result: %v\n", *fourthAsMap)
 
 	selected, err := surrealdb.Select[[]Person](
 		context.Background(),
@@ -105,7 +105,7 @@ func ExampleCreate() {
 		panic(err)
 	}
 	for _, person := range *selected {
-		fmt.Printf("Selected person: %+s\n", person)
+		fmt.Printf("Selected person: %v\n", person)
 	}
 
 	//nolint:lll

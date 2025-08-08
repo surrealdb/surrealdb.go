@@ -31,6 +31,10 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
+	if tag.Number == TagNone {
+		return nil
+	}
+
 	if tag.Number != TagCustomDatetime {
 		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDatetime)
 	}
@@ -47,6 +51,10 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	*d = CustomDateTime{time.Unix(s, ns)}
 
 	return nil
+}
+
+func (d *CustomDateTime) IsZero() bool {
+	return d == nil || d.Time.IsZero()
 }
 
 func (d *CustomDateTime) String() string {

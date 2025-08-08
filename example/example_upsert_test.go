@@ -40,7 +40,7 @@ func ExampleUpsert() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Insert via upsert result: %+s\n", *inserted)
+	fmt.Printf("Insert via upsert result: %v\n", *inserted)
 
 	updated, err := surrealdb.Upsert[Person](
 		context.Background(),
@@ -56,7 +56,7 @@ func ExampleUpsert() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Update via upsert result: %+s\n", *updated)
+	fmt.Printf("Update via upsert result: %v\n", *updated)
 
 	udpatedAt, err := time.Parse(time.RFC3339, "2023-10-02T12:00:00Z")
 	if err != nil {
@@ -77,7 +77,7 @@ func ExampleUpsert() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Update further via upsert result: %+s\n", *updatedFurther)
+	fmt.Printf("Update further via upsert result: %v\n", *updatedFurther)
 
 	_, err = surrealdb.Upsert[struct{}](
 		context.Background(),
@@ -99,7 +99,7 @@ func ExampleUpsert() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Selected person: %+s\n", *selected)
+	fmt.Printf("Selected person: %v\n", *selected)
 
 	//nolint:lll
 	// Output:
