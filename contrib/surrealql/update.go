@@ -1,18 +1,12 @@
 package surrealql
 
-import (
-	"fmt"
-	"maps"
-	"slices"
-	"sort"
-	"strings"
-)
+import "fmt"
 
 // UpdateQuery represents an UPDATE query
 type UpdateQuery struct {
 	baseQuery
+	setsBuilder
 	targets      []string
-	sets         map[string]any
 	whereClause  *whereBuilder
 	returnClause string
 }
@@ -20,9 +14,9 @@ type UpdateQuery struct {
 // Update starts an UPDATE query
 func Update[T mutationTarget](target T, targets ...T) *UpdateQuery {
 	q := &UpdateQuery{
-		baseQuery: newBaseQuery(),
-		targets:   nil,
-		sets:      make(map[string]any),
+		baseQuery:   newBaseQuery(),
+		setsBuilder: newSetsBuilder(),
+		targets:     nil,
 	}
 
 	updateAddTarget(q, target)
@@ -42,17 +36,17 @@ func updateAddTarget[MT mutationTarget](q *UpdateQuery, target MT) *UpdateQuery 
 	return q
 }
 
-// Set adds a field to update
-func (q *UpdateQuery) Set(field string, value any) *UpdateQuery {
-	q.sets[field] = value
+// Set adds a field or expression to update
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (q *UpdateQuery) Set(expr string, args ...any) *UpdateQuery {
+	q.addSet(expr, args, &q.baseQuery, "param")
 	return q
 }
 
 // SetMap sets multiple fields from a map
 func (q *UpdateQuery) SetMap(fields map[string]any) *UpdateQuery {
-	for k, v := range fields {
-		q.sets[k] = v
-	}
+	q.addSetMap(fields)
 	return q
 }
 
@@ -101,18 +95,8 @@ func (q *UpdateQuery) String() string {
 
 	sql = fmt.Sprintf("UPDATE %s", sql)
 
-	if len(q.sets) > 0 {
-		setsKeys := sort.StringSlice(slices.Collect(maps.Keys(q.sets)))
-		sort.Stable(setsKeys)
-
-		var setParts []string
-		for _, field := range setsKeys {
-			value := q.sets[field]
-			paramName := q.generateParamName(field)
-			q.addParam(paramName, value)
-			setParts = append(setParts, fmt.Sprintf("%s = $%s", escapeIdent(field), paramName))
-		}
-		sql += " SET " + strings.Join(setParts, ", ")
+	if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+		sql += " SET " + setClause
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {

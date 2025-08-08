@@ -2,9 +2,6 @@ package surrealql
 
 import (
 	"fmt"
-	"maps"
-	"slices"
-	"sort"
 	"strings"
 )
 
@@ -37,9 +34,8 @@ type upsertCommon struct {
 // UpsertSetQuery represents an UPSERT query with SET/UNSET
 type UpsertSetQuery struct {
 	upsertCommon
-	sets    map[string]any
-	setsRaw []string
-	unsets  []string
+	setsBuilder
+	unsets []string
 }
 
 // UpsertContentQuery represents an UPSERT query with CONTENT
@@ -104,7 +100,7 @@ func upsertAddTarget[MT mutationTarget](q *UpsertQuery, target MT) {
 func (q *UpsertQuery) Set(expr string, args ...any) *UpsertSetQuery {
 	setQuery := &UpsertSetQuery{
 		upsertCommon: upsertCommon{UpsertQuery: q},
-		sets:         make(map[string]any),
+		setsBuilder:  newSetsBuilder(),
 	}
 	return setQuery.Set(expr, args...)
 }
@@ -113,8 +109,9 @@ func (q *UpsertQuery) Set(expr string, args ...any) *UpsertSetQuery {
 func (q *UpsertQuery) SetMap(fields map[string]any) *UpsertSetQuery {
 	setQuery := &UpsertSetQuery{
 		upsertCommon: upsertCommon{UpsertQuery: q},
-		sets:         fields,
+		setsBuilder:  newSetsBuilder(),
 	}
+	setQuery.addSetMap(fields)
 	return setQuery
 }
 
@@ -123,7 +120,7 @@ func (q *UpsertQuery) SetMap(fields map[string]any) *UpsertSetQuery {
 func (q *UpsertQuery) SetRaw(expr string) *UpsertSetQuery {
 	setQuery := &UpsertSetQuery{
 		upsertCommon: upsertCommon{UpsertQuery: q},
-		sets:         make(map[string]any),
+		setsBuilder:  newSetsBuilder(),
 	}
 	setQuery.setsRaw = append(setQuery.setsRaw, expr)
 	return setQuery
@@ -194,29 +191,13 @@ func (q *UpsertQuery) String() string {
 // Can be used for simple assignment: Set("name", "value")
 // Or for compound operations: Set("count += ?", 1)
 func (q *UpsertSetQuery) Set(expr string, args ...any) *UpsertSetQuery {
-	// Check if this is a simple field assignment or an expression
-	if len(args) == 1 && !strings.ContainsAny(expr, "?+=<>!-*/") {
-		// Simple field assignment
-		q.sets[expr] = args[0]
-	} else if len(args) > 0 {
-		// Expression with placeholders
-		processedExpr := expr
-		for _, arg := range args {
-			paramName := q.generateParamName("upsert_param")
-			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
-			q.addParam(paramName, arg)
-		}
-		q.setsRaw = append(q.setsRaw, processedExpr)
-	} else {
-		// Raw expression without placeholders
-		q.setsRaw = append(q.setsRaw, expr)
-	}
+	q.addSet(expr, args, &q.baseQuery, "upsert_param")
 	return q
 }
 
 // SetMap adds multiple fields from a map
 func (q *UpsertSetQuery) SetMap(fields map[string]any) *UpsertSetQuery {
-	maps.Copy(q.sets, fields)
+	q.addSetMap(fields)
 	return q
 }
 
@@ -328,25 +309,16 @@ func (q *UpsertSetQuery) String() string {
 
 	q.buildPrefix(&sql)
 
-	if len(q.sets) > 0 || len(q.setsRaw) > 0 || len(q.unsets) > 0 {
+	// Build SET clause using common setsBuilder
+	if setClause := q.buildSetClause(&q.baseQuery, "upsert"); setClause != "" || len(q.unsets) > 0 {
 		sql.WriteString(" SET ")
+
 		var setParts []string
 
-		// Handle SET fields
-		if len(q.sets) > 0 {
-			setsKeys := sort.StringSlice(slices.Collect(maps.Keys(q.sets)))
-			sort.Stable(setsKeys)
-
-			for _, field := range setsKeys {
-				value := q.sets[field]
-				paramName := q.generateParamName("upsert_" + field)
-				q.addParam(paramName, value)
-				setParts = append(setParts, fmt.Sprintf("%s = $%s", escapeIdent(field), paramName))
-			}
+		// Add the built SET clause from setsBuilder
+		if setClause != "" {
+			setParts = append(setParts, setClause)
 		}
-
-		// Handle raw SET expressions
-		setParts = append(setParts, q.setsRaw...)
 
 		// Handle UNSET fields - single UNSET followed by comma-separated fields
 		if len(q.unsets) > 0 {

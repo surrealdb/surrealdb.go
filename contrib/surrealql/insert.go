@@ -264,41 +264,48 @@ func (q *InsertQuery) String() string {
 
 // InsertBuilder provides a fluent interface for building complex insert data
 type InsertBuilder struct {
-	data map[string]any
+	baseQuery
+	setsBuilder
 }
 
 // NewRelationData creates a new insert data builder
 func NewRelationData() *InsertBuilder {
 	return &InsertBuilder{
-		data: make(map[string]any),
+		baseQuery:   newBaseQuery(),
+		setsBuilder: newSetsBuilder(),
 	}
 }
 
-// Set adds a field-value pair to the insert data
-func (b *InsertBuilder) Set(field string, value any) *InsertBuilder {
-	b.data[field] = value
+// Set adds a field or expression to the insert data
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (b *InsertBuilder) Set(expr string, args ...any) *InsertBuilder {
+	b.addSet(expr, args, &b.baseQuery, "param")
 	return b
 }
 
 // SetIn sets the 'in' field for relation inserts
 func (b *InsertBuilder) SetIn(record string) *InsertBuilder {
-	b.data["in"] = record
+	b.sets["in"] = record
 	return b
 }
 
 // SetOut sets the 'out' field for relation inserts
 func (b *InsertBuilder) SetOut(record string) *InsertBuilder {
-	b.data["out"] = record
+	b.sets["out"] = record
 	return b
 }
 
 // SetID sets the 'id' field for relation inserts
 func (b *InsertBuilder) SetID(id string) *InsertBuilder {
-	b.data["id"] = id
+	b.sets["id"] = id
 	return b
 }
 
-// Build returns the built data map
+// Build returns the built data map and parameters
+// Note: This currently only returns the data map for backward compatibility.
+// The raw expressions are not included in the returned map.
 func (b *InsertBuilder) Build() map[string]any {
-	return b.data
+	// TODO: Consider returning both data and raw expressions in a future version
+	return b.sets
 }

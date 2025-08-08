@@ -352,7 +352,7 @@ func TestUpsert_Basic(t *testing.T) {
 			},
 		},
 		{
-			name: "upsert with unified Set for compound operations",
+			name: "upsert with Set for compound operations",
 			build: func() (string, map[string]any) {
 				return Upsert("product:item").
 					Set("name", "Test Item").
@@ -368,7 +368,7 @@ func TestUpsert_Basic(t *testing.T) {
 			},
 		},
 		{
-			name: "upsert with unified Set mixing simple and compound",
+			name: "upsert with Set mixing simple and compound",
 			build: func() (string, map[string]any) {
 				return Upsert("product:mix").
 					Set("count += ?", 1).

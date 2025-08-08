@@ -5,33 +5,45 @@ import "fmt"
 // RelateQuery represents a RELATE query
 type RelateQuery struct {
 	baseQuery
+	setsBuilder
 	from         string
 	edge         string
 	to           string
 	content      map[string]any
+	useContent   bool
 	returnClause string
 }
 
 // Relate starts a RELATE query
 func Relate(from, edge, to string) *RelateQuery {
 	return &RelateQuery{
-		baseQuery: newBaseQuery(),
-		from:      from,
-		edge:      edge,
-		to:        to,
-		content:   make(map[string]any),
+		baseQuery:   newBaseQuery(),
+		setsBuilder: newSetsBuilder(),
+		from:        from,
+		edge:        edge,
+		to:          to,
+		content:     make(map[string]any),
 	}
 }
 
-// Set adds a field to the relation
-func (q *RelateQuery) Set(field string, value any) *RelateQuery {
-	q.content[field] = value
+// Set adds a field or expression to the relation
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (q *RelateQuery) Set(expr string, args ...any) *RelateQuery {
+	q.addSet(expr, args, &q.baseQuery, "param")
 	return q
 }
 
 // Content sets the entire content for the relation
 func (q *RelateQuery) Content(content map[string]any) *RelateQuery {
 	q.content = content
+	q.useContent = true
+	return q
+}
+
+// SetMap sets multiple fields from a map
+func (q *RelateQuery) SetMap(fields map[string]any) *RelateQuery {
+	q.addSetMap(fields)
 	return q
 }
 
@@ -54,10 +66,12 @@ func (q *RelateQuery) String() string {
 		escapeIdent(q.edge),
 		q.to)
 
-	if len(q.content) > 0 {
+	if q.useContent && len(q.content) > 0 {
 		paramName := q.generateParamName("content")
 		q.addParam(paramName, q.content)
 		sql += fmt.Sprintf(" CONTENT $%s", paramName)
+	} else if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+		sql += " SET " + setClause
 	}
 
 	if q.returnClause != "" {

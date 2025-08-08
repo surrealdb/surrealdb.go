@@ -5,8 +5,10 @@ import "fmt"
 // CreateQuery represents a CREATE query
 type CreateQuery struct {
 	baseQuery
+	setsBuilder
 	thing        string
 	content      map[string]any
+	useContent   bool
 	returnClause string
 }
 
@@ -24,29 +26,31 @@ func Create[T mutationTarget](thing T) *CreateQuery {
 		bq.addParam(k, v)
 	}
 	return &CreateQuery{
-		baseQuery: bq,
-		thing:     sql,
-		content:   make(map[string]any),
+		baseQuery:   bq,
+		setsBuilder: newSetsBuilder(),
+		thing:       sql,
+		content:     make(map[string]any),
 	}
 }
 
-// Set adds a field to set in the CREATE query
-func (q *CreateQuery) Set(field string, value any) *CreateQuery {
-	q.content[field] = value
+// Set adds a field or expression to set in the CREATE query
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (q *CreateQuery) Set(expr string, args ...any) *CreateQuery {
+	q.addSet(expr, args, &q.baseQuery, "param")
 	return q
 }
 
 // SetMap sets multiple fields from a map
 func (q *CreateQuery) SetMap(fields map[string]any) *CreateQuery {
-	for k, v := range fields {
-		q.content[k] = v
-	}
+	q.addSetMap(fields)
 	return q
 }
 
 // Content sets the entire content for the CREATE query
 func (q *CreateQuery) Content(content map[string]any) *CreateQuery {
 	q.content = content
+	q.useContent = true
 	return q
 }
 
@@ -71,10 +75,12 @@ func (q *CreateQuery) Build() (sql string, vars map[string]any) {
 func (q *CreateQuery) String() string {
 	sql := fmt.Sprintf("CREATE %s", q.thing)
 
-	if len(q.content) > 0 {
+	if q.useContent && len(q.content) > 0 {
 		paramName := q.generateParamName("content")
 		q.addParam(paramName, q.content)
 		sql += fmt.Sprintf(" CONTENT $%s", paramName)
+	} else if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+		sql += " SET " + setClause
 	}
 
 	if q.returnClause != "" {
