@@ -197,7 +197,7 @@ func (q *SelectQuery) Where(condition string, args ...any) *SelectQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
 	}
-	q.whereClause.addCondition("AND", condition, args, &q.baseQuery)
+	q.whereClause.addCondition(condition, args, &q.baseQuery)
 	return q
 }
 
@@ -546,7 +546,7 @@ type whereCondition struct {
 	condition string
 }
 
-func (w *whereBuilder) addCondition(operator, condition string, args []any, base *baseQuery) {
+func (w *whereBuilder) addCondition(condition string, args []any, base *baseQuery) {
 	// Replace ? placeholders with named parameters
 	processedCondition := condition
 	for _, arg := range args {
@@ -556,7 +556,7 @@ func (w *whereBuilder) addCondition(operator, condition string, args []any, base
 	}
 
 	w.conditions = append(w.conditions, whereCondition{
-		operator:  operator,
+		operator:  "AND",
 		condition: processedCondition,
 	})
 }

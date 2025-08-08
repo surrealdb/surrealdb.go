@@ -61,7 +61,7 @@ func (q *UpdateQuery) Where(condition string, args ...any) *UpdateQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
 	}
-	q.whereClause.addCondition("AND", condition, args, &q.baseQuery)
+	q.whereClause.addCondition(condition, args, &q.baseQuery)
 	return q
 }
 

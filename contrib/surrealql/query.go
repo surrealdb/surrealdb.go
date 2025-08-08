@@ -14,6 +14,8 @@ const (
 	ReturnBeforeClause = "BEFORE"
 	ReturnAfterClause  = "AFTER"
 	StatusOK           = "OK"
+	ExplainClause      = "EXPLAIN"
+	ExplainFullClause  = "EXPLAIN FULL"
 )
 
 // Query represents a SurrealQL query that can be built and executed.
