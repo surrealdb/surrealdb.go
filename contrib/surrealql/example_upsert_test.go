@@ -318,7 +318,7 @@ func ExampleUpsert_setRaw() {
 }
 
 func ExampleUpsert_setCompound() {
-	// UPSERT with compound operations using the unified Set function
+	// UPSERT with compound operations using the Set function
 	sql, vars := surrealql.Upsert("product:book").
 		Set("tags += ?", "bestseller").
 		Set("view_count += ?", 1).
@@ -350,7 +350,7 @@ func ExampleUpsert_setRaw_arrayOperations() {
 }
 
 func ExampleUpsert_setWithTime() {
-	// UPSERT with time.Time values using the unified Set function
+	// UPSERT with time.Time values using the Set function
 	lastViewed := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
 	sql, vars := surrealql.Upsert("product:watch").
@@ -368,7 +368,7 @@ func ExampleUpsert_setWithTime() {
 }
 
 func ExampleUpsert_set_arrayOperations() {
-	// UPSERT with array and numeric operations using the unified Set function
+	// UPSERT with array and numeric operations using the Set function
 	sql, vars := surrealql.Upsert("product:laptop").
 		Set("categories += ?", []string{"electronics", "computers"}).
 		Set("stock -= ?", 1).
@@ -385,7 +385,7 @@ func ExampleUpsert_set_arrayOperations() {
 }
 
 func ExampleUpsert_set_mixed() {
-	// UPSERT with mixed operations showing the flexibility of the unified Set function
+	// UPSERT with mixed operations showing the flexibility of the Set function
 	createdAt := time.Date(2024, 1, 20, 15, 30, 0, 0, time.UTC)
 
 	sql, vars := surrealql.Upsert("product:smartphone").

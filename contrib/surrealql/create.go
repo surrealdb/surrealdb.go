@@ -1,12 +1,21 @@
 package surrealql
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+	"slices"
+	"sort"
+	"strings"
+)
 
 // CreateQuery represents a CREATE query
 type CreateQuery struct {
 	baseQuery
 	thing        string
+	sets         map[string]any
+	setsRaw      []string
 	content      map[string]any
+	useContent   bool
 	returnClause string
 }
 
@@ -26,27 +35,45 @@ func Create[T mutationTarget](thing T) *CreateQuery {
 	return &CreateQuery{
 		baseQuery: bq,
 		thing:     sql,
+		sets:      make(map[string]any),
 		content:   make(map[string]any),
 	}
 }
 
-// Set adds a field to set in the CREATE query
-func (q *CreateQuery) Set(field string, value any) *CreateQuery {
-	q.content[field] = value
+// Set adds a field or expression to set in the CREATE query
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (q *CreateQuery) Set(expr string, args ...any) *CreateQuery {
+	// Check if this is a simple field assignment or an expression
+	if len(args) == 1 && !strings.ContainsAny(expr, "?+=<>!-*/") {
+		// Simple field assignment
+		q.sets[expr] = args[0]
+	} else if len(args) > 0 {
+		// Expression with placeholders
+		processedExpr := expr
+		for _, arg := range args {
+			paramName := q.generateParamName("param")
+			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
+			q.addParam(paramName, arg)
+		}
+		q.setsRaw = append(q.setsRaw, processedExpr)
+	} else {
+		// Raw expression without placeholders
+		q.setsRaw = append(q.setsRaw, expr)
+	}
 	return q
 }
 
 // SetMap sets multiple fields from a map
 func (q *CreateQuery) SetMap(fields map[string]any) *CreateQuery {
-	for k, v := range fields {
-		q.content[k] = v
-	}
+	maps.Copy(q.sets, fields)
 	return q
 }
 
 // Content sets the entire content for the CREATE query
 func (q *CreateQuery) Content(content map[string]any) *CreateQuery {
 	q.content = content
+	q.useContent = true
 	return q
 }
 
@@ -71,10 +98,30 @@ func (q *CreateQuery) Build() (sql string, vars map[string]any) {
 func (q *CreateQuery) String() string {
 	sql := fmt.Sprintf("CREATE %s", q.thing)
 
-	if len(q.content) > 0 {
+	if q.useContent && len(q.content) > 0 {
 		paramName := q.generateParamName("content")
 		q.addParam(paramName, q.content)
 		sql += fmt.Sprintf(" CONTENT $%s", paramName)
+	} else if len(q.sets) > 0 || len(q.setsRaw) > 0 {
+		var setParts []string
+
+		// Handle SET fields
+		if len(q.sets) > 0 {
+			setsKeys := sort.StringSlice(slices.Collect(maps.Keys(q.sets)))
+			sort.Stable(setsKeys)
+
+			for _, field := range setsKeys {
+				value := q.sets[field]
+				paramName := q.generateParamName(field)
+				q.addParam(paramName, value)
+				setParts = append(setParts, fmt.Sprintf("%s = $%s", escapeIdent(field), paramName))
+			}
+		}
+
+		// Handle raw SET expressions
+		setParts = append(setParts, q.setsRaw...)
+
+		sql += " SET " + strings.Join(setParts, ", ")
 	}
 
 	if q.returnClause != "" {

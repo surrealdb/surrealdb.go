@@ -26,8 +26,23 @@ func ExampleCreate() {
 	fmt.Printf("Vars: %v\n", vars)
 
 	// Output:
-	// SurrealQL: CREATE users CONTENT $content_1 RETURN id, name, email
-	// Vars: map[content_1:map[created_at:2023-10-01 12:00:00 +0000 UTC email:john@example.com name:John Doe]]
+	// SurrealQL: CREATE users SET created_at = $created_at_1, email = $email_1, name = $name_1 RETURN id, name, email
+	// Vars: map[created_at_1:2023-10-01 12:00:00 +0000 UTC email_1:john@example.com name_1:John Doe]
+}
+
+func ExampleCreate_compoundOperations() {
+	// CREATE with compound operations using the Set function
+	sql, vars := surrealql.Create("stats:daily").
+		Set("date", "2024-01-01").
+		Set("page_views", 0).
+		Set("unique_visitors += ?", 1). // Compound operation in CREATE
+		Build()
+
+	fmt.Println(sql)
+	fmt.Printf("Variables: %v\n", vars)
+	// Output:
+	// CREATE stats:daily SET date = $date_1, page_views = $page_views_1, unique_visitors += $param_1
+	// Variables: map[date_1:2024-01-01 page_views_1:0 param_1:1]
 }
 
 func ExampleCreate_withThing() {
@@ -47,9 +62,11 @@ func ExampleCreate_withThing() {
 	}
 
 	// Output:
-	// SurrealQL: CREATE $id_1 CONTENT $content_1 RETURN id, name, email
-	// Var content_1: map[created_at:2023-10-01 12:00:00 +0000 UTC email:alice@example.com name:Alice]
+	// SurrealQL: CREATE $id_1 SET created_at = $created_at_1, email = $email_1, name = $name_1 RETURN id, name, email
+	// Var created_at_1: 2023-10-01 12:00:00 +0000 UTC
+	// Var email_1: alice@example.com
 	// Var id_1: {users 123}
+	// Var name_1: Alice
 }
 
 // ExampleCreate_integration_f_recordID demonstrates creating a record with a specific RecordID using the query builder.

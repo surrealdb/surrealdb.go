@@ -28,6 +28,16 @@ func TestUpdate(t *testing.T) {
 			query:     Update("users").Set("name", "Jane").ReturnDiff(),
 			wantSurQL: "UPDATE users SET name = $name_1 RETURN DIFF",
 		},
+		{
+			name:      "update with compound operation",
+			query:     Update("products").Set("stock -= ?", 5).Set("last_sold", "2024-01-01"),
+			wantSurQL: "UPDATE products SET last_sold = $last_sold_1, stock -= $param_1",
+		},
+		{
+			name:      "update with multiple compound operations",
+			query:     Update("stats").Set("views += ?", 1).Set("clicks += ?", 1),
+			wantSurQL: "UPDATE stats SET views += $param_1, clicks += $param_2",
+		},
 	}
 
 	for _, tt := range tests {

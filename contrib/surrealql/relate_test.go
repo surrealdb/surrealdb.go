@@ -14,9 +14,19 @@ func TestRelate(t *testing.T) {
 			wantSurQL: "RELATE users:123->likes->posts:456",
 		},
 		{
-			name:      "relate with content",
+			name:      "relate with set",
 			query:     Relate("users:123", "likes", "posts:456").Set("rating", 5),
+			wantSurQL: "RELATE users:123->likes->posts:456 SET rating = $rating_1",
+		},
+		{
+			name:      "relate with content",
+			query:     Relate("users:123", "likes", "posts:456").Content(map[string]any{"rating": 5, "timestamp": "2024-01-01"}),
 			wantSurQL: "RELATE users:123->likes->posts:456 CONTENT $content_1",
+		},
+		{
+			name:      "relate with compound operation",
+			query:     Relate("users:123", "views", "posts:456").Set("count += ?", 1).Set("last_viewed", "2024-01-01"),
+			wantSurQL: "RELATE users:123->views->posts:456 SET last_viewed = $last_viewed_1, count += $param_1",
 		},
 	}
 

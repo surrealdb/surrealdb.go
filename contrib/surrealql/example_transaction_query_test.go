@@ -28,13 +28,13 @@ func ExampleTransactionQuery_Query() {
 	}
 	// Output:
 	// BEGIN TRANSACTION;
-	// CREATE users:123 CONTENT $content_1;
+	// CREATE users:123 SET name = $name_1;
 	// UPDATE users:123 SET email = $email_1;
 	// COMMIT TRANSACTION;
-	// Var content_1: map[name:Alice]
-	// Var content_2: map[name:Alice]
 	// Var email_1: alice@example.com
 	// Var email_2: alice@example.com
+	// Var name_1: Alice
+	// Var name_2: Alice
 }
 
 func ExampleTransactionQuery_If() {
@@ -88,8 +88,8 @@ func ExampleTransactionQuery_returningEarly() {
 	fmt.Println(sql)
 	// Output:
 	// BEGIN TRANSACTION;
-	// CREATE account:one CONTENT $content_1;
-	// CREATE account:two CONTENT $content_1;
+	// CREATE account:one SET balance = $balance_1;
+	// CREATE account:two SET balance = $balance_1;
 	// IF !account:two.wants_to_send_money {
 	//     THROW "Customer doesn't want to send any money!";
 	// };

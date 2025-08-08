@@ -264,19 +264,40 @@ func (q *InsertQuery) String() string {
 
 // InsertBuilder provides a fluent interface for building complex insert data
 type InsertBuilder struct {
-	data map[string]any
+	data    map[string]any
+	setsRaw []string
+	baseQuery
 }
 
 // NewRelationData creates a new insert data builder
 func NewRelationData() *InsertBuilder {
 	return &InsertBuilder{
-		data: make(map[string]any),
+		data:      make(map[string]any),
+		baseQuery: newBaseQuery(),
 	}
 }
 
-// Set adds a field-value pair to the insert data
-func (b *InsertBuilder) Set(field string, value any) *InsertBuilder {
-	b.data[field] = value
+// Set adds a field or expression to the insert data
+// Can be used for simple assignment: Set("name", "value")
+// Or for compound operations: Set("count += ?", 1)
+func (b *InsertBuilder) Set(expr string, args ...any) *InsertBuilder {
+	// Check if this is a simple field assignment or an expression
+	if len(args) == 1 && !strings.ContainsAny(expr, "?+=<>!-*/") {
+		// Simple field assignment
+		b.data[expr] = args[0]
+	} else if len(args) > 0 {
+		// Expression with placeholders
+		processedExpr := expr
+		for _, arg := range args {
+			paramName := b.generateParamName("param")
+			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
+			b.addParam(paramName, arg)
+		}
+		b.setsRaw = append(b.setsRaw, processedExpr)
+	} else {
+		// Raw expression without placeholders
+		b.setsRaw = append(b.setsRaw, expr)
+	}
 	return b
 }
 
@@ -298,7 +319,10 @@ func (b *InsertBuilder) SetID(id string) *InsertBuilder {
 	return b
 }
 
-// Build returns the built data map
+// Build returns the built data map and parameters
+// Note: This currently only returns the data map for backward compatibility.
+// The raw expressions are not included in the returned map.
 func (b *InsertBuilder) Build() map[string]any {
+	// TODO: Consider returning both data and raw expressions in a future version
 	return b.data
 }

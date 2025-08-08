@@ -266,7 +266,7 @@ func TestIntegration_UpsertUnifiedSet(t *testing.T) {
 	_, err := surrealdb.Query[[]any](ctx, db, "CREATE product:upsert_test10 SET name = 'Unified Product', stock = 50, price = 100", nil)
 	require.NoError(t, err)
 
-	// UPSERT with unified Set for both simple and compound operations
+	// UPSERT with Set for both simple and compound operations
 	sql, vars := surrealql.Upsert("product:upsert_test10").
 		Set("name", "Updated Product").               // Simple assignment
 		Set("stock -= ?", 5).                         // Compound operation with parameter
@@ -297,7 +297,7 @@ func TestIntegration_UpsertSetArrayOperations(t *testing.T) {
 	_, err := surrealdb.Query[[]any](ctx, db, "CREATE product:upsert_test11 SET name = 'Array Product', tags = ['new'], stock = 10", nil)
 	require.NoError(t, err)
 
-	// UPSERT with unified Set for array operations
+	// UPSERT with Set for array operations
 	sql, vars := surrealql.Upsert("product:upsert_test11").
 		Set("tags += ?", []string{"featured", "sale"}). // Append multiple tags
 		Set("stock -= ?", 2).                           // Decrement stock

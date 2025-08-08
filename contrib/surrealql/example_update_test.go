@@ -158,6 +158,37 @@ func ExampleUpdate_thingAndTable() {
 	// Var tb_1: products
 }
 
+func ExampleUpdate_compoundOperations() {
+	// UPDATE with compound operations using the Set function
+	sql, vars := surrealql.Update("products").
+		Set("stock -= ?", 5).                     // Decrement stock
+		Set("sales_count += ?", 1).               // Increment sales counter
+		Set("last_sold", "2024-01-01T00:00:00Z"). // Simple assignment
+		Where("stock > ?", 0).
+		Build()
+
+	fmt.Println(sql)
+	fmt.Printf("Variables: %v\n", vars)
+	// Output:
+	// UPDATE products SET last_sold = $last_sold_1, stock -= $param_1, sales_count += $param_2 WHERE stock > $param_3
+	// Variables: map[last_sold_1:2024-01-01T00:00:00Z param_1:5 param_2:1 param_3:0]
+}
+
+func ExampleUpdate_arrayOperations() {
+	// UPDATE with array operations
+	sql, vars := surrealql.Update("products:laptop").
+		Set("tags += ?", []string{"featured", "sale"}). // Append to array
+		Set("categories -= ?", "deprecated").           // Remove from array
+		Set("stock", 100).                              // Simple assignment
+		Build()
+
+	fmt.Println(sql)
+	fmt.Printf("Variables: %v\n", vars)
+	// Output:
+	// UPDATE products:laptop SET stock = $stock_1, tags += $param_1, categories -= $param_2
+	// Variables: map[param_1:[featured sale] param_2:deprecated stock_1:100]
+}
+
 func ExampleUpdate_returnNone() {
 	// Use RETURN NONE for better performance when results aren't needed
 
