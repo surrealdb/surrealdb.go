@@ -14,6 +14,10 @@ type CustomDateTime struct {
 }
 
 func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
+	if d.IsZero() {
+		return cbor.Marshal(cbor.Tag{Number: TagNone})
+	}
+
 	totalNS := d.UnixNano()
 
 	s := totalNS / constants.OneSecondToNanoSecond
