@@ -12,7 +12,7 @@ import (
 )
 
 func TestIntegration_UpsertSet(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_set", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_set", "product")
 	ctx := context.Background()
 
 	t.Run("creates new record", func(t *testing.T) {
@@ -59,7 +59,7 @@ func TestIntegration_UpsertSet(t *testing.T) {
 }
 
 func TestIntegration_UpsertContent(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_content", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_content", "product")
 	ctx := context.Background()
 
 	// UPSERT with CONTENT
@@ -86,7 +86,7 @@ func TestIntegration_UpsertContent(t *testing.T) {
 }
 
 func TestIntegration_UpsertMerge(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_merge", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_merge", "product")
 	ctx := context.Background()
 
 	// First, create a record with initial data
@@ -115,7 +115,7 @@ func TestIntegration_UpsertMerge(t *testing.T) {
 }
 
 func TestIntegration_UpsertWhere(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_where", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_where", "product")
 	ctx := context.Background()
 
 	// Create a record
@@ -159,7 +159,7 @@ func TestIntegration_UpsertWhere(t *testing.T) {
 }
 
 func TestIntegration_UpsertOnly(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_only", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_only", "product")
 	ctx := context.Background()
 
 	// UPSERT ONLY
@@ -179,7 +179,7 @@ func TestIntegration_UpsertOnly(t *testing.T) {
 }
 
 func TestIntegration_UpsertReturnNone(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_return_none", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_return_none", "product")
 	ctx := context.Background()
 
 	// UPSERT with RETURN NONE
@@ -199,7 +199,7 @@ func TestIntegration_UpsertReturnNone(t *testing.T) {
 }
 
 func TestIntegration_UpsertReturnDiff(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_return_diff", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_return_diff", "product")
 	ctx := context.Background()
 
 	// First create a record
@@ -223,7 +223,7 @@ func TestIntegration_UpsertReturnDiff(t *testing.T) {
 }
 
 func TestIntegration_UpsertSetRaw(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_setraw", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_setraw", "product")
 	ctx := context.Background()
 
 	// First create a record with initial values
@@ -259,7 +259,7 @@ func TestIntegration_UpsertSetRaw(t *testing.T) {
 }
 
 func TestIntegration_UpsertUnifiedSet(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_unified", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_unified", "product")
 	ctx := context.Background()
 
 	// First create a record with initial values
@@ -290,7 +290,7 @@ func TestIntegration_UpsertUnifiedSet(t *testing.T) {
 }
 
 func TestIntegration_UpsertSetArrayOperations(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_arrays", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_arrays", "product")
 	ctx := context.Background()
 
 	// First create a record with initial array values
@@ -327,7 +327,7 @@ func TestIntegration_UpsertSetArrayOperations(t *testing.T) {
 }
 
 func TestIntegration_UpsertReturnValue(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "upsert_return_value", "product")
+	db := testenv.MustNewDeprecated("surrealql_test", "upsert_return_value", "product")
 	ctx := context.Background()
 
 	// First create a record with initial value

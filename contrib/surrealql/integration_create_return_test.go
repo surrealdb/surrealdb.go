@@ -13,12 +13,13 @@ import (
 )
 
 func TestIntegrationReturnClauses(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "tasks")
+	// Use a unique database/namespace to avoid conflicts with other tests
+	db := testenv.MustNew("surrealql", "return_clauses", "tasks")
 
 	ctx := context.Background()
 
 	type Task struct {
-		ID        models.RecordID       `json:"id,omitempty"`
+		ID        *models.RecordID      `json:"id,omitempty"`
 		Title     string                `json:"title"`
 		Completed bool                  `json:"completed"`
 		UpdatedAt models.CustomDateTime `json:"updated_at"`

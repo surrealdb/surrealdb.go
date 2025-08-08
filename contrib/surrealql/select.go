@@ -82,7 +82,12 @@ func Select[T selectField](field T, fields ...T) *SelectQuery {
 // Field adds a field to the SELECT query.
 func (q *SelectQuery) Field(field *field) *SelectQuery {
 	sql, vars := field.Build()
-	q.fields = append(q.fields, sql)
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{sql}
+	} else {
+		q.fields = append(q.fields, sql)
+	}
 	for k, v := range vars {
 		q.addParam(k, v)
 	}
@@ -91,20 +96,35 @@ func (q *SelectQuery) Field(field *field) *SelectQuery {
 
 // FieldName adds a field to the SELECT query.
 func (q *SelectQuery) FieldName(field string) *SelectQuery {
-	q.fields = append(q.fields, escapeIdent(field))
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{escapeIdent(field)}
+	} else {
+		q.fields = append(q.fields, escapeIdent(field))
+	}
 	return q
 }
 
 // FieldNameAs adds a field with an alias to the SELECT query.
 func (q *SelectQuery) FieldNameAs(field, alias string) *SelectQuery {
-	q.fields = append(q.fields, fmt.Sprintf("%s AS %s", escapeIdent(field), escapeIdent(alias)))
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{fmt.Sprintf("%s AS %s", escapeIdent(field), escapeIdent(alias))}
+	} else {
+		q.fields = append(q.fields, fmt.Sprintf("%s AS %s", escapeIdent(field), escapeIdent(alias)))
+	}
 	return q
 }
 
 // AddQuery adds another SelectQuery as a field to the current query.
 func (q *SelectQuery) FieldQueryAs(query *SelectQuery, alias string) *SelectQuery {
 	sql, vars := F(query).As(alias).Build()
-	q.fields = append(q.fields, sql)
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{sql}
+	} else {
+		q.fields = append(q.fields, sql)
+	}
 	for k, v := range vars {
 		q.addParam(k, v)
 	}
@@ -114,7 +134,12 @@ func (q *SelectQuery) FieldQueryAs(query *SelectQuery, alias string) *SelectQuer
 // FieldFunCallAs adds a function call as a field to the SELECT query.
 func (q *SelectQuery) FieldFunCallAs(fun *FunCall, alias string) *SelectQuery {
 	sql, vars := F(fun).As(alias).Build()
-	q.fields = append(q.fields, sql)
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{sql}
+	} else {
+		q.fields = append(q.fields, sql)
+	}
 	for k, v := range vars {
 		q.addParam(k, v)
 	}
@@ -124,8 +149,12 @@ func (q *SelectQuery) FieldFunCallAs(fun *FunCall, alias string) *SelectQuery {
 // FieldRaw adds a raw field to the SELECT query without escaping.
 // This is useful for fields that should not be escaped, such as function calls.
 func (q *SelectQuery) FieldRaw(field string) *SelectQuery {
-	// Add raw field without escaping
-	q.fields = append(q.fields, field)
+	// If fields only contains "*", replace it
+	if len(q.fields) == 1 && q.fields[0] == "*" {
+		q.fields = []string{field}
+	} else {
+		q.fields = append(q.fields, field)
+	}
 	return q
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 func ExampleQuery_transaction_let_return() {
-	db := testenv.MustNew("query", "t")
+	db := testenv.MustNewDeprecated("query", "t")
 
 	createQueryResults, err := surrealdb.Query[[]any](
 		context.Background(),

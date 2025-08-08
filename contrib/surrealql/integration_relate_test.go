@@ -12,7 +12,7 @@ import (
 )
 
 func TestIntegrationRelate(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "users", "posts", "likes")
+	db := testenv.MustNewDeprecated("surrealql_test", "users", "posts", "likes")
 
 	ctx := context.Background()
 

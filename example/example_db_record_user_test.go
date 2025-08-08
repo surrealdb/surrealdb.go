@@ -10,7 +10,7 @@ import (
 
 //nolint:funlen
 func ExampleDB_record_user_auth_struct() {
-	db := testenv.MustNew("record_auth_demo", "user")
+	db := testenv.MustNewDeprecated("record_auth_demo", "user")
 
 	setupQuery := `
 		-- Define the user table with schema
@@ -91,7 +91,7 @@ func ExampleDB_record_user_auth_struct() {
 }
 
 func ExampleDB_record_user_custom_struct() {
-	db := testenv.MustNew("record_user_custom", "user")
+	db := testenv.MustNewDeprecated("record_user_custom", "user")
 
 	setupQuery := `
 		-- Define the user table with schema

@@ -15,7 +15,7 @@ import (
 //
 //nolint:funlen
 func ExampleQuery_return() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNewDeprecated("query", "persons")
 
 	type NestedStruct struct {
 		City string `json:"city"`

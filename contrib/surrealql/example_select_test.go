@@ -341,7 +341,7 @@ func ExampleSelect_integration() {
 	// Assume we have a *surrealdb.DB instance
 	var db *surrealdb.DB
 
-	db, err := testenv.New("test", "users")
+	db, err := testenv.New("surrealql", "test", "users")
 	if err != nil {
 		log.Fatal(err)
 	}

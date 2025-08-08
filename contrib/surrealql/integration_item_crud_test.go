@@ -23,7 +23,7 @@ type Item struct {
 }
 
 func TestIntegrationCreateThenUpdate(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "items")
+	db := testenv.MustNewDeprecated("surrealql_test", "items")
 	ctx := context.Background()
 
 	t.Run("Create", func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestIntegrationCreateThenUpdate(t *testing.T) {
 }
 
 func TestIntegrationCreateThenDelete(t *testing.T) {
-	db := testenv.MustNew("surrealql_test", "items_delete")
+	db := testenv.MustNewDeprecated("surrealql_test", "items_delete")
 	ctx := context.Background()
 
 	// Setup: Create items with different active states

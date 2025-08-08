@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleDB_send_select() {
-	db := testenv.MustNew("update", "person")
+	db := testenv.MustNewDeprecated("update", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`

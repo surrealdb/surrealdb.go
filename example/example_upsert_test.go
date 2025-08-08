@@ -13,7 +13,7 @@ import (
 
 //nolint:funlen
 func ExampleUpsert() {
-	db := testenv.MustNew("query", "persons")
+	db := testenv.MustNewDeprecated("query", "persons")
 
 	type Person struct {
 		ID   *models.RecordID `json:"id,omitempty"`
@@ -110,7 +110,7 @@ func ExampleUpsert() {
 }
 
 func ExampleUpsert_unmarshal_error() {
-	db := testenv.MustNew("query", "person")
+	db := testenv.MustNewDeprecated("query", "person")
 
 	type Person struct {
 		Name string `json:"name"`
@@ -143,7 +143,7 @@ func ExampleUpsert_unmarshal_error() {
 }
 
 func ExampleUpsert_rpc_error() {
-	db := testenv.MustNew("query", "person")
+	db := testenv.MustNewDeprecated("query", "person")
 
 	type Person struct {
 		Name string `json:"name"`
