@@ -45,6 +45,13 @@ type QueryStatement struct {
 	query Query
 }
 
+// ReturnStatement represents a RETURN statement within a transaction
+type ReturnStatement struct {
+	expr string
+	args []any
+	base *baseQuery
+}
+
 // Let adds a LET statement to the transaction
 func (t *TransactionQuery) Let(variable string, value any) *TransactionQuery {
 	if !strings.HasPrefix(variable, "$") {
@@ -105,6 +112,18 @@ func (t *TransactionQuery) Query(query Query) *TransactionQuery {
 	return t
 }
 
+// Return adds a RETURN statement to the transaction
+// The expr parameter is raw SQL that can contain placeholders (?)
+// Args are the values to substitute for the placeholders
+func (t *TransactionQuery) Return(expr string, args ...any) *TransactionQuery {
+	t.statements = append(t.statements, &ReturnStatement{
+		expr: expr,
+		args: args,
+		base: &t.baseQuery,
+	})
+	return t
+}
+
 // Build returns the SurrealQL string and parameters for the transaction
 func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
 	var builder strings.Builder
@@ -112,15 +131,17 @@ func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
 	builder.WriteString("BEGIN TRANSACTION;\n")
 
 	for _, stmt := range t.statements {
-		builder.WriteString(stmt.build())
-		builder.WriteString(";\n")
-
-		// Merge parameters if this is a QueryStatement
 		if qs, ok := stmt.(*QueryStatement); ok {
-			_, vars := qs.query.Build()
+			sql, vars := qs.query.Build()
+			builder.WriteString(strings.TrimRight(sql, ";"))
+			builder.WriteString(";\n")
+			// Merge parameters
 			for k, v := range vars {
 				t.vars[k] = v
 			}
+		} else {
+			builder.WriteString(stmt.build())
+			builder.WriteString(";\n")
 		}
 	}
 
@@ -280,4 +301,28 @@ func (r *RawStatement) build() string {
 func (q *QueryStatement) build() string {
 	sql, _ := q.query.Build()
 	return strings.TrimRight(sql, ";")
+}
+
+func (r *ReturnStatement) build() string {
+	if len(r.args) == 0 {
+		// No placeholders, just return the raw expression
+		return fmt.Sprintf("RETURN %s", r.expr)
+	}
+
+	// Process placeholders
+	processedExpr := r.expr
+	for _, arg := range r.args {
+		// Check if arg is a Var (variable reference)
+		if varRef, ok := arg.(Var); ok {
+			// Replace the first ? with the variable reference
+			processedExpr = strings.Replace(processedExpr, "?", varRef.String(), 1)
+		} else {
+			// Regular value, create a parameter
+			paramName := r.base.generateParamName("return_param")
+			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
+			r.base.addParam(paramName, arg)
+		}
+	}
+
+	return fmt.Sprintf("RETURN %s", processedExpr)
 }

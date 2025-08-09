@@ -64,14 +64,21 @@ func (sb *setsBuilder) buildSetClause(base *baseQuery, paramPrefix string) strin
 
 		for _, field := range setsKeys {
 			value := sb.sets[field]
-			var paramName string
-			if paramPrefix != "" {
-				paramName = base.generateParamName(paramPrefix + "_" + field)
+			// Check if the value is a variable reference
+			if varRef, ok := value.(Var); ok {
+				// Direct variable reference, don't parameterize
+				setParts = append(setParts, fmt.Sprintf("%s = %s", escapeIdent(field), varRef.String()))
 			} else {
-				paramName = base.generateParamName(field)
+				// Regular value, parameterize it
+				var paramName string
+				if paramPrefix != "" {
+					paramName = base.generateParamName(paramPrefix + "_" + field)
+				} else {
+					paramName = base.generateParamName(field)
+				}
+				base.addParam(paramName, value)
+				setParts = append(setParts, fmt.Sprintf("%s = $%s", escapeIdent(field), paramName))
 			}
-			base.addParam(paramName, value)
-			setParts = append(setParts, fmt.Sprintf("%s = $%s", escapeIdent(field), paramName))
 		}
 	}
 

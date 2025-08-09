@@ -32,9 +32,7 @@ func ExampleTransactionQuery_Query() {
 	// UPDATE users:123 SET email = $email_1;
 	// COMMIT TRANSACTION;
 	// Var email_1: alice@example.com
-	// Var email_2: alice@example.com
 	// Var name_1: Alice
-	// Var name_2: Alice
 }
 
 func ExampleTransactionQuery_If() {
@@ -113,4 +111,52 @@ func ExampleTransactionQuery_LetTyped() {
 	// LET $vals: array<bool> = (some:record.vals.map(|$val| <bool>$val));
 	// CREATE thing SET number = $num, values = $vals;
 	// COMMIT TRANSACTION;
+}
+
+// ExampleTransactionQuery_Return demonstrates how to set the result of a transaction using RETURN.
+// This is based on https://surrealdb.com/docs/surrealql/statements/return#transaction-return-value
+func ExampleTransactionQuery_Return() {
+	// Create a transaction that returns a specific value
+	tx := surrealql.Begin().
+		Let("name", "Alice").
+		Let("email", "alice@example.com").
+		Query(surrealql.Create("person").
+			Set("name", surrealql.V("name")).
+			Set("email", surrealql.V("email"))).
+		Return("$name")
+
+	sql, _ := tx.Build()
+	fmt.Println(sql)
+	// Output:
+	// BEGIN TRANSACTION;
+	// LET $name = "Alice";
+	// LET $email = "alice@example.com";
+	// CREATE person SET email = $email, name = $name;
+	// RETURN $name;
+	// COMMIT TRANSACTION;
+}
+
+// ExampleTransactionQuery_Return_withPlaceholders demonstrates using RETURN with placeholders
+func ExampleTransactionQuery_Return_withPlaceholders() {
+	// Create a transaction that returns a computed value
+	tx := surrealql.Begin().
+		Let("a", 10).
+		Let("b", 20).
+		Query(surrealql.Create(surrealql.Table("test")).Set("v", "V")).
+		Return("? + ? + ?", surrealql.V("a"), surrealql.V("b"), 5)
+
+	sql, vars := tx.Build()
+	fmt.Println(sql)
+	dumpVars(vars)
+	// Output:
+	// BEGIN TRANSACTION;
+	// LET $a = 10;
+	// LET $b = 20;
+	// CREATE type::table($tb_1) SET v = $v_1;
+	// RETURN $a + $b + $return_param_1;
+	// COMMIT TRANSACTION;
+	// Vars:
+	//   return_param_1: 5
+	//   tb_1: test
+	//   v_1: V
 }
