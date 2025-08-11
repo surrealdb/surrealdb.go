@@ -4,24 +4,22 @@ import "fmt"
 
 // RelateQuery represents a RELATE query
 type RelateQuery struct {
-	baseQuery
 	setsBuilder
-	from         string
+	from         *expr
 	edge         string
-	to           string
+	to           *expr
 	content      map[string]any
 	useContent   bool
 	returnClause string
 }
 
 // Relate starts a RELATE query
-func Relate(from, edge, to string) *RelateQuery {
+func Relate[T exprLike](from T, edge string, to T) *RelateQuery {
 	return &RelateQuery{
-		baseQuery:   newBaseQuery(),
 		setsBuilder: newSetsBuilder(),
-		from:        from,
+		from:        Expr(from),
 		edge:        edge,
-		to:          to,
+		to:          Expr(to),
 		content:     make(map[string]any),
 	}
 }
@@ -30,7 +28,7 @@ func Relate(from, edge, to string) *RelateQuery {
 // Can be used for simple assignment: Set("name", "value")
 // Or for compound operations: Set("count += ?", 1)
 func (q *RelateQuery) Set(expr string, args ...any) *RelateQuery {
-	q.addSet(expr, args, &q.baseQuery, "param")
+	q.addSet(expr, args)
 	return q
 }
 
@@ -38,12 +36,6 @@ func (q *RelateQuery) Set(expr string, args ...any) *RelateQuery {
 func (q *RelateQuery) Content(content map[string]any) *RelateQuery {
 	q.content = content
 	q.useContent = true
-	return q
-}
-
-// SetMap sets multiple fields from a map
-func (q *RelateQuery) SetMap(fields map[string]any) *RelateQuery {
-	q.addSetMap(fields)
 	return q
 }
 
@@ -55,22 +47,24 @@ func (q *RelateQuery) Return(clause string) *RelateQuery {
 
 // Build returns the SurrealQL string and parameters
 func (q *RelateQuery) Build() (sql string, vars map[string]any) {
-	return q.String(), q.vars
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
 }
 
-// String returns the SurrealQL string
-func (q *RelateQuery) String() string {
+func (q *RelateQuery) build(c *queryBuildContext) (sql string) {
+	from := q.from.Build(c)
+	to := q.to.Build(c)
+
 	// Don't escape record IDs with colons, only escape the edge table name
-	sql := fmt.Sprintf("RELATE %s->%s->%s",
-		q.from,
+	sql = fmt.Sprintf("RELATE %s->%s->%s",
+		from,
 		escapeIdent(q.edge),
-		q.to)
+		to)
 
 	if q.useContent && len(q.content) > 0 {
-		paramName := q.generateParamName("content")
-		q.addParam(paramName, q.content)
+		paramName := c.generateAndAddParam("content", q.content)
 		sql += fmt.Sprintf(" CONTENT $%s", paramName)
-	} else if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+	} else if setClause := q.buildSetClause(c); setClause != "" {
 		sql += " SET " + setClause
 	}
 
@@ -78,5 +72,11 @@ func (q *RelateQuery) String() string {
 		sql += " RETURN " + q.returnClause
 	}
 
+	return sql
+}
+
+// String returns the SurrealQL string
+func (q *RelateQuery) String() string {
+	sql, _ := q.Build()
 	return sql
 }

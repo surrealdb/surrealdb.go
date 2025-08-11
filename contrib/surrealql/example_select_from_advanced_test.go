@@ -7,11 +7,11 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// ExampleSelectFrom_edgecase_invalidAdvancedGraphTraversal demonstrates a complex and invalid graph traversal with placeholders
+// ExampleSelect_edgecase_invalidAdvancedGraphTraversal demonstrates a complex and invalid graph traversal with placeholders
 // As surrealql does not parse `->` expressions on its own, it produces an invalid query.
 // In SurrealQL, you can write `FROM $from_param_1->follows->users->created->posts` which is valid.
 // However, `FROM $from_param_1->$from_param_2` is invalid- you cannot place random variables in the middle of a path.
-func ExampleSelectFrom_edgecase_invalidAdvancedGraphTraversal() {
+func ExampleSelect_edgecase_invalidAdvancedGraphTraversal() {
 	// Imagine building a dynamic social network query where the starting user
 	// and relationship type are parameters
 	startUser := models.NewRecordID("users", "alice")
@@ -19,10 +19,14 @@ func ExampleSelectFrom_edgecase_invalidAdvancedGraphTraversal() {
 	targetTable := "posts"
 
 	// Build a query to find all posts from users that Alice follows
-	sql, vars := surrealql.SelectFrom("?->?->users->created->?",
-		startUser,
-		relationshipType,
-		targetTable).
+	sql, vars := surrealql.
+		Select(
+			surrealql.Expr("?->?->users->created->?",
+				startUser,
+				relationshipType,
+				targetTable,
+			),
+		).
 		FieldName("title").
 		FieldName("content").
 		FieldName("created_at").
@@ -37,16 +41,16 @@ func ExampleSelectFrom_edgecase_invalidAdvancedGraphTraversal() {
 	// vars count: 4
 }
 
-// ExampleSelectFrom_dynamicTableSelection demonstrates dynamic table selection
-func ExampleSelectFrom_dynamicTableSelection() {
+// ExampleSelect_dynamicTableSelection demonstrates dynamic table selection
+func ExampleSelect_dynamicTableSelection() {
 	// In a multi-tenant application, you might need to dynamically select
 	// from different tables based on the tenant
 	tenant := "acme_corp"
 	tableName := fmt.Sprintf("events_%s", tenant)
 
-	sql, vars := surrealql.SelectFrom("?", tableName).
-		FieldRaw("count() AS total_events").
-		FieldRaw("math::mean(duration) AS avg_duration").
+	sql, vars := surrealql.Select(surrealql.Expr("?", tableName)).
+		Field("count() AS total_events").
+		Field("math::mean(duration) AS avg_duration").
 		Where("timestamp > ? AND timestamp < ?", "2024-01-01", "2024-12-31").
 		GroupBy("event_type").
 		Build()
@@ -60,23 +64,28 @@ func ExampleSelectFrom_dynamicTableSelection() {
 	// timestamp params: 2024-01-01, 2024-12-31
 }
 
-// ExampleSelectFrom_complexPlaceholderCombination demonstrates combining different types
-func ExampleSelectFrom_complexPlaceholderCombination() {
+// ExampleSelect_complexPlaceholderCombination demonstrates combining different types
+func ExampleSelect_complexPlaceholderCombination() {
 	// Complex scenario: Start from a record, traverse through a dynamic relationship,
 	// and end at a dynamic target
 	user := models.NewRecordID("users", 123)
-	edge := "purchased"
 
 	// Find all products purchased by user 123
-	sql, vars := surrealql.SelectFrom("?->?->products", user, edge).
+	sql, vars := surrealql.
+		Select(
+			surrealql.Expr(
+				"?->purchased->products", user,
+			),
+		).
 		FieldName("name").
 		FieldName("price").
-		FieldRaw("price * 0.1 AS tax").
+		Field("price * 0.1 AS tax").
 		Build()
 
 	fmt.Println(sql)
 	// All placeholders become parameters
-	fmt.Printf("vars: from_param_1 type: %T, from_param_2: %v\n", vars["from_param_1"], vars["from_param_2"])
-	// Output: SELECT name, price, price * 0.1 AS tax FROM $from_param_1->$from_param_2->products
-	// vars: from_param_1 type: models.RecordID, from_param_2: purchased
+	dumpVars(vars)
+	// Output: SELECT name, price, price * 0.1 AS tax FROM $from_param_1->purchased->products
+	// Vars:
+	//   from_param_1: {users 123}
 }

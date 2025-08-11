@@ -12,7 +12,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-func TestIntegrationSelectFromRecordID(t *testing.T) {
+func TestIntegrationSelect_fromRecordID(t *testing.T) {
 	db := testenv.MustNewDeprecated("surrealql_test", "select_from_record_id_test")
 	ctx := context.Background()
 
@@ -22,16 +22,16 @@ func TestIntegrationSelectFromRecordID(t *testing.T) {
 	cleanupQuery := fmt.Sprintf("DELETE %s", tableName)
 	_, _ = surrealdb.Query[any](ctx, db, cleanupQuery, nil)
 
-	t.Run("SelectFrom with models.RecordID", func(t *testing.T) {
+	t.Run("Select with models.RecordID", func(t *testing.T) {
 		// First insert a specific record
 		insertQuery := fmt.Sprintf("CREATE %s:test_user SET name = 'Test User', active = true", tableName)
 		_, err := surrealdb.Query[any](ctx, db, insertQuery, nil)
 		assert.NoError(t, err)
 
-		// Test using models.RecordID directly with SelectFrom
+		// Test using models.RecordID directly with Select
 		recordID := models.NewRecordID(tableName, "test_user")
 
-		sql, vars := surrealql.SelectFrom(recordID).
+		sql, vars := surrealql.Select(recordID).
 			FieldName("name").
 			FieldName("active").
 			Build()
@@ -60,16 +60,16 @@ func TestIntegrationSelectFromRecordID(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectFrom with models.RecordID pointer", func(t *testing.T) {
+	t.Run("Select with models.RecordID pointer", func(t *testing.T) {
 		// First insert a specific record
 		insertQuery := fmt.Sprintf("CREATE %s:ptr_user SET name = 'Pointer User', active = false", tableName)
 		_, err := surrealdb.Query[any](ctx, db, insertQuery, nil)
 		assert.NoError(t, err)
 
-		// Test using pointer to models.RecordID with SelectFrom
+		// Test using pointer to models.RecordID with Select
 		recordID := models.NewRecordID(tableName, "ptr_user")
 
-		sql, vars := surrealql.SelectFrom(&recordID).Build()
+		sql, vars := surrealql.Select(&recordID).Build()
 
 		t.Logf("RecordID pointer query SQL: %s", sql)
 		t.Logf("RecordID pointer query vars: %+v", vars)
@@ -95,7 +95,7 @@ func TestIntegrationSelectFromRecordID(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectFrom RecordID with WHERE conditions", func(t *testing.T) {
+	t.Run("Select RecordID with WHERE conditions", func(t *testing.T) {
 		// Insert multiple records with same ID pattern
 		insertQuery1 := fmt.Sprintf("CREATE %s:order_1 SET status = 'pending', total = 100", tableName)
 		insertQuery2 := fmt.Sprintf("CREATE %s:order_2 SET status = 'completed', total = 200", tableName)
@@ -107,7 +107,7 @@ func TestIntegrationSelectFromRecordID(t *testing.T) {
 		// Select specific record with additional WHERE clause
 		recordID := models.NewRecordID(tableName, "order_2")
 
-		sql, vars := surrealql.SelectFrom(recordID).
+		sql, vars := surrealql.Select(recordID).
 			FieldName("status").
 			FieldName("total").
 			Where("status = ?", "completed").

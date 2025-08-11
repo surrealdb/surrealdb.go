@@ -67,7 +67,7 @@ func TestIntegrationUpdateReturnNone(t *testing.T) {
 	}
 
 	// Verify the update worked
-	selectQuery := surrealql.Select("*").FromTable("update_table").WhereEq("updated", true)
+	selectQuery := surrealql.Select("update_table").WhereEq("updated", true)
 	sql, vars = selectQuery.Build()
 
 	verifyResults, err := surrealdb.Query[[]map[string]any](ctx, db, sql, vars)
@@ -82,7 +82,7 @@ func TestIntegrationUpdateReturnNone(t *testing.T) {
 	}
 
 	// Verify inactive record was not updated
-	selectInactiveQuery := surrealql.Select("*").FromTable("update_table").WhereEq("active", false)
+	selectInactiveQuery := surrealql.Select("update_table").WhereEq("active", false)
 	sql, vars = selectInactiveQuery.Build()
 
 	inactiveResults, err := surrealdb.Query[[]map[string]any](ctx, db, sql, vars)

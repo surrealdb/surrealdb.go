@@ -20,10 +20,10 @@ func TestUpsert_Basic(t *testing.T) {
 					Set("price", 1299).
 					Build()
 			},
-			wantSQL: "UPSERT product:laptop SET name = $upsert_name_1, price = $upsert_price_1",
+			wantSQL: "UPSERT product:laptop SET name = $param_1, price = $param_2",
 			wantVars: map[string]any{
-				"upsert_name_1":  "Laptop Pro",
-				"upsert_price_1": 1299,
+				"param_1": "Laptop Pro",
+				"param_2": 1299,
 			},
 		},
 		{
@@ -101,9 +101,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Set("name", "Fast Charger").
 					Build()
 			},
-			wantSQL: "UPSERT ONLY product:charger SET name = $upsert_name_1",
+			wantSQL: "UPSERT ONLY product:charger SET name = $param_1",
 			wantVars: map[string]any{
-				"upsert_name_1": "Fast Charger",
+				"param_1": "Fast Charger",
 			},
 		},
 		{
@@ -114,10 +114,10 @@ func TestUpsert_Basic(t *testing.T) {
 					Where("price > ?", 100).
 					Build()
 			},
-			wantSQL: "UPSERT product:monitor SET updated = $upsert_updated_1 WHERE price > $param_1",
+			wantSQL: "UPSERT product:monitor SET updated = $param_1 WHERE price > $param_2",
 			wantVars: map[string]any{
-				"upsert_updated_1": true,
-				"param_1":          100,
+				"param_1": true,
+				"param_2": 100,
 			},
 		},
 		{
@@ -128,9 +128,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ReturnNone().
 					Build()
 			},
-			wantSQL: "UPSERT product:adapter SET name = $upsert_name_1 RETURN NONE",
+			wantSQL: "UPSERT product:adapter SET name = $param_1 RETURN NONE",
 			wantVars: map[string]any{
-				"upsert_name_1": "Power Adapter",
+				"param_1": "Power Adapter",
 			},
 		},
 		{
@@ -141,9 +141,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ReturnDiff().
 					Build()
 			},
-			wantSQL: "UPSERT product:lamp SET name = $upsert_name_1 RETURN DIFF",
+			wantSQL: "UPSERT product:lamp SET name = $param_1 RETURN DIFF",
 			wantVars: map[string]any{
-				"upsert_name_1": "LED Lamp",
+				"param_1": "LED Lamp",
 			},
 		},
 		{
@@ -154,9 +154,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ReturnBefore().
 					Build()
 			},
-			wantSQL: "UPSERT product:chair SET name = $upsert_name_1 RETURN BEFORE",
+			wantSQL: "UPSERT product:chair SET name = $param_1 RETURN BEFORE",
 			wantVars: map[string]any{
-				"upsert_name_1": "Office Chair",
+				"param_1": "Office Chair",
 			},
 		},
 		{
@@ -167,9 +167,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ReturnAfter().
 					Build()
 			},
-			wantSQL: "UPSERT product:desk SET name = $upsert_name_1 RETURN AFTER",
+			wantSQL: "UPSERT product:desk SET name = $param_1 RETURN AFTER",
 			wantVars: map[string]any{
-				"upsert_name_1": "Standing Desk",
+				"param_1": "Standing Desk",
 			},
 		},
 		{
@@ -180,9 +180,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Timeout("5s").
 					Build()
 			},
-			wantSQL: "UPSERT product:webcam SET name = $upsert_name_1 TIMEOUT 5s",
+			wantSQL: "UPSERT product:webcam SET name = $param_1 TIMEOUT 5s",
 			wantVars: map[string]any{
-				"upsert_name_1": "HD Webcam",
+				"param_1": "HD Webcam",
 			},
 		},
 		{
@@ -193,9 +193,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Parallel().
 					Build()
 			},
-			wantSQL: "UPSERT product:mouse SET name = $upsert_name_1 PARALLEL",
+			wantSQL: "UPSERT product:mouse SET name = $param_1 PARALLEL",
 			wantVars: map[string]any{
-				"upsert_name_1": "Wireless Mouse",
+				"param_1": "Wireless Mouse",
 			},
 		},
 		{
@@ -206,9 +206,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Unset("deprecated_field").
 					Build()
 			},
-			wantSQL: "UPSERT product:cable SET name = $upsert_name_1, UNSET deprecated_field",
+			wantSQL: "UPSERT product:cable SET name = $param_1, UNSET deprecated_field",
 			wantVars: map[string]any{
-				"upsert_name_1": "USB Cable",
+				"param_1": "USB Cable",
 			},
 		},
 		{
@@ -219,25 +219,23 @@ func TestUpsert_Basic(t *testing.T) {
 					Unset("deprecated_field", "legacy_data", "old_column").
 					Build()
 			},
-			wantSQL: "UPSERT product:storage SET name = $upsert_name_1, UNSET deprecated_field, legacy_data, old_column",
+			wantSQL: "UPSERT product:storage SET name = $param_1, UNSET deprecated_field, legacy_data, old_column",
 			wantVars: map[string]any{
-				"upsert_name_1": "SSD Storage",
+				"param_1": "SSD Storage",
 			},
 		},
 		{
 			name: "upsert with SetMap",
 			build: func() (string, map[string]any) {
 				return Upsert("product:speaker").
-					SetMap(map[string]any{
-						"name":  "Bluetooth Speaker",
-						"price": 89,
-					}).
+					Set("name", "Bluetooth Speaker").
+					Set("price", 89).
 					Build()
 			},
-			wantSQL: "UPSERT product:speaker SET name = $upsert_name_1, price = $upsert_price_1",
+			wantSQL: "UPSERT product:speaker SET name = $param_1, price = $param_2",
 			wantVars: map[string]any{
-				"upsert_name_1":  "Bluetooth Speaker",
-				"upsert_price_1": 89,
+				"param_1": "Bluetooth Speaker",
+				"param_2": 89,
 			},
 		},
 		{
@@ -247,9 +245,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Set("active", true).
 					Build()
 			},
-			wantSQL: "UPSERT product:item1, product:item2 SET active = $upsert_active_1",
+			wantSQL: "UPSERT product:item1, product:item2 SET active = $param_1",
 			wantVars: map[string]any{
-				"upsert_active_1": true,
+				"param_1": true,
 			},
 		},
 		{
@@ -259,9 +257,9 @@ func TestUpsert_Basic(t *testing.T) {
 					Set("name", "Generic Product").
 					Build()
 			},
-			wantSQL: "UPSERT product SET name = $upsert_name_1",
+			wantSQL: "UPSERT product SET name = $param_1",
 			wantVars: map[string]any{
-				"upsert_name_1": "Generic Product",
+				"param_1": "Generic Product",
 			},
 		},
 		{
@@ -276,24 +274,24 @@ func TestUpsert_Basic(t *testing.T) {
 					Parallel().
 					Build()
 			},
-			wantSQL: "UPSERT product:premium SET name = $upsert_name_1, updated_at = $upsert_updated_at_1 WHERE price >= $param_1 RETURN DIFF TIMEOUT 10s PARALLEL",
+			wantSQL: "UPSERT product:premium SET name = $param_1, updated_at = $param_2 WHERE price >= $param_3 RETURN DIFF TIMEOUT 10s PARALLEL",
 			wantVars: map[string]any{
-				"upsert_name_1":       "Premium Product",
-				"upsert_updated_at_1": "2024-01-01T00:00:00Z",
-				"param_1":             1000,
+				"param_1": "Premium Product",
+				"param_2": "2024-01-01T00:00:00Z",
+				"param_3": 1000,
 			},
 		},
 		{
 			name: "upsert with EXPLAIN",
 			build: func() (string, map[string]any) {
 				return Upsert("product:example").
-					Set("name", "Example Product").
+					Set("name = ?", "Example Product").
 					Explain().
 					Build()
 			},
-			wantSQL: "EXPLAIN UPSERT product:example SET name = $upsert_name_1",
+			wantSQL: "EXPLAIN UPSERT product:example SET name = $param_1",
 			wantVars: map[string]any{
-				"upsert_name_1": "Example Product",
+				"param_1": "Example Product",
 			},
 		},
 		{
@@ -304,9 +302,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ExplainFull().
 					Build()
 			},
-			wantSQL: "EXPLAIN FULL UPSERT product:demo SET name = $upsert_name_1",
+			wantSQL: "EXPLAIN FULL UPSERT product:demo SET name = $param_1",
 			wantVars: map[string]any{
-				"upsert_name_1": "Demo Product",
+				"param_1": "Demo Product",
 			},
 		},
 		{
@@ -326,45 +324,45 @@ func TestUpsert_Basic(t *testing.T) {
 			wantVars: map[string]any{},
 		},
 		{
-			name: "upsert with SetRaw",
+			name: "upsert with Set raw",
 			build: func() (string, map[string]any) {
 				return Upsert("product:widget").
-					SetRaw("stock += 10").
-					SetRaw("views += 1").
+					Set("stock += 10").
+					Set("views += 1").
 					Build()
 			},
 			wantSQL:  "UPSERT product:widget SET stock += 10, views += 1",
 			wantVars: map[string]any{},
 		},
 		{
-			name: "upsert with SetRaw and regular Set",
+			name: "upsert with Set raw and regular Set",
 			build: func() (string, map[string]any) {
 				return Upsert("product:gadget").
-					Set("name", "Smart Gadget").
-					SetRaw("popularity += 1").
+					Set("name = ?", "Smart Gadget").
+					Set("popularity += 1").
 					Set("updated", true).
 					Build()
 			},
-			wantSQL: "UPSERT product:gadget SET name = $upsert_name_1, updated = $upsert_updated_1, popularity += 1",
+			wantSQL: "UPSERT product:gadget SET name = $param_1, popularity += 1, updated = $param_2",
 			wantVars: map[string]any{
-				"upsert_name_1":    "Smart Gadget",
-				"upsert_updated_1": true,
+				"param_1": "Smart Gadget",
+				"param_2": true,
 			},
 		},
 		{
 			name: "upsert with Set for compound operations",
 			build: func() (string, map[string]any) {
 				return Upsert("product:item").
-					Set("name", "Test Item").
+					Set("name = ?", "Test Item").
 					Set("stock += ?", 10).
 					Set("price -= ?", 5).
 					Build()
 			},
-			wantSQL: "UPSERT product:item SET name = $upsert_name_1, stock += $upsert_param_1, price -= $upsert_param_2",
+			wantSQL: "UPSERT product:item SET name = $param_1, stock += $param_2, price -= $param_3",
 			wantVars: map[string]any{
-				"upsert_name_1":  "Test Item",
-				"upsert_param_1": 10,
-				"upsert_param_2": 5,
+				"param_1": "Test Item",
+				"param_2": 10,
+				"param_3": 5,
 			},
 		},
 		{
@@ -372,15 +370,15 @@ func TestUpsert_Basic(t *testing.T) {
 			build: func() (string, map[string]any) {
 				return Upsert("product:mix").
 					Set("count += ?", 1).
-					Set("updated", true).
+					Set("updated = ?", true).
 					Set("tags -= ?", "old").
 					Build()
 			},
-			wantSQL: "UPSERT product:mix SET updated = $upsert_updated_1, count += $upsert_param_1, tags -= $upsert_param_2",
+			wantSQL: "UPSERT product:mix SET count += $param_1, updated = $param_2, tags -= $param_3",
 			wantVars: map[string]any{
-				"upsert_updated_1": true,
-				"upsert_param_1":   1,
-				"upsert_param_2":   "old",
+				"param_1": 1,
+				"param_2": true,
+				"param_3": "old",
 			},
 		},
 		{
@@ -391,9 +389,9 @@ func TestUpsert_Basic(t *testing.T) {
 					ReturnValue("count").
 					Build()
 			},
-			wantSQL: "UPSERT product:counter SET count += $upsert_param_1 RETURN VALUE count",
+			wantSQL: "UPSERT product:counter SET count += $param_1 RETURN VALUE count",
 			wantVars: map[string]any{
-				"upsert_param_1": 1,
+				"param_1": 1,
 			},
 		},
 		{
@@ -455,7 +453,7 @@ func TestUpsert_TypeSafety(t *testing.T) {
 			Unset("deprecated")
 
 		sql, _ := q.Build()
-		expected := "UPSERT product:gadget SET name = $upsert_name_1, price = $upsert_price_1, UNSET deprecated"
+		expected := "UPSERT product:gadget SET name = $param_1, price = $param_2, UNSET deprecated"
 		if sql != expected {
 			t.Errorf("Expected %q, got %q", expected, sql)
 		}

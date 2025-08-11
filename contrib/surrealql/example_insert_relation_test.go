@@ -3,17 +3,20 @@ package surrealql_test
 import (
 	"fmt"
 
+	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleInsertRelation() {
 	// Insert a relation
-	relationData := surrealql.NewRelationData().
-		SetIn("person:1").
-		SetID("follows").
-		SetOut("person:2").
-		Set("since", "2023-01-01").
-		Build()
+	relationData := surrealdb.Relationship{
+		In:  models.NewRecordID("person", 1),
+		Out: models.NewRecordID("person", 2),
+		Data: map[string]any{
+			"since": "2023-01-01",
+		},
+	}
 
 	q := surrealql.Insert("likes").Relation().Value(relationData)
 

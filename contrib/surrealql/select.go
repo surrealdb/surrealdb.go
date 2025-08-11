@@ -3,16 +3,13 @@ package surrealql
 import (
 	"fmt"
 	"strings"
-
-	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // SelectQuery represents a SELECT query builder
 type SelectQuery struct {
-	baseQuery
-	fields      []string
+	fields      []*expr
 	omits       []string
-	from        string
+	from        []*expr
 	whereClause *whereBuilder
 	orderBy     []orderByClause
 	limitVal    *int
@@ -27,6 +24,68 @@ type SelectQuery struct {
 	returnClause string
 }
 
+// Select creates a new SELECT query starting with the FROM clause.
+// This allows for more natural query building where you first specify what to select from,
+// then optionally add fields. If no fields are specified, it defaults to SELECT *.
+//
+// The target can be:
+//   - A string for raw expressions: "users", "users:123", or any SurrealQL expression WITHOUT "?" placeholders
+//   - A models.Table for safe table name specification
+//   - A *models.RecordID for specific records
+//   - A *SelectQuery for subqueries
+//   - A *expr for expressions
+//     A *expr can be created using surrealql.Expr which supports placeholders with "?" that will be replaced by args
+//   - For arrays and objects, use Select(Expr("?", myArray)) or Select(Expr("?", myMap))
+//
+// Examples:
+//
+//	// Select all from a table
+//	Select("users")  // SELECT * FROM users
+//
+//	// Select from a specific record
+//	Select("users:123")  // SELECT * FROM users:123
+//
+//	// Select from a parameterized graph traversal
+//	Select(Expr("?->knows->users", models.NewRecordID("users", "john")))
+//	// SELECT * FROM $from_param_1->knows->users
+//
+//	// Select from a subquery
+//	subquery := Select("users").Fields("name")
+//	Select(subquery)  // SELECT * FROM (SELECT name FROM users)
+//
+//	// Select a record using models.RecordID
+//	Select(models.NewRecordID("users", 123)) // SELECT * from $from_id_1
+//
+//	// Select from a table using models.Table for type safety
+//	Select(models.Table("users"))  // SELECT * FROM $table_1
+//
+//	// Select from an array or object using placeholders
+//	Select(Expr("?"), []any{1, 2, 3})  // SELECT * FROM $from_param_1
+//	Select(Expr("?"), map[string]any{"a": 1})  // SELECT * FROM $from_param_1
+func Select[T exprLike](targets ...T) *SelectQuery {
+	if len(targets) > 0 {
+		if str, ok := any(targets[0]).(string); ok && strings.Contains(str, "?") {
+			var args []any
+			for _, target := range targets[1:] {
+				args = append(args, target)
+			}
+			return &SelectQuery{
+				fields: []*expr{Expr("*")},
+				from:   []*expr{Expr(targets[0], args...)},
+			}
+		}
+	}
+
+	var ts []*expr
+	for _, target := range targets {
+		ts = append(ts, Expr(target))
+	}
+	return &SelectQuery{
+		fields: []*expr{Expr("*")}, // Default to SELECT *
+		from:   ts,
+	}
+}
+
 // orderByClause represents an ORDER BY clause
 type orderByClause struct {
 	field   string
@@ -35,125 +94,78 @@ type orderByClause struct {
 	numeric bool
 }
 
-// SelectValue creates a `SELECT VALUE field FROM ...` query.
+// Value turns this query into a `SELECT VALUE field FROM ...` query.
 // It is used to select a single value per each record.
-func SelectValue[T selectField](field T) *SelectQuery {
-	bq := newBaseQuery()
-	fs := make([]string, 0, 1)
-
-	sql, vars := F(field).Build()
-	fs = append(fs, sql)
-	for k, v := range vars {
-		bq.addParam(k, v)
-	}
-
-	return &SelectQuery{
-		baseQuery: bq,
-		fields:    fs,
-		value:     true,
-	}
+func (q *SelectQuery) Value(field any, args ...any) *SelectQuery {
+	q2 := q.Field(field, args...)
+	q2.value = true
+	return q2
 }
 
-// Select creates a new SELECT query builder.
-func Select[T selectField](field T, fields ...T) *SelectQuery {
-	bq := newBaseQuery()
-	fs := make([]string, 0, len(fields)+1)
-
-	sql, vars := F(field).Build()
-	fs = append(fs, sql)
-	for k, v := range vars {
-		bq.addParam(k, v)
+func (q *SelectQuery) Fields(rawFieldExprs ...any) *SelectQuery {
+	if len(q.fields) == 1 && q.fields[0].isAll() {
+		q.fields = make([]*expr, 0, len(rawFieldExprs))
 	}
 
-	for _, field := range fields {
-		sql, vars := F(field).Build()
-		fs = append(fs, sql)
-		for k, v := range vars {
-			bq.addParam(k, v)
+	for _, r := range rawFieldExprs {
+		switch v := r.(type) {
+		case string:
+			q.fields = append(q.fields, Expr(v))
+		case *SelectQuery:
+			q.fields = append(q.fields, Expr(v))
+		case *expr:
+			q.fields = append(q.fields, v)
+		default:
+			// Unsupported field type
+			panic(fmt.Sprintf("unsupported field type: %T", v))
 		}
 	}
-
-	return &SelectQuery{
-		baseQuery: bq,
-		fields:    fs,
-	}
+	return q
 }
 
 // Field adds a field to the SELECT query.
-func (q *SelectQuery) Field(field *field) *SelectQuery {
-	sql, vars := field.Build()
+func (q *SelectQuery) Field(field any, args ...any) *SelectQuery {
 	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{sql}
-	} else {
-		q.fields = append(q.fields, sql)
+	if len(q.fields) == 1 && q.fields[0].isAll() {
+		q.fields = []*expr{}
 	}
-	for k, v := range vars {
-		q.addParam(k, v)
+
+	switch v := field.(type) {
+	case string:
+		q.fields = append(q.fields, Expr(v))
+	case *SelectQuery:
+		q.fields = append(q.fields, Expr(v))
+	case *expr:
+		q.fields = append(q.fields, v)
+	default:
+		// Unsupported field type
+		panic(fmt.Sprintf("unsupported field type: %T", v))
 	}
 	return q
 }
 
 // FieldName adds a field to the SELECT query.
 func (q *SelectQuery) FieldName(field string) *SelectQuery {
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{escapeIdent(field)}
+	escaped := escapeIdent(field)
+	ex := Expr(escaped)
+	if len(q.fields) == 1 && q.fields[0].isAll() {
+		q.fields = []*expr{ex}
 	} else {
-		q.fields = append(q.fields, escapeIdent(field))
+		q.fields = append(q.fields, ex)
 	}
 	return q
 }
 
 // FieldNameAs adds a field with an alias to the SELECT query.
 func (q *SelectQuery) FieldNameAs(field, alias string) *SelectQuery {
+	escaped := escapeIdent(field)
+	ex := Expr(escaped)
+	aliased := ex.As(escapeIdent(alias))
 	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{fmt.Sprintf("%s AS %s", escapeIdent(field), escapeIdent(alias))}
+	if len(q.fields) == 1 && q.fields[0].isAll() {
+		q.fields = []*expr{aliased}
 	} else {
-		q.fields = append(q.fields, fmt.Sprintf("%s AS %s", escapeIdent(field), escapeIdent(alias)))
-	}
-	return q
-}
-
-// AddQuery adds another SelectQuery as a field to the current query.
-func (q *SelectQuery) FieldQueryAs(query *SelectQuery, alias string) *SelectQuery {
-	sql, vars := F(query).As(alias).Build()
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{sql}
-	} else {
-		q.fields = append(q.fields, sql)
-	}
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
-	return q
-}
-
-// FieldFunCallAs adds a function call as a field to the SELECT query.
-func (q *SelectQuery) FieldFunCallAs(fun *FunCall, alias string) *SelectQuery {
-	sql, vars := F(fun).As(alias).Build()
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{sql}
-	} else {
-		q.fields = append(q.fields, sql)
-	}
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
-	return q
-}
-
-// FieldRaw adds a raw field to the SELECT query without escaping.
-// This is useful for fields that should not be escaped, such as function calls.
-func (q *SelectQuery) FieldRaw(field string) *SelectQuery {
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0] == "*" {
-		q.fields = []string{field}
-	} else {
-		q.fields = append(q.fields, field)
+		q.fields = append(q.fields, aliased)
 	}
 	return q
 }
@@ -177,105 +189,39 @@ func (q *SelectQuery) OmitRaw(field string) *SelectQuery {
 	return q
 }
 
-// FromTable sets the FROM clause of the query
-// The from parameter can be:
-// - A table name: "users"
-// - A specific record: "users:123"
-// - A RecordID string representation
-func (q *SelectQuery) FromTable(table string) *SelectQuery {
-	q.from = table
-	return q
-}
-
-// From sets the FROM clause using a target expression.
-// The target can be a table, or a specific record ID.
-func (q *SelectQuery) From(thing *target) *SelectQuery {
-	sql, vars := buildTargetExpr(thing)
-	q.from = sql
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
-	return q
-}
-
-// FromQuery sets the FROM clause using another SelectQuery.
-// This allows using the result of another query as the source for this query.
-func (q *SelectQuery) FromQuery(query *SelectQuery) *SelectQuery {
-	sql, vars := query.Build()
-	q.from = fmt.Sprintf("(%s)", sql)
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
-	return q
-}
-
-// FromRecordID sets the FROM clause using a RecordID
-func (q *SelectQuery) FromRecordID(recordID models.RecordID) *SelectQuery {
-	q.from = recordID.String()
-	return q
-}
-
 // Where adds a WHERE condition to the query.
 //
 // All values are automatically parameterized to prevent injection:
 //
-//	query := surrealql.Select().From("users").
+//	query := surrealql.Select("users").
 //	    Where("age > ? AND status = ?", 18, "active")
 //	// Generates: SELECT * FROM users WHERE age > $param_1 AND status = $param_2
 func (q *SelectQuery) Where(condition string, args ...any) *SelectQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
 	}
-	q.whereClause.addCondition(condition, args, &q.baseQuery)
+	q.whereClause.addCondition(condition, args)
 	return q
 }
 
 // WhereEq adds a WHERE equality condition
 func (q *SelectQuery) WhereEq(field string, value any) *SelectQuery {
-	if q.whereClause == nil {
-		q.whereClause = &whereBuilder{}
-	}
-	paramName := q.generateParamName(field)
-	condition := fmt.Sprintf("%s = $%s", escapeIdent(field), paramName)
-	q.addParam(paramName, value)
-	q.whereClause.addRawCondition(condition)
-	return q
+	return q.Where("type::field(?) = ?", field, value)
 }
 
 // WhereIn adds a WHERE IN condition
-func (q *SelectQuery) WhereIn(field string, values ...any) *SelectQuery {
-	if q.whereClause == nil {
-		q.whereClause = &whereBuilder{}
-	}
-	if len(values) == 0 {
-		return q
-	}
-
-	paramName := q.generateParamName(field + "_in")
-	condition := fmt.Sprintf("%s IN $%s", escapeIdent(field), paramName)
-	q.addParam(paramName, values)
-	q.whereClause.addRawCondition(condition)
-	return q
+func (q *SelectQuery) WhereIn(field string, values any) *SelectQuery {
+	return q.Where("type::field(?) IN ?", field, values)
 }
 
 // WhereNotNull adds a WHERE IS NOT NULL condition
 func (q *SelectQuery) WhereNotNull(field string) *SelectQuery {
-	if q.whereClause == nil {
-		q.whereClause = &whereBuilder{}
-	}
-	condition := fmt.Sprintf("%s IS NOT NULL", escapeIdent(field))
-	q.whereClause.addRawCondition(condition)
-	return q
+	return q.Where("type::field(?) IS NOT NULL", field)
 }
 
 // WhereNull adds a WHERE IS NULL condition
 func (q *SelectQuery) WhereNull(field string) *SelectQuery {
-	if q.whereClause == nil {
-		q.whereClause = &whereBuilder{}
-	}
-	condition := fmt.Sprintf("%s IS NULL", escapeIdent(field))
-	q.whereClause.addRawCondition(condition)
-	return q
+	return q.Where("type::field(?) IS NULL", field)
 }
 
 // OrderBy adds an ORDER BY clause
@@ -406,23 +352,87 @@ func (q *SelectQuery) ReturnAfter() *SelectQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *SelectQuery) Build() (sql string, vars map[string]any) {
-	return q.String(), q.vars
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
+}
+
+func (q *SelectQuery) build(c *queryBuildContext) (sql string) {
+	var parts []string
+
+	// Add EXPLAIN if enabled
+	if q.explain {
+		parts = append(parts, "EXPLAIN")
+	}
+
+	// SELECT clause
+	parts = append(parts, q.buildSelectClause(c))
+
+	// FROM clause
+	if len(q.from) > 0 {
+		fromClauses := make([]string, len(q.from))
+		for i, f := range q.from {
+			fromClauses[i] = f.Build(c.in("from"))
+		}
+		parts = append(parts, "FROM "+strings.Join(fromClauses, ", "))
+	}
+
+	// WHERE clause
+	if q.whereClause != nil && q.whereClause.hasConditions() {
+		parts = append(parts, "WHERE "+q.whereClause.build(c))
+	}
+
+	// SPLIT clause
+	if splitClause := q.buildSplitClause(); splitClause != "" {
+		parts = append(parts, splitClause)
+	}
+
+	// GROUP BY clause
+	if groupClause := q.buildGroupClause(); groupClause != "" {
+		parts = append(parts, groupClause)
+	}
+
+	// ORDER BY clause
+	if orderClause := q.buildOrderClause(); orderClause != "" {
+		parts = append(parts, orderClause)
+	}
+
+	// LIMIT clause
+	if q.limitVal != nil {
+		parts = append(parts, fmt.Sprintf("LIMIT %d", *q.limitVal))
+	}
+
+	// START clause
+	if q.startVal != nil {
+		parts = append(parts, fmt.Sprintf("START %d", *q.startVal))
+	}
+
+	// FETCH clause
+	if fetchClause := q.buildFetchClause(); fetchClause != "" {
+		parts = append(parts, fetchClause)
+	}
+
+	// PARALLEL clause
+	if q.parallel {
+		parts = append(parts, "PARALLEL")
+	}
+
+	// RETURN clause
+	if q.returnClause != "" {
+		parts = append(parts, "RETURN "+q.returnClause)
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // buildSelectClause builds the SELECT clause
-func (q *SelectQuery) buildSelectClause() string {
+func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
 	if len(q.fields) == 0 {
 		return "SELECT *"
 	}
 
 	fields := make([]string, len(q.fields))
 	for i, field := range q.fields {
-		// Don't escape if it's *, contains parentheses (function call), or AS (alias)
-		if field == "*" || strings.Contains(field, "(") || strings.Contains(field, " AS ") {
-			fields[i] = field
-		} else {
-			fields[i] = escapeIdent(field)
-		}
+		fields[i] = field.Build(c)
 	}
 
 	base := "SELECT "
@@ -502,67 +512,8 @@ func (q *SelectQuery) buildFetchClause() string {
 
 // String returns the SurrealQL string for the query
 func (q *SelectQuery) String() string {
-	var parts []string
-
-	// Add EXPLAIN if enabled
-	if q.explain {
-		parts = append(parts, "EXPLAIN")
-	}
-
-	// SELECT clause
-	parts = append(parts, q.buildSelectClause())
-
-	// FROM clause
-	if q.from != "" {
-		parts = append(parts, "FROM "+q.from)
-	}
-
-	// WHERE clause
-	if q.whereClause != nil && q.whereClause.hasConditions() {
-		parts = append(parts, "WHERE "+q.whereClause.build())
-	}
-
-	// SPLIT clause
-	if splitClause := q.buildSplitClause(); splitClause != "" {
-		parts = append(parts, splitClause)
-	}
-
-	// GROUP BY clause
-	if groupClause := q.buildGroupClause(); groupClause != "" {
-		parts = append(parts, groupClause)
-	}
-
-	// ORDER BY clause
-	if orderClause := q.buildOrderClause(); orderClause != "" {
-		parts = append(parts, orderClause)
-	}
-
-	// LIMIT clause
-	if q.limitVal != nil {
-		parts = append(parts, fmt.Sprintf("LIMIT %d", *q.limitVal))
-	}
-
-	// START clause
-	if q.startVal != nil {
-		parts = append(parts, fmt.Sprintf("START %d", *q.startVal))
-	}
-
-	// FETCH clause
-	if fetchClause := q.buildFetchClause(); fetchClause != "" {
-		parts = append(parts, fetchClause)
-	}
-
-	// PARALLEL clause
-	if q.parallel {
-		parts = append(parts, "PARALLEL")
-	}
-
-	// RETURN clause
-	if q.returnClause != "" {
-		parts = append(parts, "RETURN "+q.returnClause)
-	}
-
-	return strings.Join(parts, " ")
+	sql, _ := q.Build()
+	return sql
 }
 
 // whereBuilder helps build WHERE clauses
@@ -570,30 +521,17 @@ type whereBuilder struct {
 	conditions []whereCondition
 }
 
+// whereCondition is an unprocessed WHERE condition
+// which is processed when build(*queryBuildContext) is called.
 type whereCondition struct {
-	operator  string // AND or OR
 	condition string
+	args      []any
 }
 
-func (w *whereBuilder) addCondition(condition string, args []any, base *baseQuery) {
-	// Replace ? placeholders with named parameters
-	processedCondition := condition
-	for _, arg := range args {
-		paramName := base.generateParamName("param")
-		processedCondition = strings.Replace(processedCondition, "?", "$"+paramName, 1)
-		base.addParam(paramName, arg)
-	}
-
+func (w *whereBuilder) addCondition(condition string, args []any) {
 	w.conditions = append(w.conditions, whereCondition{
-		operator:  "AND",
-		condition: processedCondition,
-	})
-}
-
-func (w *whereBuilder) addRawCondition(condition string) {
-	w.conditions = append(w.conditions, whereCondition{
-		operator:  "AND",
 		condition: condition,
+		args:      args,
 	})
 }
 
@@ -601,17 +539,24 @@ func (w *whereBuilder) hasConditions() bool {
 	return len(w.conditions) > 0
 }
 
-func (w *whereBuilder) build() string {
+func (w *whereBuilder) build(c *queryBuildContext) string {
 	if len(w.conditions) == 0 {
 		return ""
 	}
 
 	var parts []string
 	for i, cond := range w.conditions {
+		// Replace ? placeholders with named parameters
+		processedCondition := cond.condition
+		for _, arg := range cond.args {
+			paramName := c.generateAndAddParam("param", arg)
+			processedCondition = strings.Replace(processedCondition, "?", "$"+paramName, 1)
+		}
+
 		if i == 0 {
-			parts = append(parts, cond.condition)
+			parts = append(parts, processedCondition)
 		} else {
-			parts = append(parts, cond.operator+" "+cond.condition)
+			parts = append(parts, "AND "+processedCondition)
 		}
 	}
 

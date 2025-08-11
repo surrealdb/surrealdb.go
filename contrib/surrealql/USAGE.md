@@ -1,4 +1,3 @@
-
 # Usage
 
 This document outlines the basic usage of the `surrealql` library
@@ -14,125 +13,55 @@ cover all the features and are verified as a part of our CI.
 ## Table of Contents
 
 - [SELECT Query](#select-query)
-- [WHERE Conditions](#where-conditions)
-- [COUNT Queries](#count-queries)
-- [Ordering and Pagination](#ordering-and-pagination)
-- [Group By Clause](#group-by-clause)
-- [RETURN Clauses](#return-clauses)
 - [CREATE Queries](#create-queries)
 - [UPDATE Queries](#update-queries)
+- [UPSERT Queries](#upsert-queries)
 - [DELETE Queries](#delete-queries)
 - [RELATE Queries](#relate-queries)
-- [Fetch Clause](#fetch-clause)
-- [Parallel Clause](#parallel-clause)
-- [Explain Clause](#explain-clause)
+- [Transactions](#transactions)
+- [Variables](#variables)
 - [Integration with surrealdb.Query](#integration-with-surrealdbquery)
-- [Using Aggregate Functions](#using-aggregate-functions)
-- [Raw Queries](#raw-queries)
 
 ## SELECT Query
 
 ```go
-// Simple select all
-query := surrealql.Select("*").FromTable("users")
+// Simple select all from a table
+query := surrealql.Select("users")
 sql, vars := query.Build()
 // SurrealQL: "SELECT * FROM users"
 
 // Select specific fields
-query := surrealql.Select("id", "name", "email").FromTable("users")
+query := surrealql.Select("users").Fields("id", "name", "email")
 // SurrealQL: "SELECT id, name, email FROM users"
-```
 
-## WHERE Conditions
+// Select with WHERE conditions
+query := surrealql.Select("users").
+    Fields("id", "name").
+    Where("age > ?", 18).
+    Where("active = ?", true)
 
-```go
-// Using WhereEq for equality
-query := surrealql.Select("*").FromTable("users").WhereEq("active", true)
-// SurrealQL: "SELECT * FROM users WHERE active = $active_1"
-
-// Using WhereNull to find null values
-query := surrealql.Select("*").FromTable("users").WhereNull("deleted_at")
-// SurrealQL: "SELECT * FROM users WHERE deleted_at IS NULL"
-
-// Using WhereNotNull to find non-null values
-query := surrealql.Select("*").FromTable("users").WhereNotNull("email")
-// SurrealQL: "SELECT * FROM users WHERE email IS NOT NULL"
-
-// Using WhereIn for multiple values
-query := surrealql.Select("*").From("orders").
-    WhereIn("status", "pending", "processing", "shipped")
-// SurrealQL: "SELECT * FROM orders WHERE status IN ($status_1, $status_2, $status_3)"
-
-// Using Where for complex conditions with placeholders
-query := surrealql.Select("*").FromTable("products").
-    Where("price BETWEEN ? AND ?", 10, 100)
-// SurrealQL: "SELECT * FROM products WHERE price BETWEEN $param_1 AND $param_2"
-
-// Combining multiple WHERE conditions
-query := surrealql.Select("*").FromTable("users").
-    WhereEq("active", true).
-    WhereNotNull("email").
-    WhereIn("role", "admin", "moderator").
-    Where("created_at > ?", "2024-01-01")
-// All conditions are combined with AND
-```
-
-## COUNT Queries
-
-```go
-// Count all records
-query := surrealql.Select("count() as count").FromTable("users").GroupAll()
-// SurrealQL: "SELECT count() FROM users GROUP ALL"
-
-// Count specific field
-query := surrealql.Select("count(id) as id_count").FromTable("orders").GroupAll()
-// SurrealQL: "SELECT count(id) as id_count FROM orders GROUP ALL"
-
-// Count with grouping
-query := surrealql.Select("category", "count() as count").FromTable("products").GroupBy("category").OrderByDesc("count")
-// SurrealQL: "SELECT category, count() AS count FROM products GROUP BY category ORDER BY count DESC"
-```
-
-## Ordering and Pagination
-
-```go
-query := surrealql.Select("*").FromTable("posts").
-    OrderByDesc("created_at").
+// Select with ordering and pagination
+query := surrealql.Select("posts").
+    OrderBy("created_at DESC").
     Limit(10).
     Start(20)
-// SurrealQL: "SELECT * FROM posts ORDER BY created_at DESC LIMIT 10 START 20"
-```
 
-## Group By Clause
+// Count queries with GROUP ALL
+query := surrealql.Select("users").
+    Field("count()").
+    GroupAll()
 
-```go
-// Group by with aggregates
-query := surrealql.Select("category", "count() AS total", "avg(price) AS avg_price").
-    FromTable("products").
-    GroupBy("category").
-    OrderByDesc("total")
-```
+// Select from multiple tables
+query := surrealql.Select("users", "products")
 
-## RETURN Clauses
-
-```go
-// Return none - useful for write operations where you don't need the result
-query := surrealql.Create("users").
-    Set("name", "John").
-    ReturnNone()
-// SurrealQL: "CREATE users CONTENT $content_1 RETURN NONE"
-
-// Return diff - useful for updates
-query := surrealql.Update("users", "123").
-    Set("name", "Jane").
-    ReturnDiff()
-// SurrealQL: "UPDATE users:123 SET $set_1 RETURN DIFF"
+// Select VALUE for single field value
+query := surrealql.SelectValue("users.name")
 ```
 
 ## CREATE Queries
 
 ```go
-// Create with individual fields
+// Create with individual fields using Set
 query := surrealql.Create("users").
     Set("name", "John Doe").
     Set("email", "john@example.com").
@@ -144,104 +73,221 @@ query := surrealql.Create("users").Content(map[string]any{
     "email": "john@example.com",
     "roles": []string{"user", "admin"},
 })
+
+// Create specific record ID
+query := surrealql.Create("users:123").
+    Set("name", "Alice").
+    ReturnAfter()  // Returns the record after creation
+
+// Create with RETURN NONE for better performance
+query := surrealql.Create("logs").
+    Set("message", "User logged in").
+    ReturnNone()
 ```
 
 ## UPDATE Queries
 
 ```go
-// Update all records
+// Update all records in a table
 query := surrealql.Update("users").
-    Set("last_seen", time.Now())
+    Set("active", true).
+    Where("last_login < ?", time.Date(2022, 10, 1, 0, 0, 0, 0, time.UTC))
 
 // Update specific record
-query := surrealql.Update("users", "123").
-    Set("name", "Jane Doe")
+query := surrealql.Update("users:123").
+    Set("name", "Jane Doe").
+    Set("email", "jane.doe@example.com")
 
-// Update with conditions
-query := surrealql.Update("users").
-    Set("active", false).
-    Where("last_login < ?", "2024-01-01")
+// Update with compound operations
+query := surrealql.Update("products").
+    Set("stock -= ?", 5).               // Decrement
+    Set("sales_count += ?", 1).         // Increment
+    Set("last_sold", "2024-01-01T00:00:00Z")
+
+// Update with RETURN DIFF to see changes
+query := surrealql.Update("users:123").
+    Set("name", "Jane Doe").
+    ReturnDiff()
+
+// Update using RecordID
+recordID := surrealql.Thing("users", 123)
+query := surrealql.Update(recordID).
+    Set("name", "Alice")
+```
+
+## UPSERT Queries
+
+UPSERT creates a record if it doesn't exist, or updates it if it does.
+
+```go
+// Basic UPSERT with SET
+query := surrealql.Upsert("product:laptop").
+    Set("name", "Laptop Pro").
+    Set("price", 1299)
+
+// UPSERT with CONTENT (replaces entire record)
+query := surrealql.Upsert("product:tablet").
+    Content(map[string]any{
+        "name":  "Tablet Pro",
+        "price": 899,
+    }).
+    ReturnAfter()
+
+// UPSERT with MERGE (updates specific fields)
+query := surrealql.Upsert("product:headphones").
+    Merge(map[string]any{
+        "colors": []string{"Black", "White"},
+    })
+
+// UPSERT with JSON PATCH operations
+query := surrealql.Upsert("product:keyboard").
+    Patch([]surrealql.PatchOp{
+        {Op: "add", Path: "/features/-", Value: "RGB Lighting"},
+        {Op: "replace", Path: "/price", Value: 149},
+    })
+
+// UPSERT ONLY returns single record instead of array
+query := surrealql.UpsertOnly("product:charger").
+    Set("name", "Fast Charger").
+    Set("available", true).
+    ReturnAfter()
+
+// UPSERT with WHERE condition
+query := surrealql.Upsert("product:speaker").
+    Set("last_updated", "2024-01-01T00:00:00Z").
+    Set("status", "in_stock").
+    Where("price >= ?", 100).
+    ReturnDiff()
+
+// UPSERT without data modification (creates if doesn't exist)
+query := surrealql.Upsert("foo:1")
 ```
 
 ## DELETE Queries
 
 ```go
-// Delete all records
-query := surrealql.Delete("users")
+// Delete all records in a table
+query := surrealql.Delete("sessions")
 
 // Delete specific record
 query := surrealql.Delete("users:123")
 
 // Delete with conditions
-query := surrealql.Delete("sessions").
-    Where("expires_at < ?", time.Now())
+query := surrealql.Delete("logs").
+    Where("created_at < ?", time.Now().AddDate(0, -1, 0)).
+    ReturnNone()
 ```
 
 ## RELATE Queries
 
 ```go
-// Create a relation
-query := surrealql.Relate("users:123", "likes", "posts:456")
+// Create a simple relation
+query := surrealql.Relate(
+    surrealql.Thing("users", 123),
+    "purchased",
+    surrealql.Thing("products", 456),
+)
 
 // Create a relation with properties
-query := surrealql.Relate("users:123", "purchased", "products:789").
-    Set("quantity", 2).
-    Set("price", 29.99).
-    Set("purchased_at", time.Now())
+query := surrealql.Relate(
+    surrealql.Thing("users", 123),
+    "likes",
+    surrealql.Thing("posts", 789),
+).Set("rating", 5).
+  Set("created_at", time.Now())
+
+// Create relation with Content
+query := surrealql.Relate(
+    surrealql.Thing("users", 456),
+    "follows",
+    surrealql.Thing("users", 789),
+).Content(map[string]any{
+    "since": time.Now(),
+    "mutual": true,
+})
 ```
 
-## Fetch Clause
+## Transactions
 
 ```go
-// Fetch related records
-query := surrealql.Select("*").FromTable("posts").
-    Fetch("author", "comments", "comments.author")
+// Create a transaction with multiple queries
+createUser := surrealql.Create("users:123").Set("name", "Alice")
+updateUser := surrealql.Update("users:123").Set("email", "alice@example.com")
+
+tx := surrealql.Begin().
+    Query(createUser).
+    Query(updateUser)
+
+sql, vars := tx.Build()
+// Produces:
+// BEGIN TRANSACTION;
+// CREATE users:123 SET name = $param_1;
+// UPDATE users:123 SET email = $param_1;
+// COMMIT TRANSACTION;
+
+// Transaction with conditional logic
+tx := surrealql.Begin().
+    Let("transfer_amount", 300.00).
+    Raw("UPDATE account:one SET dollars -= $transfer_amount").
+    If("account:one.dollars < 0").
+    Then(func(tb *surrealql.ThenBuilder) {
+        tb.Throw("Insufficient funds")
+    }).
+    End()
+
+// Transaction with RETURN value
+tx := surrealql.Begin().
+    Let("name", "Alice").
+    Let("email", "alice@example.com").
+    Query(surrealql.Create("person").
+        Set("name", surrealql.Var("name")).
+        Set("email", surrealql.Var("email"))).
+    Return("$name")
 ```
 
-References:
+## Variables
 
-- [FETCH clause | SurrealQL](https://surrealdb.com/docs/surrealql/clauses/fetch)
-
-## Parallel Clause
-
-Several SurrealQL statements support the `PARALLEL` clause:
+Use `Var()` to reference SurrealQL variables (as opposed to literal values):
 
 ```go
-query := surrealql.Select("*").FromTable("large_table").
-    WhereEq("processed", false).
-    Parallel()
+// Using Var() for variable reference
+query := surrealql.Create("users").
+    Set("name", surrealql.Var("name")).  // References the variable $name
+    Set("prefix", "$user")                // Literal string "$user"
+
+// In transactions
+tx := surrealql.Begin().
+    Let("user_id", 123).
+    Query(surrealql.Create("users").
+        Set("id", surrealql.Var("user_id")))
 ```
 
-References:
+## Integration with the main `surrealdb.go` package
 
-- [SELECT statement | SurrealQL](https://surrealdb.com/docs/surrealql/statements/select#the-parallel-clause)
-- [CREATE statement | SurrealQL](https://surrealdb.com/docs/surrealql/statements/create#parallel)
+The `surrealql` library integrates seamlessly with the main `surrealdb.go` package. You can use `models.Table` and `models.RecordID` for type-safe table and record targeting.
 
-## Explain Clause
-
-```go
-query := surrealql.Select("*").FromTable("users").
-    WhereEq("email", "user@example.com").
-    Explain()
-```
-
-References:
-
-- [EXPLAIN clause | SurrealQL](https://surrealdb.com/docs/surrealql/clauses/explain)
-
-## Integration with surrealdb.Query
+### Basic Integration
 
 ```go
 import (
     "context"
     "github.com/surrealdb/surrealdb.go"
     "github.com/surrealdb/surrealdb.go/contrib/surrealql"
+    "github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// Define your model
+type User struct {
+    ID    models.RecordID `json:"id"`
+    Name  string          `json:"name"`
+    Email string          `json:"email"`
+    Active bool           `json:"active"`
+}
+
 // Build your query
-query := surrealql.Select("id", "name").
-    FromTable("users").
-    WhereEq("active", true).
+query := surrealql.Select("users").
+    Fields("id", "name", "email").
+    Where("active = ?", true).
     OrderBy("created_at").
     Limit(10)
 
@@ -250,53 +296,69 @@ sql, vars := query.Build()
 
 // Execute with surrealdb
 ctx := context.Background()
-result, err := surrealdb.Query[User](ctx, db, sql, vars)
+results, err := surrealdb.Query[[]User](ctx, db, sql, vars)
 ```
 
-## Using Aggregate Functions
+### Using models.Table for Dynamic Table Names
 
-In SurrealDB, aggregate functions work differently than traditional SQL. To aggregate values from a table, use aggregate functions with either `GROUP ALL` or `GROUP BY`.
-
-More specifically:
-
-- Use `SELECT math::sum(field)` with `GROUP [BY|ALL]` instead of `SELECT SUM(col)`
-- Use `SELECT math::avg(field)` with `GROUP [BY|ALL]` instead of `SELECT AVG(col)`
-- Use `SELECT math::max(field)` with `GROUP [BY|ALL]` instead of `SELECT MAX(col)`
-- Use `SELECT math::min(field)` with `GROUP [BY|ALL]` instead of `SELECT MIN(col)`
+When table names come from user input or configuration, use `models.Table` for safe parameterization:
 
 ```go
-// Sum all values from a table
-query := surrealql.Select(surrealql.Fn("math::sum").ArgFromField("amount")).
-			FromTable("orders").
-			GroupAll()
-// Produces: SELECT math::sum(amount) FROM orders GROUP ALL
+// Safe handling of dynamic table names
+func queryTable(ctx context.Context, db *surrealdb.DB, tableName string) ([]map[string]any, error) {
+    // models.Table ensures proper CBOR encoding and parameterization
+    table := models.Table(tableName)
 
-// Average ratings
-query := surrealql.Select(surrealql.Fn("math::mean").ArgFromField("rating")).
-			FromTable("reviews").
-			GroupAll()
+    query := surrealql.Select(table).
+        Fields("id", "name", "created_at").
+        Where("active = ?", true)
 
-// Min/Max prices
-minQuery := surrealql.Select(surrealql.Fn("math::min").ArgFromField("price")).
-			FromTable("products").
-			GroupAll()
-maxQuery := surrealql.Select(surrealql.Fn("math::max").ArgFromField("price")).
-			FromTable("products").
-			GroupAll()
+    sql, vars := query.Build()
+    // Produces: SELECT id, name, created_at FROM $from_table_1 WHERE active = $param_1
+    // vars contains: from_table_1: tableName, param_1: true
 
-// For use in SELECT with GROUP BY, use the raw functions:
-query := surrealql.Select("category", "math::sum(price) AS total").
-    FromTable("products").
-    GroupBy("category")
+    return surrealdb.Query[[]map[string]any](ctx, db, sql, vars)
+}
+
+// Handle special characters in table names
+specialTable := models.Table("user-sessions") // Hyphens are safely handled
+query := surrealql.Select(specialTable)
+
+// Handle reserved words as table names
+reservedTable := models.Table("select") // Reserved word safely parameterized
+query := surrealql.Select(reservedTable)
 ```
 
-## Raw Queries
+### Using models.RecordID for Specific Records
 
-For cases where you need complete control:
+Target specific records using `models.RecordID`:
 
 ```go
-query := surrealql.Raw(
-    "SELECT * FROM users WHERE created_at > $date",
-    map[string]any{"date": "2024-01-01"},
-)
+// Query a specific record
+recordID := models.NewRecordID("users", "john")
+query := surrealql.Select(recordID).
+    Fields("name", "email", "last_login")
+
+sql, vars := query.Build()
+// Produces: SELECT name, email, last_login FROM $from_id_1
+// vars contains: from_id_1: users:john
+
+// Update a specific record
+recordID := models.NewRecordID("products", 12345)
+updateQuery := surrealql.Update(recordID).
+    Set("stock", 100).
+    Set("updated_at", time.Now()).
+    ReturnAfter()
+
+sql, vars = updateQuery.Build()
+// Produces: UPDATE $id_1 SET stock = $param_1, updated_at = $param_2 RETURN AFTER
+// vars contains the record ID and parameters
+
+// Delete specific records
+record1 := models.NewRecordID("sessions", "abc123")
+record2 := models.NewRecordID("sessions", "def456")
+deleteQuery := surrealql.Delete(record1, record2)
+
+sql, vars = deleteQuery.Build()
+// Produces: DELETE $from_id_1, $from_id_2
 ```

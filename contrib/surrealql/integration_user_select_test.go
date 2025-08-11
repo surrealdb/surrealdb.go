@@ -43,7 +43,7 @@ func TestIntegrationSelect_All(t *testing.T) {
 	// Setup test data
 	setupUserData(t, ctx, db, "users_all")
 
-	query := surrealql.Select("*").FromTable("users_all")
+	query := surrealql.Select("users_all")
 	sql, vars := query.Build()
 
 	results, err := surrealdb.Query[[]User](ctx, db, sql, vars)
@@ -72,8 +72,7 @@ func TestIntegrationSelect_WhereEq(t *testing.T) {
 	// Setup test data
 	setupUserData(t, ctx, db, "users_whereeq")
 
-	query := surrealql.Select("id", "name", "email").
-		FromTable("users_whereeq").
+	query := surrealql.Select("users_whereeq").Fields("id", "name", "email").
 		WhereEq("active", true).
 		OrderBy("name")
 
@@ -102,8 +101,7 @@ func TestIntegrationSelect_WhereWithParams(t *testing.T) {
 	// Setup test data
 	setupUserData(t, ctx, db, "users_params")
 
-	query := surrealql.Select("*").
-		FromTable("users_params").
+	query := surrealql.Select("users_params").
 		Where("age > ? AND active = ?", 26, true).
 		OrderByDesc("age")
 
@@ -131,8 +129,7 @@ func TestIntegrationSelect_WithPagination(t *testing.T) {
 	// Setup test data
 	setupUserData(t, ctx, db, "users_page")
 
-	query := surrealql.Select("*").
-		FromTable("users_page").
+	query := surrealql.Select("users_page").
 		OrderBy("name").
 		Limit(2).
 		Start(1)

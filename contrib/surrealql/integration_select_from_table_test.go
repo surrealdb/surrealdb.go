@@ -12,7 +12,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-func TestIntegrationSelectFromTable(t *testing.T) {
+func TestIntegrationSelect_fromTable(t *testing.T) {
 	db := testenv.MustNewDeprecated("surrealql_test", "select_from_table_test")
 	ctx := context.Background()
 
@@ -28,9 +28,9 @@ func TestIntegrationSelectFromTable(t *testing.T) {
 	_, err := surrealdb.Query[any](ctx, db, insertQuery, nil)
 	assert.NoError(t, err)
 
-	t.Run("SelectFrom with models.Table and special characters", func(t *testing.T) {
-		// Build query using SelectFrom with models.Table
-		sql, vars := surrealql.SelectFrom(models.Table(tableName)).
+	t.Run("Select with models.Table and special characters", func(t *testing.T) {
+		// Build query using Select with models.Table
+		sql, vars := surrealql.Select(models.Table(tableName)).
 			Where("active = ?", true).
 			OrderBy("name").
 			Build()
@@ -56,9 +56,9 @@ func TestIntegrationSelectFromTable(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectFrom with models.Table all records", func(t *testing.T) {
+	t.Run("Select with models.Table all records", func(t *testing.T) {
 		// Build query to select all records
-		sql, vars := surrealql.SelectFrom(models.Table(tableName)).Build()
+		sql, vars := surrealql.Select(models.Table(tableName)).Build()
 
 		t.Logf("Select all query SQL: %s", sql)
 		t.Logf("Select all query vars: %+v", vars)
@@ -80,11 +80,11 @@ func TestIntegrationSelectFromTable(t *testing.T) {
 	})
 
 	// Test with dynamic table name
-	t.Run("SelectFrom with models.Table dynamic name", func(t *testing.T) {
+	t.Run("Select with models.Table dynamic name", func(t *testing.T) {
 		// This simulates a scenario where table name comes from user input or config
 		dynamicTable := tableName // In real scenario, this could come from elsewhere
 
-		sql, vars := surrealql.SelectFrom(models.Table(dynamicTable)).
+		sql, vars := surrealql.Select(models.Table(dynamicTable)).
 			FieldName("name").
 			Build()
 
@@ -103,11 +103,11 @@ func TestIntegrationSelectFromTable(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectFrom with models.Table", func(t *testing.T) {
-		// Test using models.Table directly with SelectFrom
+	t.Run("Select with models.Table", func(t *testing.T) {
+		// Test using models.Table directly with Select
 		table := models.Table(tableName)
 
-		sql, vars := surrealql.SelectFrom(table).
+		sql, vars := surrealql.Select(table).
 			Where("active = ?", true).
 			OrderBy("name").
 			Build()
@@ -133,14 +133,14 @@ func TestIntegrationSelectFromTable(t *testing.T) {
 		}
 	})
 
-	t.Run("SelectFrom models.Table with aggregation", func(t *testing.T) {
+	t.Run("Select models.Table with aggregation", func(t *testing.T) {
 		// Test using models.Table with aggregation
 		table := models.Table(tableName)
 
 		// Count active vs inactive users
-		sql, vars := surrealql.SelectFrom(table).
-			FieldRaw("active").
-			FieldRaw("count() AS total").
+		sql, vars := surrealql.Select(table).
+			Field("active").
+			Field("count() AS total").
 			GroupBy("active").
 			OrderBy("active").
 			Build()

@@ -7,50 +7,54 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// ExampleSelectFrom_modelsRecordID demonstrates using models.RecordID for specific record selection
-func ExampleSelectFrom_modelsRecordID() {
+// ExampleSelect_modelsRecordID demonstrates using models.RecordID for specific record selection
+func ExampleSelect_modelsRecordID() {
 	// models.RecordID provides type safety and proper CBOR encoding for record IDs
 	recordID := models.NewRecordID("users", "john")
-	sql, vars := surrealql.SelectFrom(recordID).Build()
+	sql, vars := surrealql.Select(recordID).Build()
 
 	fmt.Println(sql)
-	recordIDVar := vars["record_id_1"].(models.RecordID)
-	fmt.Printf("vars: record_id_1=%s:%v (type: %T)\n", recordIDVar.Table, recordIDVar.ID, vars["record_id_1"])
-	// Output: SELECT * FROM $record_id_1
-	// vars: record_id_1=users:john (type: models.RecordID)
+	dumpVars(vars)
+	// Output:
+	// SELECT * FROM $from_id_1
+	// Vars:
+	//   from_id_1: {users john}
 }
 
-// ExampleSelectFrom_modelsRecordIDWithFields demonstrates selecting specific fields from a record
-func ExampleSelectFrom_modelsRecordIDWithFields() {
+// ExampleSelect_modelsRecordIDWithFields demonstrates selecting specific fields from a record
+func ExampleSelect_modelsRecordIDWithFields() {
 	// Select specific fields from a record using models.RecordID
 	recordID := models.NewRecordID("products", 12345)
-	sql, vars := surrealql.SelectFrom(&recordID).
+	sql, vars := surrealql.Select(&recordID).
 		FieldName("name").
 		FieldName("price").
 		FieldName("stock").
 		Build()
 
 	fmt.Println(sql)
-	recordIDVar := vars["record_id_1"].(models.RecordID)
-	fmt.Printf("Record: %s:%v\n", recordIDVar.Table, recordIDVar.ID)
-	// Output: SELECT name, price, stock FROM $record_id_1
-	// Record: products:12345
+	dumpVars(vars)
+	// Output:
+	// SELECT name, price, stock FROM $from_id_1
+	// Vars:
+	//   from_id_1: products:12345
 }
 
-// ExampleSelectFrom_modelsRecordIDWithConditions demonstrates using models.RecordID with WHERE
-func ExampleSelectFrom_modelsRecordIDWithConditions() {
+// ExampleSelect_modelsRecordIDWithConditions demonstrates using models.RecordID with WHERE
+func ExampleSelect_modelsRecordIDWithConditions() {
 	// Even when selecting from a specific record, you can add conditions
 	// This is useful for conditional field selection or validation
 	recordID := models.NewRecordID("orders", "order_789")
-	sql, vars := surrealql.SelectFrom(recordID).
+	sql, vars := surrealql.Select(recordID).
 		FieldName("items").
 		FieldName("total").
 		Where("status = ?", "completed").
 		Build()
 
 	fmt.Println(sql)
-	recordIDVar := vars["record_id_1"].(models.RecordID)
-	fmt.Printf("Order: %s:%v, Status: %v\n", recordIDVar.Table, recordIDVar.ID, vars["param_1"])
-	// Output: SELECT items, total FROM $record_id_1 WHERE status = $param_1
-	// Order: orders:order_789, Status: completed
+	dumpVars(vars)
+	// Output:
+	// SELECT items, total FROM $from_id_1 WHERE status = $param_1
+	// Vars:
+	//   from_id_1: {orders order_789}
+	//   param_1: completed
 }

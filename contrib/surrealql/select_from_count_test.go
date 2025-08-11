@@ -2,7 +2,7 @@ package surrealql
 
 import "testing"
 
-func TestCount(t *testing.T) {
+func TestSelect_counts(t *testing.T) {
 	tests := []struct {
 		name   string
 		query  Query
@@ -10,27 +10,22 @@ func TestCount(t *testing.T) {
 	}{
 		{
 			name:   "count all",
-			query:  Count[string]().FromTable("users").GroupAll(),
+			query:  Select("users").Fields("count()").GroupAll(),
 			wantQL: "SELECT count() FROM users GROUP ALL",
 		},
 		{
 			name:   "count field",
-			query:  Count("id").FromTable("users").GroupAll(),
+			query:  Select("users").Fields("id, count(id) AS count_0").GroupAll(),
 			wantQL: "SELECT id, count(id) AS count_0 FROM users GROUP ALL",
 		},
 		{
-			name:   "count with alias",
-			query:  Count[string]().As("total").FromTable("users").GroupAll(),
-			wantQL: "SELECT count() AS total FROM users GROUP ALL",
-		},
-		{
 			name:   "count with where",
-			query:  Count[string]().FromTable("users").Where("active = ?", true).GroupAll(),
+			query:  Select("users").Fields("count()").Where("active = ?", true).GroupAll(),
 			wantQL: "SELECT count() FROM users WHERE active = $param_1 GROUP ALL",
 		},
 		{
 			name:   "count group by",
-			query:  CountGroupBy("category").FromTable("products"),
+			query:  Select("products").Fields("category, count() AS count").GroupBy("category"),
 			wantQL: "SELECT category, count() AS count FROM products GROUP BY category",
 		},
 	}

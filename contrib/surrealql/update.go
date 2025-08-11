@@ -4,35 +4,23 @@ import "fmt"
 
 // UpdateQuery represents an UPDATE query
 type UpdateQuery struct {
-	baseQuery
 	setsBuilder
-	targets      []string
+	targets      []*expr
 	whereClause  *whereBuilder
 	returnClause string
 }
 
 // Update starts an UPDATE query
-func Update[T mutationTarget](target T, targets ...T) *UpdateQuery {
+func Update[T exprLike](targets ...T) *UpdateQuery {
 	q := &UpdateQuery{
-		baseQuery:   newBaseQuery(),
 		setsBuilder: newSetsBuilder(),
 		targets:     nil,
 	}
 
-	updateAddTarget(q, target)
 	for _, t := range targets {
-		updateAddTarget(q, t)
+		q.targets = append(q.targets, Expr(t))
 	}
 
-	return q
-}
-
-func updateAddTarget[MT mutationTarget](q *UpdateQuery, target MT) *UpdateQuery {
-	sql, vars := buildTargetExpr(target)
-	q.targets = append(q.targets, sql)
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
 	return q
 }
 
@@ -40,13 +28,7 @@ func updateAddTarget[MT mutationTarget](q *UpdateQuery, target MT) *UpdateQuery 
 // Can be used for simple assignment: Set("name", "value")
 // Or for compound operations: Set("count += ?", 1)
 func (q *UpdateQuery) Set(expr string, args ...any) *UpdateQuery {
-	q.addSet(expr, args, &q.baseQuery, "param")
-	return q
-}
-
-// SetMap sets multiple fields from a map
-func (q *UpdateQuery) SetMap(fields map[string]any) *UpdateQuery {
-	q.addSetMap(fields)
+	q.addSet(expr, args)
 	return q
 }
 
@@ -55,7 +37,7 @@ func (q *UpdateQuery) Where(condition string, args ...any) *UpdateQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
 	}
-	q.whereClause.addCondition(condition, args, &q.baseQuery)
+	q.whereClause.addCondition(condition, args)
 	return q
 }
 
@@ -79,33 +61,40 @@ func (q *UpdateQuery) ReturnDiff() *UpdateQuery {
 
 // Build returns the SurrealQL string and parameters
 func (q *UpdateQuery) Build() (sql string, vars map[string]any) {
-	return q.String(), q.vars
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
 }
 
-// String returns the SurrealQL string
-func (q *UpdateQuery) String() string {
-	sql := ""
-
+func (q *UpdateQuery) build(c *queryBuildContext) (sql string) {
 	for _, t := range q.targets {
 		if sql != "" {
 			sql += ", "
 		}
-		sql += t
+
+		tSQL := t.Build(c)
+
+		sql += tSQL
 	}
 
 	sql = fmt.Sprintf("UPDATE %s", sql)
 
-	if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+	if setClause := q.buildSetClause(c); setClause != "" {
 		sql += " SET " + setClause
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		sql += " WHERE " + q.whereClause.build()
+		sql += " WHERE " + q.whereClause.build(c)
 	}
 
 	if q.returnClause != "" {
 		sql += " RETURN " + q.returnClause
 	}
 
+	return sql
+}
+
+// String returns the SurrealQL string
+func (q *UpdateQuery) String() string {
+	sql, _ := q.Build()
 	return sql
 }

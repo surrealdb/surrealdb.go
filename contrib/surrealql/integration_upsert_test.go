@@ -232,8 +232,8 @@ func TestIntegration_UpsertSetRaw(t *testing.T) {
 
 	// UPSERT with SetRaw for compound operations
 	sql, vars := surrealql.Upsert("product:upsert_test9").
-		SetRaw("views += 1").
-		SetRaw("tags += 'popular'").
+		Set("views += 1").
+		Set("tags += 'popular'").
 		Set("last_viewed", "2024-01-01").
 		ReturnAfter().
 		Build()

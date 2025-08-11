@@ -22,35 +22,62 @@ const (
 type Query interface {
 	// Build returns the SurrealQL string and parameters for the query
 	Build() (string, map[string]any)
+
+	// build returns the SurrealQL string in the provided build context.
+	// The build mutates the context, and the context is propagated across
+	// multiple sub queries so that variables are unique.
+	build(c *queryBuildContext) (sql string)
+
 	// String returns the SurrealQL string for the query
 	String() string
 }
 
-// baseQuery contains common fields for all query types
-type baseQuery struct {
+// queryBuildContext holds the context for building queries.
+// It enables building a query with unique variable names.
+type queryBuildContext struct {
 	vars map[string]any
+
+	ctx        string
+	underlying *queryBuildContext
 }
 
-// newBaseQuery creates a new base query
-func newBaseQuery() baseQuery {
-	return baseQuery{
+// newQueryBuildContext creates a new base query
+func newQueryBuildContext() queryBuildContext {
+	return queryBuildContext{
 		vars: make(map[string]any),
 	}
 }
 
-// addParam adds a parameter to the query
-func (q *baseQuery) addParam(name string, value any) {
-	q.vars[name] = value
+func (q *queryBuildContext) in(ctx string) *queryBuildContext {
+	return &queryBuildContext{
+		ctx:        ctx,
+		underlying: q,
+	}
 }
 
 // generateParamName generates a unique parameter name
-func (q *baseQuery) generateParamName(prefix string) string {
+func (q *queryBuildContext) generateParamName(prefix string) string {
+	if q.underlying != nil {
+		panic("unreachable")
+	}
+
 	for i := 1; ; i++ {
 		name := fmt.Sprintf("%s_%d", prefix, i)
 		if _, exists := q.vars[name]; !exists {
 			return name
 		}
 	}
+}
+
+// generateAndAddParam generates a unique parameter name and adds it to the query context
+func (q *queryBuildContext) generateAndAddParam(prefix string, value any) string {
+	if q.underlying != nil {
+		return q.underlying.generateAndAddParam(q.ctx+"_"+prefix, value)
+	}
+
+	name := q.generateParamName(prefix)
+	q.vars[name] = value
+	return name
 }
 
 // escapeIdent escapes an identifier for use in SurrealQL

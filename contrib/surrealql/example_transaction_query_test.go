@@ -28,11 +28,10 @@ func ExampleTransactionQuery_Query() {
 	}
 	// Output:
 	// BEGIN TRANSACTION;
-	// CREATE users:123 SET name = $name_1;
-	// UPDATE users:123 SET email = $email_1;
+	// CREATE users:123 SET name = $param_1;
+	// UPDATE users:123 SET email = $param_1;
 	// COMMIT TRANSACTION;
-	// Var email_1: alice@example.com
-	// Var name_1: Alice
+	// Var param_1: alice@example.com
 }
 
 func ExampleTransactionQuery_If() {
@@ -68,8 +67,8 @@ func ExampleTransactionQuery_returningEarly() {
 	// Create a transaction using existing query builders
 	createAccount1 := surrealql.Create("account:one").Set("balance", 135605.16)
 	createAccount2 := surrealql.Create("account:two").Set("balance", 91031.31)
-	updateAccount1 := surrealql.Raw("UPDATE account:one SET balance += 300.00", nil)
-	updateAccount2 := surrealql.Raw("UPDATE account:two SET balance -= 300.00", nil)
+	updateAccount1 := surrealql.Raw("UPDATE account:one SET balance += 300.00")
+	updateAccount2 := surrealql.Raw("UPDATE account:two SET balance -= 300.00")
 
 	tx := surrealql.Begin().
 		Query(createAccount1).
@@ -86,8 +85,8 @@ func ExampleTransactionQuery_returningEarly() {
 	fmt.Println(sql)
 	// Output:
 	// BEGIN TRANSACTION;
-	// CREATE account:one SET balance = $balance_1;
-	// CREATE account:two SET balance = $balance_1;
+	// CREATE account:one SET balance = $param_1;
+	// CREATE account:two SET balance = $param_1;
 	// IF !account:two.wants_to_send_money {
 	//     THROW "Customer doesn't want to send any money!";
 	// };
@@ -100,7 +99,7 @@ func ExampleTransactionQuery_LetTyped() {
 	// Create a transaction with typed LET statements
 	tx := surrealql.Begin().
 		LetTyped("num", "int | string", "9").
-		LetTyped("vals", "array<bool>", surrealql.Raw("some:record.vals.map(|$val| <bool>$val)", nil)).
+		LetTyped("vals", "array<bool>", surrealql.Raw("some:record.vals.map(|$val| <bool>$val)")).
 		Raw("CREATE thing SET number = $num, values = $vals")
 
 	sql, _ := tx.Build()
@@ -121,8 +120,8 @@ func ExampleTransactionQuery_Return() {
 		Let("name", "Alice").
 		Let("email", "alice@example.com").
 		Query(surrealql.Create("person").
-			Set("name", surrealql.V("name")).
-			Set("email", surrealql.V("email"))).
+			Set("name", surrealql.Var("name")).
+			Set("email", surrealql.Var("email"))).
 		Return("$name")
 
 	sql, _ := tx.Build()
@@ -131,7 +130,7 @@ func ExampleTransactionQuery_Return() {
 	// BEGIN TRANSACTION;
 	// LET $name = "Alice";
 	// LET $email = "alice@example.com";
-	// CREATE person SET email = $email, name = $name;
+	// CREATE person SET name = $name, email = $email;
 	// RETURN $name;
 	// COMMIT TRANSACTION;
 }
@@ -143,7 +142,7 @@ func ExampleTransactionQuery_Return_withPlaceholders() {
 		Let("a", 10).
 		Let("b", 20).
 		Query(surrealql.Create(surrealql.Table("test")).Set("v", "V")).
-		Return("? + ? + ?", surrealql.V("a"), surrealql.V("b"), 5)
+		Return("? + ? + ?", surrealql.Var("a"), surrealql.Var("b"), 5)
 
 	sql, vars := tx.Build()
 	fmt.Println(sql)
@@ -152,11 +151,11 @@ func ExampleTransactionQuery_Return_withPlaceholders() {
 	// BEGIN TRANSACTION;
 	// LET $a = 10;
 	// LET $b = 20;
-	// CREATE type::table($tb_1) SET v = $v_1;
+	// CREATE $table_1 SET v = $param_1;
 	// RETURN $a + $b + $return_param_1;
 	// COMMIT TRANSACTION;
 	// Vars:
+	//   param_1: V
 	//   return_param_1: 5
-	//   tb_1: test
-	//   v_1: V
+	//   table_1: test
 }
