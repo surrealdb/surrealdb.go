@@ -10,8 +10,8 @@ import (
 func ExampleVar() {
 	// Using V() for variable reference
 	query1 := surrealql.Create("users").
-		Set("name", surrealql.V("name")). // References the variable $name
-		Set("prefix", "$user")            // Literal string "$user"
+		Set("name", surrealql.Var("name")). // References the variable $name
+		Set("prefix", "$user")              // Literal string "$user"
 
 	sql1, vars1 := query1.Build()
 	fmt.Println("With Var:")
@@ -20,6 +20,6 @@ func ExampleVar() {
 
 	// Output:
 	// With Var:
-	// CREATE users SET name = $name, prefix = $prefix_1
-	// Vars: map[prefix_1:$user]
+	// CREATE users SET name = $name, prefix = $param_1
+	// Vars: map[param_1:$user]
 }

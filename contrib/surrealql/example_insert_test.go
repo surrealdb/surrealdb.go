@@ -48,8 +48,8 @@ func ExampleInsert_valueArray() {
 
 func ExampleInsert_valueQuery() {
 	// Insert using a SELECT query
-	selectQuery := surrealql.Select("name", "founded").
-		FromTable("companies").
+	selectQuery := surrealql.Select("companies").
+		Fields("name", "founded").
 		Where("active = ?", true)
 
 	q := surrealql.Insert("company").ValueQuery(selectQuery)

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleUpsert_noContent() {
@@ -39,10 +40,12 @@ func ExampleUpsert_set() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:laptop SET name = $upsert_name_1, price = $upsert_price_1
-	// Variables: map[upsert_name_1:Laptop Pro upsert_price_1:1299]
+	// UPSERT product:laptop SET name = $param_1, price = $param_2
+	// Vars:
+	//   param_1: Laptop Pro
+	//   param_2: 1299
 }
 
 func ExampleUpsert_content_returnAfter() {
@@ -176,10 +179,13 @@ func ExampleUpsert_withConditions() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:speaker SET last_updated = $upsert_last_updated_1, status = $upsert_status_1 WHERE price >= $param_1 RETURN DIFF
-	// Variables: map[param_1:100 upsert_last_updated_1:2024-01-01T00:00:00Z upsert_status_1:in_stock]
+	// UPSERT product:speaker SET last_updated = $param_1, status = $param_2 WHERE price >= $param_3 RETURN DIFF
+	// Vars:
+	//   param_1: 2024-01-01T00:00:00Z
+	//   param_2: in_stock
+	//   param_3: 100
 }
 
 func ExampleUpsertOnly() {
@@ -191,10 +197,12 @@ func ExampleUpsertOnly() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT ONLY product:charger SET available = $upsert_available_1, name = $upsert_name_1 RETURN AFTER
-	// Variables: map[upsert_available_1:true upsert_name_1:Fast Charger]
+	// UPSERT ONLY product:charger SET name = $param_1, available = $param_2 RETURN AFTER
+	// Vars:
+	//   param_1: Fast Charger
+	//   param_2: true
 }
 
 func ExampleUpsert_unset() {
@@ -205,10 +213,11 @@ func ExampleUpsert_unset() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:cable SET name = $upsert_name_1, UNSET deprecated_field, legacy_data
-	// Variables: map[upsert_name_1:USB Cable]
+	// UPSERT product:cable SET name = $param_1, UNSET deprecated_field, legacy_data
+	// Vars:
+	//   param_1: USB Cable
 }
 
 func ExampleUpsert_returnNone() {
@@ -219,10 +228,11 @@ func ExampleUpsert_returnNone() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:adapter SET processed = $upsert_processed_1 RETURN NONE
-	// Variables: map[upsert_processed_1:true]
+	// UPSERT product:adapter SET processed = $param_1 RETURN NONE
+	// Vars:
+	//   param_1: true
 }
 
 func ExampleUpsert_returnAfter() {
@@ -234,10 +244,12 @@ func ExampleUpsert_returnAfter() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:desk SET name = $upsert_name_1, price = $upsert_price_1 RETURN AFTER
-	// Variables: map[upsert_name_1:Standing Desk upsert_price_1:450]
+	// UPSERT product:desk SET name = $param_1, price = $param_2 RETURN AFTER
+	// Vars:
+	//   param_1: Standing Desk
+	//   param_2: 450
 }
 
 func ExampleUpsert_returnBefore() {
@@ -249,10 +261,12 @@ func ExampleUpsert_returnBefore() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:chair SET name = $upsert_name_1, price = $upsert_price_1 RETURN BEFORE
-	// Variables: map[upsert_name_1:Office Chair upsert_price_1:250]
+	// UPSERT product:chair SET name = $param_1, price = $param_2 RETURN BEFORE
+	// Vars:
+	//   param_1: Office Chair
+	//   param_2: 250
 }
 
 func ExampleUpsert_returnDiff() {
@@ -264,10 +278,12 @@ func ExampleUpsert_returnDiff() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:lamp SET name = $upsert_name_1, price = $upsert_price_1 RETURN DIFF
-	// Variables: map[upsert_name_1:LED Lamp upsert_price_1:75]
+	// UPSERT product:lamp SET name = $param_1, price = $param_2 RETURN DIFF
+	// Vars:
+	//   param_1: LED Lamp
+	//   param_2: 75
 }
 
 func ExampleUpsert_returnFields() {
@@ -280,10 +296,13 @@ func ExampleUpsert_returnFields() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:webcam SET name = $upsert_name_1, price = $upsert_price_1, resolution = $upsert_resolution_1 RETURN name, price
-	// Variables: map[upsert_name_1:HD Webcam upsert_price_1:120 upsert_resolution_1:1080p]
+	// UPSERT product:webcam SET name = $param_1, price = $param_2, resolution = $param_3 RETURN name, price
+	// Vars:
+	//   param_1: HD Webcam
+	//   param_2: 120
+	//   param_3: 1080p
 }
 
 func ExampleUpsert_performance() {
@@ -296,25 +315,27 @@ func ExampleUpsert_performance() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:microphone SET processed = $upsert_processed_1 RETURN NONE TIMEOUT 5s PARALLEL
-	// Variables: map[upsert_processed_1:true]
+	// UPSERT product:microphone SET processed = $param_1 RETURN NONE TIMEOUT 5s PARALLEL
+	// Vars:
+	//   param_1: true
 }
 
 func ExampleUpsert_setRaw() {
 	// UPSERT with raw SET expressions for compound operations (deprecated - use Set instead)
 	sql, vars := surrealql.Upsert("product:book").
-		SetRaw("tags += 'bestseller'").
-		SetRaw("view_count += 1").
+		Set("tags += 'bestseller'").
+		Set("view_count += 1").
 		Set("last_viewed", "2024-01-01T00:00:00Z").
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:book SET last_viewed = $upsert_last_viewed_1, tags += 'bestseller', view_count += 1
-	// Variables: map[upsert_last_viewed_1:2024-01-01T00:00:00Z]
+	// UPSERT product:book SET tags += 'bestseller', view_count += 1, last_viewed = $param_1
+	// Vars:
+	//   param_1: 2024-01-01T00:00:00Z
 }
 
 func ExampleUpsert_setCompound() {
@@ -326,27 +347,31 @@ func ExampleUpsert_setCompound() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:book SET last_viewed = $upsert_last_viewed_1, tags += $upsert_param_1, view_count += $upsert_param_2
-	// Variables: map[upsert_last_viewed_1:2024-01-01T00:00:00Z upsert_param_1:bestseller upsert_param_2:1]
+	// UPSERT product:book SET tags += $param_1, view_count += $param_2, last_viewed = $param_3
+	// Vars:
+	//   param_1: bestseller
+	//   param_2: 1
+	//   param_3: 2024-01-01T00:00:00Z
 }
 
 func ExampleUpsert_setRaw_arrayOperations() {
 	// UPSERT with various raw SET expressions for array and numeric operations
 	sql, vars := surrealql.Upsert("product:laptop").
-		SetRaw("categories += ['electronics', 'computers']").
-		SetRaw("stock -= 1").
-		SetRaw("sales_count += 1").
+		Set("categories += ['electronics', 'computers']").
+		Set("stock -= 1").
+		Set("sales_count += 1").
 		Set("available", true).
 		ReturnAfter().
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:laptop SET available = $upsert_available_1, categories += ['electronics', 'computers'], stock -= 1, sales_count += 1 RETURN AFTER
-	// Variables: map[upsert_available_1:true]
+	// UPSERT product:laptop SET categories += ['electronics', 'computers'], stock -= 1, sales_count += 1, available = $param_1 RETURN AFTER
+	// Vars:
+	//   param_1: true
 }
 
 func ExampleUpsert_setWithTime() {
@@ -361,10 +386,14 @@ func ExampleUpsert_setWithTime() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:watch SET last_viewed = $upsert_last_viewed_1, name = $upsert_name_1, price = $upsert_price_1, view_count += $upsert_param_1
-	// Variables: map[upsert_last_viewed_1:2024-01-15 10:30:00 +0000 UTC upsert_name_1:Smart Watch Pro upsert_param_1:1 upsert_price_1:299.99]
+	// UPSERT product:watch SET name = $param_1, price = $param_2, last_viewed = $param_3, view_count += $param_4
+	// Vars:
+	//   param_1: Smart Watch Pro
+	//   param_2: 299.99
+	//   param_3: 2024-01-15 10:30:00 +0000 UTC
+	//   param_4: 1
 }
 
 func ExampleUpsert_set_arrayOperations() {
@@ -378,10 +407,14 @@ func ExampleUpsert_set_arrayOperations() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:laptop SET available = $upsert_available_1, categories += $upsert_param_1, stock -= $upsert_param_2, sales_count += $upsert_param_3 RETURN AFTER
-	// Variables: map[upsert_available_1:true upsert_param_1:[electronics computers] upsert_param_2:1 upsert_param_3:1]
+	// UPSERT product:laptop SET categories += $param_1, stock -= $param_2, sales_count += $param_3, available = $param_4 RETURN AFTER
+	// Vars:
+	//   param_1: [electronics computers]
+	//   param_2: 1
+	//   param_3: 1
+	//   param_4: true
 }
 
 func ExampleUpsert_set_mixed() {
@@ -402,10 +435,19 @@ func ExampleUpsert_set_mixed() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:smartphone SET created_at = $upsert_created_at_1, discount_percentage = $upsert_discount_percentage_1, in_stock = $upsert_in_stock_1, name = $upsert_name_1, price = $upsert_price_1, tags += $upsert_param_1, features += $upsert_param_2, view_count += $upsert_param_3 WHERE stock > $param_1 RETURN AFTER
-	// Variables: map[param_1:0 upsert_created_at_1:2024-01-20 15:30:00 +0000 UTC upsert_discount_percentage_1:10 upsert_in_stock_1:true upsert_name_1:Latest Phone upsert_param_1:flagship upsert_param_2:[5G AI] upsert_param_3:1 upsert_price_1:899.99]
+	// UPSERT product:smartphone SET name = $param_1, price = $param_2, in_stock = $param_3, created_at = $param_4, tags += $param_5, features += $param_6, view_count += $param_7, discount_percentage = $param_8 WHERE stock > $param_9 RETURN AFTER
+	// Vars:
+	//   param_1: Latest Phone
+	//   param_2: 899.99
+	//   param_3: true
+	//   param_4: 2024-01-20 15:30:00 +0000 UTC
+	//   param_5: flagship
+	//   param_6: [5G AI]
+	//   param_7: 1
+	//   param_8: 10
+	//   param_9: 0
 }
 
 func ExampleUpsert_returnValue() {
@@ -416,10 +458,11 @@ func ExampleUpsert_returnValue() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// UPSERT product:counter SET view_count += $upsert_param_1 RETURN VALUE view_count
-	// Variables: map[upsert_param_1:1]
+	// UPSERT product:counter SET view_count += $param_1 RETURN VALUE view_count
+	// Vars:
+	//   param_1: 1
 }
 
 func ExampleUpsert_returnValue_withContent() {
@@ -438,4 +481,67 @@ func ExampleUpsert_returnValue_withContent() {
 	// Output:
 	// UPSERT product:item123 CONTENT $upsert_content_1 RETURN VALUE price
 	// Variables: map[upsert_content_1:map[name:New Product price:99.99 stock:100]]
+}
+
+func ExampleUpsert_recordID() {
+	recordID := models.NewRecordID("products", 12345)
+
+	sql, vars := surrealql.Upsert(recordID).
+		Set("name", "Updated Product").
+		Set("price", 199.99).
+		Build()
+
+	fmt.Println(sql)
+	dumpVars(vars)
+	// Output:
+	// UPSERT $id_1 SET name = $param_1, price = $param_2
+	// Vars:
+	//   id_1: {products 12345}
+	//   param_1: Updated Product
+	//   param_2: 199.99
+}
+
+func ExampleUpsert_recordID_multi() {
+	recordID1 := models.NewRecordID("products", 12345)
+	recordID2 := models.NewRecordID("products", 67890)
+
+	sql, vars := surrealql.Upsert(recordID1, recordID2).
+		Set("name", "Updated Product 1").
+		Set("price", 199.99).
+		Build()
+
+	fmt.Println(sql)
+	dumpVars(vars)
+
+	// Output:
+	// UPSERT $id_1, $id_2 SET name = $param_1, price = $param_2
+	// Vars:
+	//   id_1: {products 12345}
+	//   id_2: {products 67890}
+	//   param_1: Updated Product 1
+	//   param_2: 199.99
+}
+
+func ExampleUpsert_recordID_varargs() {
+	// UPSERT with multiple record IDs using varargs
+	recordIDs := []models.RecordID{
+		models.NewRecordID("products", 12345),
+		models.NewRecordID("products", 67890),
+	}
+
+	sql, vars := surrealql.Upsert(recordIDs...).
+		Set("name", "Updated Product").
+		Set("price", 199.99).
+		Build()
+
+	fmt.Println(sql)
+	dumpVars(vars)
+
+	// Output:
+	// UPSERT $id_1, $id_2 SET name = $param_1, price = $param_2
+	// Vars:
+	//   id_1: {products 12345}
+	//   id_2: {products 67890}
+	//   param_1: Updated Product
+	//   param_2: 199.99
 }

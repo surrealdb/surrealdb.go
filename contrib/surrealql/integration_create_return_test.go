@@ -63,7 +63,7 @@ func TestIntegrationReturnClauses(t *testing.T) {
 		}
 
 		// Verify the update worked - select all tasks
-		selectQuery := surrealql.Select("*").FromTable("tasks")
+		selectQuery := surrealql.Select("tasks")
 		ql, vars = selectQuery.Build()
 		t.Logf("Verify SELECT SurrealQL: %s", ql)
 		t.Logf("Verify SELECT Params: %v", vars)

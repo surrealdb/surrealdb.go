@@ -1,12 +1,14 @@
 package surrealql
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // CreateQuery represents a CREATE query
 type CreateQuery struct {
-	baseQuery
 	setsBuilder
-	thing        string
+	targets      []*expr
 	content      map[string]any
 	useContent   bool
 	returnClause string
@@ -19,16 +21,15 @@ type CreateQuery struct {
 // A special case to note for `table:id` is that when the `id` is a number-like string (e.g., "123")
 // "table:123" will treat `123` as an integer ID,
 // while "table:`123`" will treat `123` as a string ID.
-func Create[T mutationTarget](thing T) *CreateQuery {
-	bq := newBaseQuery()
-	sql, vars := buildTargetExpr(thing)
-	for k, v := range vars {
-		bq.addParam(k, v)
+func Create[T exprLike](target T, targets ...T) *CreateQuery {
+	var ts []*expr
+	ts = append(ts, Expr(target))
+	for _, target := range targets {
+		ts = append(ts, Expr(target))
 	}
 	return &CreateQuery{
-		baseQuery:   bq,
 		setsBuilder: newSetsBuilder(),
-		thing:       sql,
+		targets:     ts,
 		content:     make(map[string]any),
 	}
 }
@@ -37,13 +38,7 @@ func Create[T mutationTarget](thing T) *CreateQuery {
 // Can be used for simple assignment: Set("name", "value")
 // Or for compound operations: Set("count += ?", 1)
 func (q *CreateQuery) Set(expr string, args ...any) *CreateQuery {
-	q.addSet(expr, args, &q.baseQuery, "param")
-	return q
-}
-
-// SetMap sets multiple fields from a map
-func (q *CreateQuery) SetMap(fields map[string]any) *CreateQuery {
-	q.addSetMap(fields)
+	q.addSet(expr, args)
 	return q
 }
 
@@ -68,18 +63,23 @@ func (q *CreateQuery) ReturnNone() *CreateQuery {
 
 // Build returns the SurrealQL string and parameters
 func (q *CreateQuery) Build() (sql string, vars map[string]any) {
-	return q.String(), q.vars
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
 }
 
-// String returns the SurrealQL string
-func (q *CreateQuery) String() string {
-	sql := fmt.Sprintf("CREATE %s", q.thing)
+func (q *CreateQuery) build(c *queryBuildContext) (sql string) {
+	var targets []string
+
+	for _, t := range q.targets {
+		targets = append(targets, t.Build(c))
+	}
+
+	sql = fmt.Sprintf("CREATE %s", strings.Join(targets, ", "))
 
 	if q.useContent && len(q.content) > 0 {
-		paramName := q.generateParamName("content")
-		q.addParam(paramName, q.content)
+		paramName := c.generateAndAddParam("content", q.content)
 		sql += fmt.Sprintf(" CONTENT $%s", paramName)
-	} else if setClause := q.buildSetClause(&q.baseQuery, ""); setClause != "" {
+	} else if setClause := q.buildSetClause(c); setClause != "" {
 		sql += " SET " + setClause
 	}
 
@@ -87,5 +87,11 @@ func (q *CreateQuery) String() string {
 		sql += " RETURN " + q.returnClause
 	}
 
+	return sql
+}
+
+// String returns the SurrealQL string
+func (q *CreateQuery) String() string {
+	sql, _ := q.Build()
 	return sql
 }

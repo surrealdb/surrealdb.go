@@ -79,7 +79,7 @@ func TestIntegrationCreateThenUpdate(t *testing.T) {
 		}
 
 		// First check all items
-		allQuery := surrealql.Select("*").FromTable("items")
+		allQuery := surrealql.Select("items")
 		allQL, allParams := allQuery.Build()
 		allResults, _ := surrealdb.Query[[]Item](ctx, db, allQL, allParams)
 		if len(*allResults) > 0 {
@@ -87,7 +87,7 @@ func TestIntegrationCreateThenUpdate(t *testing.T) {
 		}
 
 		// Verify update
-		selectQuery := surrealql.Select("*").FromTable("items").WhereEq("active", false)
+		selectQuery := surrealql.Select("items").WhereEq("active", false)
 		sql, vars = selectQuery.Build()
 
 		results, err := surrealdb.Query[[]Item](ctx, db, sql, vars)
@@ -149,7 +149,7 @@ func TestIntegrationCreateThenDelete(t *testing.T) {
 		}
 
 		// Verify deletion
-		selectQuery := surrealql.Select("*").FromTable("items_delete")
+		selectQuery := surrealql.Select("items_delete")
 		sql, vars = selectQuery.Build()
 
 		results, err := surrealdb.Query[[]Item](ctx, db, sql, vars)

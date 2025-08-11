@@ -8,7 +8,6 @@ import (
 
 // DefineTableQuery represents a DEFINE TABLE query
 type DefineTableQuery struct {
-	baseQuery
 	table           string
 	changefeed      string
 	includeOriginal bool
@@ -27,7 +26,6 @@ type permission struct {
 // DefineTable creates a new DEFINE TABLE query
 func DefineTable(table string) *DefineTableQuery {
 	return &DefineTableQuery{
-		baseQuery:   newBaseQuery(),
 		table:       table,
 		permissions: make([]permission, 0),
 		fields:      make([]string, 0),
@@ -82,6 +80,8 @@ func (q *DefineTableQuery) Permissions(perm, value string) *DefineTableQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *DefineTableQuery) Build() (query string, params map[string]any) {
+	c := newQueryBuildContext()
+
 	var builder strings.Builder
 
 	builder.WriteString("DEFINE TABLE ")
@@ -111,7 +111,7 @@ func (q *DefineTableQuery) Build() (query string, params map[string]any) {
 		}
 	}
 
-	return builder.String(), q.vars
+	return builder.String(), c.vars
 }
 
 // String returns the SurrealQL string for the query
@@ -122,7 +122,6 @@ func (q *DefineTableQuery) String() string {
 
 // DefineFieldQuery represents a DEFINE FIELD query
 type DefineFieldQuery struct {
-	baseQuery
 	table    string
 	field    string
 	dataType string
@@ -134,9 +133,8 @@ type DefineFieldQuery struct {
 // DefineField creates a new DEFINE FIELD query
 func DefineField(field, table string) *DefineFieldQuery {
 	return &DefineFieldQuery{
-		baseQuery: newBaseQuery(),
-		field:     field,
-		table:     table,
+		field: field,
+		table: table,
 	}
 }
 
@@ -166,6 +164,8 @@ func (q *DefineFieldQuery) Default(defaultValue string) *DefineFieldQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *DefineFieldQuery) Build() (query string, params map[string]any) {
+	c := newQueryBuildContext()
+
 	var builder strings.Builder
 
 	builder.WriteString("DEFINE FIELD ")
@@ -193,7 +193,7 @@ func (q *DefineFieldQuery) Build() (query string, params map[string]any) {
 		builder.WriteString(q.default_)
 	}
 
-	return builder.String(), q.vars
+	return builder.String(), c.vars
 }
 
 // String returns the SurrealQL string for the query

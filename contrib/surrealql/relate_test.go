@@ -16,7 +16,7 @@ func TestRelate(t *testing.T) {
 		{
 			name:      "relate with set",
 			query:     Relate("users:123", "likes", "posts:456").Set("rating", 5),
-			wantSurQL: "RELATE users:123->likes->posts:456 SET rating = $rating_1",
+			wantSurQL: "RELATE users:123->likes->posts:456 SET rating = $param_1",
 		},
 		{
 			name:      "relate with content",
@@ -26,7 +26,7 @@ func TestRelate(t *testing.T) {
 		{
 			name:      "relate with compound operation",
 			query:     Relate("users:123", "views", "posts:456").Set("count += ?", 1).Set("last_viewed", "2024-01-01"),
-			wantSurQL: "RELATE users:123->views->posts:456 SET last_viewed = $last_viewed_1, count += $param_1",
+			wantSurQL: "RELATE users:123->views->posts:456 SET count += $param_1, last_viewed = $param_2",
 		},
 	}
 

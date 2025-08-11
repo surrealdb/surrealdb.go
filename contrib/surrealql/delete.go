@@ -2,30 +2,19 @@ package surrealql
 
 // DeleteQuery represents a DELETE query
 type DeleteQuery struct {
-	baseQuery
-	targets      []string
+	targets      []*expr
 	whereClause  *whereBuilder
 	returnClause string
 }
 
 // Delete starts a DELETE query
-func Delete[T mutationTarget](target T, targets ...T) *DeleteQuery {
+func Delete[T exprLike](target T, targets ...T) *DeleteQuery {
 	q := &DeleteQuery{
-		baseQuery: newBaseQuery(),
-		targets:   nil,
+		targets: nil,
 	}
-	deleteAddTarget(q, target)
+	q.targets = append(q.targets, Expr(target))
 	for _, t := range targets {
-		deleteAddTarget(q, t)
-	}
-	return q
-}
-
-func deleteAddTarget[MT mutationTarget](q *DeleteQuery, target MT) *DeleteQuery {
-	sql, vars := buildTargetExpr(target)
-	q.targets = append(q.targets, sql)
-	for k, v := range vars {
-		q.addParam(k, v)
+		q.targets = append(q.targets, Expr(t))
 	}
 	return q
 }
@@ -35,7 +24,7 @@ func (q *DeleteQuery) Where(condition string, args ...any) *DeleteQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
 	}
-	q.whereClause.addCondition(condition, args, &q.baseQuery)
+	q.whereClause.addCondition(condition, args)
 	return q
 }
 
@@ -53,27 +42,34 @@ func (q *DeleteQuery) ReturnNone() *DeleteQuery {
 
 // Build returns the SurrealQL string and parameters
 func (q *DeleteQuery) Build() (sql string, params map[string]any) {
-	return q.String(), q.vars
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
 }
 
-// String returns the SurrealQL string
-func (q *DeleteQuery) String() string {
-	sql := "DELETE "
+func (q *DeleteQuery) build(c *queryBuildContext) (sql string) {
+	sql = "DELETE "
 
 	for i, target := range q.targets {
 		if i > 0 {
 			sql += ", "
 		}
-		sql += target
+		tSQL := target.Build(c)
+		sql += tSQL
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		sql += " WHERE " + q.whereClause.build()
+		sql += " WHERE " + q.whereClause.build(c)
 	}
 
 	if q.returnClause != "" {
 		sql += " RETURN " + q.returnClause
 	}
 
+	return sql
+}
+
+// String returns the SurrealQL string
+func (q *DeleteQuery) String() string {
+	sql, _ := q.Build()
 	return sql
 }

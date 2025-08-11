@@ -10,22 +10,22 @@ func ExampleSelect_aggregate() {
 	// Using various aggregate functions
 
 	// Total revenue
-	sumQuery := surrealql.Select("math::sum(amount)").
-		FromTable("orders").
+	sumQuery := surrealql.Select("orders").
+		Fields("math::sum(amount)").
 		Where("status = ?", "completed")
 
 	// Average rating
-	avgQuery := surrealql.Select("math::mean(rating)").
-		FromTable("reviews").
+	avgQuery := surrealql.Select("reviews").
+		Fields("math::mean(rating)").
 		Where("product_id = ?", "product:123")
 
 	// Price range
-	minQuery := surrealql.Select("math::min(price)").
-		FromTable("products").
+	minQuery := surrealql.Select("products").
+		Fields("math::min(price)").
 		Where("category = ?", "electronics")
 
-	maxQuery := surrealql.Select("math::max(price)").
-		FromTable("products")
+	maxQuery := surrealql.Select("products").
+		Fields("math::max(price)")
 
 	fmt.Println("Sum:", sumQuery.String())
 	fmt.Println("Avg:", avgQuery.String())

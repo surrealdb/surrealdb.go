@@ -68,7 +68,7 @@ func TestIntegrationRelate(t *testing.T) {
 		}
 
 		// Verify the relation exists
-		selectQuery := surrealql.Select("*").FromTable("likes")
+		selectQuery := surrealql.Select("likes")
 		sql, vars = selectQuery.Build()
 
 		results, err = surrealdb.Query[[]Like](ctx, db, sql, vars)

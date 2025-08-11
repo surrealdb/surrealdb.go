@@ -64,8 +64,7 @@ func TestIntegrationAggregate_Sum(t *testing.T) {
 		t.Logf("Raw sum results: %+v", (*rawSumResults)[0].Result)
 	}
 
-	query := surrealql.Select(surrealql.Fn("math::sum").ArgFromField("total")).
-		FromTable("sales_sum").
+	query := surrealql.Select("sales_sum").Fields(surrealql.Expr("math::sum(total)")).
 		GroupAll()
 	sql, vars := query.Build()
 	t.Logf("SUM SurrealQL: %s", sql)
@@ -99,8 +98,7 @@ func TestIntegrationAggregate_Average(t *testing.T) {
 	// Setup test data
 	setupSalesData(t, ctx, db, "sales_avg")
 
-	query := surrealql.Select(surrealql.Fn("math::mean").ArgFromField("price")).
-		FromTable("sales_avg").
+	query := surrealql.Select("sales_avg").Fields(surrealql.Expr("math::mean(price)")).
 		GroupAll()
 	sql, vars := query.Build()
 
@@ -133,8 +131,7 @@ func TestIntegrationAggregate_MinMax(t *testing.T) {
 	setupSalesData(t, ctx, db, "sales_minmax")
 
 	t.Run("Min", func(t *testing.T) {
-		minQuery := surrealql.Select(surrealql.Fn("math::min").ArgFromField("total")).
-			FromTable("sales_minmax").
+		minQuery := surrealql.Select("sales_minmax").Fields(surrealql.Expr("math::min(total)")).
 			GroupAll()
 		sql, vars := minQuery.Build()
 
@@ -158,8 +155,7 @@ func TestIntegrationAggregate_MinMax(t *testing.T) {
 	})
 
 	t.Run("Max", func(t *testing.T) {
-		maxQuery := surrealql.Select(surrealql.Fn("math::max").ArgFromField("total")).
-			FromTable("sales_minmax").
+		maxQuery := surrealql.Select("sales_minmax").Fields(surrealql.Expr("math::max(total)")).
 			GroupAll()
 		sql, vars := maxQuery.Build()
 

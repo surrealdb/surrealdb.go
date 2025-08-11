@@ -46,7 +46,7 @@ func TestIntegrationCount_All(t *testing.T) {
 	setupProductData(t, ctx, db, "products_all")
 
 	// First check if products exist
-	checkQuery := surrealql.Select("*").FromTable("products_all")
+	checkQuery := surrealql.Select("products_all")
 	checkQL, checkParams := checkQuery.Build()
 	checkResults, err := surrealdb.Query[[]Product](ctx, db, checkQL, checkParams)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestIntegrationCount_All(t *testing.T) {
 	}
 	t.Logf("Raw query with GROUP ALL results: %+v", rawResults)
 
-	query := surrealql.Count[string]().FromTable("products_all").GroupAll()
+	query := surrealql.Select("products_all").Fields("count()").GroupAll()
 	sql, vars := query.Build()
 	t.Logf("COUNT SurrealQL: %s", sql)
 	t.Logf("COUNT Params: %v", vars)
@@ -98,8 +98,8 @@ func TestIntegrationCount_WithWhere(t *testing.T) {
 	// Setup test data
 	setupProductData(t, ctx, db, "products_where")
 
-	query := surrealql.Count[string]().
-		FromTable("products_where").
+	query := surrealql.Select("products_where").
+		Fields("count()").
 		WhereEq("in_stock", true).
 		GroupAll()
 
@@ -127,8 +127,9 @@ func TestIntegrationCount_GroupBy(t *testing.T) {
 	// Setup test data
 	setupProductData(t, ctx, db, "products_group")
 
-	query := surrealql.CountGroupBy("category").
-		FromTable("products_group").
+	query := surrealql.Select("products_group").
+		Fields("category, count()").
+		GroupBy("category").
 		OrderByDesc("count")
 
 	sql, vars := query.Build()

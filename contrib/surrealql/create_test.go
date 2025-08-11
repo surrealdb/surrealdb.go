@@ -12,18 +12,18 @@ func TestCreate(t *testing.T) {
 		{
 			name:   "create with set",
 			query:  Create("users").Set("name", "John").Set("email", "john@example.com"),
-			wantQL: "CREATE users SET email = $email_1, name = $name_1",
+			wantQL: "CREATE users SET name = $param_1, email = $param_2",
 			wantArgs: map[string]any{
-				"name_1":  "John",
-				"email_1": "john@example.com",
+				"param_1": "John",
+				"param_2": "john@example.com",
 			},
 		},
 		{
 			name:   "create with return none",
 			query:  Create("users").Set("name", "John").ReturnNone(),
-			wantQL: "CREATE users SET name = $name_1 RETURN NONE",
+			wantQL: "CREATE users SET name = $param_1 RETURN NONE",
 			wantArgs: map[string]any{
-				"name_1": "John",
+				"param_1": "John",
 			},
 		},
 		{
@@ -45,10 +45,10 @@ func TestCreate(t *testing.T) {
 		{
 			name:   "create with compound operation",
 			query:  Create("stats").Set("views", 0).Set("clicks += ?", 1),
-			wantQL: "CREATE stats SET views = $views_1, clicks += $param_1",
+			wantQL: "CREATE stats SET views = $param_1, clicks += $param_2",
 			wantArgs: map[string]any{
-				"views_1": 0,
-				"param_1": 1,
+				"param_1": 0,
+				"param_2": 1,
 			},
 		},
 	}

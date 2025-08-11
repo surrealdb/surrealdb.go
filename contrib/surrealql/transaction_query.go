@@ -7,13 +7,12 @@ import (
 
 // TransactionQuery represents a transaction query with BEGIN/COMMIT statements
 type TransactionQuery struct {
-	baseQuery
 	statements []TransactionStatement
 }
 
 // TransactionStatement represents a statement that can be executed within a transaction
 type TransactionStatement interface {
-	build() string
+	build(c *queryBuildContext) string
 }
 
 // LetStatement represents a LET statement within a transaction
@@ -49,7 +48,6 @@ type QueryStatement struct {
 type ReturnStatement struct {
 	expr string
 	args []any
-	base *baseQuery
 }
 
 // Let adds a LET statement to the transaction
@@ -119,13 +117,14 @@ func (t *TransactionQuery) Return(expr string, args ...any) *TransactionQuery {
 	t.statements = append(t.statements, &ReturnStatement{
 		expr: expr,
 		args: args,
-		base: &t.baseQuery,
 	})
 	return t
 }
 
 // Build returns the SurrealQL string and parameters for the transaction
 func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
+	c := newQueryBuildContext()
+
 	var builder strings.Builder
 
 	builder.WriteString("BEGIN TRANSACTION;\n")
@@ -137,17 +136,17 @@ func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
 			builder.WriteString(";\n")
 			// Merge parameters
 			for k, v := range vars {
-				t.vars[k] = v
+				c.vars[k] = v
 			}
 		} else {
-			builder.WriteString(stmt.build())
+			builder.WriteString(stmt.build(&c))
 			builder.WriteString(";\n")
 		}
 	}
 
 	builder.WriteString("COMMIT TRANSACTION;")
 
-	return builder.String(), t.vars
+	return builder.String(), c.vars
 }
 
 // String returns the SurrealQL string for the transaction
@@ -231,7 +230,7 @@ func (eb *ElseBuilder) Raw(sql string) *ElseBuilder {
 
 // Implementation of build methods for each statement type
 
-func (l *LetStatement) build() string {
+func (l *LetStatement) build(c *queryBuildContext) string {
 	var builder strings.Builder
 	builder.WriteString("LET ")
 	builder.WriteString(l.variable)
@@ -247,7 +246,7 @@ func (l *LetStatement) build() string {
 	case string:
 		builder.WriteString(fmt.Sprintf("%q", v))
 	case Query:
-		sql, _ := v.Build()
+		sql := v.build(c)
 		builder.WriteString("(")
 		builder.WriteString(sql)
 		builder.WriteString(")")
@@ -258,7 +257,7 @@ func (l *LetStatement) build() string {
 	return builder.String()
 }
 
-func (i *IfStatement) build() string {
+func (i *IfStatement) build(c *queryBuildContext) string {
 	var builder strings.Builder
 	builder.WriteString("IF ")
 	builder.WriteString(i.condition)
@@ -266,7 +265,7 @@ func (i *IfStatement) build() string {
 
 	for _, stmt := range i.thenBlock {
 		builder.WriteString("    ")
-		builder.WriteString(stmt.build())
+		builder.WriteString(stmt.build(c))
 		builder.WriteString(";\n")
 	}
 
@@ -276,7 +275,7 @@ func (i *IfStatement) build() string {
 		builder.WriteString(" ELSE {\n")
 		for _, stmt := range i.elseBlock {
 			builder.WriteString("    ")
-			builder.WriteString(stmt.build())
+			builder.WriteString(stmt.build(c))
 			builder.WriteString(";\n")
 		}
 		builder.WriteString("}")
@@ -285,7 +284,7 @@ func (i *IfStatement) build() string {
 	return builder.String()
 }
 
-func (t *ThrowStatement) build() string {
+func (t *ThrowStatement) build(c *queryBuildContext) string {
 	switch v := t.err.(type) {
 	case string:
 		return fmt.Sprintf("THROW %q", v)
@@ -294,16 +293,16 @@ func (t *ThrowStatement) build() string {
 	}
 }
 
-func (r *RawStatement) build() string {
+func (r *RawStatement) build(c *queryBuildContext) string {
 	return strings.TrimRight(r.sql, ";")
 }
 
-func (q *QueryStatement) build() string {
-	sql, _ := q.query.Build()
+func (q *QueryStatement) build(c *queryBuildContext) string {
+	sql := q.query.build(c)
 	return strings.TrimRight(sql, ";")
 }
 
-func (r *ReturnStatement) build() string {
+func (r *ReturnStatement) build(c *queryBuildContext) string {
 	if len(r.args) == 0 {
 		// No placeholders, just return the raw expression
 		return fmt.Sprintf("RETURN %s", r.expr)
@@ -318,9 +317,8 @@ func (r *ReturnStatement) build() string {
 			processedExpr = strings.Replace(processedExpr, "?", varRef.String(), 1)
 		} else {
 			// Regular value, create a parameter
-			paramName := r.base.generateParamName("return_param")
+			paramName := c.generateAndAddParam("return_param", arg)
 			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
-			r.base.addParam(paramName, arg)
 		}
 	}
 

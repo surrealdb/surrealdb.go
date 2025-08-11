@@ -23,11 +23,14 @@ func ExampleCreate() {
 
 	sql, vars := query.Build()
 	fmt.Println("SurrealQL:", sql)
-	fmt.Printf("Vars: %v\n", vars)
+	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: CREATE users SET created_at = $created_at_1, email = $email_1, name = $name_1 RETURN id, name, email
-	// Vars: map[created_at_1:2023-10-01 12:00:00 +0000 UTC email_1:john@example.com name_1:John Doe]
+	// SurrealQL: CREATE users SET name = $param_1, email = $param_2, created_at = $param_3 RETURN id, name, email
+	// Vars:
+	//   param_1: John Doe
+	//   param_2: john@example.com
+	//   param_3: 2023-10-01 12:00:00 +0000 UTC
 }
 
 func ExampleCreate_compoundOperations() {
@@ -39,10 +42,13 @@ func ExampleCreate_compoundOperations() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// CREATE stats:daily SET date = $date_1, page_views = $page_views_1, unique_visitors += $param_1
-	// Variables: map[date_1:2024-01-01 page_views_1:0 param_1:1]
+	// CREATE stats:daily SET date = $param_1, page_views = $param_2, unique_visitors += $param_3
+	// Vars:
+	//   param_1: 2024-01-01
+	//   param_2: 0
+	//   param_3: 1
 }
 
 func ExampleCreate_withThing() {
@@ -55,18 +61,15 @@ func ExampleCreate_withThing() {
 
 	sql, vars := query.Build()
 	fmt.Println("SurrealQL:", sql)
-	keys := slices.Collect(maps.Keys(vars))
-	slices.Sort(keys)
-	for _, key := range keys {
-		fmt.Printf("Var %s: %v\n", key, vars[key])
-	}
+	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: CREATE $id_1 SET created_at = $created_at_1, email = $email_1, name = $name_1 RETURN id, name, email
-	// Var created_at_1: 2023-10-01 12:00:00 +0000 UTC
-	// Var email_1: alice@example.com
-	// Var id_1: {users 123}
-	// Var name_1: Alice
+	// SurrealQL: CREATE $id_1 SET name = $param_1, email = $param_2, created_at = $param_3 RETURN id, name, email
+	// Vars:
+	//   id_1: users:123
+	//   param_1: Alice
+	//   param_2: alice@example.com
+	//   param_3: 2023-10-01 12:00:00 +0000 UTC
 }
 
 // ExampleCreate_integration_f_recordID demonstrates creating a record with a specific RecordID using the query builder.

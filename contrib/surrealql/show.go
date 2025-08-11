@@ -8,7 +8,6 @@ import (
 
 // ShowChangesForTableQuery represents a SHOW CHANGES query
 type ShowChangesForTableQuery struct {
-	baseQuery
 	table string
 	since string
 	limit int
@@ -17,8 +16,7 @@ type ShowChangesForTableQuery struct {
 // ShowChangesForTable creates a new SHOW CHANGES query
 func ShowChangesForTable(table string) *ShowChangesForTableQuery {
 	return &ShowChangesForTableQuery{
-		baseQuery: newBaseQuery(),
-		table:     table,
+		table: table,
 	}
 }
 
@@ -49,6 +47,8 @@ func (q *ShowChangesForTableQuery) Limit(limit int) *ShowChangesForTableQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *ShowChangesForTableQuery) Build() (sql string, vars map[string]any) {
+	c := newQueryBuildContext()
+
 	var builder strings.Builder
 
 	builder.WriteString("SHOW CHANGES FOR TABLE ")
@@ -63,7 +63,7 @@ func (q *ShowChangesForTableQuery) Build() (sql string, vars map[string]any) {
 		builder.WriteString(fmt.Sprintf(" LIMIT %d", q.limit))
 	}
 
-	return builder.String(), q.vars
+	return builder.String(), c.vars
 }
 
 // String returns the SurrealQL string for the query

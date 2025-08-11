@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func ExampleRelate() {
@@ -15,11 +16,13 @@ func ExampleRelate() {
 
 	sql, vars := query.Build()
 	fmt.Println("SurrealQL:", sql)
-	fmt.Printf("Vars: %v\n", vars)
+	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: RELATE users:123->likes->posts:456 SET liked_at = $liked_at_1, reaction = $reaction_1
-	// Vars: map[liked_at_1:2023-10-01 12:00:00 +0000 UTC reaction_1:heart]
+	// SurrealQL: RELATE users:123->likes->posts:456 SET liked_at = $param_1, reaction = $param_2
+	// Vars:
+	//   param_1: 2023-10-01 12:00:00 +0000 UTC
+	//   param_2: heart
 }
 
 func ExampleRelate_compoundOperations() {
@@ -31,8 +34,31 @@ func ExampleRelate_compoundOperations() {
 		Build()
 
 	fmt.Println(sql)
-	fmt.Printf("Variables: %v\n", vars)
+	dumpVars(vars)
 	// Output:
-	// RELATE users:123->views->posts:456 SET last_viewed = $last_viewed_1, count += $param_1, duration_seconds += $param_2
-	// Variables: map[last_viewed_1:2024-01-01 param_1:1 param_2:30]
+	// RELATE users:123->views->posts:456 SET count += $param_1, last_viewed = $param_2, duration_seconds += $param_3
+	// Vars:
+	//   param_1: 1
+	//   param_2: 2024-01-01
+	//   param_3: 30
+}
+
+func ExampleRelate_recordID() {
+	from := models.NewRecordID("users", 123)
+	to := models.NewRecordID("posts", 456)
+	query := surrealql.Relate(from, "likes", to).
+		Set("liked_at", time.Date(2023, 10, 1, 12, 0, 0, 0, time.UTC)).
+		Set("reaction", "heart")
+
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: RELATE $id_1->likes->$id_2 SET liked_at = $param_1, reaction = $param_2
+	// Vars:
+	//   id_1: {users 123}
+	//   id_2: {posts 456}
+	//   param_1: 2023-10-01 12:00:00 +0000 UTC
+	//   param_2: heart
 }

@@ -10,7 +10,6 @@ import (
 
 // InsertQuery represents an INSERT query
 type InsertQuery struct {
-	baseQuery
 	table      string
 	isRelation bool
 	ignore     bool
@@ -31,7 +30,6 @@ type InsertQuery struct {
 // Insert creates a new INSERT query
 func Insert(table string) *InsertQuery {
 	return &InsertQuery{
-		baseQuery:      newBaseQuery(),
 		table:          table,
 		onDuplicateSet: make(map[string]any),
 	}
@@ -121,13 +119,18 @@ func (q *InsertQuery) ReturnDiff() *InsertQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *InsertQuery) Build() (query string, vars map[string]any) {
+	c := newQueryBuildContext()
+	return q.build(&c), c.vars
+}
+
+func (q *InsertQuery) build(c *queryBuildContext) (sql string) {
 	var builder strings.Builder
 
 	q.buildInsertClause(&builder)
-	q.buildDataOrValues(&builder)
+	q.buildDataOrValues(c, &builder)
 	q.buildReturnClause(&builder)
 
-	return builder.String(), q.vars
+	return builder.String()
 }
 
 // buildInsertClause builds the INSERT clause part
@@ -144,40 +147,34 @@ func (q *InsertQuery) buildInsertClause(builder *strings.Builder) {
 }
 
 // buildDataOrValues builds the data or fields/values part
-func (q *InsertQuery) buildDataOrValues(builder *strings.Builder) {
+func (q *InsertQuery) buildDataOrValues(c *queryBuildContext, builder *strings.Builder) {
 	if q.valueQuery != nil {
-		q.buildValueQuery(builder)
+		q.buildValueQuery(c, builder)
 	} else if q.value != nil {
-		q.buildValueParam(builder)
+		q.buildValueParam(c, builder)
 	} else if len(q.fields) > 0 && len(q.values) > 0 {
-		q.buildFieldsValues(builder)
-		q.buildOnDuplicate(builder)
+		q.buildFieldsValues(c, builder)
+		q.buildOnDuplicate(c, builder)
 	}
 }
 
 // buildValueQuery builds the value query part
-func (q *InsertQuery) buildValueQuery(builder *strings.Builder) {
+func (q *InsertQuery) buildValueQuery(c *queryBuildContext, builder *strings.Builder) {
 	builder.WriteString(" (")
-	sql, vars := q.valueQuery.Build()
+	sql := q.valueQuery.build(c)
 	builder.WriteString(sql)
 	builder.WriteString(")")
-
-	// Merge parameters from the value query
-	for k, v := range vars {
-		q.addParam(k, v)
-	}
 }
 
 // buildValueParam builds the value parameter
-func (q *InsertQuery) buildValueParam(builder *strings.Builder) {
-	paramName := q.generateParamName("insert_data")
+func (q *InsertQuery) buildValueParam(c *queryBuildContext, builder *strings.Builder) {
+	paramName := c.generateAndAddParam("insert_data", q.value)
 	builder.WriteString(" $")
 	builder.WriteString(paramName)
-	q.addParam(paramName, q.value)
 }
 
 // buildFieldsValues builds the fields and values part
-func (q *InsertQuery) buildFieldsValues(builder *strings.Builder) {
+func (q *InsertQuery) buildFieldsValues(c *queryBuildContext, builder *strings.Builder) {
 	// Fields
 	builder.WriteString(" (")
 	for i, field := range q.fields {
@@ -198,17 +195,16 @@ func (q *InsertQuery) buildFieldsValues(builder *strings.Builder) {
 			if j > 0 {
 				builder.WriteString(", ")
 			}
-			paramName := q.generateParamName(fmt.Sprintf("insert_%d_%d", i, j))
+			paramName := c.generateAndAddParam(fmt.Sprintf("insert_%d_%d", i, j), value)
 			builder.WriteString("$")
 			builder.WriteString(paramName)
-			q.addParam(paramName, value)
 		}
 		builder.WriteString(")")
 	}
 }
 
 // buildOnDuplicate builds the ON DUPLICATE KEY UPDATE part
-func (q *InsertQuery) buildOnDuplicate(builder *strings.Builder) {
+func (q *InsertQuery) buildOnDuplicate(c *queryBuildContext, builder *strings.Builder) {
 	if len(q.onDuplicateSet) == 0 && len(q.onDuplicateSetRaw) == 0 {
 		return
 	}
@@ -230,10 +226,9 @@ func (q *InsertQuery) buildOnDuplicate(builder *strings.Builder) {
 		builder.WriteString(escapeIdent(field))
 		builder.WriteString(" = ")
 
-		paramName := q.generateParamName("dup_" + field)
+		paramName := c.generateAndAddParam("dup_"+field, value)
 		builder.WriteString("$")
 		builder.WriteString(paramName)
-		q.addParam(paramName, value)
 	}
 
 	for _, expr := range q.onDuplicateSetRaw {
@@ -260,52 +255,4 @@ func (q *InsertQuery) buildReturnClause(builder *strings.Builder) {
 func (q *InsertQuery) String() string {
 	sql, _ := q.Build()
 	return sql
-}
-
-// InsertBuilder provides a fluent interface for building complex insert data
-type InsertBuilder struct {
-	baseQuery
-	setsBuilder
-}
-
-// NewRelationData creates a new insert data builder
-func NewRelationData() *InsertBuilder {
-	return &InsertBuilder{
-		baseQuery:   newBaseQuery(),
-		setsBuilder: newSetsBuilder(),
-	}
-}
-
-// Set adds a field or expression to the insert data
-// Can be used for simple assignment: Set("name", "value")
-// Or for compound operations: Set("count += ?", 1)
-func (b *InsertBuilder) Set(expr string, args ...any) *InsertBuilder {
-	b.addSet(expr, args, &b.baseQuery, "param")
-	return b
-}
-
-// SetIn sets the 'in' field for relation inserts
-func (b *InsertBuilder) SetIn(record string) *InsertBuilder {
-	b.sets["in"] = record
-	return b
-}
-
-// SetOut sets the 'out' field for relation inserts
-func (b *InsertBuilder) SetOut(record string) *InsertBuilder {
-	b.sets["out"] = record
-	return b
-}
-
-// SetID sets the 'id' field for relation inserts
-func (b *InsertBuilder) SetID(id string) *InsertBuilder {
-	b.sets["id"] = id
-	return b
-}
-
-// Build returns the built data map and parameters
-// Note: This currently only returns the data map for backward compatibility.
-// The raw expressions are not included in the returned map.
-func (b *InsertBuilder) Build() map[string]any {
-	// TODO: Consider returning both data and raw expressions in a future version
-	return b.sets
 }
