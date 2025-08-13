@@ -60,8 +60,14 @@ CREATE t:s`,
 	}
 
 	got2 := (*data2)[0].Result[0]
+
 	fmt.Printf("ID: %s\n", got2.ID)
-	fmt.Printf("ModifiedAt: %v\n", got2.ModifiedAt)
+	// With fxamacker/cbor: returns zero-value struct (not nil)
+	// With surrealcbor: returns nil
+	// Both should print the same format for consistency
+	if got2.ModifiedAt == nil || got2.ModifiedAt.IsZero() {
+		fmt.Printf("ModifiedAt: <nil or zero>\n")
+	}
 	fmt.Printf("ModifiedAt.IsZero(): %v\n", got2.ModifiedAt.IsZero())
 
 	// Output:
@@ -69,6 +75,6 @@ CREATE t:s`,
 	// ModifiedAt: {0001-01-01 00:00:00 +0000 UTC}
 	// ModifiedAt.IsZero(): true
 	// ID: t:s
-	// ModifiedAt: 0001-01-01T00:00:00Z
+	// ModifiedAt: <nil or zero>
 	// ModifiedAt.IsZero(): true
 }
