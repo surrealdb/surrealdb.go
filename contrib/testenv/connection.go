@@ -113,6 +113,23 @@ func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
 // The connection information is derived from environment variables.
 // It supports both WebSocket and HTTP connections based on the URL scheme.
 func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
+	c, err := NewConfig(namespace, database, tables...)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.New()
+}
+
+func MustNewConfig(namespace, database string, tables ...string) *Config {
+	c, err := NewConfig(namespace, database, tables...)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+func NewConfig(namespace, database string, tables ...string) (*Config, error) {
 	var reconnectDuration time.Duration
 	if reconnect != "" {
 		var err error
@@ -131,7 +148,7 @@ func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
 		UseSurrealCBOR:    useSurrealCBOR,
 	}
 
-	return c.New()
+	return c, nil
 }
 
 func (c *Config) MustNew() *surrealdb.DB {
