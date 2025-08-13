@@ -25,33 +25,41 @@ jobs:
             go-version: '1.24.1'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.3.7 with Go 1.24.1
-          - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
+          # v2.3.7 with Go 1.24.1, http
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.3.7 with Go 1.24.1
+          # v2.3.7 with Go 1.24.1, http, surrealcbor
+          - surrealdb-version: 'v2.3.7'
+            go-version: '1.24.1'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+            surrealdb-cbor-impl: 'surrealcbor'
+          # v2.3.7 with Go 1.24.1, gorilla/websocket
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          # v2.3.7 with Go 1.24.1 with reconnection
+          # v2.3.7 with Go 1.24.1, gorilla/websocket, surrealcbor
+          - surrealdb-version: 'v2.3.7'
+            go-version: '1.24.1'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-cbor-impl: 'surrealcbor'
+          # v2.3.7 with Go 1.24.1, gorilla/websocket, reconnection
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-reconnection-check-interval: '1s'
-          # v2.3.7 with Go 1.24.1 with gws
+          # v2.3.7 with Go 1.24.1,  gws
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
-          # v2.3.7 with Go 1.24.1 with gws and reconnection
+          # v2.3.7 with Go 1.24.1,  gws, reconnection
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.1'
             connection-type: 'ws'
@@ -104,4 +112,5 @@ jobs:
         env:
           SURREALDB_URL: ${{ matrix.surrealdb-url }}
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
+          SURREALDB_CBOR_IMPL: ${{ matrix.surrealdb-cbor-impl }}
           SURREALDB_RECONNECTION_CHECK_INTERVAL: ${{ matrix.surrealdb-reconnection-check-interval }}

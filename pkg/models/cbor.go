@@ -1,12 +1,10 @@
 package models
 
 import (
-	"io"
 	"reflect"
 	"sync"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
 )
 
 const (
@@ -85,10 +83,6 @@ func (c *CborMarshaler) Marshal(v any) ([]byte, error) {
 	return c.cborEncMode().Marshal(v)
 }
 
-func (c *CborMarshaler) NewEncoder(w io.Writer) codec.Encoder {
-	return c.cborEncMode().NewEncoder(w)
-}
-
 func (c *CborMarshaler) cborEncMode() cbor.EncMode {
 	c.once.Do(func() {
 		c.em = getCborEncoder()
@@ -110,10 +104,6 @@ func (c *CborUnmarshaler) Unmarshal(data []byte, dst any) error {
 
 	replacerAfterDecode(&dst)
 	return nil
-}
-
-func (c *CborUnmarshaler) NewDecoder(r io.Reader) codec.Decoder {
-	return c.cborDecMode().NewDecoder(r)
 }
 
 func (c *CborUnmarshaler) cborDecMode() cbor.DecMode {
