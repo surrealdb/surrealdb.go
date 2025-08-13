@@ -109,8 +109,11 @@ func ExampleUpsert() {
 	// Selected person: {persons:yusuke Yusuke Updated Last {0001-01-01 00:00:00 +0000 UTC} <nil>}
 }
 
-func ExampleUpsert_unmarshal_error() {
-	db := testenv.MustNewDeprecated("query", "person")
+func ExampleUpsert_unmarshal_error_fxamackercbor() {
+	c := testenv.MustNewConfig("example", "query", "person")
+	c.UseSurrealCBOR = false
+
+	db := c.MustNew()
 
 	type Person struct {
 		Name string `json:"name"`
@@ -139,6 +142,45 @@ func ExampleUpsert_unmarshal_error() {
 
 	// Output:
 	// Error: Send: error unmarshaling result: cbor: cannot unmarshal array into Go value of type main.Person (cannot decode CBOR array to struct without toarray option)
+	// Error is RPCError: false
+}
+
+// ExampleUpsert_unmarshal_error_surrealcbor demonstrates
+// that surrealcbor fails unmarshaling CBOR array into Go struct with
+// similar but different error message compared to fxamacker/cbor
+func ExampleUpsert_unmarshal_error_surrealcbor() {
+	c := testenv.MustNewConfig("example", "query", "person")
+	c.UseSurrealCBOR = true
+
+	db := c.MustNew()
+
+	type Person struct {
+		Name string `json:"name"`
+	}
+
+	// This will fail because the record ID is not valid.
+	_, err := surrealdb.Upsert[Person](
+		context.Background(),
+		db,
+		models.Table("person"),
+		map[string]any{
+			// We are trying to set the name field to a number,
+			// which is OK from the database's perspective,
+			// because the table is schemaless for this example.
+			//
+			// However, we are trying to unmarshal the result into a struct
+			// that expects the name field to be a string,
+			// which will fail when the result is unmarshaled.
+			"name": 123,
+		},
+	)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
+	}
+
+	// Output:
+	// Error: Send: error unmarshaling result: cannot decode array into main.Person
 	// Error is RPCError: false
 }
 
