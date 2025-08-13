@@ -14,9 +14,12 @@ import (
 	"time"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/rews"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 const (
@@ -36,15 +39,23 @@ const (
 	// If set to "gws", it uses the gws package; otherwise, it
 	// defaults to the gorillaws package.
 	EnvSurrealDBConnectionImpl = "SURREALDB_CONNECTION_IMPL"
+
+	// EnvSurrealCBORImpl is the environment variable that specifies
+	// the SurrealDB CBOR implementation to use.
+	EnvSurrealCBORImpl = "SURREALDB_CBOR_IMPL"
 )
 
 var (
 	currentURL = os.Getenv(EnvWSURL)
 	reconnect  = os.Getenv(EnvReconnectionCheckInterval)
 	useGWS     = os.Getenv(EnvSurrealDBConnectionImpl) == "gws"
+
+	// useSurrealCBOR determines whether to use the surrealcbor package
+	// as an alternative to fxamacker/cbor-based codec.
+	useSurrealCBOR = os.Getenv(EnvSurrealCBORImpl) == "surrealcbor"
 )
 
-func getSurrealDBURL() string {
+func GetSurrealDBURL() string {
 	if currentURL == "" {
 		return DefaultWSURL
 	}
@@ -73,6 +84,23 @@ func MustNewDeprecated(database string, tables ...string) *surrealdb.DB {
 	return db
 }
 
+type Config struct {
+	// Endpoint is the SurrealDB endpoint URL.
+	Endpoint string
+
+	Namespace string
+	Database  string
+	Tables    []string
+
+	// ReconnectDuration is the duration to wait before attempting to reconnect
+	// to the SurrealDB instance after a disconnection.
+	ReconnectDuration time.Duration
+
+	// UseSurrealCBOR determines whether to use the surrealcbor package
+	// as an alternative to fxamacker/cbor-based codec.
+	UseSurrealCBOR bool
+}
+
 func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
 	db, err := New(namespace, database, tables...)
 	if err != nil {
@@ -85,14 +113,23 @@ func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
 // The connection information is derived from environment variables.
 // It supports both WebSocket and HTTP connections based on the URL scheme.
 func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
-	if database == "" {
-		return nil, fmt.Errorf("database name must be specified")
+	c, err := NewConfig(namespace, database, tables...)
+	if err != nil {
+		return nil, err
 	}
 
-	if len(tables) == 0 {
-		return nil, fmt.Errorf("at least one table name must be specified")
-	}
+	return c.New()
+}
 
+func MustNewConfig(namespace, database string, tables ...string) *Config {
+	c, err := NewConfig(namespace, database, tables...)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+func NewConfig(namespace, database string, tables ...string) (*Config, error) {
 	var reconnectDuration time.Duration
 	if reconnect != "" {
 		var err error
@@ -102,30 +139,67 @@ func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
 		}
 	}
 
-	var connect func(ctx context.Context) (*surrealdb.DB, error)
+	c := &Config{
+		Endpoint:          GetSurrealDBURL(),
+		Namespace:         namespace,
+		Database:          database,
+		Tables:            tables,
+		ReconnectDuration: reconnectDuration,
+		UseSurrealCBOR:    useSurrealCBOR,
+	}
 
-	if reconnectDuration > 0 {
-		u, err := url.ParseRequestURI(getSurrealDBURL())
-		if err != nil {
-			return nil, err
-		}
+	return c, nil
+}
 
-		conf := connection.NewConfig(u)
+func (c *Config) MustNew() *surrealdb.DB {
+	db, err := c.New()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create SurrealDB connection: %v", err))
+	}
+	return db
+}
 
+func (c *Config) New() (*surrealdb.DB, error) {
+	if c.Database == "" {
+		return nil, fmt.Errorf("database name must be specified")
+	}
+
+	if len(c.Tables) == 0 {
+		return nil, fmt.Errorf("at least one table name must be specified")
+	}
+
+	u, err := url.ParseRequestURI(c.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	conf := connection.NewConfig(u)
+	if c.UseSurrealCBOR {
+		codec := surrealcbor.New()
+		conf.Unmarshaler = codec
+		conf.Marshaler = codec
+	}
+
+	var conn connection.Connection
+	if c.ReconnectDuration > 0 {
 		switch conf.URL.Scheme {
 		case "ws", "wss":
 			if useGWS {
-				connect = func(ctx context.Context) (*surrealdb.DB, error) {
-					gwsConn := gws.New(conf)
-
-					return surrealdb.FromConnection(ctx, gwsConn)
-				}
+				conn = rews.New(
+					func(ctx context.Context) (*gws.Connection, error) {
+						return gws.New(conf), nil
+					},
+					c.ReconnectDuration,
+					conf.Logger,
+				)
 			} else {
-				connect = func(ctx context.Context) (*surrealdb.DB, error) {
-					wsConn := gorillaws.New(conf)
-
-					return surrealdb.FromConnection(ctx, wsConn)
-				}
+				conn = rews.New(
+					func(ctx context.Context) (*gorillaws.Connection, error) {
+						return gorillaws.New(conf), nil
+					},
+					c.ReconnectDuration,
+					conf.Logger,
+				)
 			}
 		case "http", "https":
 			return nil, fmt.Errorf("reconnection is not supported for HTTP connections")
@@ -133,21 +207,26 @@ func New(namespace, database string, tables ...string) (*surrealdb.DB, error) {
 			return nil, fmt.Errorf("invalid connection URL scheme: %s", conf.URL.Scheme)
 		}
 	} else {
-		connect = func(ctx context.Context) (*surrealdb.DB, error) {
-			httpConn, err := surrealdb.FromEndpointURLString(ctx, getSurrealDBHTTPURL())
-			if err != nil {
-				return nil, err
+		switch conf.URL.Scheme {
+		case "http", "https":
+			conn = http.New(conf)
+		case "ws", "wss":
+			if useGWS {
+				conn = gws.New(conf)
+			} else {
+				conn = gorillaws.New(conf)
 			}
-			return httpConn, nil
+		default:
+			return nil, fmt.Errorf("invalid connection URL scheme: %s", conf.URL.Scheme)
 		}
 	}
 
-	db, err := connect(context.Background())
+	db, err := surrealdb.FromConnection(context.Background(), conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SurrealDB: %w", err)
 	}
 
-	return initConnection(db, namespace, database, tables...)
+	return Init(db, c.Namespace, c.Database, c.Tables...)
 }
 
 func MustNewHTTP(database string, tables ...string) *surrealdb.DB {
@@ -167,10 +246,12 @@ func NewHTTP(database string, tables ...string) (*surrealdb.DB, error) {
 		return nil, fmt.Errorf("failed to connect to SurrealDB HTTP endpoint: %w", err)
 	}
 
-	return initConnection(db, "examples", database, tables...)
+	return Init(db, "examples", database, tables...)
 }
 
-func initConnection(db *surrealdb.DB, namespace, database string, tables ...string) (*surrealdb.DB, error) {
+// Init initializes the testing environment.
+// It cleans up the specified tables in the namespace/database.
+func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surrealdb.DB, error) {
 	var err error
 
 	if err = db.Use(context.Background(), namespace, database); err != nil {

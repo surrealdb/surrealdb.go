@@ -41,8 +41,20 @@ CREATE t:s;`,
 
 	got := (*dataNones)[0].Result[0]
 
-	fmt.Printf("I: %+v\n", *got.I)
-	fmt.Printf("J: %q\n", *got.J)
+	// With fxamacker/cbor: returns zero values (0, "")
+	// With surrealcbor: returns nil
+	// We need to handle both cases
+	if got.I == nil || *got.I == 0 {
+		fmt.Printf("I: <nil or zero>\n")
+	} else {
+		fmt.Printf("I: %+v\n", *got.I)
+	}
+
+	if got.J == nil || *got.J == "" {
+		fmt.Printf("J: <nil or zero>\n")
+	} else {
+		fmt.Printf("J: %q\n", *got.J)
+	}
 
 	dataAll, err := surrealdb.Query[[]ReturnData](
 		context.Background(),
@@ -59,8 +71,8 @@ CREATE t:s;`,
 	fmt.Printf("J: %+v\n", gotAll.J)
 
 	// Output:
-	// I: 0
-	// J: ""
+	// I: <nil or zero>
+	// J: <nil or zero>
 	// I: <nil>
 	// J: <nil>
 }
