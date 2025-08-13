@@ -125,47 +125,84 @@ func (d *decoder) decodeIndefiniteMapIntoStruct(v reflect.Value) error {
 	return nil
 }
 
+// findStructField returns the struct field with the given name, if it exists.
+// It searches for the field by the following order of precedence:
+// 1. CBOR tags
+// 2. JSON tags
+// 3. Field names
+//
+// It does a depth-first search for embedded structs.
 func (d *decoder) findStructField(v reflect.Value, name string) reflect.Value {
+	if field := d.findFieldByTag(v, name); field.IsValid() {
+		return field
+	}
+
+	return d.findFieldByName(v, name)
+}
+
+// findFieldByTag returns the struct field with the given CBOR or JSON tag name, if it exists.
+func (d *decoder) findFieldByTag(v reflect.Value, name string) reflect.Value {
 	t := v.Type()
 
-	// First pass: look for exact tag matches
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
 
-		// Check cbor tag first (highest priority)
-		if tag := field.Tag.Get("cbor"); tag != "" {
-			// Parse tag to handle comma-separated options like "name,omitempty"
-			if idx := strings.Index(tag, ","); idx != -1 {
-				tag = tag[:idx]
-			}
-			if tag == name {
-				return v.Field(i)
+		// Handle embedded structs
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			if embeddedField := d.findFieldByTag(v.Field(i), name); embeddedField.IsValid() {
+				return embeddedField
 			}
 		}
 
-		// Check json tag if no cbor tag
-		if tag := field.Tag.Get("cbor"); tag == "" {
-			if tag := field.Tag.Get("json"); tag != "" {
-				// Parse tag to handle comma-separated options
-				if idx := strings.Index(tag, ","); idx != -1 {
-					tag = tag[:idx]
-				}
-				if tag == name {
-					return v.Field(i)
-				}
-			}
+		// Check for matching tag
+		if tagName := d.getFieldTagName(&field); tagName == name {
+			return v.Field(i)
 		}
 	}
 
-	// Second pass: look for field name matches
+	return reflect.Value{}
+}
+
+func (d *decoder) findFieldByName(v reflect.Value, name string) reflect.Value {
+	t := v.Type()
+
 	for i := 0; i < v.NumField(); i++ {
 		field := t.Field(i)
+
+		// Handle embedded structs
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			if embeddedField := d.findFieldByName(v.Field(i), name); embeddedField.IsValid() {
+				return embeddedField
+			}
+		}
+
 		if field.Name == name {
 			return v.Field(i)
 		}
 	}
 
 	return reflect.Value{}
+}
+
+// getFieldTagName returns the CBOR or JSON tag name for a struct field.
+func (d *decoder) getFieldTagName(field *reflect.StructField) string {
+	if tag := field.Tag.Get("cbor"); tag != "" {
+		// Parse tag to handle comma-separated options like "name,omitempty"
+		if idx := strings.Index(tag, ","); idx != -1 {
+			tag = tag[:idx]
+		}
+		return tag
+	}
+
+	if tag := field.Tag.Get("json"); tag != "" {
+		// Parse tag to handle comma-separated options
+		if idx := strings.Index(tag, ","); idx != -1 {
+			tag = tag[:idx]
+		}
+		return tag
+	}
+
+	return ""
 }
 
 func (d *decoder) decodeIndefiniteMapIntoInterface(v reflect.Value) error {
