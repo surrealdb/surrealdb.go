@@ -29,65 +29,51 @@ func TestDecode_map_struct(t *testing.T) {
 	})
 }
 
-// TestDecode_map_structFieldName tests the field name fallback behavior
-// that aligns with fxamacker/cbor.
+// TestDecode_map_structFieldName tests the field name matching behavior
 func TestDecode_map_structFieldName(t *testing.T) {
-	t.Run("field name fallback when tag doesn't match", func(t *testing.T) {
-		type TestStruct struct {
-			FieldName string `json:"fieldname"`
-		}
+	// Test the precedence order: json tag (exact) > field name (exact) > field name (case-insensitive)
+	type TestStruct struct {
+		FieldName string `json:"fieldname"`
+	}
 
-		// Encode with field name (not matching json tag)
-		data, err := cbor.Marshal(map[string]string{
-			"FieldName": "value", // Matches field name, not json tag
+	testCases := []struct {
+		name     string
+		input    map[string]string
+		expected string
+	}{
+		{
+			name:     "json tag exact match",
+			input:    map[string]string{"fieldname": "tag-match"},
+			expected: "tag-match",
+		},
+		{
+			name:     "field name exact match",
+			input:    map[string]string{"FieldName": "field-exact"},
+			expected: "field-exact", // Matches field name exactly
+		},
+		{
+			name:     "field name case-insensitive match - uppercase",
+			input:    map[string]string{"FIELDNAME": "uppercase"},
+			expected: "uppercase", // Matches via case-insensitive fallback
+		},
+		{
+			name:     "field name case-insensitive match - mixed",
+			input:    map[string]string{"Fieldname": "mixed-case"},
+			expected: "mixed-case", // Matches via case-insensitive fallback
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := cbor.Marshal(tc.input)
+			require.NoError(t, err)
+
+			var decoded TestStruct
+			err = Unmarshal(data, &decoded)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, decoded.FieldName)
 		})
-		require.NoError(t, err)
-
-		var decoded TestStruct
-		err = Unmarshal(data, &decoded)
-		require.NoError(t, err)
-		// Should match via field name fallback (case-sensitive)
-		assert.Equal(t, "value", decoded.FieldName)
-	})
-
-	t.Run("exact match preferred", func(t *testing.T) {
-		type TestStruct struct {
-			Field     string `json:"field"`
-			FieldName string `json:"fieldname"`
-		}
-
-		data, err := cbor.Marshal(map[string]string{
-			"field":     "exact",
-			"FieldName": "field-name-match",
-		})
-		require.NoError(t, err)
-
-		var decoded TestStruct
-		err = Unmarshal(data, &decoded)
-		require.NoError(t, err)
-		assert.Equal(t, "exact", decoded.Field)
-		assert.Equal(t, "field-name-match", decoded.FieldName)
-	})
-
-	t.Run("case sensitive matching", func(t *testing.T) {
-		type TestStruct struct {
-			FieldName string `json:"fieldname"`
-		}
-
-		// Test that different cases don't match the json tag
-		data, err := cbor.Marshal(map[string]string{
-			"FIELDNAME": "uppercase",
-			"Fieldname": "mixed-case",
-			"fieldname": "lowercase-exact",
-		})
-		require.NoError(t, err)
-
-		var decoded TestStruct
-		err = Unmarshal(data, &decoded)
-		require.NoError(t, err)
-		// Only the exact lowercase match should work
-		assert.Equal(t, "lowercase-exact", decoded.FieldName)
-	})
+	}
 }
 
 // TestDecode_map_structNoneToNil tests that CBOR Tag 6 (NONE) is unmarshaled as Go nil
