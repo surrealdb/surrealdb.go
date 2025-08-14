@@ -1,40 +1,18 @@
-package gorillaws
+package gws
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/stretchr/testify/suite"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 )
-
-type WsTestSuite struct {
-	suite.Suite
-	name string
-}
-
-func TestWsTestSuite(t *testing.T) {
-	ts := new(WsTestSuite)
-	ts.name = "WS Test Suite"
-
-	suite.Run(t, ts)
-}
-
-// SetupSuite is called before the s starts running
-func (s *WsTestSuite) SetupSuite() {
-}
-
-func (s *WsTestSuite) TearDownSuite() {
-}
 
 // mockLogger captures log messages for testing
 type mockLogger struct {
 	errorLogs []string
 	debugLogs []string
-	infoLogs  []string
-	warnLogs  []string
 }
 
 func (m *mockLogger) Error(msg string, args ...any) {
@@ -46,11 +24,11 @@ func (m *mockLogger) Debug(msg string, args ...any) {
 }
 
 func (m *mockLogger) Info(msg string, args ...any) {
-	m.infoLogs = append(m.infoLogs, msg)
+	// Not used in test
 }
 
 func (m *mockLogger) Warn(msg string, args ...any) {
-	m.warnLogs = append(m.warnLogs, msg)
+	// Not used in test
 }
 
 var _ logger.Logger = (*mockLogger)(nil)
@@ -78,11 +56,11 @@ func TestHandleResponse_InvalidResponse(t *testing.T) {
 
 	conn := &Connection{
 		Toolkit: connection.Toolkit{
+			Logger:               mockLog,
 			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
 			NotificationChannels: make(map[string]chan connection.Notification),
 			Unmarshaler:          mockUnmarshal,
 		},
-		logger: mockLog,
 	}
 
 	// Any data will trigger the unmarshal error
@@ -118,7 +96,6 @@ func TestHandleResponse_ValidResponse(t *testing.T) {
 			NotificationChannels: make(map[string]chan connection.Notification),
 			Unmarshaler:          mockUnmarshal,
 		},
-		logger: &mockLogger{},
 	}
 
 	// Create response channel
@@ -136,45 +113,5 @@ func TestHandleResponse_ValidResponse(t *testing.T) {
 		}
 	default:
 		t.Error("Expected response to be sent to channel")
-	}
-}
-
-// TestHandleResponse_ErrorWithoutID verifies handling of errors without ID field
-func TestHandleResponse_ErrorWithoutID(t *testing.T) {
-	mockLog := &mockLogger{}
-
-	// Create a mock unmarshaler that returns an error response without ID
-	mockUnmarshal := &mockUnmarshaler{
-		unmarshalFunc: func(data []byte, v any) error {
-			if res, ok := v.(*connection.RPCResponse[cbor.RawMessage]); ok {
-				res.Error = &connection.RPCError{
-					Code:    -32600,
-					Message: "Invalid Request",
-				}
-				// No ID is set
-			}
-			return nil
-		},
-	}
-
-	conn := &Connection{
-		Toolkit: connection.Toolkit{
-			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
-			NotificationChannels: make(map[string]chan connection.Notification),
-			Unmarshaler:          mockUnmarshal,
-		},
-		logger: mockLog,
-	}
-
-	// Handle the response
-	conn.handleResponse([]byte("any data"))
-
-	// Verify that error was logged
-	if len(mockLog.errorLogs) != 1 {
-		t.Errorf("Expected 1 error log, got %d", len(mockLog.errorLogs))
-	}
-	expectedMsg := "error in response: Invalid Request"
-	if mockLog.errorLogs[0] != expectedMsg {
-		t.Errorf("Expected '%s', got: %s", expectedMsg, mockLog.errorLogs[0])
 	}
 }

@@ -91,6 +91,17 @@ func (c *Connection) write(v any) error {
 func (c *Connection) handleResponse(data []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
 	if err := c.Unmarshaler.Unmarshal(data, &rpcRes); err != nil {
+		// This can happen when SurrealDB sent an invalid response (unlikely),
+		// or the cbor library failed unmarshaling Result into even cbor.RawMessage due to
+		// configurable limits like fxamacker/cbor.MaxArrayElements that applies to RPCResponse.Result (more likely).
+		//
+		// We log the error and return to prevent:
+		// 1. DoS attacks from malformed CBOR data causing panics
+		// 2. Memory exhaustion from falling back to default unmarshaler with no limits
+		c.logError(
+			"Failed to unmarshal response",
+			"error", err,
+		)
 		return
 	}
 
@@ -311,6 +322,8 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 		Params: params,
 	}
 
+	c.logDebug("Sending RPC request", "id", id, "method", method)
+
 	responseChan, err := c.CreateResponseChannel(id)
 	if err != nil {
 		return nil, err
@@ -344,6 +357,12 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 // Use implements connection.Connection.
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
 	return connection.Send[any](c, ctx, nil, "use", namespace, database)
+}
+
+func (c *Connection) logDebug(msg string, args ...any) {
+	if c.Logger != nil {
+		c.Logger.Debug(msg, args...)
+	}
 }
 
 func (c *Connection) logError(msg string, args ...any) {
