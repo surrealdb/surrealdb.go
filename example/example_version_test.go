@@ -9,14 +9,14 @@ import (
 
 //nolint:lll,govet
 func ExampleDB_Version() {
-	ws := testenv.MustNewDeprecated("version")
+	ws := testenv.MustNew("surrealdbexamples", "version")
 	v, err := ws.Version(context.Background())
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("VersionData (WebSocket): %+v\n", v)
 
-	http := testenv.MustNewDeprecated("version")
+	http := testenv.MustNew("surrealdbexamples", "version")
 	v, err = http.Version(context.Background())
 	if err != nil {
 		panic(err)

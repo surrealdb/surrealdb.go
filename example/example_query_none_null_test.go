@@ -17,7 +17,7 @@ const (
 )
 
 func ExampleQuery_none_and_null_handling_allExistingFields() {
-	db := testenv.MustNewDeprecated("query", "t")
+	db := testenv.MustNew("surrealdbexamples", "query", "t")
 
 	_, err := surrealdb.Query[[]any](
 		context.Background(),

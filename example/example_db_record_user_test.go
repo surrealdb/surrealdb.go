@@ -10,7 +10,8 @@ import (
 
 //nolint:funlen
 func ExampleDB_record_user_auth_struct() {
-	db := testenv.MustNewDeprecated("record_auth_demo", "user")
+	ns := "surrealdbexamples"
+	db := testenv.MustNew(ns, "record_auth_demo", "user")
 
 	setupQuery := `
 		-- Define the user table with schema
@@ -49,7 +50,7 @@ func ExampleDB_record_user_auth_struct() {
 	// Refer to the next example, `ExampleDB_record_user_custom_struct`,
 	// when you need to use fields other than `user` and `pass` in the query specified for SIGNUP.
 	_, err := db.SignUp(context.Background(), &surrealdb.Auth{
-		Namespace: "examples",
+		Namespace: ns,
 		Database:  "record_auth_demo",
 		Access:    "user",
 		Username:  "yusuke",
@@ -66,7 +67,7 @@ func ExampleDB_record_user_auth_struct() {
 	// For example, you might want to use `email` and `password` instead of `user` and `pass`.
 	// In that case, you need to something that encodes to a cbor map containing those keys.
 	_, err = db.SignIn(context.Background(), &surrealdb.Auth{
-		Namespace: "examples",
+		Namespace: ns,
 		Database:  "record_auth_demo",
 		Access:    "user",
 		Username:  "yusuke",
@@ -91,7 +92,8 @@ func ExampleDB_record_user_auth_struct() {
 }
 
 func ExampleDB_record_user_custom_struct() {
-	db := testenv.MustNewDeprecated("record_user_custom", "user")
+	ns := "surrealdbexamples"
+	db := testenv.MustNew(ns, "record_user_custom", "user")
 
 	setupQuery := `
 		-- Define the user table with schema
@@ -148,7 +150,7 @@ func ExampleDB_record_user_custom_struct() {
 
 	_, err := db.SignUp(context.Background(), &User{
 		// Corresponds to the SurrealDB namespace
-		Namespace: "examples",
+		Namespace: ns,
 		// Corresponds to the SurrealDB database
 		Database: "record_user_custom",
 		// Corresponds to `user` in `DEFINE ACCESS USER ON ...`
@@ -166,7 +168,7 @@ func ExampleDB_record_user_custom_struct() {
 	fmt.Println("User signed up successfully")
 
 	_, err = db.SignIn(context.Background(), &LoginRequest{
-		Namespace: "examples",
+		Namespace: ns,
 		Database:  "record_user_custom",
 		Access:    "user",
 		// Corresponds to the $email in the SIGNIN query and `email` in `DEFINE FIELD email ON user`
