@@ -80,7 +80,7 @@ func ExampleCreate_integration_thing_recordID() {
 	// Assume we have a *surrealdb.DB instance
 	var db *surrealdb.DB
 
-	db, err := testenv.New("surrealql", "test", "users")
+	db, err := testenv.New("surrealqlexamples", "test", "users")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func ExampleCreate_integration_thing_recordID() {
 func ExampleCreate_integration_table() {
 	var db *surrealdb.DB
 
-	db, err := testenv.New("surrealql", "test", "users")
+	db, err := testenv.New("surrealqlexamples", "test", "users")
 	if err != nil {
 		log.Fatal(err)
 	}

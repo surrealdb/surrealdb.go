@@ -11,7 +11,7 @@ import (
 )
 
 func TestIntegrationInsert(t *testing.T) {
-	db := testenv.MustNewDeprecated("surrealql_test", "products", "categories", "product_categories")
+	db := testenv.MustNew("surrealqlexamples", "surrealql_test", "products", "categories", "product_categories")
 
 	ctx := context.Background()
 

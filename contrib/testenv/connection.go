@@ -76,14 +76,6 @@ func GetSurrealDBWSURL() string {
 	return strings.ReplaceAll(currentURL, "http", "ws")
 }
 
-func MustNewDeprecated(database string, tables ...string) *surrealdb.DB {
-	db, err := New("examples", database, tables...)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create SurrealDB connection: %v", err))
-	}
-	return db
-}
-
 type Config struct {
 	// Endpoint is the SurrealDB endpoint URL.
 	Endpoint string

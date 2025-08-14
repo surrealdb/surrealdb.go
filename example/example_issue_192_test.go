@@ -11,7 +11,7 @@ import (
 
 // See https://github.com/surrealdb/surrealdb.go/issues/292
 func ExampleQuery_issue192() {
-	db := testenv.MustNew("example", "query_issue192", "t")
+	db := testenv.MustNew("surrealdbexamples", "query_issue192", "t")
 
 	_, err := surrealdb.Query[any](
 		context.Background(),

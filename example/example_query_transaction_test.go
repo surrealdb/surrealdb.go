@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleQuery_transaction_return() {
-	db := testenv.MustNewDeprecated("query", "person")
+	db := testenv.MustNew("surrealdbexamples", "query", "person")
 
 	var err error
 
@@ -34,7 +34,7 @@ func ExampleQuery_transaction_return() {
 }
 
 func ExampleQuery_transaction_throw() {
-	db := testenv.MustNewDeprecated("query", "person")
+	db := testenv.MustNew("surrealdbexamples", "query", "person")
 
 	var (
 		queryResults *[]surrealdb.QueryResult[*int]
@@ -106,7 +106,7 @@ func ExampleQuery_transaction_throw() {
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177
 func ExampleQuery_transaction_issue_177_return_before_commit() {
-	db := testenv.MustNewDeprecated("query", "t")
+	db := testenv.MustNew("surrealdbexamples", "query", "t")
 
 	var err error
 
@@ -150,7 +150,7 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177
 func ExampleQuery_transaction_issue_177_commit() {
-	db := testenv.MustNewDeprecated("query", "t")
+	db := testenv.MustNew("surrealdbexamples", "query", "t")
 
 	var err error
 

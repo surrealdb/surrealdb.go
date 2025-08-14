@@ -12,7 +12,7 @@ import (
 
 //nolint:funlen
 func ExampleCreate() {
-	db := testenv.MustNewDeprecated("example_create", "persons")
+	db := testenv.MustNew("surrealdbexamples", "example_create", "persons")
 
 	type Person struct {
 		Name string `json:"name"`
@@ -119,7 +119,7 @@ func ExampleCreate() {
 }
 
 func ExampleCreate_server_unmarshal_error() {
-	db := testenv.MustNewDeprecated("query", "person")
+	db := testenv.MustNew("surrealdbexamples", "query", "person")
 
 	type Person struct {
 		ID   models.RecordID `json:"id,omitempty"`

@@ -15,7 +15,7 @@ import (
 //
 //nolint:funlen
 func ExampleQuery_bluk_insert_upsert() {
-	db := testenv.MustNewDeprecated("query", "persons")
+	db := testenv.MustNew("surrealdbexamples", "query", "persons")
 
 	/// You can make it a schemaful table by defining fields like this:
 	//

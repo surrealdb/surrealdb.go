@@ -13,7 +13,7 @@ import (
 )
 
 func TestIntegrationSelect_fromTable(t *testing.T) {
-	db := testenv.MustNewDeprecated("surrealql_test", "select_from_table_test")
+	db := testenv.MustNew("surrealqlexamples", "surrealql_test", "select_from_table_test")
 	ctx := context.Background()
 
 	// Create test data in a table with special characters

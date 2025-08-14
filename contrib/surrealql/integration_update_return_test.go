@@ -17,7 +17,7 @@ func TestIntegrationUpdateReturnNone(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	db := testenv.MustNewDeprecated("surrealql_test", "update_table")
+	db := testenv.MustNew("surrealqlexamples", "surrealql_test", "update_table")
 	ctx := context.Background()
 
 	// Setup: Create test records
