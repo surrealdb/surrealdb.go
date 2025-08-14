@@ -428,7 +428,14 @@ func (c *Connection) handleError(err error) bool {
 func (c *Connection) handleResponse(res []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
 	if err := c.Unmarshaler.Unmarshal(res, &rpcRes); err != nil {
-		panic(err)
+		// Log the error and return to prevent:
+		// 1. DoS attacks from malformed CBOR data causing panics
+		// 2. Memory exhaustion from unmarshaling large malformed data
+		c.logger.Error(
+			"Failed to unmarshal response",
+			"error", err,
+		)
+		return
 	}
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {

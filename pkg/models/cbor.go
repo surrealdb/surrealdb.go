@@ -94,6 +94,14 @@ func (c *CborMarshaler) cborEncMode() cbor.EncMode {
 type CborUnmarshaler struct {
 	once sync.Once
 	dm   cbor.DecMode
+
+	// DecOptions is fxamacker/cbor.DecOptions that specifies
+	// various limits and modes related to decoding CBOR data.
+	//
+	// This is used when you outgrow the default settings provided by the SDK,
+	// for example, when you encounter `exceeded max number of elements 131,072 for CBOR array` errors.
+	// See https://github.com/surrealdb/surrealdb.go/issues/305 for more details.
+	DecOptions cbor.DecOptions
 }
 
 func (c *CborUnmarshaler) Unmarshal(data []byte, dst any) error {
@@ -108,7 +116,7 @@ func (c *CborUnmarshaler) Unmarshal(data []byte, dst any) error {
 
 func (c *CborUnmarshaler) cborDecMode() cbor.DecMode {
 	c.once.Do(func() {
-		c.dm = getCborDecoder()
+		c.dm = c.getCborDecoder()
 	})
 
 	return c.dm
@@ -127,12 +135,25 @@ func getCborEncoder() cbor.EncMode {
 	return em
 }
 
-func getCborDecoder() cbor.DecMode {
+func (c *CborUnmarshaler) getCborDecoder() cbor.DecMode {
+	return getCborDecoder(c.DecOptions)
+}
+
+func getCborDecoder(decOpts ...cbor.DecOptions) cbor.DecMode {
+	var opts cbor.DecOptions
+	if len(decOpts) > 0 {
+		opts = decOpts[0]
+	}
+	// Ensure required fields are set even with custom DecOptions
+	if opts.TimeTagToAny == 0 {
+		opts.TimeTagToAny = cbor.TimeTagToTime
+	}
+	if opts.DefaultMapType == nil {
+		opts.DefaultMapType = reflect.TypeOf(map[string]any(nil))
+	}
+
 	tags := registerCborTags()
-	dm, err := cbor.DecOptions{
-		TimeTagToAny:   cbor.TimeTagToTime,
-		DefaultMapType: reflect.TypeOf(map[string]any(nil)),
-	}.DecModeWithTags(tags)
+	dm, err := opts.DecModeWithTags(tags)
 	if err != nil {
 		panic(err)
 	}
