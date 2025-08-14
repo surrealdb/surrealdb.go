@@ -199,13 +199,13 @@ func (d *decoder) decodeMapIntoMap(v reflect.Value, length int) error {
 
 func (d *decoder) decodeMapIntoStruct(v reflect.Value, length int) error {
 	for i := 0; i < length; i++ {
-		var key string
-		if err := d.decodeValue(reflect.ValueOf(&key).Elem()); err != nil {
+		keyStr, err := d.decodeStringDirect()
+		if err != nil {
 			return err
 		}
 
 		// Find field using field resolver
-		field := d.getFieldResolver().FindField(v, key)
+		field := d.getFieldResolver().FindField(v, keyStr)
 		if field.IsValid() && field.CanSet() {
 			if err := d.decodeValue(field); err != nil {
 				return err
