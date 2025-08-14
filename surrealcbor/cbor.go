@@ -58,6 +58,9 @@ import (
 	"reflect"
 )
 
+// globalFieldResolver is a shared field resolver used by Unmarshal functions
+var globalFieldResolver = NewCachedFieldResolver()
+
 func New() *Codec {
 	return &Codec{
 		encMode: getEncMode(),
@@ -79,6 +82,7 @@ func Unmarshal(data []byte, v any) error {
 		data:           data,
 		pos:            0,
 		defaultMapType: reflect.TypeOf(map[string]any{}), // Default to string keys for backward compatibility
+		fieldResolver:  globalFieldResolver,
 	}
 	return d.decode(v)
 }
@@ -99,6 +103,7 @@ func UnmarshalWithOptions(data []byte, v any, opts UnmarshalOptions) error {
 		data:           data,
 		pos:            0,
 		defaultMapType: mapType,
+		fieldResolver:  globalFieldResolver,
 	}
 	return d.decode(v)
 }

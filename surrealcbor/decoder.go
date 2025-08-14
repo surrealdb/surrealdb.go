@@ -15,6 +15,7 @@ type decoder struct {
 	data           []byte
 	pos            int
 	defaultMapType reflect.Type // Type of map to create when decoding to interface{}
+	fieldResolver  FieldResolver
 }
 
 func (d *decoder) decode(v any) error {
@@ -136,6 +137,7 @@ type Decoder struct {
 	buf            *bytes.Buffer
 	readBufSize    int
 	defaultMapType reflect.Type // Type of map to create when decoding to interface{}
+	fieldResolver  FieldResolver
 }
 
 // readMore reads more data from the underlying reader into the buffer
@@ -171,6 +173,11 @@ func (dec *Decoder) SetDefaultMapType(mapSample any) error {
 
 // Decode reads CBOR data from the reader and decodes into v
 func (dec *Decoder) Decode(v any) error {
+	// Initialize field resolver if not set
+	if dec.fieldResolver == nil {
+		dec.fieldResolver = NewCachedFieldResolver()
+	}
+
 	var lastDecodeErr error
 
 	for {
@@ -197,6 +204,7 @@ func (dec *Decoder) Decode(v any) error {
 			data:           data,
 			pos:            0,
 			defaultMapType: dec.defaultMapType,
+			fieldResolver:  dec.fieldResolver,
 		}
 		err := d.decode(v)
 		if err == nil {
