@@ -32,11 +32,11 @@
 
 # surrealdb.go
 
-The official SurrealDB SDK for Golang.
+The official SurrealDB SDK for Go.
 
 ## Documentation
 
-View the SDK documentation [here](https://surrealdb.com/docs/integration/libraries/golang).
+View the SDK documentation on [pkg.go.dev](https://pkg.go.dev/github.com/surrealdb/surrealdb.go) or [here](https://surrealdb.com/docs/integration/libraries/golang).
 
 ## How to install
 
@@ -46,124 +46,101 @@ go get github.com/surrealdb/surrealdb.go
 
 ## Getting started
 
-[//]: # "In the example below you can see how to connect to a remote instance of SurrealDB, authenticating with the database, and issuing queries for creating, updating, and selecting data from records."
-
-In the example provided below, we are going to connect and authenticate on a SurrealDB server, set the namespace and make several data manipulation requests.
+To connect to SurrealDB and perform data operations, please refer to the complete example in [./example/main.go](./example/main.go).
 
 > This example requires SurrealDB to be [installed](https://surrealdb.com/install) and running on port 8000.
 
-```go
-package main
+### Running the Example
 
-import (
-	"fmt"
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
-)
+The easiest way to get started is to run the example directly:
 
-type Person struct {
-	ID      	*models.RecordID `json:"id,omitempty"`
-	Name    	string `json:"name"`
-	Surname 	string `json:"surname"`
-	Location 	models.GeometryPoint `json:"location"`
-}
+```sh
+# Clone the repository
+git clone https://github.com/surrealdb/surrealdb.go.git
+cd surrealdb.go
 
-func main() {
-	// Connect to SurrealDB
-	db, err := surrealdb.FromEndpointURLString(context.Background(), "ws://localhost:8000")
-	if err != nil {
-		panic(err)
-	}
-
-	// Set the namespace and database
-	if err = db.Use(context.Background(), "testNS", "testDB"); err != nil {
-		panic(err)
-	}
-
-	// Sign in to authentication `db`
-	authData := &surrealdb.Auth{
-		Username: "root", // use your setup username
-		Password: "root", // use your setup password
-	}
-	token, err := db.SignIn(context.Background(), authData)
-	if err != nil {
-		panic(err)
-	}
-
-	// Check token validity. This is not necessary if you called `SignIn` before. This authenticates the `db` instance too if sign in was
-	// not previously called
-	if err := db.Authenticate(context.Background(), token); err != nil {
-		panic(err)
-	}
-
-	// And we can later on invalidate the token if desired
-	defer func(token string) {
-		if err := db.Invalidate(context.Background()); err != nil {
-			panic(err)
-		}
-	}(token)
-
-	// Create an entry
-	person1, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[any]any{
-		"Name":     "John",
-		"Surname":  "Doe",
-		"Location": models.NewGeometryPoint(-0.11, 22.00),
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Created person with a map: %+v\n", person1)
-
-	// Or use structs
-	person2, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), Person{
-		Name:     "John",
-		Surname:  "Doe",
-		Location: models.NewGeometryPoint(-0.11, 22.00),
-	})
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Created person with a struvt: %+v\n", person2)
-
-	// Get entry by Record ID
-	person, err := surrealdb.Select[Person, models.RecordID](context.Background(), db, *person1.ID)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Selected a person by record id: %+v\n", person)
-
-	// Or retrieve the entire table
-	persons, err := surrealdb.Select[[]Person, models.Table](context.Background(), db, models.Table("persons"))
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Selected all in persons table: %+v\n", persons)
-
-	// Delete an entry by ID
-	if err = surrealdb.Delete[Person](context.Background(), db, *person2.ID); err != nil {
-		panic(err)
-	}
-
-	// Delete all entries
-	if err = surrealdb.Delete[[]Person]](context.Background(), db, models.Table("persons")); err != nil {
-		panic(err)
-	}
-
-	// Confirm empty table
-	persons, err = surrealdb.Select[[]Person](context.Background(), db, models.Table("persons"))
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("No Selected person: %+v\n", persons)
-}
+# Run the example
+go run ./example
 ```
 
-Please refer to the [example](./example) directory for more examples.
+The `./example` directory contains:
+- `main.go` - A complete working example demonstrating basic CRUD operations
+- Multiple test files (`*_test.go`) - Examples demonstrating various SDK features including:
+  - Query operations and transactions
+  - Relations and graph traversal
+  - Bulk operations (insert, upsert)
+  - Authentication methods
+  - Custom CBOR configuration
+  - And many more use cases
 
-### Doing it your way
+You can run any of the example tests with:
+```sh
+go test -v ./example -run ExampleName
+```
 
-All Data manipulation methods are handled by an undelying `send` function. This function is
-exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. Theses
+## Executing SurrealQL
+
+### Using Query
+
+For most use cases, you can use the `Query` function to execute SurrealQL statements. This is the recommended approach for complex queries, transactions, and when you need full control over your database operations:
+
+```go
+// Execute a SurrealQL query with typed results
+results, err := surrealdb.Query[[]Person](
+    context.Background(),
+    db,
+    "SELECT * FROM persons WHERE age > $minAge",
+    map[string]any{
+        "minAge": 18,
+    },
+)
+
+// You can also use Query for transactions with variables
+transactionResults, err := surrealdb.Query[[]any](
+    context.Background(),
+    db,
+    `
+    BEGIN TRANSACTION;
+    CREATE person:$johnId SET name = $johnName, age = $johnAge;
+    CREATE person:$janeId SET name = $janeName, age = $janeAge;
+    COMMIT TRANSACTION;
+    `,
+    map[string]any{
+        "johnId": "john",
+        "johnName": "John",
+        "johnAge": 30,
+        "janeId": "jane",
+        "janeName": "Jane",
+        "janeAge": 25,
+    },
+)
+
+// Or use a single CREATE with content variable
+createResult, err := surrealdb.Query[[]Person](
+    context.Background(),
+    db,
+    "CREATE person:$id CONTENT $content",
+    map[string]any{
+        "id": "alice",
+        "content": map[string]any{
+            "name": "Alice",
+            "age": 28,
+            "city": "New York",
+        },
+    },
+)
+```
+
+The `Query` function supports:
+- Full SurrealQL syntax including transactions
+- Parameterized queries for security
+- Typed results with generics
+- Multiple statements in a single call
+
+### Using Send for low-level control
+
+All data manipulation methods are handled by an underlying `send` function. This function is
+exposed via `db.Send` function if you want to create requests yourself but limited to a selected set of methods. These
 methods are:
 
 -   select
@@ -183,19 +160,11 @@ type UserSelectResult struct {
 var res UserSelectResult
 // or var res surrealdb.Result[[]Users]
 
-err := db.Send(context.Background(), &res, "query", user.ID)
+err := db.Send(context.Background(), &res, "select", user.ID)
 if err != nil {
 	panic(err)
 }
-
 ```
-
-### Instructions for running the example
-
--   In a new folder, create a file called `main.go` and paste the above code
--   Run `go mod init github.com/<github-username>/<project-name>` to initialise a `go.mod` file
--   Run `go mod tidy` to download the `surrealdb.go` dependency
--   Run `go run main.go` to run the example.
 
 ## Connection Engines
 
@@ -205,13 +174,13 @@ connections
 ### Via Websocket
 
 ```go
-db, err := surrealdb.New("ws://localhost:8000")
+db, err := surrealdb.FromEndpointURLString(ctx, "ws://localhost:8000")
 ```
 
 or for a secure connection
 
 ```go
-db, err := surrealdb.New("wss://localhost:8000")
+db, err := surrealdb.FromEndpointURLString(ctx, "wss://localhost:8000")
 ```
 
 ### Via HTTP
@@ -222,13 +191,13 @@ it is natively available on HTTP. While using the HTTP connection engine, note t
 use a websocket connection if the backend supports it
 
 ```go
-db, err := surrealdb.New("http://localhost:8000")
+db, err := surrealdb.FromEndpointURLString(ctx, "http://localhost:8000")
 ```
 
 or for a secure connection
 
 ```go
-db, err := surrealdb.New("https://localhost:8000")
+db, err := surrealdb.FromEndpointURLString(ctx, "https://localhost:8000")
 ```
 
 ### Using SurrealKV and Memory
@@ -335,12 +304,10 @@ fmt.Printf("users: %+v\n", users.R)
 
 ## Contributing
 
-You can run the Makefile commands to run and build the project
+You can run the Makefile commands to run and build the project:
 
-```
-make build
-make test
-make lint
+```shell
+make lint test
 ```
 
 You also need to be running SurrealDB alongside the tests.
