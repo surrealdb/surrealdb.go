@@ -259,11 +259,21 @@ func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notificatio
 	return db.con.LiveNotifications(liveQueryID)
 }
 
+func (db *DB) CloseLiveNotifications(liveQueryID string) error {
+	return db.con.CloseLiveNotifications(liveQueryID)
+}
+
 //-------------------------------------------------------------------------------------------------------------------//
 
 func Kill(ctx context.Context, db *DB, id string) error {
+	// First kill the live query on the server
 	_, err := send[any](ctx, db, "kill", id)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Then close the notification channel to prevent leaks
+	return db.CloseLiveNotifications(id)
 }
 
 func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.UUID, error) {

@@ -228,3 +228,7 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 func (c *Connection) LiveNotifications(id string) (chan connection.Notification, error) {
 	return nil, errors.New("live notifications are not supported in HTTP connections")
 }
+
+func (c *Connection) CloseLiveNotifications(id string) error {
+	return errors.New("live notifications are not supported in HTTP connections")
+}
