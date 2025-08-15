@@ -103,8 +103,9 @@ func formatDiffOperation(op map[string]any) string {
 
 // ExampleLive demonstrates using the Live RPC method to receive notifications.
 // Live queries without diff return the full record as map[string]any in notification.Result.
-// Note: Currently, the notification channel is not automatically closed when Kill is called.
-// The goroutine exits based on receiving a specific notification rather than channel closure.
+// The notification channel is automatically closed when Kill is called.
+//
+//nolint:gocyclo
 func ExampleLive() {
 	config := testenv.MustNewConfig("surrealdbexamples", "livequery_rpc", "users")
 	config.Endpoint = testenv.GetSurrealDBWSURL()
@@ -131,6 +132,7 @@ func ExampleLive() {
 		panic(fmt.Sprintf("Failed to get live notifications channel: %v", err))
 	}
 
+	received := make(chan struct{})
 	done := make(chan bool)
 	go func() {
 		for notification := range notifications {
@@ -149,10 +151,12 @@ func ExampleLive() {
 				fmt.Println("User updated")
 			case connection.DeleteAction:
 				fmt.Println("User deleted")
-				done <- true
-				return
+				close(received)
 			}
 		}
+		// Channel was closed
+		fmt.Println("Notification channel closed")
+		done <- true
 	}()
 
 	createdUser, err := surrealdb.Create[User](ctx, db, "users", map[string]any{
@@ -163,8 +167,6 @@ func ExampleLive() {
 		panic(fmt.Sprintf("Failed to create user: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Update[User](ctx, db, *createdUser.ID, map[string]any{
 		"email": "alice.updated@example.com",
 	})
@@ -172,18 +174,17 @@ func ExampleLive() {
 		panic(fmt.Sprintf("Failed to update user: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Delete[User](ctx, db, *createdUser.ID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to delete user: %v", err))
 	}
 
+	// Wait for all expected notifications to be received
 	select {
-	case <-done:
-		fmt.Println("All notifications received")
+	case <-received:
+		// All notifications received
 	case <-time.After(2 * time.Second):
-		fmt.Println("Timeout waiting for notifications")
+		panic("Timeout waiting for all notifications")
 	}
 
 	err = surrealdb.Kill(ctx, db, live.String())
@@ -193,6 +194,13 @@ func ExampleLive() {
 
 	fmt.Println("Live query terminated")
 
+	select {
+	case <-done:
+		fmt.Println("Goroutine exited after channel closed")
+	case <-time.After(2 * time.Second):
+		panic("Timeout: notification channel was not closed after Kill")
+	}
+
 	// Output:
 	// Started live query
 	// Received notification - Action: CREATE, Result: {email=alice@example.com id=users:⟨UUID⟩ username=alice}
@@ -201,14 +209,14 @@ func ExampleLive() {
 	// User updated
 	// Received notification - Action: DELETE, Result: {email=alice.updated@example.com id=users:⟨UUID⟩}
 	// User deleted
-	// All notifications received
 	// Live query terminated
+	// Notification channel closed
+	// Goroutine exited after channel closed
 }
 
 // ExampleQuery_live demonstrates using LIVE SELECT via the Query RPC.
 // LIVE SELECT returns matching records as map[string]any in notification.Result.
-// Note: Currently, the notification channel is not automatically closed when Kill is called.
-// The goroutine exits based on receiving a specific number of notifications.
+// The notification channel is automatically closed when Kill is called.
 func ExampleQuery_live() {
 	config := testenv.MustNewConfig("surrealdbexamples", "livequery_query", "products")
 	config.Endpoint = testenv.GetSurrealDBWSURL()
@@ -237,6 +245,7 @@ func ExampleQuery_live() {
 		panic(fmt.Sprintf("Failed to get live notifications channel: %v", err))
 	}
 
+	received := make(chan struct{})
 	done := make(chan bool)
 	notificationCount := 0
 	go func() {
@@ -252,10 +261,12 @@ func ExampleQuery_live() {
 			fmt.Printf("Notification %d - Action: %s, Result: %s\n", notificationCount, notification.Action, formatRecordResult(record))
 
 			if notificationCount >= 3 {
-				done <- true
-				return
+				close(received)
 			}
 		}
+		// Channel was closed
+		fmt.Println("Notification channel closed")
+		done <- true
 	}()
 
 	_, err = surrealdb.Create[Product](ctx, db, "products", map[string]any{
@@ -267,8 +278,6 @@ func ExampleQuery_live() {
 		panic(fmt.Sprintf("Failed to create product: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Create[Product](ctx, db, "products", map[string]any{
 		"name":  "Gadget",
 		"price": 19.99,
@@ -277,8 +286,6 @@ func ExampleQuery_live() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create second product: %v", err))
 	}
-
-	time.Sleep(100 * time.Millisecond)
 
 	_, err = surrealdb.Create[Product](ctx, db, "products", map[string]any{
 		"name":  "Abundant Item",
@@ -289,8 +296,6 @@ func ExampleQuery_live() {
 		panic(fmt.Sprintf("Failed to create third product: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Create[Product](ctx, db, "products", map[string]any{
 		"name":  "Rare Item",
 		"price": 99.99,
@@ -300,11 +305,12 @@ func ExampleQuery_live() {
 		panic(fmt.Sprintf("Failed to create fourth product: %v", err))
 	}
 
+	// Wait for all expected notifications to be received
 	select {
-	case <-done:
-		fmt.Println("Received expected notifications")
+	case <-received:
+		// All notifications received
 	case <-time.After(2 * time.Second):
-		fmt.Println("Timeout waiting for notifications")
+		panic("Timeout waiting for all notifications")
 	}
 
 	err = surrealdb.Kill(ctx, db, liveID)
@@ -314,20 +320,27 @@ func ExampleQuery_live() {
 
 	fmt.Println("Live query terminated")
 
+	select {
+	case <-done:
+		fmt.Println("Goroutine exited after channel closed")
+	case <-time.After(2 * time.Second):
+		panic("Timeout: notification channel was not closed after Kill")
+	}
+
 	// Output:
 	// Started live query
 	// Notification 1 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Widget price=9.99 stock=5}
 	// Notification 2 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Gadget price=19.99 stock=3}
 	// Notification 3 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Rare Item price=99.99 stock=1}
-	// Received expected notifications
 	// Live query terminated
+	// Notification channel closed
+	// Goroutine exited after channel closed
 }
 
 // ExampleLive_withDiff demonstrates using live queries with diff enabled.
 // With diff=true, CREATE and UPDATE return diff operations as []any,
 // while DELETE still returns the deleted record as map[string]any.
-// Note: Currently, the notification channel is not automatically closed when Kill is called.
-// The goroutine exits based on receiving a specific notification rather than channel closure.
+// The notification channel is automatically closed when Kill is called.
 func ExampleLive_withDiff() {
 	config := testenv.MustNewConfig("surrealdbexamples", "livequery_diff", "inventory")
 	config.Endpoint = testenv.GetSurrealDBWSURL()
@@ -354,6 +367,7 @@ func ExampleLive_withDiff() {
 		panic(fmt.Sprintf("Failed to get live notifications channel: %v", err))
 	}
 
+	received := make(chan struct{})
 	done := make(chan bool)
 	go func() {
 		for notification := range notifications {
@@ -369,6 +383,7 @@ func ExampleLive_withDiff() {
 					panic(fmt.Sprintf("Expected map[string]any for DELETE result, got %T", notification.Result))
 				}
 				resultStr = formatRecordResult(record)
+				close(received)
 			} else {
 				// CREATE and UPDATE return an array of diff operations
 				diffs, ok := notification.Result.([]any)
@@ -379,12 +394,10 @@ func ExampleLive_withDiff() {
 			}
 
 			fmt.Printf("Action: %s, Result: %s\n", notification.Action, resultStr)
-
-			if notification.Action == connection.DeleteAction {
-				done <- true
-				return
-			}
 		}
+		// Channel was closed
+		fmt.Println("Notification channel closed")
+		done <- true
 	}()
 
 	item, err := surrealdb.Create[Item](ctx, db, "inventory", map[string]any{
@@ -395,8 +408,6 @@ func ExampleLive_withDiff() {
 		panic(fmt.Sprintf("Failed to create item: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Update[Item](ctx, db, *item.ID, map[string]any{
 		"quantity": 45,
 	})
@@ -404,18 +415,17 @@ func ExampleLive_withDiff() {
 		panic(fmt.Sprintf("Failed to update item: %v", err))
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
 	_, err = surrealdb.Delete[Item](ctx, db, *item.ID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to delete item: %v", err))
 	}
 
+	// Wait for all expected notifications to be received
 	select {
-	case <-done:
-		fmt.Println("All notifications with diff received")
+	case <-received:
+		// All notifications received
 	case <-time.After(2 * time.Second):
-		fmt.Println("Timeout waiting for notifications")
+		panic("Timeout waiting for all notifications")
 	}
 
 	err = surrealdb.Kill(ctx, db, live.String())
@@ -425,11 +435,19 @@ func ExampleLive_withDiff() {
 
 	fmt.Println("Live query with diff terminated")
 
+	select {
+	case <-done:
+		fmt.Println("Goroutine exited after channel closed")
+	case <-time.After(2 * time.Second):
+		panic("Timeout: notification channel was not closed after Kill")
+	}
+
 	// Output:
 	// Started live query with diff enabled
 	// Action: CREATE, Result: [{op=replace path=/ value={id=inventory:⟨UUID⟩ name=Screwdriver quantity=50}}]
 	// Action: UPDATE, Result: [{op=remove path=/name} {op=replace path=/quantity value=45}]
 	// Action: DELETE, Result: {id=inventory:⟨UUID⟩ quantity=45}
-	// All notifications with diff received
 	// Live query with diff terminated
+	// Notification channel closed
+	// Goroutine exited after channel closed
 }

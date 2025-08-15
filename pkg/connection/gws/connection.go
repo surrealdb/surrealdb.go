@@ -299,6 +299,11 @@ func (c *Connection) LiveNotifications(id string) (chan connection.Notification,
 	return c.CreateNotificationChannel(id)
 }
 
+// CloseLiveNotifications implements connection.Connection.
+func (c *Connection) CloseLiveNotifications(id string) error {
+	return c.Toolkit.CloseLiveNotifications(id)
+}
+
 // Send implements connection.Connection.
 func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {

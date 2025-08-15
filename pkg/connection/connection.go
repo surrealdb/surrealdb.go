@@ -35,6 +35,7 @@ type Connection interface {
 	Invalidate(ctx context.Context) error
 	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)
+	CloseLiveNotifications(id string) error
 	GetUnmarshaler() codec.Unmarshaler
 }
 
@@ -135,4 +136,18 @@ func (bc *Toolkit) LiveNotifications(liveQueryID string) (chan Notification, err
 		bc.Logger.Error(err.Error())
 	}
 	return c, err
+}
+
+func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
+	bc.NotificationChannelsLock.Lock()
+	defer bc.NotificationChannelsLock.Unlock()
+
+	ch, ok := bc.NotificationChannels[liveQueryID]
+	if !ok {
+		return fmt.Errorf("notification channel not found for live query ID: %s", liveQueryID)
+	}
+
+	close(ch)
+	delete(bc.NotificationChannels, liveQueryID)
+	return nil
 }
