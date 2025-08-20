@@ -243,6 +243,7 @@ func NewHTTP(database string, tables ...string) (*surrealdb.DB, error) {
 
 // Init initializes the testing environment.
 // It cleans up the specified tables in the namespace/database.
+// If no tables are specified, it will clean up all tables in the database.
 func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surrealdb.DB, error) {
 	var err error
 
@@ -261,6 +262,20 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 
 	if err = db.Authenticate(context.Background(), token); err != nil {
 		return nil, fmt.Errorf("failed to authenticate: %w", err)
+	}
+
+	// If no tables specified, get all tables in the database
+	if len(tables) == 0 {
+		query := "INFO FOR DB"
+		result, err := surrealdb.Query[map[string]any](context.Background(), db, query, nil)
+		if err == nil && len(*result) > 0 {
+			if info, ok := (*result)[0].Result["tables"].(map[string]any); ok {
+				for tableName := range info {
+					tables = append(tables, tableName)
+				}
+			}
+		}
+		// If we couldn't get tables or there are no tables, that's fine - nothing to clean
 	}
 
 	// Clean up everything in the specified database
