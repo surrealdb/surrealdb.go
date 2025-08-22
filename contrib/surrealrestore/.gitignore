@@ -1,0 +1,5 @@
+/cmd/surrealrestore/surrealrestore
+/surrealrestore
+/*.cbor
+/*.json
+/*.sh
