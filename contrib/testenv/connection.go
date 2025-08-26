@@ -267,8 +267,7 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 	// If no tables specified, get all tables in the database
 	if len(tables) == 0 {
 		query := "INFO FOR DB"
-		result, err := surrealdb.Query[map[string]any](context.Background(), db, query, nil)
-		if err == nil && len(*result) > 0 {
+		if result, infoErr := surrealdb.Query[map[string]any](context.Background(), db, query, nil); infoErr == nil && len(*result) > 0 {
 			if info, ok := (*result)[0].Result["tables"].(map[string]any); ok {
 				for tableName := range info {
 					tables = append(tables, tableName)
