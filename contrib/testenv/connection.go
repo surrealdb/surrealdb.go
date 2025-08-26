@@ -62,6 +62,22 @@ func GetSurrealDBURL() string {
 	return currentURL
 }
 
+func MustParseSurrealDBURL() *url.URL {
+	u, err := url.Parse(GetSurrealDBURL())
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse SurrealDB URL: %v", err))
+	}
+	return u
+}
+
+func MustParseSurrealDBWSURL() *url.URL {
+	u, err := url.Parse(GetSurrealDBWSURL())
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse SurrealDB WebSocket URL: %v", err))
+	}
+	return u
+}
+
 func getSurrealDBHTTPURL() string {
 	if currentURL == "" {
 		return "http://localhost:8000"
