@@ -115,8 +115,11 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	// Short reconnection check interval for testing
 	checkInterval := 100 * time.Millisecond
 
-	// Create auto-reconnecting connection
-	conn := rews.New(newConnFunc(wsURL), checkInterval, logger.New(slog.NewTextHandler(os.Stdout, nil)))
+	// Create auto-reconnecting connection with proper unmarshaler
+	u, err := url.ParseRequestURI(wsURL)
+	require.NoError(t, err)
+	config := connection.NewConfig(u)
+	conn := rews.New(newConnFunc(wsURL), checkInterval, config.Unmarshaler, logger.New(slog.NewTextHandler(os.Stdout, nil)))
 
 	// Create DB instance
 	db, err := surrealdb.FromConnection(context.Background(), conn)
