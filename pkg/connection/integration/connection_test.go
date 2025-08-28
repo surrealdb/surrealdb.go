@@ -64,7 +64,7 @@ func (s *ConnectionTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	// set namespace, database
-	err = con.Use(context.Background(), "test", "test")
+	err = con.Use(context.Background(), "connection_integration", "connection_test")
 	s.Require().NoError(err)
 
 	// sign in
