@@ -28,8 +28,28 @@ func (q *ShowChangesForTableQuery) Since(since string) *ShowChangesForTableQuery
 }
 
 // SinceVersionstamp sets the starting point for showing changes using a versionstamp.
+//
+// This method automatically handles the versionstamp adjustment required by SurrealDB.
+// When you receive a versionstamp from a SHOW CHANGES query result, it includes extra
+// bytes for FoundationDB ordering. This method automatically shifts the versionstamp
+// right by 16 bits to extract the logical version needed for the SINCE clause.
+//
+// This allows you to directly use the versionstamp from a previous query result
+// without manual adjustment:
+//
+//	// First query
+//	changes1 := db.Query("SHOW CHANGES FOR TABLE users")
+//	maxVs := getMaxVersionstamp(changes1)
+//
+//	// Continue from where you left off - no manual adjustment needed
+//	q := surrealql.ShowChangesForTable("users").SinceVersionstamp(maxVs)
+//
+// See: https://surrealdb.com/docs/surrealql/statements/show
 func (q *ShowChangesForTableQuery) SinceVersionstamp(versionstamp uint64) *ShowChangesForTableQuery {
-	q.since = fmt.Sprintf("%d", versionstamp)
+	// SurrealDB versionstamps include extra bytes for FoundationDB ordering
+	// When using SINCE, we need to shift right by 16 bits to get the logical version
+	adjustedVs := versionstamp >> 16
+	q.since = fmt.Sprintf("%d", adjustedVs)
 	return q
 }
 

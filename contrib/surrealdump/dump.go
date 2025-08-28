@@ -317,11 +317,7 @@ func (d *Dumper) getTableChanges(ctx context.Context, table string, sinceVersion
 	Versionstamp uint64
 	Changes      []Change
 }, maxVs uint64, err error) {
-	// SurrealDB versionstamps include extra bytes for FoundationDB ordering
-	// When using SINCE, we need to shift right by 16 bits to get the logical version
-	// See: https://surrealdb.com/docs/surrealql/statements/show
-	adjustedVs := sinceVersionstamp >> 16
-	q := surrealql.ShowChangesForTable(table).SinceVersionstamp(adjustedVs)
+	q := surrealql.ShowChangesForTable(table).SinceVersionstamp(sinceVersionstamp)
 	query, _ := q.Build()
 
 	type ChangeSet struct {
