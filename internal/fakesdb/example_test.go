@@ -24,7 +24,7 @@ func ExampleServer() {
 			}
 			return false
 		}),
-		Response: map[string]interface{}{
+		Result: map[string]interface{}{
 			"result": []interface{}{
 				map[string]interface{}{"id": "user:1", "name": "Alice"},
 				map[string]interface{}{"id": "user:2", "name": "Bob"},
@@ -34,8 +34,8 @@ func ExampleServer() {
 
 	// Add failure injection for testing resilience
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher:  fakesdb.MatchMethod("create"),
-		Response: map[string]interface{}{"id": "record:1"},
+		Matcher: fakesdb.MatchMethod("create"),
+		Result:  map[string]interface{}{"id": "record:1"},
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureResponseDelay,
@@ -89,8 +89,8 @@ func ExampleServer_connectionFailures() {
 
 	// Simulate WebSocket close on query requests
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher:  fakesdb.MatchMethod("query"),
-		Response: map[string]interface{}{"result": []interface{}{}},
+		Matcher: fakesdb.MatchMethod("query"),
+		Result:  map[string]interface{}{"result": []interface{}{}},
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureWebSocketClose,
@@ -103,8 +103,8 @@ func ExampleServer_connectionFailures() {
 
 	// Simulate TCP reset
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher:  fakesdb.MatchMethod("delete"),
-		Response: map[string]interface{}{"ok": true},
+		Matcher: fakesdb.MatchMethod("delete"),
+		Result:  map[string]interface{}{"ok": true},
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureTCPReset,
@@ -115,8 +115,8 @@ func ExampleServer_connectionFailures() {
 
 	// Simulate corrupted messages
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher:  fakesdb.MatchMethod("update"),
-		Response: map[string]interface{}{"updated": true},
+		Matcher: fakesdb.MatchMethod("update"),
+		Result:  map[string]interface{}{"updated": true},
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureCorruptedMessage,

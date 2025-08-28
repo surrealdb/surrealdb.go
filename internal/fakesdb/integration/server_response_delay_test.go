@@ -31,7 +31,7 @@ func TestServerFailureResponseDelay(t *testing.T) {
 			// Delay every 3rd request
 			return requestCount%3 == 0
 		}),
-		Response: map[string]any{
+		Result: map[string]any{
 			"id": cbor.Tag{Number: 8, Content: []any{"test", "1"}},
 		},
 		Failures: []fakesdb.FailureConfig{

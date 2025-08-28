@@ -91,15 +91,15 @@ type RequestMatcher struct {
 	Matcher func(params []any) bool
 }
 
-// StubResponse defines a pre-configured response for matching requests.
-// It can return either a successful response or an error, and optionally
+// StubResponse defines a pre-configured RPC response for matching requests.
+// It can return either a successful result or an error, and optionally
 // inject failures during processing.
 type StubResponse struct {
 	// Matcher determines which requests this stub should handle
 	Matcher RequestMatcher
-	// Response is the successful response to return (mutually exclusive with Error)
-	Response any
-	// Error is the error response to return (mutually exclusive with Response)
+	// Result is the successful RPCResponse result to return (mutually exclusive with Error)
+	Result any
+	// Error is the error to return (mutually exclusive with Result)
 	Error *connection.RPCError
 	// Failures defines failure injection configurations for this response
 	Failures []FailureConfig
@@ -411,7 +411,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 		if matchedStub.Error != nil {
 			h.sendError(socket, req.ID, matchedStub.Error.Code, matchedStub.Error.Message)
 		} else {
-			h.sendResponse(socket, req.ID, matchedStub.Response)
+			h.sendResponse(socket, req.ID, matchedStub.Result)
 		}
 		return
 	}
@@ -439,7 +439,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 				if stub.Error != nil {
 					h.sendError(socket, req.ID, stub.Error.Code, stub.Error.Message)
 				} else {
-					h.sendResponse(socket, req.ID, stub.Response)
+					h.sendResponse(socket, req.ID, stub.Result)
 				}
 			}
 		}()
@@ -499,7 +499,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 		if req != nil && stub != nil {
 			var resp connection.RPCResponse[any]
 			resp.ID = req.ID
-			resp.Result = &stub.Response
+			resp.Result = &stub.Result
 
 			data, err := cbor.Marshal(resp)
 			if err != nil {
@@ -518,7 +518,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 		if req != nil && stub != nil {
 			var resp connection.RPCResponse[any]
 			resp.ID = req.ID
-			resp.Result = &stub.Response
+			resp.Result = &stub.Result
 
 			data, err := cbor.Marshal(resp)
 			if err != nil {
@@ -613,8 +613,8 @@ func MatchMethodWithParams(method string, matcher func(params []any) bool) Reque
 // SimpleStubResponse creates a basic stub response for a method without failure injection
 func SimpleStubResponse(method string, response any) StubResponse {
 	return StubResponse{
-		Matcher:  MatchMethod(method),
-		Response: response,
+		Matcher: MatchMethod(method),
+		Result:  response,
 	}
 }
 
