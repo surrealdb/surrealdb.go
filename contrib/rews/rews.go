@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 )
@@ -135,6 +136,12 @@ type Connection[C connection.WebSocketConnection] struct {
 	// They are used to restore the namespace and database on reconnection.
 	sessionNS string
 	sessionDB string
+
+	// reliableLQ contains all the state and functionality for reliable live query management
+	reliableLQ *reliableLQ
+
+	// unmarshaler is used to unmarshal CBOR data
+	unmarshaler codec.Unmarshaler
 }
 
 var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
@@ -143,19 +150,26 @@ var _ connection.WebSocketConnection = (*Connection[connection.WebSocketConnecti
 // New creates a new auto-reconnecting WebSocket connection.
 //
 // It takes a function that establishes the WebSocket connection,
-// a check interval for reconnection attempts, and a logger.
+// a check interval for reconnection attempts, an unmarshaler for CBOR data, and a logger.
 func New[C connection.WebSocketConnection](
 	newConn func(context.Context) (C, error),
 	checkInterval time.Duration,
+	unmarshaler codec.Unmarshaler,
 	log logger.Logger,
 ) *Connection[C] {
-	return &Connection[C]{
+	c := &Connection[C]{
 		CheckInterval: checkInterval,
 		NewFunc:       newConn,
 		state:         StateDisconnected,
 		logger:        log,
 		sessionVars:   make(map[string]any),
+		unmarshaler:   unmarshaler,
 	}
+
+	// Initialize reliableLQ with the unmarshaler
+	c.reliableLQ = newReliableLQ(log, unmarshaler)
+
+	return c
 }
 
 func (arws *Connection[C]) transitionTo(newState State) error {
@@ -282,6 +296,13 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 			arws.logger.Error("rews.Connection failed to restore session variable", "key", key, "error", err)
 			return fmt.Errorf("rews.Connection failed to restore session variable %s: %w", key, err)
 		}
+	}
+
+	// Restore live queries after session state is restored
+	// This will also setup notification routing for each restored query
+	if err := arws.reliableLQ.restoreLiveQueries(ctx, arws.WebSocketConnection, arws.WebSocketConnection, arws.logger); err != nil {
+		arws.logger.Error("rews.Connection failed to restore live queries", "error", err)
+		return fmt.Errorf("rews.Connection failed to restore live queries: %w", err)
 	}
 
 	return nil

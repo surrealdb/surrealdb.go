@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/lxzan/gws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // cryptoRandInt generates a cryptographically secure random integer in [0, max)
@@ -166,6 +166,8 @@ type Server struct {
 	sessions       []*Session
 	ctx            context.Context
 	cancel         context.CancelFunc
+	marshaler      *models.CborMarshaler
+	unmarshaler    *models.CborUnmarshaler
 
 	// TokenSignUp is the token returned by any successful SignUp operation
 	// This is used to verify that the SignUp operation works correctly.
@@ -195,6 +197,8 @@ func NewServer(addr string) *Server {
 		sessions:     make([]*Session, 0),
 		ctx:          ctx,
 		cancel:       cancel,
+		marshaler:    &models.CborMarshaler{},
+		unmarshaler:  &models.CborUnmarshaler{},
 	}
 
 	handler := &Handler{server: s}
@@ -330,7 +334,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 	}
 
 	var req connection.RPCRequest
-	if err := cbor.Unmarshal(message.Bytes(), &req); err != nil {
+	if err := h.server.unmarshaler.Unmarshal(message.Bytes(), &req); err != nil {
 		h.sendError(socket, nil, -32700, "Parse error")
 		return
 	}
@@ -501,7 +505,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 			resp.ID = req.ID
 			resp.Result = &stub.Result
 
-			data, err := cbor.Marshal(resp)
+			data, err := h.server.marshaler.Marshal(resp)
 			if err != nil {
 				log.Printf("Error marshaling partial message: %v", err)
 				return fmt.Errorf("failed to send partial message: %w", err)
@@ -520,7 +524,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 			resp.ID = req.ID
 			resp.Result = &stub.Result
 
-			data, err := cbor.Marshal(resp)
+			data, err := h.server.marshaler.Marshal(resp)
 			if err != nil {
 				log.Printf("Error marshaling corrupted message: %v", err)
 				return fmt.Errorf("failed to send corrupted message: %w", err)
@@ -544,7 +548,7 @@ func (h *Handler) sendResponse(socket *gws.Conn, id, result any) {
 	resp.ID = id
 	resp.Result = &result
 
-	data, err := cbor.Marshal(resp)
+	data, err := h.server.marshaler.Marshal(resp)
 	if err != nil {
 		h.sendError(socket, id, -32603, fmt.Sprintf("sendResponse: %v", err))
 		return
@@ -564,7 +568,7 @@ func (h *Handler) sendError(socket *gws.Conn, id any, code int, message string) 
 		Message: message,
 	}
 
-	responseData, err := cbor.Marshal(resp)
+	responseData, err := h.server.marshaler.Marshal(resp)
 	if err != nil {
 		log.Printf("Failed to marshal error response: %v", err)
 		return
@@ -668,23 +672,20 @@ func (h *Handler) handleSignUp(socket *gws.Conn, req *connection.RPCRequest) {
 
 	// Extract username from auth data if available
 	username := ""
-	if authData, ok := req.Params[0].(map[any]any); ok {
+	ns := ""
+	if authData, ok := req.Params[0].(map[string]any); ok {
 		if user, ok := authData["user"].(string); ok {
 			username = user
 		} else if user, ok := authData["username"].(string); ok {
 			username = user
 		}
+		if n, ok := authData["NS"].(string); ok {
+			ns = n
+		}
 	}
 	if username == "" {
 		h.sendError(socket, req.ID, -32602, "UpIn: Signin requires username in auth data")
 		return
-	}
-
-	ns := ""
-	if session, ok := req.Params[0].(map[any]any); ok {
-		if n, ok := session["NS"].(string); ok {
-			ns = n
-		}
 	}
 	if ns == "" {
 		h.sendError(socket, req.ID, -32602, "handleSignIn: Signin requires namespace in auth data")
@@ -739,7 +740,7 @@ func (h *Handler) handleSignIn(socket *gws.Conn, req *connection.RPCRequest) {
 
 	// Extract username from auth data if available
 	username := ""
-	if authData, ok := req.Params[0].(map[any]any); ok {
+	if authData, ok := req.Params[0].(map[string]any); ok {
 		if user, ok := authData["user"].(string); ok {
 			username = user
 		} else if user, ok := authData["username"].(string); ok {

@@ -198,6 +198,7 @@ func (c *Config) New() (*surrealdb.DB, error) {
 						return gws.New(conf), nil
 					},
 					c.ReconnectDuration,
+					conf.Unmarshaler,
 					conf.Logger,
 				)
 			} else {
@@ -206,6 +207,7 @@ func (c *Config) New() (*surrealdb.DB, error) {
 						return gorillaws.New(conf), nil
 					},
 					c.ReconnectDuration,
+					conf.Unmarshaler,
 					conf.Logger,
 				)
 			}
