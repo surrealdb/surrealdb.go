@@ -83,7 +83,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 			}
 			return false
 		}),
-		Response: nil,
+		Result: nil,
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureWebSocketClose,
@@ -248,7 +248,7 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 			count := atomic.AddInt32(&selectCount, 1)
 			return count == 2
 		}),
-		Response: nil,
+		Result: nil,
 		Failures: []fakesdb.FailureConfig{
 			{
 				Type:        fakesdb.FailureWebSocketClose,
