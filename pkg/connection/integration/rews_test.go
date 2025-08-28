@@ -22,6 +22,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+const testTokenSignIn = "test_token_signin"
+
 func TestRewsGorillaWsDoReconnect(t *testing.T) {
 	testDoReconnect(t, func(wsURL string) func(context.Context) (*gorillaws.Connection, error) {
 		return func(ctx context.Context) (*gorillaws.Connection, error) {
@@ -63,7 +65,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	t.Helper()
 
 	server := fakesdb.NewServer("127.0.0.1:0")
-	server.TokenSignIn = "test_token_signin"
+	server.TokenSignIn = testTokenSignIn
 
 	var selectCount int32
 	var retryRequired bool
@@ -237,7 +239,7 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 	// by using a non-reconnecting client
 
 	server := fakesdb.NewServer("127.0.0.1:0")
-	server.TokenSignIn = "test_token_signin"
+	server.TokenSignIn = testTokenSignIn
 
 	// Drop connection on 2nd request
 	var selectCount int32
