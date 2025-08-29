@@ -187,12 +187,12 @@ func ExampleLive() {
 		panic("Timeout waiting for all notifications")
 	}
 
+	fmt.Println("Live query being terminated")
+
 	err = surrealdb.Kill(ctx, db, live.String())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to kill live query: %v", err))
 	}
-
-	fmt.Println("Live query terminated")
 
 	select {
 	case <-done:
@@ -209,7 +209,7 @@ func ExampleLive() {
 	// User updated
 	// Received notification - Action: DELETE, Result: {email=alice.updated@example.com id=users:⟨UUID⟩}
 	// User deleted
-	// Live query terminated
+	// Live query being terminated
 	// Notification channel closed
 	// Goroutine exited after channel closed
 }
