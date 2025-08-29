@@ -17,6 +17,8 @@ type PatchData struct {
 	Value any    `json:"value"`
 }
 
+// QueryResult is a struct that represents one of the results
+// of a SurrealDB query RPC method call, made via [Query], for example.
 type QueryResult[T any] struct {
 	Status string      `json:"status"`
 	Time   string      `json:"time"`
@@ -81,8 +83,10 @@ type Auth struct {
 	Password  string `json:"pass,omitempty"`
 }
 
+// Deprecated: Use map[string]any instead
 type Obj map[any]any
 
+// Deprecated: Use [RPCResponse] instead.
 type Result[T any] struct {
 	T any
 }

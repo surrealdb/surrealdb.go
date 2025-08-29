@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/example"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -48,7 +49,7 @@ func main() {
 	}(token)
 
 	// Create an entry
-	person1, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
+	person1, err := surrealdb.Create[example.Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
 		"Name":     "John",
 		"Surname":  "Doe",
 		"Location": models.NewGeometryPoint(-0.11, 22.00),
@@ -59,7 +60,7 @@ func main() {
 	fmt.Printf("Created person with a map: %+v\n", person1)
 
 	// Or use structs
-	person2, err := surrealdb.Create[Person](context.Background(), db, models.Table("persons"), Person{
+	person2, err := surrealdb.Create[example.Person](context.Background(), db, models.Table("persons"), example.Person{
 		Name:     "John",
 		Surname:  "Doe",
 		Location: models.NewGeometryPoint(-0.11, 22.00),
@@ -70,7 +71,7 @@ func main() {
 	fmt.Printf("Created person with a struvt: %+v\n", person2)
 
 	// Get entry by Record ID
-	person, err := surrealdb.Select[PersonWithCustomID, models.RecordID](context.Background(), db, *person1.ID)
+	person, err := surrealdb.Select[example.PersonWithCustomID, models.RecordID](context.Background(), db, *person1.ID)
 	if err != nil {
 		panic(err)
 	}
@@ -82,24 +83,24 @@ func main() {
 	fmt.Printf("Selected a person by record id (in JSON with custom ID JSON encoder): %s\n", string(personInJSON))
 
 	// Or retrieve the entire table
-	persons, err := surrealdb.Select[[]Person, models.Table](context.Background(), db, models.Table("persons"))
+	persons, err := surrealdb.Select[[]example.Person, models.Table](context.Background(), db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("Selected all in persons table: %+v\n", persons)
 
 	// Delete an entry by ID
-	if _, err = surrealdb.Delete[Person](context.Background(), db, *person2.ID); err != nil {
+	if _, err = surrealdb.Delete[example.Person](context.Background(), db, *person2.ID); err != nil {
 		panic(err)
 	}
 
 	// Delete all entries
-	if _, err = surrealdb.Delete[[]Person](context.Background(), db, models.Table("persons")); err != nil {
+	if _, err = surrealdb.Delete[[]example.Person](context.Background(), db, models.Table("persons")); err != nil {
 		panic(err)
 	}
 
 	// Confirm empty table
-	persons, err = surrealdb.Select[[]Person](context.Background(), db, models.Table("persons"))
+	persons, err = surrealdb.Select[[]example.Person](context.Background(), db, models.Table("persons"))
 	if err != nil {
 		panic(err)
 	}
