@@ -1,4 +1,4 @@
-package main
+package surrealdb_test
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-func ExampleDB_send_select() {
+// Send can be used to any SurrealDB RPC method including "select".
+func ExampleSend_select() {
 	db := testenv.MustNew("surrealdbexamples", "update", "person")
 
 	type Person struct {
