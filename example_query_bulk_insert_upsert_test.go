@@ -14,7 +14,7 @@ import (
 // with specifying RETURN NONE to avoid unnecessary data transfer and decoding.
 //
 //nolint:funlen
-func ExampleQuery_bluk_insert_upsert() {
+func ExampleQuery_bulk_insert_upsert() {
 	db := testenv.MustNew("surrealdbexamples", "query", "persons")
 
 	/// You can make it a schemaful table by defining fields like this:

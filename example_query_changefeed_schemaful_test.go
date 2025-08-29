@@ -8,12 +8,12 @@ import (
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
-// ExampleQuery_changeFeedSchemaful demonstrates how to use Change Feeds with a schemaful table in SurrealDB.
+// ExampleQuery_changeFeedSchemafull demonstrates how to use Change Feeds with a schemaful table in SurrealDB.
 // This example shows how to define a table with schema enforcement, define required fields,
 // and track changes made to records that must conform to the schema.
 //
 //nolint:gocyclo
-func ExampleQuery_changeFeedSchemaful() {
+func ExampleQuery_changeFeedSchemafull() {
 	// Connect to database
 	db := testenv.MustNew("surrealdbexamples", "changefeed_schemaful", "inventory")
 
