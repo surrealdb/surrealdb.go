@@ -109,7 +109,7 @@ func ExampleInsert_table() {
 	// Selected person: {Fourth {2023-10-01 12:00:00 +0000 UTC} <nil>}
 }
 
-func ExampleInsert_bulk_isnert_record() {
+func ExampleInsert_bulk_insert_record() {
 	db := testenv.MustNew("surrealdbexamples", "query", "person")
 
 	type Person struct {
