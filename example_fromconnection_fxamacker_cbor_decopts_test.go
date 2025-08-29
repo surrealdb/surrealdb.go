@@ -1,4 +1,4 @@
-package main
+package surrealdb_test
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// ExampleCborUnmarshaler_DecOptions_defaultLimit demonstrates that the default
+// ExampleFromConnection_cborUnmarshaler_decOptions_defaultLimit demonstrates that the default
 // CBOR decoder configuration works fine with small arrays that are well within
 // the default limit of 131,072 elements.
-func ExampleCborUnmarshaler_DecOptions_defaultLimit() {
+func ExampleFromConnection_cborUnmarshaler_decOptions_defaultLimit() {
 	// Parse the SurrealDB WebSocket URL
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
 	if err != nil {
@@ -67,10 +67,10 @@ func ExampleCborUnmarshaler_DecOptions_defaultLimit() {
 	// Successfully retrieved record with 10 items
 }
 
-// ExampleCborUnmarshaler_DecOptions_customSmallLimit demonstrates what happens
+// ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit demonstrates what happens
 // when a custom MaxArrayElements limit is set too low and the actual data
 // exceeds that limit. The unmarshal operation fails with a clear error message.
-func ExampleCborUnmarshaler_DecOptions_customSmallLimit() {
+func ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit() {
 	// Parse the SurrealDB WebSocket URL
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
 	if err != nil {

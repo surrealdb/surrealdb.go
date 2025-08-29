@@ -1,4 +1,4 @@
-package main
+package surrealdb_test
 
 import (
 	"context"
@@ -13,9 +13,11 @@ import (
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
-// Example_surrealCBOR demonstrates how to use SurrealCBOR with SurrealDB Go SDK
-// for efficient binary serialization.
-func ExampleFromConnection_surrealCBOR() {
+// FromConnection can take any connection.Connection implementation with
+// a custom connection.Config that can be used to specify a CBOR marshaler and unmarshaler.
+// This SDK has two built-in CBOR implementations: fxamacker/cbor-based one and the newer surrealcbor.
+// surrealcbor is a more efficient and feature-rich implementation that is recommended for new projects.
+func ExampleFromConnection_alternativeCBORImpl_surrealCBOR() {
 	conf := connection.NewConfig(testenv.MustParseSurrealDBWSURL())
 	// To enable surrealcbor, instantiate the codec
 	// and set it as the marshaler and unmarshaler.

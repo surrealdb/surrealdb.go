@@ -1,4 +1,4 @@
-package main
+package surrealdb_test
 
 import (
 	"context"
@@ -11,7 +11,9 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 )
 
-func ExampleConnection_gws() {
+// FromConnection can take any connection.Connection implementation, including
+// gws.Connection which is based on https://github.com/lxzan/gws.
+func ExampleFromConnection_alternativeWebSocketLibrary_gws() {
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse URL: %v", err))
