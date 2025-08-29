@@ -63,20 +63,24 @@ cd surrealdb.go
 go run ./example
 ```
 
-The `./example` directory contains:
-- `main.go` - A complete working example demonstrating basic CRUD operations
-- Multiple test files (`*_test.go`) - Examples demonstrating various SDK features including:
-  - Query operations and transactions
-  - Relations and graph traversal
-  - Bulk operations (insert, upsert)
-  - Authentication methods
-  - Custom CBOR configuration
-  - And many more use cases
+The `./example` directory contains a complete working example demonstrating basic CRUD operations.
+
+### Testable Examples
+
+Testable example files (`example*_test.go`) demonstrate various SDK features including:
+- Query operations and transactions
+- Relations and graph traversal
+- Bulk operations (insert, upsert)
+- Authentication methods
+- Custom CBOR configuration
+- And many more use cases
 
 You can run any of the example tests with:
 ```sh
-go test -v ./example -run ExampleName
+go test -v ./ -run ExampleName
 ```
+
+If you're viewing this documentation at `pkg.go.dev`, you can view the examples alongside corresponding SDK functions.
 
 ## Executing SurrealQL
 
