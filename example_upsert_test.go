@@ -1,4 +1,4 @@
-package main
+package surrealdb_test
 
 import (
 	"context"
@@ -141,7 +141,7 @@ func ExampleUpsert_unmarshal_error_fxamackercbor() {
 	}
 
 	// Output:
-	// Error: Send: error unmarshaling result: cbor: cannot unmarshal array into Go value of type main.Person (cannot decode CBOR array to struct without toarray option)
+	// Error: Send: error unmarshaling result: cbor: cannot unmarshal array into Go value of type surrealdb_test.Person (cannot decode CBOR array to struct without toarray option)
 	// Error is RPCError: false
 }
 
@@ -180,7 +180,7 @@ func ExampleUpsert_unmarshal_error_surrealcbor() {
 	}
 
 	// Output:
-	// Error: Send: error unmarshaling result: cannot decode array into main.Person
+	// Error: Send: error unmarshaling result: cannot decode array into surrealdb_test.Person
 	// Error is RPCError: false
 }
 
