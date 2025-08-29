@@ -6,6 +6,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.7.0
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/gorilla/websocket v1.5.3
+	github.com/lxzan/gws v1.8.9
 	github.com/stretchr/testify v1.8.4
 )
 
@@ -14,7 +15,6 @@ require (
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
-	github.com/lxzan/gws v1.8.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

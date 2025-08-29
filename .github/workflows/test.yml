@@ -16,72 +16,72 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # v3.0.0-alpha.7 with Go 1.24.1
+          # v3.0.0-alpha.7 with Go 1.25.0
           - surrealdb-version: 'v3.0.0-alpha.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
           - surrealdb-version: 'v3.0.0-alpha.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.3.7 with Go 1.24.1, http
+          # v2.3.7 with Go 1.25.0, http
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.3.7 with Go 1.24.1, http, surrealcbor
+          # v2.3.7 with Go 1.25.0, http, surrealcbor
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
             surrealdb-cbor-impl: 'surrealcbor'
-          # v2.3.7 with Go 1.24.1, gorilla/websocket
+          # v2.3.7 with Go 1.25.0, gorilla/websocket
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          # v2.3.7 with Go 1.24.1, gorilla/websocket, surrealcbor
+          # v2.3.7 with Go 1.25.0, gorilla/websocket, surrealcbor
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-cbor-impl: 'surrealcbor'
-          # v2.3.7 with Go 1.24.1, gorilla/websocket, reconnection
+          # v2.3.7 with Go 1.25.0, gorilla/websocket, reconnection
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-reconnection-check-interval: '1s'
-          # v2.3.7 with Go 1.24.1,  gws
+          # v2.3.7 with Go 1.25.0,  gws
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
-          # v2.3.7 with Go 1.24.1,  gws, reconnection
+          # v2.3.7 with Go 1.25.0,  gws, reconnection
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
             surrealdb-reconnection-check-interval: '1s'
-          # v2.3.7 with Go 1.23.11
+          # v2.3.7 with Go 1.24.6
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.23.11'
+            go-version: '1.24.6'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
           - surrealdb-version: 'v2.3.7'
-            go-version: '1.23.11'
+            go-version: '1.24.6'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.2.7 with Go 1.24.1
+          # v2.2.7 with Go 1.25.0
           - surrealdb-version: 'v2.2.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
           - surrealdb-version: 'v2.2.7'
-            go-version: '1.24.1'
+            go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
     permissions:

@@ -1,11 +1,13 @@
+GO ?= go
+
 build:
-	go build
+	$(GO) build
 
 clean:
-	go clean -modcache
+	$(GO) clean -modcache
 
 test:
-	go test -v -cover ./...
+	$(GO) test -v -cover ./...
 
 lint:
 	golangci-lint run
