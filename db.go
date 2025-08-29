@@ -58,6 +58,34 @@ func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 // The provided `ctx` is used to cancel the connection attempt if needed,
 // so that you control how long you want to block in case the network is not reliable
 // or any other issues like OS network stack issues/settings/etc.
+//
+// # Connection Engines
+//
+// There are 2 different connection engines you can use to connect to SurrealDb backend. You can do so via Websocket or through HTTP
+// connections
+//
+// # Via WebSocket
+//
+// WebSocket is required when using live queries.
+//
+//	db, err := surrealdb.FromEndpointURLString(ctx, "ws://localhost:8000")
+//
+// or for a secure connection
+//
+//	db, err := surrealdb.FromEndpointURLString(ctx, "wss://localhost:8000")
+//
+// # Via HTTP
+//
+// There are some functions that are not available on RPC when using HTTP but on WebSocket.
+//
+// All these except the "live" endpoint are effectively implemented in the HTTP library and
+// provides the same result as though it is natively available on HTTP.
+//
+//	db, err := surrealdb.FromEndpointURLString(ctx, "http://localhost:8000")
+//
+// or for a secure connection
+//
+//	db, err := surrealdb.FromEndpointURLString(ctx, "https://localhost:8000")
 func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
@@ -223,8 +251,27 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 
 // Send sends a request to the SurrealDB server.
 //
-// It is a wrapper around db.con.Send that is smarter about methods that are allowed to be sent.
-// You usually want to use this method instead of db.con.Send directly.
+// It is a wrapper around [connection.Send], which is used by various RPC methods like
+// [Query], [Insert] and so on.
+//
+// Compared to the original [connection.Send], [Send] is smarter about methods that are allowed to be sent.
+// You usually want to use this function than using [connection.Send] directly.
+//
+// This function is limited to a selected set of RPC methods listed below:
+//
+// - select
+// - create
+// - insert
+// - insert_relation
+// - kill
+// - live
+// - merge
+// - relate
+// - update
+// - upsert
+// - patch
+// - delete
+// - query
 //
 // The `res` needs to be of type `*connection.RPCResponse[T]`.
 //
@@ -282,33 +329,101 @@ func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.U
 
 // Query executes a query against the SurrealDB database.
 //
-// It returns a slice of QueryResult[TResult] where TResult is the type of the result.
+// [Query] supports:
 //
-// If the query fails, the returned error will be a `joinError` created by the `errors.Join` function,
+//   - Full SurrealQL syntax including transactions
+//   - Parameterized queries for security
+//   - Typed results with generics
+//   - Multiple statements in a single call
+//
+// It takes a SurrealQL query to be executed, and the variables to parameterize the query,
+// and returns a slice of [QueryResult] whose type parameter is the result type.
+//
+// # Examples
+//
+// Execute a SurrealQL query with typed results:
+//
+//	results, err := surrealdb.Query[[]Person](
+//	  context.Background(),
+//	  db,
+//	  "SELECT * FROM persons WHERE age > $minAge",
+//	  map[string]any{
+//	      "minAge": 18,
+//	  },
+//	)
+//
+// You can also use Query for transactions with variables:
+//
+//	transactionResults, err := surrealdb.Query[[]any](
+//	  context.Background(),
+//	  db,
+//	  `
+//	  BEGIN TRANSACTION;
+//	  CREATE person:$johnId SET name = $johnName, age = $johnAge;
+//	  CREATE person:$janeId SET name = $janeName, age = $janeAge;
+//	  COMMIT TRANSACTION;
+//	  `,
+//	  map[string]any{
+//	      "johnId": "john",
+//	      "johnName": "John",
+//	      "johnAge": 30,
+//	      "janeId": "jane",
+//	      "janeName": "Jane",
+//	      "janeAge": 25,
+//	  },
+//	)
+//
+// Or use a single CREATE with content variable:
+//
+//	createResult, err := surrealdb.Query[[]Person](
+//	    context.Background(),
+//	    db,
+//	    "CREATE person:$id CONTENT $content",
+//	    map[string]any{
+//			"id": "alice",
+//			"content": map[string]any{
+//				"name": "Alice",
+//				"age": 28,
+//				"city": "New York",
+//			},
+//		},
+//	)
+//
+// # Handling errors
+//
+// If the query fails, the returned error will be a `joinError` created by the [errors.Join] function,
 // which contains all the errors that occurred during the query execution.
-// The caller can check the Error field of each QueryResult to see if the query failed,
-// or check the returned error from the Query function to see if the query failed.
+// The caller can check the Error field of each [QueryResult] to see if the query failed,
+// or check the returned error from the [Query] function to see if the query failed.
 //
-// If the caller wants to handle the query errors, if any, it can check the Error field of each QueryResult,
-// or call errors.Is(err, &QueryError{}) on the returned error to see if it is (or contains) a `QueryError`.
+// If the caller wants to handle the query errors, if any, it can check the Error field of each [QueryResult],
+// or call:
 //
-// If the error is a query error, the caller should NOT retry the query,
+//	errors.Is(err, &surrealdb.QueryError{})
+//
+// on the returned error to see if it is (or contains) a [QueryError].
+//
+// # Query errors are non-retriable
+//
+// If the error is a [QueryError], the caller should NOT retry the query,
 // because the query is already executed and the error is not recoverable,
 // and often times the error is caused by a bug in the query itself.
 //
-// When can you safely retry the query when this function returns an error?
+// # When can you safely retry the query when this function returns an error?
 //
 // Generally speaking, automatic retries make sense only when the error is transient,
 // such as a network error, a timeout, or a server error that is not related to the query itself.
-// In such cases, the caller can retry the query by calling the Query function again.
+// In such cases, the caller can retry the query by calling the [Query] function again.
 //
 // For this function, the caller may retry when the error is:
-//   - RPCError: because we should get a RPC error only when the RPC failed due to anything other than the query error
-//   - constants.ErrTimeout: This means we send the HTTP request or a WebSocket message to SurrealDB in timely manner,
+//   - [RPCError]: because we should get a RPC error only when the RPC failed due to anything other than the query error
+//   - [constants.ErrTimeout]: This means we send the HTTP request or a WebSocket message to SurrealDB in timely manner,
 //     which is often due to temporary network issues or server overload.
 //
+// # What non-retriable errors will Query return?
+//
 // However, if the error is any of the following, the caller should NOT retry the query:
-//   - QueryError: This means the query failed due to a syntax error, a type error, or a logical error in the query itself.
+//   - [QueryError]: This means the query failed due to a syntax error, a type error, or a logical error in the query itself.
 //   - Unmarshal error: This means the response from the server could not be unmarshaled into the expected type,
 //     which is often due to a bug in the code or a mismatch between the expected type and the actual response type.
 //   - Marshal error: This means the request could not be marshaled using CBOR,
@@ -316,13 +431,15 @@ func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.U
 //     SurrealDB, such as a struct with unsupported types.
 //   - Anything else: It's just safer to not retry when we aren't sure if the error is whether transient or permanent.
 //
-// Note that RPCError is retriable only for the `query` RPC method,
-// because in other cases, the RPCError may also indicate a query error.
-// For example, if you tried to insert a duplicate record using the `insert` RPC,
-// you may get an RPCError saying so, which is not retriable.
+// # RPCError is retriable only for Query
 //
-// If you tried to insert using the `query` RPC method with `INSERT` statement,
-// you may get no RPCError, but a QueryError saying so, enabling you to easily diferentiate
+// Note that [RPCError] is retriable only for the [Query] RPC method,
+// because in other cases, the [RPCError] may also indicate a query error.
+// For example, if you tried to insert a duplicate record using the [Insert] RPC,
+// you may get an [RPCError] saying so, which is not retriable.
+//
+// If you tried to insert the same duplicate record using the [Query] RPC method with `INSERT` statement,
+// you may get no [RPCError], but a [QueryError] saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
 func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
 	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", sql, vars)
@@ -459,6 +576,10 @@ func InsertRelation[TResult any](ctx context.Context, db *DB, relationship *Rela
 	return send[TResult](ctx, db, "insert_relation", relationship.Relation, rel)
 }
 
+// QueryRaw composes a query from the provided QueryStmt objects,
+// and execute it using the query RPC method.
+//
+// You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
 func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 	preparedQuery := ""
 	parameters := map[string]any{}
