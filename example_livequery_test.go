@@ -428,12 +428,12 @@ func ExampleLive_withDiff() {
 		panic("Timeout waiting for all notifications")
 	}
 
+	fmt.Println("Live query with diff being terminated")
+
 	err = surrealdb.Kill(ctx, db, live.String())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to kill live query: %v", err))
 	}
-
-	fmt.Println("Live query with diff terminated")
 
 	select {
 	case <-done:
@@ -447,7 +447,7 @@ func ExampleLive_withDiff() {
 	// Action: CREATE, Result: [{op=replace path=/ value={id=inventory:⟨UUID⟩ name=Screwdriver quantity=50}}]
 	// Action: UPDATE, Result: [{op=remove path=/name} {op=replace path=/quantity value=45}]
 	// Action: DELETE, Result: {id=inventory:⟨UUID⟩ quantity=45}
-	// Live query with diff terminated
+	// Live query with diff being terminated
 	// Notification channel closed
 	// Goroutine exited after channel closed
 }
