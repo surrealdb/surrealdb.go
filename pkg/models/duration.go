@@ -32,6 +32,13 @@ func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	s := totalNS / constants.OneSecondToNanoSecond
 	ns := totalNS % constants.OneSecondToNanoSecond
 
+	// Note that we don't optimize for size here,
+	// even though the SurrealDB CBOR Protocol include these optimization options:
+	// - Empty array for zero duration
+	// - Single element for whole seconds
+	// - Two elements when nanoseconds are present
+	// Related: https://surrealdb.com/docs/surrealdb/integration/cbor#tag-14
+
 	return cbor.Marshal(cbor.Tag{
 		Number:  TagCustomDuration,
 		Content: [2]int64{s, ns},
@@ -48,12 +55,17 @@ func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDuration)
 	}
 
+	// Note that we intentionally use [2]int64 instead of []int64.
+	// The SurrealDB CBOR Protocol specifies that all or the second element(s)
+	// can be omitted, and [2]int64 handles those cases gracefully.
 	var temp [2]int64
 	err := cbor.Unmarshal(data, &temp)
 	if err != nil {
 		return err
 	}
 
+	// ns can be omitted, which in case ns is considered 0.
+	// Even both s and ns can be omitted, which means the duration is 0.
 	s := temp[0]
 	ns := temp[1]
 

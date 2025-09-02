@@ -46,10 +46,9 @@ func TestDecode_incompatibleType(t *testing.T) {
 
 		var s string
 		err := Unmarshal(data, &s)
-		// Our decoder currently allows float to string (gets zero value)
-		// This is a limitation we can document
-		require.NoError(t, err)
-		assert.Equal(t, "", s)
+		// Our decoder returns an error for type mismatch
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot unmarshal CBOR float32 into Go value of type string")
 	})
 
 	t.Run("decode array to non-array type", func(t *testing.T) {
