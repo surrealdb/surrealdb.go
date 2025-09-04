@@ -11,7 +11,7 @@ type GeometryPoint struct {
 	Latitude  float64
 }
 
-func NewGeometryPoint(latitude, longitude float64) GeometryPoint {
+func NewGeometryPoint(longitude, latitude float64) GeometryPoint {
 	return GeometryPoint{
 		Longitude: longitude, Latitude: latitude,
 	}
