@@ -8,9 +8,32 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+// RecordID represents a SurrealDB record ID
+//
+// A record ID consists of a table name and an identifier,
+// allowing for a simple and consistent way to reference records across the database.
+//
+// Record IDs are used to uniquely identify records within a table, to query, update,
+// and delete records, and serve as links from one record to another.
+//
+// Do not conflate RecordID with a plain string representation of a record ID,
+// which is typically formatted as "<table>:<identifier>" (e.g., "user:12345").
+//
+// ":" is not a reserved character in SurrealQL, and it's possible to have table names or IDs containing ":",
+// in which case it's string representation can look like:
+//
+//	`foo:`:[1,2,{a:3}]
+//
+// The use of RecordID struct helps to avoid ambiguity and ensures that
+// the table and identifier components are always clearly defined and separated.
+//
+// See https://surrealdb.com/docs/surrealql/datamodel/ids for details.
 type RecordID struct {
+	// Table is the name of the table this record belongs to.
+	// It must be a non-empty string.
 	Table string
-	ID    any
+	// ID can be of type whose value can be marshaled as a CBOR value that SurrealDB accepts.
+	ID any
 }
 
 type RecordIDType interface {

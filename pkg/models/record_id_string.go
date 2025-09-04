@@ -58,9 +58,7 @@ func needsEscaping(s string) bool {
 
 // String returns the string representation of the RecordID with proper escaping.
 //
-// The ID part is escaped following the Rust EscapeRid logic:
-//
-//	https://github.com/surrealdb/surrealdb/blob/2564e686ff8236c9ebda4f755f9913a802ff9f0f/crates/core/src/sql/escape.rs#L89-L105
+// The ID part is escaped following the [Rust EscapeRid logic].
 //
 // This implementation assumes ACCESSIBLE_OUTPUT is always false, using angle brackets ⟨⟩
 //
@@ -72,6 +70,8 @@ func needsEscaping(s string) bool {
 //
 // We aren't sure if it worth to implement the same escaping and formatting logic as in Rust,
 // so we just use a simple string representation for now.
+//
+// [Rust EscapeRid logic]: https://github.com/surrealdb/surrealdb/blob/v3.0.0-alpha.7/crates/core/src/sql/escape.rs#L89-L102
 func (r *RecordID) String() string {
 	// Format ID with escaping if needed
 	idStr := fmt.Sprintf("%v", r.ID)

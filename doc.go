@@ -11,6 +11,9 @@
 // The [surrealdb] package facilitates communication between client and the backend service using the Concise
 // Binary Object Representation (CBOR) format.
 //
+// The most commonly used data type is [models.RecordID], which represents a SurrealDB record identifier which is a pair of
+// table name and an identifier within that table.
+//
 // For more information on CBOR and how it relates to SurrealDB's
 // data models, please refer to the [github.com/surrealdb/surrealdb.go/pkg/models] package.
 //
