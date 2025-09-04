@@ -7,13 +7,13 @@ import (
 )
 
 type GeometryPoint struct {
-	Latitude  float64
 	Longitude float64
+	Latitude  float64
 }
 
 func NewGeometryPoint(latitude, longitude float64) GeometryPoint {
 	return GeometryPoint{
-		Latitude: latitude, Longitude: longitude,
+		Longitude: longitude, Latitude: latitude,
 	}
 }
 
