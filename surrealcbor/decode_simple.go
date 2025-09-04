@@ -61,6 +61,9 @@ func (d *decoder) decodeFloat16(v reflect.Value) error {
 		v.SetFloat(float64(f))
 	} else if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
+	} else if v.CanSet() {
+		// Return error for type mismatch instead of silently ignoring
+		return fmt.Errorf("cannot unmarshal CBOR float16 into Go value of type %v", v.Type())
 	}
 	return nil
 }
@@ -109,6 +112,9 @@ func (d *decoder) decodeFloat32(v reflect.Value) error {
 		v.SetFloat(float64(f))
 	} else if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
+	} else if v.CanSet() {
+		// Return error for type mismatch instead of silently ignoring
+		return fmt.Errorf("cannot unmarshal CBOR float32 into Go value of type %v", v.Type())
 	}
 	return nil
 }
@@ -125,6 +131,9 @@ func (d *decoder) decodeFloat64(v reflect.Value) error {
 		v.SetFloat(f)
 	} else if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
+	} else if v.CanSet() {
+		// Return error for type mismatch instead of silently ignoring
+		return fmt.Errorf("cannot unmarshal CBOR float64 into Go value of type %v", v.Type())
 	}
 	return nil
 }

@@ -61,7 +61,7 @@ func (d *decoder) decodeCoreTag(tagNum uint64, v reflect.Value) error {
 		return d.decodeDateTimeTag(v)
 	case models.TagStringDuration: // CustomDurationString (Tag 13)
 		return d.decodeStringDurationTag(v)
-	case models.TagCustomDuration: // CustomDuration
+	case models.TagCustomDuration: // CustomDuration (Tag 14)
 		return d.decodeCustomDurationTag(v)
 	case models.TagFuture: // Future
 		return d.decodeFutureTag(v)
@@ -240,24 +240,15 @@ func (d *decoder) decodeRecordIDTag(v reflect.Value) error {
 }
 
 func (d *decoder) decodeCustomDurationTag(v reflect.Value) error {
-	// CustomDuration is encoded as [seconds, nanoseconds]
-	var arr []any
+	// Per SurrealDB spec:
+	// - CustomDuration is encoded as [optional seconds, optional nanoseconds]
+	// - Empty array represents duration of 0
+	var arr [2]int64
 	if err := d.decodeValue(reflect.ValueOf(&arr).Elem()); err != nil {
 		return fmt.Errorf("failed to decode duration array: %w", err)
 	}
-	if len(arr) != 2 {
-		return fmt.Errorf("invalid duration array length: %d", len(arr))
-	}
 
-	// Convert elements to int64
-	seconds, err := toInt64(arr[0], "duration seconds")
-	if err != nil {
-		return err
-	}
-	nanoseconds, err := toInt64(arr[1], "duration nanoseconds")
-	if err != nil {
-		return err
-	}
+	seconds, nanoseconds := arr[0], arr[1]
 
 	duration := time.Duration(seconds*int64(time.Second) + nanoseconds)
 
