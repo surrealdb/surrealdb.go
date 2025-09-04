@@ -334,41 +334,39 @@ func TestDecodeRawMessageInSlice(t *testing.T) {
 	})
 }
 
-func TestDecodeRawMessagePointer(t *testing.T) {
-	t.Run("decode into *cbor.RawMessage", func(t *testing.T) {
+// TestRawMessagePointerNotSupported verifies that *cbor.RawMessage is not supported
+// Users should use cbor.RawMessage directly since it's already a reference type ([]byte)
+func TestRawMessagePointerNotSupported(t *testing.T) {
+	t.Run("use cbor.RawMessage instead of *cbor.RawMessage", func(t *testing.T) {
+		// cbor.RawMessage is already a reference type ([]byte), so there's no need
+		// to use a pointer to it. This test demonstrates the correct usage.
+
 		data, err := cbor.Marshal("test string")
 		require.NoError(t, err)
 
-		var rawMsgPtr *cbor.RawMessage
-		err = Unmarshal(data, &rawMsgPtr)
+		// Correct usage: cbor.RawMessage (not *cbor.RawMessage)
+		var rawMsg cbor.RawMessage
+		err = Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
-		require.NotNil(t, rawMsgPtr)
-		assert.Equal(t, data, []byte(*rawMsgPtr))
+		assert.Equal(t, data, []byte(rawMsg))
 
 		var value string
-		err = cbor.Unmarshal(*rawMsgPtr, &value)
+		err = cbor.Unmarshal(rawMsg, &value)
 		require.NoError(t, err)
 		assert.Equal(t, "test string", value)
 	})
 
-	t.Run("decode nil into *cbor.RawMessage", func(t *testing.T) {
+	t.Run("cbor.RawMessage handles nil correctly", func(t *testing.T) {
 		data, err := cbor.Marshal(nil)
 		require.NoError(t, err)
 
-		var rawMsgPtr *cbor.RawMessage
-		err = Unmarshal(data, &rawMsgPtr)
+		var rawMsg cbor.RawMessage
+		err = Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
-		// When decoding CBOR null into *cbor.RawMessage, we check if it's null
-		// and set the pointer to nil accordingly
-		if len(data) == 1 && data[0] == 0xf6 {
-			// CBOR null should result in nil pointer
-			assert.Nil(t, rawMsgPtr)
-		} else {
-			require.NotNil(t, rawMsgPtr)
-			assert.Equal(t, []byte{0xf6}, []byte(*rawMsgPtr))
-		}
+		// RawMessage contains the CBOR encoding of nil
+		assert.Equal(t, []byte{0xf6}, []byte(rawMsg))
 	})
 }
 

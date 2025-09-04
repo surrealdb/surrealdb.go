@@ -33,8 +33,9 @@ func TestDecode_recordID(t *testing.T) {
 
 		var rid models.RecordID
 		err := Unmarshal(enc, &rid)
-		// Should handle gracefully
-		require.NoError(t, err)
+		// Should return error for invalid array length
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid RecordID format")
 	})
 
 	t.Run("decode recordid tag with non-array", func(t *testing.T) {

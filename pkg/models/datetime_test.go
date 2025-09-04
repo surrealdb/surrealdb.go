@@ -39,7 +39,7 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 			t.Run("UnmarshalCBOR", func(t *testing.T) {
 				var dt CustomDateTime
 				require.NoError(t, dt.UnmarshalCBOR(data))
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 
 			t.Run("cbor.Marshal", func(t *testing.T) {
@@ -52,7 +52,7 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 				var dt CustomDateTime
 				err = cbor.Unmarshal(data, &dt)
 				require.NoError(t, err)
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 
 			t.Run("CborEncoder.Marshal", func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 				var dt CustomDateTime
 				err = getCborDecoder().Unmarshal(data, &dt)
 				require.NoError(t, err)
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 
 			t.Run("CborDecoder.Unmarshal to time.Time", func(t *testing.T) {
@@ -78,14 +78,14 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 				var dt any
 				err = getCborDecoder().Unmarshal(data, &dt)
 				require.NoError(t, err)
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 
 			t.Run("CborUnmarshaler.Unmarshal to CustomDateTime", func(t *testing.T) {
 				var dt CustomDateTime
 				err = (&CborUnmarshaler{}).Unmarshal(data, &dt)
 				require.NoError(t, err)
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 
 			t.Run("CborUnmarshaler.Unmarshal to time.Time", func(t *testing.T) {
@@ -100,7 +100,7 @@ func TestDateTime_cbor_roundtrip(t *testing.T) {
 				var dt any
 				err = (&CborUnmarshaler{}).Unmarshal(data, &dt)
 				require.NoError(t, err)
-				assert.Equal(t, toLocal(tc.dt), dt)
+				assert.Equal(t, toUTC(tc.dt), dt)
 			})
 		})
 	}
@@ -125,9 +125,10 @@ func TestDateTime_cbor_local_time(t *testing.T) {
 		t.Fatalf("failed to unmarshal CustomDateTime: %v", err)
 	}
 
-	assert.Equal(t, customDT, decoded, "unmarshaled CustomDateTime does not match original")
+	// Since SurrealDB stores times in UTC, the unmarshaled time will be in UTC
+	assert.Equal(t, CustomDateTime{Time: localTime.UTC()}, decoded, "unmarshaled CustomDateTime does not match original converted to UTC")
 }
 
-func toLocal(dt CustomDateTime) CustomDateTime {
-	return CustomDateTime{Time: dt.In(time.Local)}
+func toUTC(dt CustomDateTime) CustomDateTime {
+	return CustomDateTime{Time: dt.In(time.UTC)}
 }

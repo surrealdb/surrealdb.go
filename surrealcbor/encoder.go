@@ -66,6 +66,9 @@ type Encoder struct {
 
 // Encode writes the CBOR encoding of v to the stream
 func (enc *Encoder) Encode(v any) error {
+	// Use fxamacker/cbor marshaling which automatically handles:
+	// - Types implementing cbor.Marshaler (including our Marshaler interface)
+	// - Built-in types and registered tags
 	data, err := enc.em.Marshal(v)
 	if err != nil {
 		return err
