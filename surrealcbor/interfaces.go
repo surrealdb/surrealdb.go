@@ -142,4 +142,3 @@ type Unmarshaler interface {
 type Marshaler interface {
 	MarshalCBOR() ([]byte, error)
 }
-

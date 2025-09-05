@@ -75,4 +75,3 @@ func Example_customUnmarshalCBOR() {
 	// Processed: Hello, World!
 	// Hello, World!
 }
-

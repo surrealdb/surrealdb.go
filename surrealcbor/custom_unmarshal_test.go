@@ -321,4 +321,3 @@ func TestCustomUnmarshalFallback(t *testing.T) {
 
 	assert.Equal(t, testData, decoded)
 }
-
