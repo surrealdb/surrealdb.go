@@ -22,27 +22,30 @@ func canImplementUnmarshaler(t reflect.Type) bool {
 		t = t.Elem()
 	}
 
-	// Primitive types and built-in types can't have methods
-	switch t.Kind() {
-	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64, reflect.String:
-		return false
-	case reflect.Slice:
-		// []byte and []any can't have methods
-		elem := t.Elem()
-		if elem.Kind() == reflect.Uint8 || elem.Kind() == reflect.Interface {
+	// Named types can have methods, even if their underlying type is a primitive
+	// Only skip if it's an unnamed primitive type
+	if t.PkgPath() == "" { // unnamed type
+		switch t.Kind() {
+		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64, reflect.String:
+			return false
+		case reflect.Slice:
+			// []byte and []any can't have methods
+			elem := t.Elem()
+			if elem.Kind() == reflect.Uint8 || elem.Kind() == reflect.Interface {
+				return false
+			}
+		case reflect.Map:
+			// Maps can't have methods
+			return false
+		case reflect.Interface:
+			// Interfaces themselves don't implement UnmarshalCBOR
 			return false
 		}
-	case reflect.Map:
-		// Maps can't have methods
-		return false
-	case reflect.Interface:
-		// Interfaces themselves don't implement UnmarshalCBOR
-		return false
 	}
 
-	// Structs, arrays, and other types might implement it
+	// Named types and structs might implement it
 	return true
 }
 
