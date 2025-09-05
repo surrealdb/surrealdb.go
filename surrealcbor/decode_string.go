@@ -69,45 +69,6 @@ func (d *decoder) decodeStringBytes() ([]byte, error) {
 	return bytes, nil
 }
 
-// decodeStringDirect decodes a CBOR text string directly without using reflect.Value
-// This avoids allocations when we just need the string value itself.
-//
-// That said, this is a better alternative to:
-//
-//	decodeValue(reflect.ValueOf(&key).Elem())
-func (d *decoder) decodeStringDirect() (string, error) {
-	// Check major type
-	if d.pos >= len(d.data) {
-		return "", io.EOF
-	}
-
-	majorType := d.data[d.pos] >> 5
-	if majorType != 3 { // Text string
-		return "", fmt.Errorf("expected text string (major type 3), got major type %d", majorType)
-	}
-
-	// Check for indefinite length
-	if d.data[d.pos]&0x1f == 31 {
-		d.pos++ // Skip the indefinite length marker
-		return d.decodeIndefiniteStringDirect()
-	}
-
-	var strLen int
-	err := d.readStringLength(&strLen)
-	if err != nil {
-		return "", err
-	}
-
-	remaining := len(d.data) - d.pos
-	if remaining < strLen {
-		return "", io.ErrUnexpectedEOF
-	}
-	str := string(d.data[d.pos : d.pos+strLen])
-	d.pos += strLen
-
-	return str, nil
-}
-
 // decodeString decodes a CBOR text string (Major Type 3) into the given reflect.Value.
 // https://www.rfc-editor.org/rfc/rfc8949.html#section-3.1-2.8
 func (d *decoder) decodeString(v reflect.Value) error {
