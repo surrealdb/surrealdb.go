@@ -28,6 +28,47 @@ func (d *decoder) readStringLength(dst *int) error {
 	return nil
 }
 
+// decodeStringBytes returns the bytes of a CBOR text string without allocating.
+// The returned slice is a view into the decoder's buffer and is only valid
+// until the next decode operation. This is useful for temporary operations
+// like field name comparisons where we don't need to retain the string.
+func (d *decoder) decodeStringBytes() ([]byte, error) {
+	// Check major type
+	if d.pos >= len(d.data) {
+		return nil, io.EOF
+	}
+
+	majorType := d.data[d.pos] >> 5
+	if majorType != 3 { // Text string
+		return nil, fmt.Errorf("expected text string (major type 3), got major type %d", majorType)
+	}
+
+	// Check for indefinite length
+	if d.data[d.pos]&0x1f == 31 {
+		// For indefinite strings, we have to allocate
+		d.pos++ // Skip the indefinite length marker
+		str, err := d.decodeIndefiniteStringDirect()
+		return []byte(str), err
+	}
+
+	var strLen int
+	err := d.readStringLength(&strLen)
+	if err != nil {
+		return nil, err
+	}
+
+	remaining := len(d.data) - d.pos
+	if remaining < strLen {
+		return nil, io.ErrUnexpectedEOF
+	}
+
+	// Return borrowed slice - no allocation!
+	bytes := d.data[d.pos : d.pos+strLen]
+	d.pos += strLen
+
+	return bytes, nil
+}
+
 // decodeStringDirect decodes a CBOR text string directly without using reflect.Value
 // This avoids allocations when we just need the string value itself.
 //

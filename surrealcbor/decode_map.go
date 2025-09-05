@@ -100,22 +100,21 @@ func (d *decoder) decodeIndefiniteMapIntoStruct(v reflect.Value) error {
 			break
 		}
 
-		// Decode key (field name)
-		var fieldName string
-		if err := d.decodeValue(reflect.ValueOf(&fieldName).Elem()); err != nil {
+		// Get key bytes without allocating a string
+		keyBytes, err := d.decodeStringBytes()
+		if err != nil {
 			return err
 		}
 
-		// Find the struct field using field resolver
-		field := d.getFieldResolver().FindField(v, fieldName)
+		// Find field using borrowed bytes - no string allocation!
+		field := d.getFieldResolver().FindFieldBytes(v, keyBytes)
 		if field.IsValid() && field.CanSet() {
 			if err := d.decodeValue(field); err != nil {
 				return err
 			}
 		} else {
-			// Skip unknown field value
-			var skip any
-			if err := d.decodeValue(reflect.ValueOf(&skip).Elem()); err != nil {
+			// Skip unknown field value without allocating
+			if err := d.skipCBORItem(); err != nil {
 				return err
 			}
 		}
@@ -199,21 +198,21 @@ func (d *decoder) decodeMapIntoMap(v reflect.Value, length int) error {
 
 func (d *decoder) decodeMapIntoStruct(v reflect.Value, length int) error {
 	for i := 0; i < length; i++ {
-		keyStr, err := d.decodeStringDirect()
+		// Get key bytes without allocating a string
+		keyBytes, err := d.decodeStringBytes()
 		if err != nil {
 			return err
 		}
 
-		// Find field using field resolver
-		field := d.getFieldResolver().FindField(v, keyStr)
+		// Find field using borrowed bytes - no string allocation!
+		field := d.getFieldResolver().FindFieldBytes(v, keyBytes)
 		if field.IsValid() && field.CanSet() {
 			if err := d.decodeValue(field); err != nil {
 				return err
 			}
 		} else {
-			// Skip unknown field
-			var discard any
-			if err := d.decodeValue(reflect.ValueOf(&discard).Elem()); err != nil {
+			// Skip unknown field value without allocating
+			if err := d.skipCBORItem(); err != nil {
 				return err
 			}
 		}

@@ -1,6 +1,7 @@
 package surrealcbor
 
 import (
+	"bytes"
 	"reflect"
 	"strings"
 	"sync"
@@ -13,6 +14,10 @@ type FieldResolver interface {
 	// 2. Exact match on field names
 	// 3. Case-insensitive match on field names
 	FindField(v reflect.Value, name string) reflect.Value
+
+	// FindFieldBytes is like FindField but accepts bytes to avoid string allocation
+	// This is useful when the field name comes from a temporary buffer
+	FindFieldBytes(v reflect.Value, name []byte) reflect.Value
 }
 
 // BasicFieldResolver is the original implementation without caching
@@ -36,6 +41,12 @@ func (r *BasicFieldResolver) FindField(v reflect.Value, name string) reflect.Val
 
 	// Fallback to case-insensitive field name match (only for fields without tags)
 	return r.findFieldByNameCaseInsensitiveNoTag(v, name)
+}
+
+func (r *BasicFieldResolver) FindFieldBytes(v reflect.Value, name []byte) reflect.Value {
+	// For BasicFieldResolver, we just convert to string and use the regular path
+	// This allocates, but BasicFieldResolver is only used as a fallback
+	return r.FindField(v, string(name))
 }
 
 func (r *BasicFieldResolver) findFieldByTag(v reflect.Value, name string) reflect.Value {
@@ -172,7 +183,18 @@ type structFieldsCache struct {
 	// Map from reflect.Type to field information
 	// The inner map is keyed by: tag names, field names, and lowercase field names
 	cache map[reflect.Type]map[string]*fieldInfo
-	mu    sync.RWMutex
+	// Byte lookup map for zero-allocation field resolution
+	// Maps from reflect.Type to a slice of (keyBytes, fieldInfo) pairs
+	byteCache map[reflect.Type][]bytesFieldEntry
+	mu        sync.RWMutex
+}
+
+// bytesFieldEntry stores byte representation of field name for fast comparison
+type bytesFieldEntry struct {
+	keyBytes      []byte     // Byte representation of the key (tag or field name)
+	keyBytesLower []byte     // Lowercase version for case-insensitive matching
+	info          *fieldInfo // Field information
+	isExact       bool       // Whether this requires exact match (tags and explicit field names)
 }
 
 // CachedFieldResolver resolves struct fields with caching
@@ -184,7 +206,8 @@ type CachedFieldResolver struct {
 func NewCachedFieldResolver() FieldResolver {
 	return &CachedFieldResolver{
 		cache: &structFieldsCache{
-			cache: make(map[reflect.Type]map[string]*fieldInfo),
+			cache:     make(map[reflect.Type]map[string]*fieldInfo),
+			byteCache: make(map[reflect.Type][]bytesFieldEntry),
 		},
 	}
 }
@@ -204,6 +227,31 @@ func (r *CachedFieldResolver) FindField(v reflect.Value, name string) reflect.Va
 	nameLower := strings.ToLower(name)
 	if info, ok := fieldMap["~"+nameLower]; ok { // Using ~ prefix for case-insensitive keys
 		return fieldByIndex(v, info.index)
+	}
+
+	return reflect.Value{}
+}
+
+func (r *CachedFieldResolver) FindFieldBytes(v reflect.Value, name []byte) reflect.Value {
+	t := v.Type()
+
+	// Get or build the byte cache for this type
+	byteEntries := r.cache.getOrBuildByteCache(t)
+
+	// Try exact match first (tags and field names)
+	for i := range byteEntries {
+		entry := &byteEntries[i]
+		if entry.isExact && bytesEqual(entry.keyBytes, name) {
+			return fieldByIndex(v, entry.info.index)
+		}
+	}
+
+	// Try case-insensitive field name match
+	for i := range byteEntries {
+		entry := &byteEntries[i]
+		if !entry.isExact && bytesEqualFold(entry.keyBytes, name) {
+			return fieldByIndex(v, entry.info.index)
+		}
 	}
 
 	return reflect.Value{}
@@ -290,4 +338,101 @@ func (c *structFieldsCache) buildFieldMap(t reflect.Type, parentIndex []int) map
 	}
 
 	return fieldMap
+}
+
+// bytesEqual compares two byte slices for equality
+func bytesEqual(a, b []byte) bool {
+	return bytes.Equal(a, b)
+}
+
+// bytesEqualFold compares two byte slices case-insensitively
+func bytesEqualFold(a, b []byte) bool {
+	return bytes.EqualFold(a, b)
+}
+
+// getOrBuildByteCache returns the byte cache for a type, building it if necessary
+func (c *structFieldsCache) getOrBuildByteCache(t reflect.Type) []bytesFieldEntry {
+	c.mu.RLock()
+	entries, ok := c.byteCache[t]
+	c.mu.RUnlock()
+
+	if ok {
+		return entries
+	}
+
+	// Build the byte cache
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Double-check in case another goroutine built it
+	if e, ok := c.byteCache[t]; ok {
+		return e
+	}
+
+	// First ensure the string cache is built
+	fieldMap := c.cache[t]
+	if fieldMap == nil {
+		fieldMap = c.buildFieldMap(t, nil)
+		c.cache[t] = fieldMap
+	}
+
+	// Build byte entries from the field map
+	entries = c.buildByteEntries(fieldMap)
+	c.byteCache[t] = entries
+	return entries
+}
+
+// buildByteEntries builds byte entries from a field map
+func (c *structFieldsCache) buildByteEntries(fieldMap map[string]*fieldInfo) []bytesFieldEntry {
+	var entries []bytesFieldEntry
+
+	// Track which fields we've already added to avoid duplicates
+	seen := make(map[*fieldInfo]bool)
+
+	for key, info := range fieldMap {
+		// Skip case-insensitive entries (those starting with ~)
+		if strings.HasPrefix(key, "~") {
+			continue
+		}
+
+		// Skip if we've already processed this field
+		if seen[info] {
+			continue
+		}
+		seen[info] = true
+
+		// If field has a tag, use that as the exact match
+		if info.tagName != "" {
+			entries = append(entries,
+				bytesFieldEntry{
+					keyBytes: []byte(info.tagName),
+					info:     info,
+					isExact:  true,
+				},
+				// Also add case-insensitive version
+				bytesFieldEntry{
+					keyBytes:      []byte(strings.ToLower(info.tagName)),
+					keyBytesLower: []byte(strings.ToLower(info.tagName)),
+					info:          info,
+					isExact:       false,
+				})
+		} else {
+			// No tag, use field name
+			entries = append(entries,
+				bytesFieldEntry{
+					keyBytes: []byte(info.fieldName),
+					info:     info,
+					isExact:  true,
+				},
+				// Also add case-insensitive version
+				bytesFieldEntry{
+					keyBytes:      []byte(strings.ToLower(info.fieldName)),
+					keyBytesLower: []byte(strings.ToLower(info.fieldName)),
+					info:          info,
+					isExact:       false,
+				})
+		}
+	}
+
+	return entries
 }
