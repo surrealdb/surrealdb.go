@@ -14,6 +14,38 @@ import (
 // This is not an actual error condition, just a signal to continue with standard decoding
 var errNoUnmarshaler = fmt.Errorf("no custom unmarshaler found")
 
+// canImplementUnmarshaler checks if a type could possibly implement the Unmarshaler interface
+// This avoids expensive Interface() calls for primitive types that definitely don't implement it
+func canImplementUnmarshaler(t reflect.Type) bool {
+	// Dereference pointer types to check the underlying type
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	// Primitive types and built-in types can't have methods
+	switch t.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.String:
+		return false
+	case reflect.Slice:
+		// []byte and []any can't have methods
+		elem := t.Elem()
+		if elem.Kind() == reflect.Uint8 || elem.Kind() == reflect.Interface {
+			return false
+		}
+	case reflect.Map:
+		// Maps can't have methods
+		return false
+	case reflect.Interface:
+		// Interfaces themselves don't implement UnmarshalCBOR
+		return false
+	}
+
+	// Structs, arrays, and other types might implement it
+	return true
+}
+
 // decoder is our custom CBOR decoder
 type decoder struct {
 	data           []byte
@@ -51,10 +83,13 @@ func (d *decoder) decodeValue(v reflect.Value) error {
 	}
 
 	// Try to use UnmarshalCBOR if the type implements it
-	if err := d.tryUnmarshaler(v); err != errNoUnmarshaler {
-		// errNoUnmarshaler means type doesn't implement Unmarshaler, continue with standard decoding
-		// Any other error (including nil) should be returned
-		return err
+	// Only check if the type could possibly implement it (skip primitives)
+	if canImplementUnmarshaler(v.Type()) {
+		if err := d.tryUnmarshaler(v); err != errNoUnmarshaler {
+			// errNoUnmarshaler means type doesn't implement Unmarshaler, continue with standard decoding
+			// Any other error (including nil) should be returned
+			return err
+		}
 	}
 
 	// Handle pointer types after checking for None/null

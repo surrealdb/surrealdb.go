@@ -6,7 +6,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// Benchmark Results Summary (latest after map key allocation optimization):
+// Benchmark Results Summary:
 //
 // IMPORTANT: The ns/op values below are for RELATIVE COMPARISON between implementations
 // only. They should NOT be used as absolute performance measures since they vary based on:
@@ -17,79 +17,58 @@ import (
 // Use these numbers to compare the relative performance between fxamacker and surrealcbor,
 // not to estimate actual production performance.
 //
-// Performance History:
-//
-// Stage 1 - Original implementation with decodeStringDirect (commit 7df01bc and earlier):
-// The original performance numbers documented below were achieved WITHOUT Unmarshaler support.
-// This was the fastest implementation as it didn't need to check for custom unmarshalers.
-//
-// Stage 2 - After adding Unmarshaler support (commit 7db9e21):
-// Adding support for custom UnmarshalCBOR caused significant regression because tryUnmarshaler
-// was calling .Interface() on EVERY value being decoded, causing reflect.packEface allocations.
-// This represented a 60-80% performance regression from Stage 1.
-//
-// Stage 3 - Optimized implementation (after profiling):
-// - Added canImplementUnmarshaler() to avoid .Interface() calls for primitive types
-// - Fixed decodeIndefiniteMapIntoStruct to use decodeStringDirect
-// - Optimized to check Kind() before PkgPath() (3x faster)
-// - Removed redundant PkgPath() checks in tryUnmarshaler
-// Performance is now very close to Stage 1, some benchmarks are even faster than fxamacker!
-//
 // Current Performance Results (relative comparison):
 //
 // BenchmarkDecoder:
-//   - fxamacker: ~3300 ns/op, 424 B/op, 17 allocs/op
-//   - surrealcbor (Stage 1 - no unmarshaler): ~3000 ns/op, 520 B/op, 30 allocs/op
-//   - surrealcbor (Stage 2 - before optimization): ~4900 ns/op, 1008 B/op, 49 allocs/op
-//   - surrealcbor (Stage 3 - after optimization): ~4300 ns/op, 912 B/op, 35 allocs/op
-//   - Improvement: 14 allocations eliminated (1 per map key), 12% faster, 10% less memory
+//   - fxamacker: 3431 ns/op, 424 B/op, 17 allocs/op
+//   - surrealcbor: 3159 ns/op, 688 B/op, 19 allocs/op
+//   - Note: 8% faster than fxamacker despite having 2 more allocations
 //
 // BenchmarkDecoderNested:
-//   - fxamacker: ~1950 ns/op, 192 B/op, 7 allocs/op
-//   - surrealcbor (Stage 1 - no unmarshaler): ~1700 ns/op, 208 B/op, 15 allocs/op
-//   - surrealcbor (Stage 2 - before optimization): ~3000 ns/op, 536 B/op, 25 allocs/op
-//   - surrealcbor (Stage 3 - after optimization): ~2400 ns/op, 496 B/op, 16 allocs/op
-//   - Improvement: 9 allocations eliminated, 20% faster, 7% less memory
+//   - fxamacker: 1859 ns/op, 192 B/op, 7 allocs/op
+//   - surrealcbor: 1804 ns/op, 408 B/op, 10 allocs/op
 //
 // BenchmarkDecoderEmbedded:
-//   - fxamacker: ~1200 ns/op, 176 B/op, 6 allocs/op
-//   - surrealcbor (Stage 1 - no unmarshaler): ~1065 ns/op, 192 B/op, 10 allocs/op
-//   - surrealcbor (Stage 2 - before optimization): ~2000 ns/op, 352 B/op, 16 allocs/op
-//   - surrealcbor (Stage 3 - after optimization): ~1500 ns/op, 312 B/op, 11 allocs/op
-//   - Improvement: 5 allocations eliminated, 25% faster, 11% less memory
+//   - fxamacker: 1213 ns/op, 176 B/op, 6 allocs/op
+//   - surrealcbor: 1036 ns/op, 240 B/op, 6 allocs/op
 //
 // BenchmarkDecoderLargeSlice:
-//   - fxamacker: ~63000 ns/op, 6600 B/op, 205 allocs/op
-//   - surrealcbor (before optimization): ~105000 ns/op, 16304 B/op, 909 allocs/op
-//   - surrealcbor (after optimization): ~91000 ns/op, 15472 B/op, 607 allocs/op
-//   - Improvement: 302 allocations eliminated, 13% faster, 5% less memory
+//   - fxamacker: 61311 ns/op, 6600 B/op, 205 allocs/op
+//   - surrealcbor: 59554 ns/op, 11456 B/op, 306 allocs/op
 //
 // BenchmarkDecoderMixedTypes:
-//   - fxamacker: ~4100 ns/op, 584 B/op, 14 allocs/op
-//   - surrealcbor (before optimization): ~5700 ns/op, 1160 B/op, 46 allocs/op
-//   - surrealcbor (after optimization): ~5000 ns/op, 1016 B/op, 36 allocs/op
-//   - Improvement: 10 allocations eliminated, 12% faster, 12% less memory
+//   - fxamacker: 4140 ns/op, 584 B/op, 14 allocs/op
+//   - surrealcbor: 3494 ns/op, 784 B/op, 19 allocs/op
 //
 // BenchmarkDecoderCaseInsensitive:
-//   - fxamacker: ~1150 ns/op, 128 B/op, 8 allocs/op
-//   - surrealcbor (before optimization): ~1700 ns/op, 256 B/op, 14 allocs/op
-//   - surrealcbor (after optimization): ~1300 ns/op, 200 B/op, 9 allocs/op
-//   - Improvement: 5 allocations eliminated, 24% faster, 22% less memory
+//   - fxamacker: 1184 ns/op, 128 B/op, 8 allocs/op
+//   - surrealcbor: 933 ns/op, 144 B/op, 5 allocs/op
 //
 // BenchmarkDecoderWithNone:
-//   - surrealcbor only (before optimization): ~2900 ns/op, 704 B/op, 35 allocs/op
-//   - surrealcbor only (after optimization): ~3500 ns/op, 680 B/op, 30 allocs/op
-//   - Improvement: 5 allocations eliminated (note: fxamacker cannot handle None -> nil conversion)
+//   - surrealcbor only: 2401 ns/op, 520 B/op, 20 allocs/op
+//   - Note: fxamacker cannot handle None -> nil conversion
 //
-// Summary of Map Key Optimization:
-// - Eliminated string allocations for all map keys during struct decoding
-// - Uses borrowed byte slices from CBOR buffer for field name comparison
-// - Total allocations reduced by exactly the number of map keys per struct
-// - Performance improvement: 12-25% faster across all benchmarks
-// - Memory usage reduced by 5-22% across all benchmarks
+// Key Techniques (current implementation):
 //
-// Key technique: decodeStringBytes() returns a borrowed slice view into the CBOR
-// buffer, and FindFieldBytes() compares bytes directly without string conversion.
+// 1. Zero-allocation map key matching:
+//    - decodeStringBytes() returns a borrowed slice view into the CBOR buffer
+//    - FindFieldBytes() compares bytes directly without string conversion
+//    - Eliminates one allocation per map key during struct decoding
+//
+// 2. canImplementUnmarshaler() optimization:
+//    - Checks type before attempting Interface() conversion
+//    - Skips primitives (string, int, bool, etc.) that cannot have methods
+//    - Avoids reflect.packEface allocations for types that cannot implement Unmarshaler
+//
+// 3. Cached field resolution:
+//    - CachedFieldResolver pre-computes struct field metadata
+//    - Caches byte representations of field names for direct comparison
+//    - Uses case-insensitive byte comparison without allocation
+//
+// 4. Borrowed slice optimization:
+//    - Map keys are compared as byte slices without creating strings
+//    - Unknown fields are skipped using skipCBORItem() without decoding
+//    - Field resolver uses pre-computed byte slices for comparison
 //
 // To reproduce these benchmarks for comparison on your system:
 //   go test -run=^$ -bench=BenchmarkDecoder -benchmem ./surrealcbor
