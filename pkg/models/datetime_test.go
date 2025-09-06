@@ -129,6 +129,27 @@ func TestDateTime_cbor_local_time(t *testing.T) {
 	assert.Equal(t, CustomDateTime{Time: localTime.UTC()}, decoded, "unmarshaled CustomDateTime does not match original converted to UTC")
 }
 
+func TestDateTime_cbor_extreme_values(t *testing.T) {
+	t.Parallel()
+
+	extremeTimes := []CustomDateTime{
+		{Time: time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)}, // Minimum representable time
+		// 62135596801 is the number of seconds from year 1 to 1970
+		{time.Unix(1<<63-62135596801, 999999999)}, // Maximum representable time
+	}
+
+	for _, original := range extremeTimes {
+		data, err := original.MarshalCBOR()
+		require.NoError(t, err)
+
+		var decoded CustomDateTime
+		err = decoded.UnmarshalCBOR(data)
+		require.NoError(t, err)
+
+		assert.Equal(t, toUTC(original), decoded, "unmarshaled CustomDateTime does not match original")
+	}
+}
+
 func toUTC(dt CustomDateTime) CustomDateTime {
 	return CustomDateTime{Time: dt.In(time.UTC)}
 }

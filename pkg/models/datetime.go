@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
 // CustomDateTime embeds time.Time
@@ -17,7 +16,7 @@ func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	if d.IsZero() {
 		return cbor.Marshal(cbor.Tag{Number: TagNone})
 	}
-	
+
 	s := d.Unix()
 	ns := int64(d.Nanosecond())
 
