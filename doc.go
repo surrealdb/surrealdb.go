@@ -6,6 +6,11 @@
 //
 // Provide a proper SurrealDB endpoint URL to [FromEndpointURLString] so that it chooses the right backend for you.
 //
+// For WebSocket connections that require reliability, consider using [github.com/surrealdb/surrealdb.go/contrib/rews],
+// which provides automatic reconnection with session restoration. This is particularly important because SurrealDB's
+// RPC Protocol over WebSocket is stateful - authentication, namespace/database selection, and live queries must be
+// restored after reconnection.
+//
 // # Data Models
 //
 // The [surrealdb] package facilitates communication between client and the backend service using the Concise
