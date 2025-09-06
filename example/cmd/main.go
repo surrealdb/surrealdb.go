@@ -50,9 +50,12 @@ func main() {
 
 	// Create an entry
 	person1, err := surrealdb.Create[example.Person](context.Background(), db, models.Table("persons"), map[interface{}]interface{}{
-		"Name":     "John",
-		"Surname":  "Doe",
-		"Location": models.NewGeometryPoint(-0.11, 22.00),
+		"Name":    "John",
+		"Surname": "Doe",
+		"Location": models.GeometryPoint{
+			Longitude: 22.00,
+			Latitude:  -0.11,
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -61,9 +64,12 @@ func main() {
 
 	// Or use structs
 	person2, err := surrealdb.Create[example.Person](context.Background(), db, models.Table("persons"), example.Person{
-		Name:     "John",
-		Surname:  "Doe",
-		Location: models.NewGeometryPoint(-0.11, 22.00),
+		Name:    "John",
+		Surname: "Doe",
+		Location: models.GeometryPoint{
+			Longitude: 22.00,
+			Latitude:  -0.11,
+		},
 	})
 	if err != nil {
 		panic(err)

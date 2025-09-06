@@ -162,15 +162,15 @@ func ExampleQuery_bulk_insert_upsert() {
 	// Count   : 1
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}}]
+	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Longitude:12.34 Latitude:45.65}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Longitude:13.34 Latitude:46.65}}]
 	// # INSERT IGNORE INTO
 	// Count   : 1
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}} {ID:persons:p2 Note:inserted2 Num:2 Loc:{Latitude:47.65 Longitude:14.34}}]
+	// Selected: [{ID:persons:p0 Note:inserted0 Num:0 Loc:{Longitude:12.34 Latitude:45.65}} {ID:persons:p1 Note:inserted1 Num:1 Loc:{Longitude:13.34 Latitude:46.65}} {ID:persons:p2 Note:inserted2 Num:2 Loc:{Longitude:14.34 Latitude:47.65}}]
 	// # UPSERT CONTENT
 	// Count   : 4
 	// Status  : OK
 	// Result  : []
-	// Selected: [{ID:persons:p0 Note:updated0 Num:0 Loc:{Latitude:45.65 Longitude:12.34}} {ID:persons:p1 Note:updated1 Num:1 Loc:{Latitude:46.65 Longitude:13.34}} {ID:persons:p2 Note:updated2 Num:2 Loc:{Latitude:47.65 Longitude:14.34}} {ID:persons:p3 Note:inserted3 Num:3 Loc:{Latitude:48.65 Longitude:15.34}}]
+	// Selected: [{ID:persons:p0 Note:updated0 Num:0 Loc:{Longitude:12.34 Latitude:45.65}} {ID:persons:p1 Note:updated1 Num:1 Loc:{Longitude:13.34 Latitude:46.65}} {ID:persons:p2 Note:updated2 Num:2 Loc:{Longitude:14.34 Latitude:47.65}} {ID:persons:p3 Note:inserted3 Num:3 Loc:{Longitude:15.34 Latitude:48.65}}]
 }

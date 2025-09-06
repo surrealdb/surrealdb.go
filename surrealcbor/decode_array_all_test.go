@@ -143,8 +143,14 @@ func TestDecode_array_withAllSupportedTypes(t *testing.T) {
 	uuidVal2, _ := uuid.NewV4()
 	uuid2 := models.UUID{UUID: uuidVal2}
 
-	point1 := models.NewGeometryPoint(37.7749, -122.4194)
-	point2 := models.NewGeometryPoint(40.7128, -74.0060)
+	point1 := models.GeometryPoint{
+		Latitude:  37.7749,
+		Longitude: -122.4194,
+	}
+	point2 := models.GeometryPoint{
+		Latitude:  40.7128,
+		Longitude: -74.0060,
+	}
 
 	duration1 := models.CustomDuration{Duration: time.Hour}
 	duration2 := models.CustomDuration{Duration: time.Hour * 2}

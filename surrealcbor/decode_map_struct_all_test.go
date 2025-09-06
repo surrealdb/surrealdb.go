@@ -231,7 +231,10 @@ func TestDecode_map_structwithAllSupportedTypes_eachWithPointerAndNonPointerVari
 	uuidModel := models.UUID{UUID: uuidVal}
 
 	// Create GeometryPoint
-	geometryPoint := models.NewGeometryPoint(37.7749, -122.4194)
+	geometryPoint := models.GeometryPoint{
+		Longitude: -122.4194,
+		Latitude:  37.7749,
+	}
 
 	// Create CustomDuration
 	customDuration := models.CustomDuration{Duration: time.Hour * 2}
