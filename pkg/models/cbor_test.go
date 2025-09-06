@@ -14,7 +14,10 @@ func TestForGeometryPoint(t *testing.T) {
 	em := getCborEncoder()
 	dm := getCborDecoder()
 
-	gp := NewGeometryPoint(12.23, 45.65)
+	gp := GeometryPoint{
+		Longitude: 45.65,
+		Latitude:  12.23,
+	}
 	encoded, err := em.Marshal(gp)
 	assert.Nil(t, err, "Should not encounter an error while encoding")
 
@@ -42,9 +45,18 @@ func TestForGeometryLine(t *testing.T) {
 	em := getCborEncoder()
 	dm := getCborDecoder()
 
-	gp1 := NewGeometryPoint(12.23, 45.65)
-	gp2 := NewGeometryPoint(23.34, 56.75)
-	gp3 := NewGeometryPoint(33.45, 86.99)
+	gp1 := GeometryPoint{
+		Longitude: 45.65,
+		Latitude:  12.23,
+	}
+	gp2 := GeometryPoint{
+		Longitude: 56.75,
+		Latitude:  23.34,
+	}
+	gp3 := GeometryPoint{
+		Longitude: 86.99,
+		Latitude:  33.45,
+	}
 
 	gl := GeometryLine{gp1, gp2, gp3}
 
@@ -61,9 +73,18 @@ func TestForGeometryPolygon(t *testing.T) {
 	em := getCborEncoder()
 	dm := getCborDecoder()
 
-	gl1 := GeometryLine{NewGeometryPoint(12.23, 45.65), NewGeometryPoint(23.33, 44.44)}
-	gl2 := GeometryLine{GeometryPoint{12.23, 45.65}, GeometryPoint{23.33, 44.44}}
-	gl3 := GeometryLine{NewGeometryPoint(12.23, 45.65), NewGeometryPoint(23.33, 44.44)}
+	gl1 := GeometryLine{
+		GeometryPoint{Longitude: 45.65, Latitude: 12.23},
+		GeometryPoint{Longitude: 44.44, Latitude: 23.33},
+	}
+	gl2 := GeometryLine{
+		GeometryPoint{Longitude: 45.65, Latitude: 12.23},
+		GeometryPoint{Longitude: 44.44, Latitude: 23.33},
+	}
+	gl3 := GeometryLine{
+		GeometryPoint{Longitude: 45.65, Latitude: 12.23},
+		GeometryPoint{Longitude: 44.44, Latitude: 23.33},
+	}
 	gp := GeometryPolygon{gl1, gl2, gl3}
 
 	encoded, err := em.Marshal(gp)
@@ -82,8 +103,17 @@ func TestForRequestPayload(t *testing.T) {
 	params := []any{
 		"SELECT marketing, count() FROM $tb GROUP BY marketing",
 		map[string]any{
-			"tb":              Table("person"),
-			"line":            GeometryLine{NewGeometryPoint(11.11, 22.22), NewGeometryPoint(33.33, 44.44)},
+			"tb": Table("person"),
+			"line": GeometryLine{
+				GeometryPoint{
+					Longitude: 22.22,
+					Latitude:  11.11,
+				},
+				GeometryPoint{
+					Longitude: 44.44,
+					Latitude:  33.33,
+				},
+			},
 			"datetime":        time.Now(),
 			"testNone":        None,
 			"testNil":         nil,

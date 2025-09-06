@@ -11,12 +11,6 @@ type GeometryPoint struct {
 	Latitude  float64
 }
 
-func NewGeometryPoint(longitude, latitude float64) GeometryPoint {
-	return GeometryPoint{
-		Longitude: longitude, Latitude: latitude,
-	}
-}
-
 func (gp *GeometryPoint) GetCoordinates() [2]float64 {
 	return [2]float64{gp.Longitude, gp.Latitude}
 }
