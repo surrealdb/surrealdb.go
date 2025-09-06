@@ -57,36 +57,7 @@ func (d *decoder) decodeIndefiniteMapIntoMap(v reflect.Value) error {
 	if v.IsNil() {
 		v.Set(reflect.MakeMap(v.Type()))
 	}
-
-	keyType := v.Type().Key()
-	elemType := v.Type().Elem()
-
-	for {
-		// Check for break marker (0xFF)
-		if d.pos >= len(d.data) {
-			return io.ErrUnexpectedEOF
-		}
-		if d.data[d.pos] == 0xFF {
-			d.pos++ // Skip break marker
-			break
-		}
-
-		// Decode key
-		key := reflect.New(keyType).Elem()
-		if err := d.decodeValue(key); err != nil {
-			return err
-		}
-
-		// Decode value
-		value := reflect.New(elemType).Elem()
-		if err := d.decodeValue(value); err != nil {
-			return err
-		}
-
-		v.SetMapIndex(key, value)
-	}
-
-	return nil
+	return d.decodeIndefiniteMapItems(v, v.Type().Key(), v.Type().Elem())
 }
 
 func (d *decoder) decodeIndefiniteMapIntoStruct(v reflect.Value) error {
@@ -100,22 +71,21 @@ func (d *decoder) decodeIndefiniteMapIntoStruct(v reflect.Value) error {
 			break
 		}
 
-		// Decode key (field name)
-		var fieldName string
-		if err := d.decodeValue(reflect.ValueOf(&fieldName).Elem()); err != nil {
+		// Get key bytes without allocating a string
+		keyBytes, err := d.decodeStringBytes()
+		if err != nil {
 			return err
 		}
 
-		// Find the struct field using field resolver
-		field := d.getFieldResolver().FindField(v, fieldName)
+		// Find field using borrowed bytes - no string allocation!
+		field := d.getFieldResolver().FindFieldBytes(v, keyBytes)
 		if field.IsValid() && field.CanSet() {
 			if err := d.decodeValue(field); err != nil {
 				return err
 			}
 		} else {
-			// Skip unknown field value
-			var skip any
-			if err := d.decodeValue(reflect.ValueOf(&skip).Elem()); err != nil {
+			// Skip unknown field value without allocating
+			if err := d.skipCBORItem(); err != nil {
 				return err
 			}
 		}
@@ -142,8 +112,18 @@ func (d *decoder) decodeIndefiniteMapIntoInterface(v reflect.Value) error {
 		m = reflect.ValueOf(make(map[string]any))
 	}
 
-	keyType := m.Type().Key()
-	elemType := m.Type().Elem()
+	if err := d.decodeIndefiniteMapItems(m, m.Type().Key(), m.Type().Elem()); err != nil {
+		return err
+	}
+
+	v.Set(m)
+	return nil
+}
+
+// decodeIndefiniteMapItems decodes indefinite map items with reusable reflect.Values
+func (d *decoder) decodeIndefiniteMapItems(m reflect.Value, keyType, elemType reflect.Type) error {
+	// Reuse reflect.Values to avoid allocations in the loop
+	var key, value reflect.Value
 
 	for {
 		// Check for break marker (0xFF)
@@ -155,14 +135,24 @@ func (d *decoder) decodeIndefiniteMapIntoInterface(v reflect.Value) error {
 			break
 		}
 
-		// Decode key
-		key := reflect.New(keyType).Elem()
+		// Create or reset key
+		if !key.IsValid() {
+			key = reflect.New(keyType).Elem()
+		} else {
+			key.SetZero()
+		}
+
+		// Create or reset value
+		if !value.IsValid() {
+			value = reflect.New(elemType).Elem()
+		} else {
+			value.SetZero()
+		}
+
 		if err := d.decodeValue(key); err != nil {
 			return err
 		}
 
-		// Decode value
-		value := reflect.New(elemType).Elem()
 		if err := d.decodeValue(value); err != nil {
 			return err
 		}
@@ -170,7 +160,6 @@ func (d *decoder) decodeIndefiniteMapIntoInterface(v reflect.Value) error {
 		m.SetMapIndex(key, value)
 	}
 
-	v.Set(m)
 	return nil
 }
 
@@ -181,9 +170,24 @@ func (d *decoder) decodeMapIntoMap(v reflect.Value, length int) error {
 	keyType := v.Type().Key()
 	valType := v.Type().Elem()
 
+	// Reuse reflect.Values to avoid allocations in the loop
+	// Only create them once, then reuse by calling SetZero()
+	var key, val reflect.Value
+
 	for i := 0; i < length; i++ {
-		key := reflect.New(keyType).Elem()
-		val := reflect.New(valType).Elem()
+		// Create or reset key
+		if !key.IsValid() {
+			key = reflect.New(keyType).Elem()
+		} else {
+			key.SetZero()
+		}
+
+		// Create or reset value
+		if !val.IsValid() {
+			val = reflect.New(valType).Elem()
+		} else {
+			val.SetZero()
+		}
 
 		if err := d.decodeValue(key); err != nil {
 			return err
@@ -199,21 +203,21 @@ func (d *decoder) decodeMapIntoMap(v reflect.Value, length int) error {
 
 func (d *decoder) decodeMapIntoStruct(v reflect.Value, length int) error {
 	for i := 0; i < length; i++ {
-		keyStr, err := d.decodeStringDirect()
+		// Get key bytes without allocating a string
+		keyBytes, err := d.decodeStringBytes()
 		if err != nil {
 			return err
 		}
 
-		// Find field using field resolver
-		field := d.getFieldResolver().FindField(v, keyStr)
+		// Find field using borrowed bytes - no string allocation!
+		field := d.getFieldResolver().FindFieldBytes(v, keyBytes)
 		if field.IsValid() && field.CanSet() {
 			if err := d.decodeValue(field); err != nil {
 				return err
 			}
 		} else {
-			// Skip unknown field
-			var discard any
-			if err := d.decodeValue(reflect.ValueOf(&discard).Elem()); err != nil {
+			// Skip unknown field value without allocating
+			if err := d.skipCBORItem(); err != nil {
 				return err
 			}
 		}
@@ -234,15 +238,28 @@ func (d *decoder) decodeMapIntoInterface(v reflect.Value, length int) error {
 	keyType := m.Type().Key()
 	elemType := m.Type().Elem()
 
+	// Reuse reflect.Values to avoid allocations in the loop
+	var key, value reflect.Value
+
 	for i := 0; i < length; i++ {
-		// Decode key
-		key := reflect.New(keyType).Elem()
+		// Create or reset key
+		if !key.IsValid() {
+			key = reflect.New(keyType).Elem()
+		} else {
+			key.SetZero()
+		}
+
+		// Create or reset value
+		if !value.IsValid() {
+			value = reflect.New(elemType).Elem()
+		} else {
+			value.SetZero()
+		}
+
 		if err := d.decodeValue(key); err != nil {
 			return err
 		}
 
-		// Decode value
-		value := reflect.New(elemType).Elem()
 		if err := d.decodeValue(value); err != nil {
 			return err
 		}

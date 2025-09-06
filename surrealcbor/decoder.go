@@ -10,6 +10,45 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// errNoUnmarshaler is a sentinel error indicating that no custom unmarshaler was found
+// This is not an actual error condition, just a signal to continue with standard decoding
+var errNoUnmarshaler = fmt.Errorf("no custom unmarshaler found")
+
+// canImplementUnmarshaler checks if a type could possibly implement the Unmarshaler interface
+// This avoids expensive Interface() calls for primitive types that definitely don't implement it
+func canImplementUnmarshaler(t reflect.Type) bool {
+	// Dereference pointer types to check the underlying type
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	// Named types can have methods, even if their underlying type is a primitive
+	// Only skip if it's an unnamed primitive type
+	if t.PkgPath() == "" { // unnamed type
+		switch t.Kind() {
+		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64, reflect.String:
+			return false
+		case reflect.Slice:
+			// []byte and []any can't have methods
+			elem := t.Elem()
+			if elem.Kind() == reflect.Uint8 || elem.Kind() == reflect.Interface {
+				return false
+			}
+		case reflect.Map:
+			// Maps can't have methods
+			return false
+		case reflect.Interface:
+			// Interfaces themselves don't implement UnmarshalCBOR
+			return false
+		}
+	}
+
+	// Named types and structs might implement it
+	return true
+}
+
 // decoder is our custom CBOR decoder
 type decoder struct {
 	data           []byte
@@ -32,17 +71,28 @@ func (d *decoder) decodeValue(v reflect.Value) error {
 		return io.EOF
 	}
 
-	// Don't use UnmarshalCBOR for now - it's too complex to integrate properly
-	// Our decoders handle the types directly
-
-	// Check if target type is cbor.RawMessage
+	// Check if target type is cbor.RawMessage first (needs special raw bytes handling)
+	// Note: cbor.RawMessage is already a reference type ([]byte), so *cbor.RawMessage
+	// is unnecessary and not supported. Users should use cbor.RawMessage directly.
 	if v.Type() == reflect.TypeOf(cbor.RawMessage{}) {
 		return d.decodeRawMessage(v)
 	}
 
-	// Check for special values (null/undefined/None) before handling pointers
+	// Check for special values (null/undefined/None) BEFORE trying UnmarshalCBOR
+	// This is important for pointer types - if the value is nil/null, we shouldn't
+	// try to unmarshal it
 	if isNilValue, err := d.checkAndDecodeNilValue(v); isNilValue {
 		return err
+	}
+
+	// Try to use UnmarshalCBOR if the type implements it
+	// Only check if the type could possibly implement it (skip primitives)
+	if canImplementUnmarshaler(v.Type()) {
+		if err := d.tryUnmarshaler(v); err != errNoUnmarshaler {
+			// errNoUnmarshaler means type doesn't implement Unmarshaler, continue with standard decoding
+			// Any other error (including nil) should be returned
+			return err
+		}
 	}
 
 	// Handle pointer types after checking for None/null
@@ -55,6 +105,66 @@ func (d *decoder) decodeValue(v reflect.Value) error {
 
 	// Decode based on major type
 	return d.decodeByMajorType(v)
+}
+
+// tryUnmarshaler tries to use custom Unmarshaler if the type implements it
+// This is only called after canImplementUnmarshaler returns true,
+// so we already know it's not a primitive or models package type
+func (d *decoder) tryUnmarshaler(v reflect.Value) error {
+	// Handle pointer types specially
+	if v.Kind() == reflect.Pointer {
+		return d.tryUnmarshalerPointer(v)
+	}
+
+	// For non-pointer types, check if address implements Unmarshaler
+	if v.CanAddr() {
+		if unmarshaler, ok := v.Addr().Interface().(Unmarshaler); ok {
+			return d.callUnmarshaler(unmarshaler)
+		}
+	}
+
+	// Check if the value itself implements Unmarshaler (for value receivers)
+	if v.CanInterface() {
+		// Skip nil pointers as they can't unmarshal themselves
+		if v.Kind() != reflect.Pointer || !v.IsNil() {
+			if unmarshaler, ok := v.Interface().(Unmarshaler); ok {
+				return d.callUnmarshaler(unmarshaler)
+			}
+		}
+	}
+
+	return errNoUnmarshaler // Signal that no unmarshaler was found
+}
+
+// tryUnmarshalerPointer handles Unmarshaler for pointer types
+// We already filtered out models package types in canImplementUnmarshaler
+func (d *decoder) tryUnmarshalerPointer(v reflect.Value) error {
+	if v.IsNil() {
+		// Check if the pointed-to type implements Unmarshaler
+		elemType := v.Type().Elem()
+		ptrToElem := reflect.New(elemType)
+		if unmarshaler, ok := ptrToElem.Interface().(Unmarshaler); ok {
+			// Allocate and decode
+			v.Set(ptrToElem)
+			return d.callUnmarshaler(unmarshaler)
+		}
+	} else {
+		// Non-nil pointer, check if it implements Unmarshaler
+		if unmarshaler, ok := v.Interface().(Unmarshaler); ok {
+			return d.callUnmarshaler(unmarshaler)
+		}
+	}
+	return errNoUnmarshaler // Signal that no unmarshaler was found
+}
+
+// callUnmarshaler calls the UnmarshalCBOR method with the raw CBOR bytes
+func (d *decoder) callUnmarshaler(unmarshaler Unmarshaler) error {
+	startPos := d.pos
+	if err := d.skipCBORItem(); err != nil {
+		return err
+	}
+	rawBytes := d.data[startPos:d.pos]
+	return unmarshaler.UnmarshalCBOR(rawBytes)
 }
 
 // checkAndDecodeNilValue checks if the current value is nil/null/undefined/None

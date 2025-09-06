@@ -89,7 +89,15 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 		return err
 	}
 
-	r.Table = temp[0].(string)
+	if len(temp) != 2 {
+		return fmt.Errorf("invalid RecordID format: expected array of 2 elements, got %d", len(temp))
+	}
+
+	tableStr, ok := temp[0].(string)
+	if !ok {
+		return fmt.Errorf("invalid RecordID format: table must be a string")
+	}
+	r.Table = tableStr
 	r.ID = temp[1]
 
 	return nil

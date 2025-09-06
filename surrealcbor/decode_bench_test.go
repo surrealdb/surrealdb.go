@@ -6,7 +6,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// Benchmark Results Summary (latest after map key allocation optimization):
+// Benchmark Results Summary:
 //
 // IMPORTANT: The ns/op values below are for RELATIVE COMPARISON between implementations
 // only. They should NOT be used as absolute performance measures since they vary based on:
@@ -17,67 +17,58 @@ import (
 // Use these numbers to compare the relative performance between fxamacker and surrealcbor,
 // not to estimate actual production performance.
 //
-// Initial Performance (before optimization):
-// surrealcbor had significantly worse performance compared to fxamacker/cbor
-// due to allocating a new string for every map key during struct decoding.
-//
-// After Optimization (avoiding map key allocations with decodeStringDirect):
-// The optimization introduced decodeStringDirect() which decodes strings directly
-// from CBOR bytes without going through reflect.Value, eliminating one allocation
-// per map entry during struct decoding.
-//
 // Current Performance Results (relative comparison):
 //
 // BenchmarkDecoder:
-//   - fxamacker: ~3761 ns/op, 424 B/op, 17 allocs/op
-//   - surrealcbor (initial): ~4053 ns/op, 728 B/op, 44 allocs/op
-//   - surrealcbor (optimized): ~2962 ns/op, 488 B/op, 30 allocs/op
-//   - Performance: surrealcbor is now 21% FASTER than fxamacker (was 11% slower)
+//   - fxamacker: 3431 ns/op, 424 B/op, 17 allocs/op
+//   - surrealcbor: 3159 ns/op, 688 B/op, 19 allocs/op
+//   - Note: 8% faster than fxamacker despite having 2 more allocations
 //
 // BenchmarkDecoderNested:
-//   - fxamacker: ~2108 ns/op, 192 B/op, 7 allocs/op
-//   - surrealcbor (initial): ~2325 ns/op, 352 B/op, 24 allocs/op
-//   - surrealcbor (optimized): ~1782 ns/op, 208 B/op, 15 allocs/op
-//   - Performance: surrealcbor is now 15% FASTER than fxamacker (was 13% slower)
+//   - fxamacker: 1859 ns/op, 192 B/op, 7 allocs/op
+//   - surrealcbor: 1804 ns/op, 408 B/op, 10 allocs/op
 //
 // BenchmarkDecoderEmbedded:
-//   - fxamacker: ~1392 ns/op, 176 B/op, 6 allocs/op
-//   - surrealcbor (initial): ~1603 ns/op, 272 B/op, 15 allocs/op
-//   - surrealcbor (optimized): ~1062 ns/op, 192 B/op, 10 allocs/op
-//   - Performance: surrealcbor is now 24% FASTER than fxamacker (was 9% slower)
+//   - fxamacker: 1213 ns/op, 176 B/op, 6 allocs/op
+//   - surrealcbor: 1036 ns/op, 240 B/op, 6 allocs/op
 //
 // BenchmarkDecoderLargeSlice:
-//   - fxamacker: ~68028 ns/op, 6600 B/op, 205 allocs/op
-//   - surrealcbor (initial): ~80250 ns/op, 12233 B/op, 808 allocs/op
-//   - surrealcbor (optimized): ~56674 ns/op, 7400 B/op, 506 allocs/op
-//   - Performance: surrealcbor is now 17% FASTER than fxamacker (was 31% slower)
+//   - fxamacker: 61311 ns/op, 6600 B/op, 205 allocs/op
+//   - surrealcbor: 59554 ns/op, 11456 B/op, 306 allocs/op
 //
 // BenchmarkDecoderMixedTypes:
-//   - fxamacker: ~4307 ns/op, 584 B/op, 14 allocs/op
-//   - surrealcbor (initial): ~4460 ns/op, 920 B/op, 36 allocs/op
-//   - surrealcbor (optimized): ~3709 ns/op, 760 B/op, 26 allocs/op
-//   - Performance: surrealcbor is now 14% FASTER than fxamacker (was 16% slower)
+//   - fxamacker: 4140 ns/op, 584 B/op, 14 allocs/op
+//   - surrealcbor: 3494 ns/op, 784 B/op, 19 allocs/op
 //
 // BenchmarkDecoderCaseInsensitive:
-//   - fxamacker: ~1355 ns/op, 128 B/op, 8 allocs/op
-//   - surrealcbor (initial): ~1469 ns/op, 192 B/op, 13 allocs/op
-//   - surrealcbor (optimized): ~1214 ns/op, 128 B/op, 9 allocs/op
-//   - Performance: surrealcbor is now 10% FASTER than fxamacker (was 27% slower)
+//   - fxamacker: 1184 ns/op, 128 B/op, 8 allocs/op
+//   - surrealcbor: 933 ns/op, 144 B/op, 5 allocs/op
 //
 // BenchmarkDecoderWithNone:
-//   - surrealcbor only (initial): ~3065 ns/op, 576 B/op, 29 allocs/op
-//   - surrealcbor only (optimized): ~2577 ns/op, 496 B/op, 24 allocs/op
-//   - fxamacker cannot handle None -> nil conversion
+//   - surrealcbor only: 2401 ns/op, 520 B/op, 20 allocs/op
+//   - Note: fxamacker cannot handle None -> nil conversion
 //
-// Summary of Improvements:
-// - Performance: 25-31% faster across all benchmarks compared to initial
-// - Memory: 29-41% less memory usage
-// - Allocations: 32-38% fewer allocations
-// - Now outperforms fxamacker/cbor by 10-24% while maintaining SurrealDB-specific features
+// Key Techniques (current implementation):
 //
-// Overall: After the map key allocation optimization, surrealcbor is now both faster
-// and provides critical SurrealDB-specific features like proper None handling that
-// fxamacker cannot support.
+// 1. Zero-allocation map key matching:
+//    - decodeStringBytes() returns a borrowed slice view into the CBOR buffer
+//    - FindFieldBytes() compares bytes directly without string conversion
+//    - Eliminates one allocation per map key during struct decoding
+//
+// 2. canImplementUnmarshaler() optimization:
+//    - Checks type before attempting Interface() conversion
+//    - Skips primitives (string, int, bool, etc.) that cannot have methods
+//    - Avoids reflect.packEface allocations for types that cannot implement Unmarshaler
+//
+// 3. Cached field resolution:
+//    - CachedFieldResolver pre-computes struct field metadata
+//    - Caches byte representations of field names for direct comparison
+//    - Uses case-insensitive byte comparison without allocation
+//
+// 4. Borrowed slice optimization:
+//    - Map keys are compared as byte slices without creating strings
+//    - Unknown fields are skipped using skipCBORItem() without decoding
+//    - Field resolver uses pre-computed byte slices for comparison
 //
 // To reproduce these benchmarks for comparison on your system:
 //   go test -run=^$ -bench=BenchmarkDecoder -benchmem ./surrealcbor

@@ -69,7 +69,9 @@ func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 	s := temp[0]
 	ns := temp[1]
 
-	*d = CustomDuration{time.Duration((float64(s) * constants.OneSecondToNanoSecond) + float64(ns))}
+	// Use integer arithmetic to avoid precision loss with large values
+	totalNS := s*constants.OneSecondToNanoSecond + ns
+	*d = CustomDuration{time.Duration(totalNS)}
 
 	return nil
 }

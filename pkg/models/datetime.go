@@ -52,7 +52,7 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	s := temp[0]
 	ns := temp[1]
 
-	*d = CustomDateTime{time.Unix(s, ns)}
+	*d = CustomDateTime{time.Unix(s, ns).UTC()}
 
 	return nil
 }
