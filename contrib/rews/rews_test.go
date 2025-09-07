@@ -174,8 +174,8 @@ func TestConnection(t *testing.T) {
 
 		token, err := conn.SignIn(ctx, authData)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
-		assert.Equal(t, "test-token", conn.sessionToken, "Token should be stored in session")
+		assert.Equal(t, testToken, token)
+		assert.Equal(t, testToken, conn.sessionToken, "Token should be stored in session")
 
 		// Test with different auth structures
 		authDataWithNS := map[string]any{
@@ -187,7 +187,7 @@ func TestConnection(t *testing.T) {
 
 		token, err = conn.SignIn(ctx, authDataWithNS)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
+		assert.Equal(t, testToken, token)
 
 		// Test with struct auth data
 		type AuthStruct struct {
@@ -202,7 +202,7 @@ func TestConnection(t *testing.T) {
 
 		token, err = conn.SignIn(ctx, authStruct)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
+		assert.Equal(t, testToken, token)
 
 		// Test when connection is closed
 		conn.state = StateClosed
@@ -223,8 +223,8 @@ func TestConnection(t *testing.T) {
 
 		token, err := conn.SignUp(ctx, authData)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
-		assert.Equal(t, "test-token", conn.sessionToken, "Token should be stored in session")
+		assert.Equal(t, testToken, token)
+		assert.Equal(t, testToken, conn.sessionToken, "Token should be stored in session")
 
 		// Test with minimal auth data
 		minimalAuth := map[string]any{
@@ -234,7 +234,7 @@ func TestConnection(t *testing.T) {
 
 		token, err = conn.SignUp(ctx, minimalAuth)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
+		assert.Equal(t, testToken, token)
 
 		// Test with additional fields
 		extendedAuth := map[string]any{
@@ -248,7 +248,7 @@ func TestConnection(t *testing.T) {
 
 		token, err = conn.SignUp(ctx, extendedAuth)
 		require.NoError(t, err)
-		assert.Equal(t, "test-token", token)
+		assert.Equal(t, testToken, token)
 
 		// Test when connection is closed
 		conn.state = StateClosed

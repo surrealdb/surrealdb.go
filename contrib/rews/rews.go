@@ -142,6 +142,10 @@ type Connection[C connection.WebSocketConnection] struct {
 
 	// unmarshaler is used to unmarshal CBOR data
 	unmarshaler codec.Unmarshaler
+
+	// Retryer defines the retry behavior for connection attempts.
+	// If nil, connection attempts will not be retried.
+	Retryer Retryer
 }
 
 var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
@@ -181,7 +185,9 @@ func (arws *Connection[C]) transitionTo(newState State) error {
 	}
 
 	arws.state = newState
-	arws.logger.Debug("rews.Connection state transitioned", "new_state", newState)
+	if arws.logger != nil {
+		arws.logger.Debug("rews.Connection state transitioned", "new_state", newState)
+	}
 
 	return nil
 }
@@ -215,45 +221,101 @@ func (arws *Connection[C]) IsClosed() bool {
 // could be a valid way to handle the initial connection failure.
 // You might configure the manager or orchestrator to detect crash-looping applications
 // and alert the operator to fix the misconfiguration.
+//
+// If Retryer is set, connection attempts will be retried
+// according to the configured strategy (e.g., exponential backoff).
 func (arws *Connection[C]) Connect(ctx context.Context) error {
+	return arws.connectWithRetry(ctx, false)
+}
+
+// connectWithRetry handles the connection logic with optional retry
+//
+//nolint:gocyclo // Retry logic requires handling multiple conditions
+func (arws *Connection[C]) connectWithRetry(ctx context.Context, isReconnect bool) error {
 	if err := arws.transitionTo(StateConnecting); err != nil {
 		return err
 	}
 
-	var err error
+	// Use the configured retryer if available
+	retryer := arws.Retryer
 
-	conn, err := arws.NewFunc(ctx)
-	if err != nil {
-		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
-			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+	attempt := 0
+	for {
+		var err error
+
+		// Try to create and connect
+		conn, err := arws.NewFunc(ctx)
+		if err == nil {
+			err = conn.Connect(ctx)
+			if err == nil {
+				// Success!
+				arws.WebSocketConnection = conn
+
+				// Start reconnection loop if this is the first successful connection
+				arws.once.Do(func() {
+					if arws.logger != nil {
+						arws.logger.Debug("rews.Connection is starting reconnection loop")
+					}
+					arws.connCloseCh = make(chan int, 1)
+					arws.reconnLoopCloseCh = make(chan int, 1)
+					go arws.reconnectionLoop()
+				})
+
+				if stateErr := arws.transitionTo(StateConnected); stateErr != nil {
+					panic(fmt.Sprintf("BUG: rews.Connection failed to transition to connected state: %v", stateErr))
+				}
+
+				// Reset retryer if it has state
+				if retryer != nil {
+					retryer.Reset()
+				}
+
+				return nil
+			}
 		}
-		return fmt.Errorf("rews.Connection failed to create a new connection: %w", err)
-	}
 
-	err = conn.Connect(ctx)
-	if err != nil {
-		if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil {
-			arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+		// Connection failed - log the error
+		if err != nil && arws.logger != nil {
+			if isReconnect {
+				arws.logger.Error("rews.Connection failed to reconnect", "error", err, "attempt", attempt+1)
+			} else {
+				arws.logger.Error("rews.Connection failed to connect", "error", err, "attempt", attempt+1)
+			}
 		}
-		return fmt.Errorf("rews.Connection failed to connect: %w", err)
+
+		// Check if we should retry
+		if retryer == nil {
+			// No retryer - fail immediately
+			if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil && arws.logger != nil {
+				arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+			}
+			return fmt.Errorf("rews.Connection failed to connect: %w", err)
+		}
+
+		// Get next retry delay
+		delay, shouldRetry := retryer.NextDelay(attempt, err)
+		if !shouldRetry {
+			// Max retries exceeded or retryer says to stop
+			if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil && arws.logger != nil {
+				arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+			}
+			return fmt.Errorf("rews.Connection failed to connect after %d attempts: %w", attempt+1, err)
+		}
+
+		// Wait before retrying
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection will retry connection", "delay", delay, "attempt", attempt+1)
+		}
+		select {
+		case <-ctx.Done():
+			if stateErr := arws.transitionTo(StateDisconnected); stateErr != nil && arws.logger != nil {
+				arws.logger.Error("BUG: rews.Connection failed to transition to disconnected state", "error", stateErr)
+			}
+			return fmt.Errorf("rews.Connection connection canceled: %w", ctx.Err())
+		case <-time.After(delay):
+			attempt++
+		}
 	}
-
-	arws.WebSocketConnection = conn
-
-	arws.once.Do(func() {
-		arws.logger.Debug("rews.Connection is starting reconnection loop")
-
-		arws.connCloseCh = make(chan int, 1)
-		arws.reconnLoopCloseCh = make(chan int, 1)
-
-		go arws.reconnectionLoop()
-	})
-
-	if err := arws.transitionTo(StateConnected); err != nil {
-		panic(fmt.Sprintf("BUG: rews.Connection failed to transition to connected state: %v", err))
-	}
-
-	return nil
 }
 
 // reconnect attempts to reconnect the WebSocket connection.
@@ -266,34 +328,51 @@ func (arws *Connection[C]) Connect(ctx context.Context) error {
 // The token might be expired or invalid which could result in an re-authentication failure.
 // But rews does not handle the re-authentication failure.
 // It is the caller's responsibility to handle the re-authentication failure.
+//
+//nolint:gocyclo // Session restoration requires handling multiple state conditions
 func (arws *Connection[C]) reconnect(ctx context.Context) error {
-	if err := arws.Connect(ctx); err != nil {
-		arws.logger.Error("rews.Connection failed to reconnect", "error", err)
+	if err := arws.connectWithRetry(ctx, true); err != nil {
 		return fmt.Errorf("rews.Connection failed to reconnect: %w", err)
 	}
 
 	if arws.sessionNS != "" && arws.sessionDB != "" {
-		arws.logger.Debug("rews.Connection is restoring namespace and database", "namespace", arws.sessionNS, "database", arws.sessionDB)
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection is restoring namespace and database", "namespace", arws.sessionNS, "database", arws.sessionDB)
+		}
 		if err := arws.Use(ctx, arws.sessionNS, arws.sessionDB); err != nil {
-			arws.logger.Error("rews.Connection failed to restore namespace and database", "error", err)
+			if arws.logger != nil {
+				arws.logger.Error("rews.Connection failed to restore namespace and database", "error", err)
+			}
 			return fmt.Errorf("rews.Connection failed to restore namespace and database: %w", err)
 		}
-		arws.logger.Debug("rews.Connection restored namespace and database successfully")
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection restored namespace and database successfully")
+		}
 	}
 
 	if arws.sessionToken != "" {
-		arws.logger.Debug("rews.Connection is re-authenticating with the session token")
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection is re-authenticating with the session token")
+		}
 		if err := arws.Authenticate(ctx, arws.sessionToken); err != nil {
-			arws.logger.Error("rews.Connection failed to re-authenticate with the session token", "error", err)
+			if arws.logger != nil {
+				arws.logger.Error("rews.Connection failed to re-authenticate with the session token", "error", err)
+			}
 			return fmt.Errorf("rews.Connection failed to re-authenticate with the session token: %w", err)
 		}
-		arws.logger.Debug("rews.Connection re-authenticated successfully with the session token")
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection re-authenticated successfully with the session token")
+		}
 	}
 
 	for key, value := range arws.sessionVars {
-		arws.logger.Debug("rews.Connection is restoring session variable", "key", key, "value", value)
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection is restoring session variable", "key", key, "value", value)
+		}
 		if err := arws.Let(ctx, key, value); err != nil {
-			arws.logger.Error("rews.Connection failed to restore session variable", "key", key, "error", err)
+			if arws.logger != nil {
+				arws.logger.Error("rews.Connection failed to restore session variable", "key", key, "error", err)
+			}
 			return fmt.Errorf("rews.Connection failed to restore session variable %s: %w", key, err)
 		}
 	}
@@ -301,7 +380,9 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	// Restore live queries after session state is restored
 	// This will also setup notification routing for each restored query
 	if err := arws.reliableLQ.restoreLiveQueries(ctx, arws.WebSocketConnection, arws.WebSocketConnection, arws.logger); err != nil {
-		arws.logger.Error("rews.Connection failed to restore live queries", "error", err)
+		if arws.logger != nil {
+			arws.logger.Error("rews.Connection failed to restore live queries", "error", err)
+		}
 		return fmt.Errorf("rews.Connection failed to restore live queries: %w", err)
 	}
 
@@ -381,7 +462,7 @@ func (arws *Connection[C]) Close(ctx context.Context) error {
 	}
 
 	defer func() {
-		if err := arws.transitionTo(StateClosed); err != nil {
+		if err := arws.transitionTo(StateClosed); err != nil && arws.logger != nil {
 			arws.logger.Error("BUG: rews.Connection failed to transition to closed state", "error", err)
 		}
 	}()
@@ -417,7 +498,9 @@ func (arws *Connection[C]) reconnectionLoop() {
 	}()
 
 	for {
-		arws.logger.Debug("rews.Connection is waiting for reconnection check interval", "interval", checkInterval)
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection is waiting for reconnection check interval", "interval", checkInterval)
+		}
 		select {
 		case <-arws.connCloseCh:
 			return
@@ -425,10 +508,17 @@ func (arws *Connection[C]) reconnectionLoop() {
 		}
 
 		if arws.WebSocketConnection.IsClosed() {
-			arws.logger.Info("rews.Connection is attempting to reconnect")
+			if arws.logger != nil {
+				arws.logger.Info("rews.Connection detected closed connection, attempting to reconnect")
+			}
 
+			// Use Retryer if configured, otherwise single attempt
 			if err := arws.reconnect(context.Background()); err != nil {
-				arws.logger.Error("rews.Connection failed to reconnect", "error", err)
+				if arws.logger != nil {
+					arws.logger.Error("rews.Connection reconnection attempt failed", "error", err)
+				}
+				// If we have a retryer, it already handled retries
+				// Continue to next check interval
 				continue
 			}
 		}

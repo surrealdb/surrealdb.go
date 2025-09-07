@@ -12,6 +12,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+const testToken = "test-token"
+
 // mockWebSocketConnection extends the mock to return proper UUIDs
 type mockWebSocketConnection struct {
 	connection.WebSocketConnection
@@ -167,12 +169,12 @@ func (m *mockWebSocketConnection) SignIn(ctx context.Context, auth any) (string,
 	if m.isClosed {
 		return "", fmt.Errorf("connection is closed")
 	}
-	return "test-token", nil
+	return testToken, nil
 }
 
 func (m *mockWebSocketConnection) SignUp(ctx context.Context, auth any) (string, error) {
 	if m.isClosed {
 		return "", fmt.Errorf("connection is closed")
 	}
-	return "test-token", nil
+	return testToken, nil
 }
