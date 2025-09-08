@@ -155,7 +155,6 @@ func ExampleCreate_recordID_withUUID() {
 	// Create a UUIDv7 using gofrs/uuid
 	u, _ := uuid.NewV7()
 	u2 := models.UUID{UUID: u}
-	_ = u2.Parse(u.String())
 
 	// Create the record with UUIDv7 ID
 	record := Person{
