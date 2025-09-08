@@ -3,8 +3,10 @@ package surrealdb_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
+	"github.com/gofrs/uuid"
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -140,4 +142,39 @@ func ExampleCreate_server_unmarshal_error() {
 
 	// Output:
 	// Expected error: cannot marshal RecordID with empty table or ID: want <table>:<identifier> but got :<nil>
+}
+
+func ExampleCreate_recordID_withUUID() {
+	db := testenv.MustNew("surrealdbexamples", "query", "person")
+
+	type Person struct {
+		ID   *models.RecordID `json:"id,omitempty"`
+		Text string           `json:"text"`
+	}
+
+	// Create a UUIDv7 using gofrs/uuid
+	u, _ := uuid.NewV7()
+	u2 := models.UUID{UUID: u}
+	_ = u2.Parse(u.String())
+
+	// Create the record with UUIDv7 ID
+	record := Person{
+		Text: "Hello, SurrealDB with UUIDv7!",
+	}
+
+	created, err := surrealdb.Create[Person](
+		context.Background(),
+		db,
+		models.NewRecordID("person", u2),
+		record,
+	)
+	if err != nil {
+		log.Fatal("Failed to create record:", err)
+	}
+
+	// The UUID in the ID field will vary, so we just check the table and text
+	fmt.Printf("Created record with table '%s' and text: %s\n", created.ID.Table, created.Text)
+
+	// Output:
+	// Created record with table 'person' and text: Hello, SurrealDB with UUIDv7!
 }
