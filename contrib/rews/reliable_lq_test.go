@@ -139,10 +139,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 		mock := &mockRPCSender{
 			mockResult: func(method string) cbor.RawMessage {
 				uuid := models.UUID{UUID: newExternalUUID}
-				data, _ := cbor.Marshal(cbor.Tag{
-					Number:  models.TagSpecBinaryUUID,
-					Content: uuid,
-				})
+				data, _ := cbor.Marshal(uuid)
 				return data
 			},
 		}
@@ -214,10 +211,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 						Result cbor.RawMessage `json:"result"`
 					}
 
-					uuidData, _ := cbor.Marshal(cbor.Tag{
-						Number:  models.TagSpecBinaryUUID,
-						Content: uuid,
-					})
+					uuidData, _ := cbor.Marshal(uuid)
 					queryResults := []QueryResult{
 						{
 							Status: "OK",
@@ -229,10 +223,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 					data, _ := cbor.Marshal(queryResults)
 					return data
 				} else {
-					data, _ := cbor.Marshal(cbor.Tag{
-						Number:  models.TagSpecBinaryUUID,
-						Content: uuid,
-					})
+					data, _ := cbor.Marshal(uuid)
 					return data
 				}
 			},
@@ -264,20 +255,14 @@ func TestReliableLQ_handleSend(t *testing.T) {
 
 	// Create response for live method (direct UUID)
 	liveUUID := models.UUID{UUID: uuid.Must(uuid.NewV4())}
-	liveData, _ := cbor.Marshal(cbor.Tag{
-		Number:  models.TagSpecBinaryUUID,
-		Content: liveUUID,
-	})
+	liveData, _ := cbor.Marshal(liveUUID)
 	liveResp := &connection.RPCResponse[cbor.RawMessage]{
 		Result: (*cbor.RawMessage)(&liveData),
 	}
 
 	// Create response for query method (array of QueryResult with UUID)
 	queryUUID := models.UUID{UUID: uuid.Must(uuid.NewV4())}
-	queryUUIDData, _ := cbor.Marshal(cbor.Tag{
-		Number:  models.TagSpecBinaryUUID,
-		Content: queryUUID,
-	})
+	queryUUIDData, _ := cbor.Marshal(queryUUID)
 	queryResults := []QueryResult{
 		{
 			Status: "OK",
@@ -427,7 +412,7 @@ func TestReliableLQ_handleSend_tracking(t *testing.T) {
 		mockResult: func(method string) cbor.RawMessage {
 			// Return a mock UUID response as models.UUID
 			uuid := models.UUID{UUID: testUUID}
-			data, _ := cbor.Marshal(cbor.Tag{Number: models.TagSpecBinaryUUID, Content: uuid})
+			data, _ := cbor.Marshal(uuid)
 			return data
 		},
 	}
@@ -469,7 +454,8 @@ func TestReliableLQ_handleSend_tracking(t *testing.T) {
 				Result cbor.RawMessage `json:"result"`
 			}
 
-			uuidData, _ := cbor.Marshal(cbor.Tag{Number: models.TagSpecBinaryUUID, Content: liveSelectTestUUID})
+			liveSelectUUID := models.UUID{UUID: liveSelectTestUUID}
+			uuidData, _ := cbor.Marshal(liveSelectUUID)
 			queryResults := []QueryResult{
 				{
 					Status: "OK",
