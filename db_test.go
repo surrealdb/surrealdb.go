@@ -372,7 +372,9 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				_, _ = surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("users", j))
+				user, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("missing", j))
+				s.Require().NoError(err)
+				s.Require().Nil(user.ID)
 			}(i)
 		}
 		wg.Wait()
@@ -383,20 +385,35 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
-				_, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("users", j))
+				user, err := surrealdb.Create[testUser](context.Background(), s.db, models.NewRecordID("newuser", j), testUser{
+					Username: "johnny",
+					Password: "123",
+				})
 				s.Require().NoError(err)
+				s.Require().NotNil(user.ID)
+				s.Require().Equal(user.ID.Table, "newuser")
 			}(i)
 		}
 		wg.Wait()
 	})
 
-	s.Run(fmt.Sprintf("Concurrent select exist rows %d", totalGoroutines), func() {
+	s.Run(fmt.Sprintf("Concurrent select existing row %d", totalGoroutines), func() {
+		createdUser, err := surrealdb.Create[testUser](context.Background(), s.db, models.NewRecordID("users", "johnny"), testUser{
+			Username: "johnny",
+			Password: "123",
+		})
+		s.Require().NoError(err)
+		s.Require().NotNil(createdUser.ID)
+		s.Require().Equal(createdUser.ID.Table, "users")
+
 		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
-			go func(j int) {
+			go func(_j int) {
 				defer wg.Done()
-				_, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("users", j))
+				user, err := surrealdb.Select[testUser](context.Background(), s.db, *createdUser.ID)
 				s.Require().NoError(err)
+				s.Require().NotNil(user.ID)
+				s.Require().Equal(user.ID.Table, "users")
 			}(i)
 		}
 		wg.Wait()
