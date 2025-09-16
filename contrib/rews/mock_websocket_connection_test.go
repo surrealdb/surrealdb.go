@@ -36,7 +36,8 @@ func (m *mockWebSocketConnection) Send(ctx context.Context, method string, param
 	case methodLive:
 		// Return a UUID for live queries
 		liveUUID := uuid.Must(uuid.NewV4())
-		data, _ := cbor.Marshal(cbor.Tag{Number: models.TagSpecBinaryUUID, Content: liveUUID})
+		modelUUID := models.UUID{UUID: liveUUID}
+		data, _ := cbor.Marshal(modelUUID)
 		result = data
 
 		// Store the UUID for LiveNotifications
@@ -57,7 +58,8 @@ func (m *mockWebSocketConnection) Send(ctx context.Context, method string, param
 					}
 
 					liveUUID := uuid.Must(uuid.NewV4())
-					uuidData, _ := cbor.Marshal(cbor.Tag{Number: models.TagSpecBinaryUUID, Content: liveUUID})
+					modelUUID := models.UUID{UUID: liveUUID}
+					uuidData, _ := cbor.Marshal(modelUUID)
 
 					queryResults := []QueryResult{
 						{
