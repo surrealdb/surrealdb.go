@@ -9,4 +9,11 @@
 // Note that this package is outside of the backward compatibility guarantees
 // provided by the core SurrealDB Go SDK. Changes to this package may
 // introduce breaking changes without following semantic versioning.
+//
+// The contrib directory includes [github.com/surrealdb/surrealdb.go/contrib/surrealnote], an example application that
+// demonstrates zero-downtime migration from PostgreSQL to SurrealDB using a Notion-like
+// hierarchical note-taking system. For building queries, [github.com/surrealdb/surrealdb.go/contrib/surrealql] provides a type-safe
+// query builder. The [github.com/surrealdb/surrealdb.go/contrib/rews] package offers a reconnecting WebSocket implementation with
+// automatic session restoration. Database management tools include [github.com/surrealdb/surrealdb.go/contrib/surrealdump] and
+// [github.com/surrealdb/surrealdb.go/contrib/surrealrestore] for backup and recovery operations.
 package contrib
