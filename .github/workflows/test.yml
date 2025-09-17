@@ -114,3 +114,49 @@ jobs:
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
           SURREALDB_CBOR_IMPL: ${{ matrix.surrealdb-cbor-impl }}
           SURREALDB_RECONNECTION_CHECK_INTERVAL: ${{ matrix.surrealdb-reconnection-check-interval }}
+
+  surrealnote-e2e:
+    name: SurrealNote E2E Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+          check-latest: true
+          cache-dependency-path: contrib/surrealnote/go.sum
+
+      # Start SurrealDB
+      - name: Start SurrealDB
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v2.3.7 start --user root --pass root
+          # Wait for SurrealDB to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/health 2>/dev/null; then
+              echo "SurrealDB is ready"
+              break
+            fi
+            echo "Waiting for SurrealDB to start... ($i/30)"
+            sleep 2
+          done
+
+      # Run E2E migration test using Makefile
+      - name: Run SurrealNote E2E Migration Test
+        run: |
+          cd contrib/surrealnote
+          # The Makefile will handle PostgreSQL start/stop automatically
+          go test -v -timeout 10m -run TestE2E_migrationFlow ./...
+        env:
+          SURREALDB_URL: ws://localhost:8000/rpc
+
+      # Clean up containers
+      - name: Clean up containers
+        if: always()
+        run: |
+          cd contrib/surrealnote
+          make postgres-remove || true
+          docker stop surrealdb || true
+          docker rm surrealdb || true

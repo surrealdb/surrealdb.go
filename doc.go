@@ -36,5 +36,10 @@
 //
 // Use it directly when you want to create requests yourself.
 //
+// # Examples and Experimental Packages
+//
+// The [github.com/surrealdb/surrealdb.go/contrib] directory contains examples and experimental packages
+// that are not covered by the SDK's backward compatibility guarantee.
+//
 // [SurrealDB RPC Protcol]: https://surrealdb.com/docs/surrealdb/integration/rpc
 package surrealdb
