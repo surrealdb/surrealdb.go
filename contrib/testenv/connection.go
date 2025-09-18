@@ -46,18 +46,49 @@ const (
 	EnvSurrealCBORImpl = "SURREALDB_CBOR_IMPL"
 )
 
+// CBORImpl specifies which CBOR implementation to use
+type CBORImpl int
+
+const (
+	// CBORImplDefault uses the default implementation from connection.NewConfig (currently surrealcbor)
+	CBORImplDefault CBORImpl = iota
+	// CBORImplSurrealCBOR explicitly uses the surrealcbor implementation
+	CBORImplSurrealCBOR
+	// CBORImplFxamackerCBOR explicitly uses the fxamacker/cbor implementation
+	CBORImplFxamackerCBOR
+)
+
+// String returns the string representation of CBORImpl
+func (c CBORImpl) String() string {
+	switch c {
+	case CBORImplDefault:
+		return "default"
+	case CBORImplSurrealCBOR:
+		return "surrealcbor"
+	case CBORImplFxamackerCBOR:
+		return "fxamackercbor"
+	default:
+		return "unknown"
+	}
+}
+
 var (
 	currentURL     = os.Getenv(EnvWSURL)
 	reconnect      = os.Getenv(EnvReconnectionCheckInterval)
 	useGWS         = os.Getenv(EnvSurrealDBConnectionImpl) == "gws"
 	cborImplEnvVar = os.Getenv(EnvSurrealCBORImpl)
 
-	// useSurrealCBOR determines whether to use the surrealcbor package.
-	// Default is true (surrealcbor), unless explicitly set to "fxamackercbor"
-	useSurrealCBOR = cborImplEnvVar != "fxamackercbor"
-
-	// useFxamackerCBOR determines whether to explicitly use fxamacker/cbor
-	useFxamackerCBOR = cborImplEnvVar == "fxamackercbor"
+	// defaultCBORImpl determines the default CBOR implementation based on environment variable
+	defaultCBORImpl = func() CBORImpl {
+		switch cborImplEnvVar {
+		case "surrealcbor":
+			return CBORImplSurrealCBOR
+		case "fxamackercbor":
+			return CBORImplFxamackerCBOR
+		default:
+			return CBORImplDefault
+		}
+	}()
 )
 
 func GetSurrealDBURL() string {
@@ -109,14 +140,9 @@ type Config struct {
 	// to the SurrealDB instance after a disconnection.
 	ReconnectDuration time.Duration
 
-	// UseSurrealCBOR determines whether to use the surrealcbor package
-	// as an alternative to fxamacker/cbor-based codec.
-	// Default is true unless explicitly set to use fxamacker/cbor.
-	UseSurrealCBOR bool
-
-	// UseFxamackerCBOR determines whether to explicitly use fxamacker/cbor
-	// instead of the default surrealcbor implementation.
-	UseFxamackerCBOR bool
+	// CBORImpl specifies which CBOR implementation to use.
+	// Default is CBORImplDefault which uses the default from connection.NewConfig.
+	CBORImpl CBORImpl
 }
 
 func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
@@ -163,8 +189,7 @@ func NewConfig(namespace, database string, tables ...string) (*Config, error) {
 		Database:          database,
 		Tables:            tables,
 		ReconnectDuration: reconnectDuration,
-		UseSurrealCBOR:    useSurrealCBOR,
-		UseFxamackerCBOR:  useFxamackerCBOR,
+		CBORImpl:          defaultCBORImpl,
 	}
 
 	return c, nil
@@ -193,17 +218,19 @@ func (c *Config) New() (*surrealdb.DB, error) {
 	}
 
 	conf := connection.NewConfig(u)
-	if c.UseFxamackerCBOR {
+	switch c.CBORImpl {
+	case CBORImplFxamackerCBOR:
 		// Explicitly use fxamacker/cbor implementation
 		conf.Marshaler = &models.CborMarshaler{}     //nolint:staticcheck // Intentional use of deprecated type for legacy support
 		conf.Unmarshaler = &models.CborUnmarshaler{} //nolint:staticcheck // Intentional use of deprecated type for legacy support
-	} else if c.UseSurrealCBOR {
+	case CBORImplSurrealCBOR:
 		// Explicitly use surrealcbor implementation
 		codec := surrealcbor.New()
 		conf.Marshaler = codec
 		conf.Unmarshaler = codec
+	case CBORImplDefault:
+		// Use the default from connection.NewConfig (which is surrealcbor)
 	}
-	// If neither is explicitly set, use the default from connection.NewConfig (which is now surrealcbor)
 
 	var conn connection.Connection
 	if c.ReconnectDuration > 0 {

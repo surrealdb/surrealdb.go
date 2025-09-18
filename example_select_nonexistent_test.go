@@ -13,7 +13,7 @@ import (
 // handles non-existent records - it returns a struct with non-nil CustomNil{} for missing pointer fields
 func ExampleSelect_nonExistentRecord_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "select", "user")
-	c.UseFxamackerCBOR = true
+	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
 
@@ -50,7 +50,7 @@ func ExampleSelect_nonExistentRecord_fxamackercbor() {
 // handles non-existent records - it returns nil
 func ExampleSelect_nonExistentRecord_surrealcbor() {
 	c := testenv.MustNewConfig("example", "select", "user")
-	c.UseSurrealCBOR = true
+	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
 

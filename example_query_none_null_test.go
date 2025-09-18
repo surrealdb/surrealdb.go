@@ -85,7 +85,7 @@ func ExampleQuery_none_and_null_handling_allExistingFields() {
 
 func ExampleQuery_none_and_null_handling_explicitFields_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseFxamackerCBOR = true
+	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
 
@@ -155,7 +155,7 @@ func ExampleQuery_none_and_null_handling_explicitFields_legacy_fxamackercbor() {
 
 func ExampleQuery_none_and_null_handling_explicitFields_surrealcbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = true
+	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
 
@@ -225,7 +225,7 @@ func ExampleQuery_none_and_null_handling_explicitFields_surrealcbor() {
 
 func ExampleQuery_none_and_null_handling_explicitFields_ints_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseFxamackerCBOR = true
+	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
 
@@ -295,7 +295,7 @@ func ExampleQuery_none_and_null_handling_explicitFields_ints_legacy_fxamackercbo
 
 func ExampleQuery_none_and_null_handling_explicitFields_ints_surrealcbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = true
+	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
 
@@ -365,7 +365,7 @@ func ExampleQuery_none_and_null_handling_explicitFields_ints_surrealcbor() {
 
 func ExampleQuery_create_none_null_fields_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseFxamackerCBOR = true
+	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
 
@@ -439,7 +439,7 @@ func ExampleQuery_create_none_null_fields_legacy_fxamackercbor() {
 
 func ExampleQuery_create_none_null_fields_surrealcbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = true
+	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
 
@@ -514,7 +514,7 @@ func ExampleQuery_create_none_null_fields_surrealcbor() {
 //nolint:gocritic
 func ExampleQuery_null_none_customdatetime_roundtrip_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseFxamackerCBOR = true
+	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
 
@@ -742,7 +742,7 @@ func ExampleQuery_null_none_customdatetime_roundtrip_legacy_fxamackercbor() {
 //nolint:gocritic
 func ExampleQuery_null_none_customdatetime_roundtrip_surrealcbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = true
+	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
 
