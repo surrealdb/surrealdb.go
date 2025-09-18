@@ -1,4 +1,4 @@
-package surrealcbor
+package surrealcbor_test
 
 import (
 	"math"
@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 func TestDecodeRawMessage(t *testing.T) {
@@ -18,7 +19,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		// RawMessage should contain the exact CBOR bytes
@@ -36,7 +37,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -58,7 +59,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -78,7 +79,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -96,7 +97,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -117,7 +118,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		// RawMessage should contain the tag bytes
@@ -152,7 +153,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var decoded TestStruct
-		err = Unmarshal(data, &decoded)
+		err = surrealcbor.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 
 		assert.Equal(t, "test-id", decoded.ID)
@@ -185,7 +186,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var decoded connection.RPCResponse[cbor.RawMessage]
-		err = Unmarshal(data, &decoded)
+		err = surrealcbor.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 
 		assert.Equal(t, "123", decoded.ID)
@@ -221,7 +222,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -249,7 +250,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		}
 
 		var rawMsg cbor.RawMessage
-		err := Unmarshal(cborData, &rawMsg)
+		err := surrealcbor.Unmarshal(cborData, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, cborData, []byte(rawMsg))
@@ -278,7 +279,7 @@ func TestDecodeRawMessage(t *testing.T) {
 		}
 
 		var rawMsg cbor.RawMessage
-		err := Unmarshal(cborData, &rawMsg)
+		err := surrealcbor.Unmarshal(cborData, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, cborData, []byte(rawMsg))
@@ -307,7 +308,7 @@ func TestDecodeRawMessageInSlice(t *testing.T) {
 		require.NoError(t, err)
 
 		var decoded []cbor.RawMessage
-		err = Unmarshal(sliceData, &decoded)
+		err = surrealcbor.Unmarshal(sliceData, &decoded)
 		require.NoError(t, err)
 
 		assert.Len(t, decoded, 3)
@@ -346,7 +347,7 @@ func TestRawMessagePointerNotSupported(t *testing.T) {
 
 		// Correct usage: cbor.RawMessage (not *cbor.RawMessage)
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
@@ -362,7 +363,7 @@ func TestRawMessagePointerNotSupported(t *testing.T) {
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		// RawMessage contains the CBOR encoding of nil
@@ -386,18 +387,18 @@ func TestDecodeAllTypeMapIntoRawMessage(t *testing.T) {
 		}
 
 		// Use our Marshal to properly encode SurrealDB types with tags
-		data, err := Marshal(testMap)
+		data, err := surrealcbor.Marshal(testMap)
 		require.NoError(t, err)
 
 		var rawMsg cbor.RawMessage
-		err = Unmarshal(data, &rawMsg)
+		err = surrealcbor.Unmarshal(data, &rawMsg)
 		require.NoError(t, err)
 
 		assert.Equal(t, data, []byte(rawMsg))
 
 		var decoded map[string]any
 		// Use our own Unmarshal to properly decode SurrealDB types
-		err = Unmarshal(rawMsg, &decoded)
+		err = surrealcbor.Unmarshal(rawMsg, &decoded)
 		require.NoError(t, err)
 
 		assert.Equal(t, uint64(42), decoded["int"])

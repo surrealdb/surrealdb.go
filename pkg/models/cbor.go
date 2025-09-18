@@ -73,6 +73,11 @@ func registerCborTags() cbor.TagSet {
 	return tags
 }
 
+// CborMarshaler provides CBOR marshaling using fxamacker/cbor.
+//
+// Deprecated: Use surrealcbor.New() instead for better SurrealDB compatibility.
+// CborMarshaler will be removed in a future version. The surrealcbor implementation
+// provides proper handling of SurrealDB's NONE tag and other custom CBOR features.
 type CborMarshaler struct {
 	once sync.Once
 	em   cbor.EncMode
@@ -91,6 +96,11 @@ func (c *CborMarshaler) cborEncMode() cbor.EncMode {
 	return c.em
 }
 
+// CborUnmarshaler provides CBOR unmarshaling using fxamacker/cbor.
+//
+// Deprecated: Use surrealcbor.New() instead for better SurrealDB compatibility.
+// CborUnmarshaler will be removed in a future version. The surrealcbor implementation
+// provides proper handling of SurrealDB's NONE tag and other custom CBOR features.
 type CborUnmarshaler struct {
 	once sync.Once
 	dm   cbor.DecMode

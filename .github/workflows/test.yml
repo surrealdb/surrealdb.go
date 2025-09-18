@@ -30,23 +30,23 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.3.7 with Go 1.25.0, http, surrealcbor
+          # v2.3.7 with Go 1.25.0, http, fxamackercbor (legacy)
           - surrealdb-version: 'v2.3.7'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-            surrealdb-cbor-impl: 'surrealcbor'
+            surrealdb-cbor-impl: 'fxamackercbor'
           # v2.3.7 with Go 1.25.0, gorilla/websocket
           - surrealdb-version: 'v2.3.7'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          # v2.3.7 with Go 1.25.0, gorilla/websocket, surrealcbor
+          # v2.3.7 with Go 1.25.0, gorilla/websocket, fxamackercbor (legacy)
           - surrealdb-version: 'v2.3.7'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-cbor-impl: 'surrealcbor'
+            surrealdb-cbor-impl: 'fxamackercbor'
           # v2.3.7 with Go 1.25.0, gorilla/websocket, reconnection
           - surrealdb-version: 'v2.3.7'
             go-version: '1.25.0'
@@ -66,6 +66,12 @@ jobs:
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
             surrealdb-reconnection-check-interval: '1s'
+          # v2.3.7 with Go 1.25.0, explicit surrealcbor
+          - surrealdb-version: 'v2.3.7'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-cbor-impl: 'surrealcbor'
           # v2.3.7 with Go 1.24.6
           - surrealdb-version: 'v2.3.7'
             go-version: '1.24.6'

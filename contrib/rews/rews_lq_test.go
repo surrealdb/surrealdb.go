@@ -15,6 +15,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 // TestLiveQueryLifecycle tests the lifecycle of live queries
@@ -31,7 +32,7 @@ func TestLiveQueryLifecycle(t *testing.T) {
 
 	conn := &Connection[*mockWebSocketConnection]{
 		WebSocketConnection: mock,
-		reliableLQ:          newReliableLQ(log, &models.CborUnmarshaler{}),
+		reliableLQ:          newReliableLQ(log, surrealcbor.New()),
 		logger:              log,
 		sessionVars:         make(map[string]any),
 	}

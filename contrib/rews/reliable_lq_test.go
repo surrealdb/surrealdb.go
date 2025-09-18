@@ -13,6 +13,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 // testUnmarshaler is a test implementation of codec.Unmarshaler
@@ -31,7 +32,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 	t.Run("restores live RPC query", func(t *testing.T) {
 		mock := &mockRPCSender{}
 		log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-		rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+		rlq := newReliableLQ(log, surrealcbor.New())
 
 		// Manually add a live query to simulate one that needs restoration
 		rlq.liveQueries["test-id"] = &LiveQueryInfo{
@@ -58,7 +59,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 	t.Run("restores query RPC with LIVE SELECT", func(t *testing.T) {
 		mock := &mockRPCSender{}
 		log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-		rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+		rlq := newReliableLQ(log, surrealcbor.New())
 
 		// Manually add a LIVE SELECT query to simulate one that needs restoration
 		liveSelectQuery := "LIVE SELECT * FROM products WHERE active = true"
@@ -85,7 +86,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 	t.Run("restores multiple queries of different types", func(t *testing.T) {
 		mock := &mockRPCSender{}
 		log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-		rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+		rlq := newReliableLQ(log, surrealcbor.New())
 
 		// Add both types of live queries
 		rlq.liveQueries["live-1"] = &LiveQueryInfo{
@@ -119,7 +120,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 	})
 	t.Run("updates existing live query mappings", func(t *testing.T) {
 		log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-		rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+		rlq := newReliableLQ(log, surrealcbor.New())
 		ctx := context.Background()
 
 		// Setup initial state with existing mappings
@@ -157,7 +158,7 @@ func TestReliableLQ_restoreLiveQueries(t *testing.T) {
 
 	t.Run("restores multiple queries with existing mappings", func(t *testing.T) {
 		log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-		rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+		rlq := newReliableLQ(log, surrealcbor.New())
 		ctx := context.Background()
 
 		// Setup initial state with multiple existing mappings
@@ -383,7 +384,7 @@ func TestReliableLQ_handleSend(t *testing.T) {
 				},
 			}
 			log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-			rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+			rlq := newReliableLQ(log, surrealcbor.New())
 			ctx := context.Background()
 
 			handled, resp, err := rlq.handleSend(ctx, tt.method, tt.params, mock, log)
@@ -402,7 +403,7 @@ func TestReliableLQ_handleSend(t *testing.T) {
 func TestReliableLQ_handleSend_tracking(t *testing.T) {
 	// Setup
 	log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-	rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+	rlq := newReliableLQ(log, surrealcbor.New())
 	ctx := context.Background()
 
 	// Create a mock that returns a UUID in the response
@@ -487,7 +488,7 @@ func TestReliableLQ_handleSend_tracking(t *testing.T) {
 // TestReliableLQ_recordLiveQueryFromResponse_errors tests error handling
 func TestReliableLQ_recordLiveQueryFromResponse_errors(t *testing.T) {
 	log := logger.New(slog.NewTextHandler(os.Stdout, nil))
-	rlq := newReliableLQ(log, &models.CborUnmarshaler{})
+	rlq := newReliableLQ(log, surrealcbor.New())
 
 	tests := []struct {
 		name        string
