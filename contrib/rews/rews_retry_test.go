@@ -19,7 +19,7 @@ type mockConnection struct {
 	connection.WebSocketConnection
 	connectCalls atomic.Int32
 	connectErr   error
-	isClosed     bool
+	isClosed     atomic.Bool
 	connectFunc  func(ctx context.Context) error // Allow overriding Connect behavior
 }
 
@@ -32,11 +32,11 @@ func (m *mockConnection) Connect(ctx context.Context) error {
 }
 
 func (m *mockConnection) IsClosed() bool {
-	return m.isClosed
+	return m.isClosed.Load()
 }
 
 func (m *mockConnection) Close(ctx context.Context) error {
-	m.isClosed = true
+	m.isClosed.Store(true)
 	return nil
 }
 
@@ -272,7 +272,7 @@ func TestConnectionRetry(t *testing.T) {
 		require.NoError(t, err)
 
 		// Simulate connection loss
-		mockConn.isClosed = true
+		mockConn.isClosed.Store(true)
 		failOnConnect.Store(true)
 
 		// Wait for reconnection attempt

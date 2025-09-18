@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -64,7 +65,12 @@ type Connection struct {
 	// It is used to stop the readLoop goroutine and prevent Send from writing to a closed (i.e. nil) connection.
 	connCloseCh chan int
 
+	// connCloseError stores the error that caused the connection to close.
+	// Protected by closeMutex for thread-safe access.
 	connCloseError error
+
+	// closeMutex protects access to connCloseError
+	closeMutex sync.RWMutex
 
 	// closed is used to indicate whether the connection is closed.
 	// It is set to true when the connection is closed, and false otherwise.
@@ -72,7 +78,9 @@ type Connection struct {
 	//
 	// To reconnect, you should create a new instance of Connection
 	// and call Connect on it.
-	closed bool
+	//
+	// This field is accessed using atomic operations to prevent data races.
+	closed atomic.Bool
 }
 
 func New(p *connection.Config) *Connection {
@@ -95,7 +103,7 @@ func New(p *connection.Config) *Connection {
 // This is useful to enable the consumer of WebSocketConnection
 // to trigger reconnection attempts if the connection is disconnected unexpectedly.
 func (c *Connection) IsClosed() bool {
-	return c.closed
+	return c.closed.Load()
 }
 
 // Connect establishes the WebSocket connection to the SurrealDB server.
@@ -127,7 +135,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	// This will run in the background and handle incoming messages,
 	// until closeChan is closed, or a read error indicating
 	// lost connection occurs.
-	go c.readLoop()
+	go c.readLoop(conn)
 
 	return nil
 }
@@ -187,7 +195,7 @@ func (c *Connection) Close(ctx context.Context) error {
 	// and try writing a message.
 	//
 	// This also serves as a guardrail to prevent Send proceeding to write to nil ws.Conn
-	close(c.connCloseCh)
+	c.closeWithError(nil)
 
 	// We defer locking connLock until this point and do state check
 	// to prevent Close blocking on repeated Close calls.
@@ -315,7 +323,10 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 
 	select {
 	case <-c.connCloseCh:
-		return nil, c.connCloseError
+		c.closeMutex.RLock()
+		err := c.connCloseError
+		c.closeMutex.RUnlock()
+		return nil, err
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
@@ -361,6 +372,11 @@ func (c *Connection) write(v any) error {
 
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
+
+	if c.Conn == nil {
+		return errors.New("connection is closed")
+	}
+
 	err = c.Conn.WriteMessage(gorilla.BinaryMessage, data)
 
 	// Check if we got ErrCloseSent, which means the connection is closed
@@ -374,27 +390,29 @@ func (c *Connection) write(v any) error {
 }
 
 func (c *Connection) closeWithError(err error) {
-	if c.closed {
+	// Use CompareAndSwap to atomically check and set closed flag
+	// This ensures only one goroutine can proceed to close the channel
+	if !c.closed.CompareAndSwap(false, true) {
+		// Already closed by another goroutine
 		return
 	}
 
-	c.closed = true
+	c.closeMutex.Lock()
 	c.connCloseError = err
-	select {
-	case <-c.connCloseCh:
-		// Already closed
-	default:
-		close(c.connCloseCh)
-	}
+	c.closeMutex.Unlock()
+
+	// At this point, we know we're the only goroutine that will close the channel
+	// because we successfully set closed from 0 to 1
+	close(c.connCloseCh)
 }
 
-func (c *Connection) readLoop() {
+func (c *Connection) readLoop(conn *gorilla.Conn) {
 	for {
 		select {
 		case <-c.connCloseCh:
 			return
 		default:
-			_, data, err := c.Conn.ReadMessage()
+			_, data, err := conn.ReadMessage()
 			if err != nil {
 				shouldExit := c.handleError(err)
 				if shouldExit {
@@ -412,11 +430,15 @@ func (c *Connection) readLoop() {
 // and the readLoop should exit, false otherwise.
 func (c *Connection) handleError(err error) bool {
 	if errors.Is(err, net.ErrClosed) {
+		c.closeMutex.Lock()
 		c.connCloseError = net.ErrClosed
+		c.closeMutex.Unlock()
 		return true
 	}
 	if gorilla.IsUnexpectedCloseError(err) {
+		c.closeMutex.Lock()
 		c.connCloseError = io.ErrClosedPipe
+		c.closeMutex.Unlock()
 		<-c.connCloseCh
 		return true
 	}

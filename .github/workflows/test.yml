@@ -108,7 +108,7 @@ jobs:
             sleep 2
           done
       - name: Test ${{ matrix.connection-type }} connection
-        run: go test -v -cover ./...
+        run: go test -v -cover -race ./...
         env:
           SURREALDB_URL: ${{ matrix.surrealdb-url }}
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
@@ -148,7 +148,7 @@ jobs:
         run: |
           cd contrib/surrealnote
           # The Makefile will handle PostgreSQL start/stop automatically
-          go test -v -timeout 10m -run TestE2E_migrationFlow ./...
+          go test -v -race -timeout 10m -run TestE2E_migrationFlow ./...
         env:
           SURREALDB_URL: ws://localhost:8000/rpc
 

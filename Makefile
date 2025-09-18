@@ -7,7 +7,7 @@ clean:
 	$(GO) clean -modcache
 
 test:
-	$(GO) test -v -cover ./...
+	$(GO) test -v -cover -race ./...
 
 lint:
 	golangci-lint run
