@@ -13,8 +13,8 @@
 //
 // # Data Models
 //
-// The [surrealdb] package facilitates communication between client and the backend service using the Concise
-// Binary Object Representation (CBOR) format.
+// The [surrealdb] package facilitates communication between client and the backend service using the SurrealDB CBOR Protocol.
+// The protocol encoding/decoding is handled by [github.com/surrealdb/surrealdb.go/surrealcbor].
 //
 // The most commonly used data type is [models.RecordID], which represents a SurrealDB record identifier which is a pair of
 // table name and an identifier within that table.
