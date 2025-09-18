@@ -374,7 +374,8 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 				defer wg.Done()
 				user, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("missing", j))
 				s.Require().NoError(err)
-				s.Require().Nil(user.ID)
+				// With surrealcbor (new default), non-existent records return nil
+				s.Require().Nil(user)
 			}(i)
 		}
 		wg.Wait()

@@ -124,7 +124,7 @@ func BenchmarkDecoder(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -195,7 +195,7 @@ func BenchmarkDecoderNested(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -250,7 +250,7 @@ func BenchmarkDecoderEmbedded(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -310,7 +310,7 @@ func BenchmarkDecoderLargeSlice(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -377,7 +377,7 @@ func BenchmarkDecoderMixedTypes(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -426,7 +426,7 @@ func BenchmarkDecoderCaseInsensitive(b *testing.B) {
 	}
 
 	b.Run("fxamacker_unmarshaler", func(b *testing.B) {
-		unmarshaler := &models.CborUnmarshaler{}
+		unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for benchmarking
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -477,7 +477,7 @@ func BenchmarkDecoderWithNone(b *testing.B) {
 	}
 
 	// Use models marshaler since it knows how to encode CustomNil as Tag 6
-	marshaler := &models.CborMarshaler{}
+	marshaler := &models.CborMarshaler{} //nolint:staticcheck // Used for benchmarking
 	encoded, err := marshaler.Marshal(data)
 	if err != nil {
 		b.Fatal(err)

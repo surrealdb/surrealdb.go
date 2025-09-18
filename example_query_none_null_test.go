@@ -83,9 +83,9 @@ func ExampleQuery_none_and_null_handling_allExistingFields() {
 	// ID: t:f, Nullable: false, Option: none
 }
 
-func ExampleQuery_none_and_null_handling_explicitFields() {
+func ExampleQuery_none_and_null_handling_explicitFields_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = false
+	c.UseFxamackerCBOR = true
 
 	db := c.MustNew()
 
@@ -223,9 +223,9 @@ func ExampleQuery_none_and_null_handling_explicitFields_surrealcbor() {
 	// ID: t:f, Nullable: false, Option: <nil>
 }
 
-func ExampleQuery_none_and_null_handling_explicitFields_ints() {
+func ExampleQuery_none_and_null_handling_explicitFields_ints_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = false
+	c.UseFxamackerCBOR = true
 
 	db := c.MustNew()
 
@@ -363,9 +363,9 @@ func ExampleQuery_none_and_null_handling_explicitFields_ints_surrealcbor() {
 	// ID: t:f, Nullable: 1, Option: <nil>
 }
 
-func ExampleQuery_create_none_null_fields() {
+func ExampleQuery_create_none_null_fields_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = false
+	c.UseFxamackerCBOR = true
 
 	db := c.MustNew()
 
@@ -512,9 +512,9 @@ func ExampleQuery_create_none_null_fields_surrealcbor() {
 }
 
 //nolint:gocritic
-func ExampleQuery_null_none_customdatetime_roundtrip() {
+func ExampleQuery_null_none_customdatetime_roundtrip_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "t")
-	c.UseSurrealCBOR = false
+	c.UseFxamackerCBOR = true
 
 	db := c.MustNew()
 

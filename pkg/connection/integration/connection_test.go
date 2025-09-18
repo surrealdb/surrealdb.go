@@ -14,6 +14,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 type testUser struct {
@@ -32,17 +33,19 @@ func TestConnectionTestSuite(t *testing.T) {
 	ts := new(ConnectionTestSuite)
 	ts.connImplementations = make(map[string]connection.Connection)
 
+	c := surrealcbor.New()
+
 	ts.connImplementations["ws"] = gorillaws.New(&connection.Config{
 		BaseURL:     "ws://localhost:8000",
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
+		Marshaler:   c,
+		Unmarshaler: c,
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
 	ts.connImplementations["http"] = http.New(&connection.Config{
 		BaseURL:     "http://localhost:8000",
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
+		Marshaler:   c,
+		Unmarshaler: c,
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 

@@ -123,7 +123,7 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit() {
 		conf.Logger = logger.New(handler)
 		// Set a custom small limit that will be exceeded
 		// Note: fxamacker/cbor requires MaxArrayElements to be at least 16
-		conf.Unmarshaler = &models.CborUnmarshaler{
+		conf.Unmarshaler = &models.CborUnmarshaler{ //nolint:staticcheck // Example demonstrating fxamacker/cbor DecOptions
 			DecOptions: cbor.DecOptions{
 				MaxArrayElements: 16, // Set to minimum allowed value
 			},
@@ -178,7 +178,7 @@ func ExampleCborUnmarshaler_DecOptions_customLargeLimit() {
 	conf := connection.NewConfig(u)
 	conf.Logger = nil
 	// Set a custom larger limit that accommodates the data
-	conf.Unmarshaler = &models.CborUnmarshaler{
+	conf.Unmarshaler = &models.CborUnmarshaler{ //nolint:staticcheck // Example demonstrating fxamacker/cbor DecOptions
 		DecOptions: cbor.DecOptions{
 			// Note that the default value is 131072.
 			// We use smaller value just to make test run quickly.

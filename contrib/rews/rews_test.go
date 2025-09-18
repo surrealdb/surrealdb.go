@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 // TestConnection tests all public methods of the Connection struct
@@ -26,7 +26,7 @@ func TestConnection(t *testing.T) {
 
 		conn := &Connection[*mockWebSocketConnection]{
 			WebSocketConnection: mock,
-			reliableLQ:          newReliableLQ(log, &models.CborUnmarshaler{}),
+			reliableLQ:          newReliableLQ(log, surrealcbor.New()),
 			logger:              log,
 			sessionVars:         make(map[string]any),
 			state:               StateConnected, // Start in connected state for most tests

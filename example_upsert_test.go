@@ -109,9 +109,9 @@ func ExampleUpsert() {
 	// Selected person: {persons:yusuke Yusuke Updated Last {0001-01-01 00:00:00 +0000 UTC} <nil>}
 }
 
-func ExampleUpsert_unmarshal_error_fxamackercbor() {
+func ExampleUpsert_unmarshal_error_fxamackercbor_legacy_fxamackercbor() {
 	c := testenv.MustNewConfig("example", "query", "person")
-	c.UseSurrealCBOR = false
+	c.UseFxamackerCBOR = true
 
 	db := c.MustNew()
 

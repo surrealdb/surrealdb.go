@@ -73,8 +73,8 @@ func TestCompatibilityWithFxamacker_types(t *testing.T) {
 // This serves as a reference for our field resolver behavior
 func TestCompatibilityWithFxamacker_fieldResolver(t *testing.T) {
 	// Create reusable marshaler and unmarshaler
-	marshaler := &models.CborMarshaler{}
-	unmarshaler := &models.CborUnmarshaler{}
+	marshaler := &models.CborMarshaler{}     //nolint:staticcheck // Used for compatibility testing
+	unmarshaler := &models.CborUnmarshaler{} //nolint:staticcheck // Used for compatibility testing
 	t.Run("empty json tag", func(t *testing.T) {
 		type EmptyTag struct {
 			Field1 string `json:""`

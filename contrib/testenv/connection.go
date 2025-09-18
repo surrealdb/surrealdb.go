@@ -19,6 +19,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
@@ -46,13 +47,17 @@ const (
 )
 
 var (
-	currentURL = os.Getenv(EnvWSURL)
-	reconnect  = os.Getenv(EnvReconnectionCheckInterval)
-	useGWS     = os.Getenv(EnvSurrealDBConnectionImpl) == "gws"
+	currentURL     = os.Getenv(EnvWSURL)
+	reconnect      = os.Getenv(EnvReconnectionCheckInterval)
+	useGWS         = os.Getenv(EnvSurrealDBConnectionImpl) == "gws"
+	cborImplEnvVar = os.Getenv(EnvSurrealCBORImpl)
 
-	// useSurrealCBOR determines whether to use the surrealcbor package
-	// as an alternative to fxamacker/cbor-based codec.
-	useSurrealCBOR = os.Getenv(EnvSurrealCBORImpl) == "surrealcbor"
+	// useSurrealCBOR determines whether to use the surrealcbor package.
+	// Default is true (surrealcbor), unless explicitly set to "fxamackercbor"
+	useSurrealCBOR = cborImplEnvVar != "fxamackercbor"
+
+	// useFxamackerCBOR determines whether to explicitly use fxamacker/cbor
+	useFxamackerCBOR = cborImplEnvVar == "fxamackercbor"
 )
 
 func GetSurrealDBURL() string {
@@ -106,7 +111,12 @@ type Config struct {
 
 	// UseSurrealCBOR determines whether to use the surrealcbor package
 	// as an alternative to fxamacker/cbor-based codec.
+	// Default is true unless explicitly set to use fxamacker/cbor.
 	UseSurrealCBOR bool
+
+	// UseFxamackerCBOR determines whether to explicitly use fxamacker/cbor
+	// instead of the default surrealcbor implementation.
+	UseFxamackerCBOR bool
 }
 
 func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
@@ -154,6 +164,7 @@ func NewConfig(namespace, database string, tables ...string) (*Config, error) {
 		Tables:            tables,
 		ReconnectDuration: reconnectDuration,
 		UseSurrealCBOR:    useSurrealCBOR,
+		UseFxamackerCBOR:  useFxamackerCBOR,
 	}
 
 	return c, nil
@@ -182,11 +193,17 @@ func (c *Config) New() (*surrealdb.DB, error) {
 	}
 
 	conf := connection.NewConfig(u)
-	if c.UseSurrealCBOR {
+	if c.UseFxamackerCBOR {
+		// Explicitly use fxamacker/cbor implementation
+		conf.Marshaler = &models.CborMarshaler{}     //nolint:staticcheck // Intentional use of deprecated type for legacy support
+		conf.Unmarshaler = &models.CborUnmarshaler{} //nolint:staticcheck // Intentional use of deprecated type for legacy support
+	} else if c.UseSurrealCBOR {
+		// Explicitly use surrealcbor implementation
 		codec := surrealcbor.New()
-		conf.Unmarshaler = codec
 		conf.Marshaler = codec
+		conf.Unmarshaler = codec
 	}
+	// If neither is explicitly set, use the default from connection.NewConfig (which is now surrealcbor)
 
 	var conn connection.Connection
 	if c.ReconnectDuration > 0 {

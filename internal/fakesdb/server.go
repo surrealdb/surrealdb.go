@@ -25,8 +25,9 @@ import (
 	"time"
 
 	"github.com/lxzan/gws"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 // cryptoRandInt generates a cryptographically secure random integer in [0, max)
@@ -166,8 +167,8 @@ type Server struct {
 	sessions       []*Session
 	ctx            context.Context
 	cancel         context.CancelFunc
-	marshaler      *models.CborMarshaler
-	unmarshaler    *models.CborUnmarshaler
+	marshaler      codec.Marshaler
+	unmarshaler    codec.Unmarshaler
 
 	// TokenSignUp is the token returned by any successful SignUp operation
 	// This is used to verify that the SignUp operation works correctly.
@@ -190,6 +191,9 @@ type Handler struct {
 // Use "127.0.0.1:0" to bind to a random available port.
 func NewServer(addr string) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	c := surrealcbor.New()
+
 	s := &Server{
 		addr:         addr,
 		connections:  make(map[*gws.Conn]bool),
@@ -197,8 +201,8 @@ func NewServer(addr string) *Server {
 		sessions:     make([]*Session, 0),
 		ctx:          ctx,
 		cancel:       cancel,
-		marshaler:    &models.CborMarshaler{},
-		unmarshaler:  &models.CborUnmarshaler{},
+		marshaler:    c,
+		unmarshaler:  c,
 	}
 
 	handler := &Handler{server: s}

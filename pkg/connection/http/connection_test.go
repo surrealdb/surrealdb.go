@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response
@@ -62,10 +62,11 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 		}
 	})
 
+	c := surrealcbor.New()
 	p := &connection.Config{
 		BaseURL:     "http://test.surreal",
-		Marshaler:   &models.CborMarshaler{},
-		Unmarshaler: &models.CborUnmarshaler{},
+		Marshaler:   c,
+		Unmarshaler: c,
 	}
 
 	httpEngine := New(p)
