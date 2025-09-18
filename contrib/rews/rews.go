@@ -72,6 +72,9 @@ func (s State) validateTransitionTo(newState State) error {
 type Connection[C connection.WebSocketConnection] struct {
 	connection.WebSocketConnection
 
+	// connMu protects access to the WebSocketConnection field during reconnection
+	connMu sync.RWMutex
+
 	// NewFunc is a function that initializes the WebSocket connection.
 	// It is used to create a new WebSocket connection object when the initial
 	// connection is made, or when the reconnection is needed.
@@ -248,8 +251,10 @@ func (arws *Connection[C]) connectWithRetry(ctx context.Context, isReconnect boo
 		if err == nil {
 			err = conn.Connect(ctx)
 			if err == nil {
-				// Success!
+				// Success! Update the connection while holding the lock
+				arws.connMu.Lock()
 				arws.WebSocketConnection = conn
+				arws.connMu.Unlock()
 
 				// Start reconnection loop if this is the first successful connection
 				arws.once.Do(func() {
@@ -379,7 +384,10 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 
 	// Restore live queries after session state is restored
 	// This will also setup notification routing for each restored query
-	if err := arws.reliableLQ.restoreLiveQueries(ctx, arws.WebSocketConnection, arws.WebSocketConnection, arws.logger); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := arws.reliableLQ.restoreLiveQueries(ctx, conn, conn, arws.logger); err != nil {
 		if arws.logger != nil {
 			arws.logger.Error("rews.Connection failed to restore live queries", "error", err)
 		}
@@ -390,7 +398,10 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
-	if err := arws.WebSocketConnection.Use(ctx, namespace, database); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Use(ctx, namespace, database); err != nil {
 		return fmt.Errorf("rews.Connection failed to use namespace and database: %w", err)
 	}
 	arws.sessionNS = namespace
@@ -399,7 +410,10 @@ func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) 
 }
 
 func (arws *Connection[C]) Authenticate(ctx context.Context, token string) error {
-	if err := arws.WebSocketConnection.Authenticate(ctx, token); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Authenticate(ctx, token); err != nil {
 		return fmt.Errorf("rews.Connection failed to authenticate: %w", err)
 	}
 
@@ -409,7 +423,10 @@ func (arws *Connection[C]) Authenticate(ctx context.Context, token string) error
 }
 
 func (arws *Connection[C]) Let(ctx context.Context, key string, value any) error {
-	if err := arws.WebSocketConnection.Let(ctx, key, value); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Let(ctx, key, value); err != nil {
 		return fmt.Errorf("rews.Connection failed to set session variable %s: %w", key, err)
 	}
 	arws.sessionVars[key] = value
@@ -417,7 +434,10 @@ func (arws *Connection[C]) Let(ctx context.Context, key string, value any) error
 }
 
 func (arws *Connection[C]) Unset(ctx context.Context, key string) error {
-	if err := arws.WebSocketConnection.Unset(ctx, key); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Unset(ctx, key); err != nil {
 		return fmt.Errorf("rews.Connection failed to unset session variable %s: %w", key, err)
 	}
 	delete(arws.sessionVars, key)
@@ -425,7 +445,10 @@ func (arws *Connection[C]) Unset(ctx context.Context, key string) error {
 }
 
 func (arws *Connection[C]) SignUp(ctx context.Context, authData any) (string, error) {
-	token, err := arws.WebSocketConnection.SignUp(ctx, authData)
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	token, err := conn.SignUp(ctx, authData)
 	if err != nil {
 		return "", fmt.Errorf("rews.Connection failed to sign up: %w", err)
 	}
@@ -435,7 +458,10 @@ func (arws *Connection[C]) SignUp(ctx context.Context, authData any) (string, er
 }
 
 func (arws *Connection[C]) SignIn(ctx context.Context, authData any) (string, error) {
-	token, err := arws.WebSocketConnection.SignIn(ctx, authData)
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	token, err := conn.SignIn(ctx, authData)
 	if err != nil {
 		return "", fmt.Errorf("rews.Connection failed to sign in: %w", err)
 	}
@@ -480,7 +506,10 @@ func (arws *Connection[C]) Close(ctx context.Context) error {
 	close(arws.connCloseCh)
 	<-arws.reconnLoopCloseCh
 
-	if err := arws.WebSocketConnection.Close(ctx); err != nil {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Close(ctx); err != nil {
 		return err
 	}
 
@@ -507,7 +536,10 @@ func (arws *Connection[C]) reconnectionLoop() {
 		case <-time.After(checkInterval):
 		}
 
-		if arws.WebSocketConnection.IsClosed() {
+		arws.connMu.RLock()
+		isClosed := arws.WebSocketConnection != nil && arws.WebSocketConnection.IsClosed()
+		arws.connMu.RUnlock()
+		if isClosed {
 			if arws.logger != nil {
 				arws.logger.Info("rews.Connection detected closed connection, attempting to reconnect")
 			}

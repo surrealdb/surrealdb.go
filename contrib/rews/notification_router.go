@@ -24,16 +24,6 @@ type NotificationRouter struct {
 	logger logger.Logger
 }
 
-// route represents a single notification routing path
-type route struct {
-	internalID string
-	externalID string
-	internalCh chan connection.Notification
-	externalCh chan connection.Notification
-	stopCh     chan struct{}
-	wg         sync.WaitGroup
-}
-
 // NewNotificationRouter creates a new NotificationRouter
 func NewNotificationRouter(log logger.Logger) *NotificationRouter {
 	return &NotificationRouter{
@@ -59,24 +49,9 @@ func (nr *NotificationRouter) SetupRouting(
 	r, exists := nr.routes[internalID]
 	if !exists {
 		// Create new route with internal channel
-		r = &route{
-			internalID: internalID,
-			internalCh: make(chan connection.Notification, 100), // buffered to avoid blocking
-			stopCh:     make(chan struct{}),
-		}
+		r = newRoute(internalID)
 		nr.routes[internalID] = r
 		nr.logger.Debug("Created new route", "internal_id", internalID)
-	}
-
-	// Stop old routing if it exists and external ID is changing
-	if r.externalCh != nil && r.externalID != externalID {
-		nr.logger.Debug("Stopping old routing",
-			"internal_id", internalID,
-			"old_external_id", r.externalID,
-			"new_external_id", externalID)
-		close(r.stopCh)
-		r.wg.Wait()
-		r.stopCh = make(chan struct{})
 	}
 
 	// Get external channel from provider
@@ -89,57 +64,14 @@ func (nr *NotificationRouter) SetupRouting(
 		return r.internalCh, err
 	}
 
-	// Update route
-	r.externalID = externalID
-	r.externalCh = externalCh
+	// Update the route's external connection and manage goroutine lifecycle
+	r.setExternal(externalID, externalCh, nr.logger)
 
-	// Start routing goroutine only if needed
-	if r.externalID != "" {
-		r.wg.Add(1)
-		go nr.routeNotifications(r)
-
-		nr.logger.Debug("Notification routing setup",
-			"internal_id", internalID,
-			"external_id", externalID)
-	}
+	nr.logger.Debug("Notification routing setup",
+		"internal_id", internalID,
+		"external_id", externalID)
 
 	return r.internalCh, nil
-}
-
-// routeNotifications routes notifications from external to internal channel
-func (nr *NotificationRouter) routeNotifications(r *route) {
-	defer r.wg.Done()
-
-	nr.logger.Debug("Starting notification routing",
-		"internal_id", r.internalID,
-		"external_id", r.externalID)
-
-	for {
-		select {
-		case notification, ok := <-r.externalCh:
-			if !ok {
-				nr.logger.Debug("External channel closed",
-					"internal_id", r.internalID,
-					"external_id", r.externalID)
-				return
-			}
-
-			select {
-			case r.internalCh <- notification:
-				// Successfully routed notification
-			default:
-				// Internal channel might be full or closed
-				nr.logger.Warn("Failed to route notification, channel might be full",
-					"internal_id", r.internalID)
-			}
-
-		case <-r.stopCh:
-			nr.logger.Debug("Notification routing stopped",
-				"internal_id", r.internalID,
-				"external_id", r.externalID)
-			return
-		}
-	}
 }
 
 // RemoveRoute removes a routing entry and stops its goroutine
@@ -148,11 +80,7 @@ func (nr *NotificationRouter) RemoveRoute(internalID string) {
 	defer nr.routesMu.Unlock()
 
 	if r, exists := nr.routes[internalID]; exists {
-		if r.externalCh != nil {
-			close(r.stopCh)
-			r.wg.Wait()
-		}
-		close(r.internalCh)
+		r.stop() // Stop the routing goroutine and close internal channel
 		delete(nr.routes, internalID)
 
 		nr.logger.Debug("Route removed", "internal_id", internalID)
@@ -165,11 +93,7 @@ func (nr *NotificationRouter) Close() {
 	defer nr.routesMu.Unlock()
 
 	for internalID, r := range nr.routes {
-		if r.externalCh != nil {
-			close(r.stopCh)
-			r.wg.Wait()
-		}
-		close(r.internalCh)
+		r.stop() // Stop the routing goroutine and close internal channel
 		delete(nr.routes, internalID)
 		nr.logger.Debug("Route closed", "internal_id", internalID)
 	}
