@@ -36,10 +36,6 @@ type RecordID struct {
 	ID any
 }
 
-type RecordIDType interface {
-	~int | ~string | []any | map[string]any
-}
-
 var ErrBadRecordID = errors.New("invalid record ID (want <table>:<identifier>)")
 
 func ParseRecordID(idStr string) (*RecordID, error) {
