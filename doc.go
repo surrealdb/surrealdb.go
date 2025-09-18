@@ -11,13 +11,6 @@
 // RPC Protocol over WebSocket is stateful - authentication, namespace/database selection, and live queries must be
 // restored after reconnection.
 //
-// # SurrealDB CBOR Protocol
-//
-// The SDK uses [github.com/surrealdb/surrealdb.go/surrealcbor] for handling the SurrealDB CBOR Protocol.
-// This implementation is optimized for SurrealDB's custom CBOR tags and provides proper handling of SurrealDB-specific
-// data types like NONE values, UUIDs, Record IDs, and Geometry types.
-// For advanced CBOR handling and custom marshaling, refer to the surrealcbor package documentation.
-//
 // # Data Models
 //
 // The [surrealdb] package facilitates communication between client and the backend service using the SurrealDB CBOR Protocol.

@@ -1,6 +1,15 @@
 // Package surrealcbor provides CBOR (Concise Binary Object Representation) encoding and decoding for SurrealDB.
 //
-// The SurrealDB's CBOR protocol is documented at https://surrealdb.com/docs/surrealdb/integration/cbor.
+// # SurrealDB CBOR Protocol
+//
+// The SDK uses this package for handling the SurrealDB CBOR Protocol.
+//
+// This implementation is optimized for SurrealDB's custom CBOR tags and provides proper handling of SurrealDB-specific
+// data types like NONE values, UUIDs, Record IDs, and Geometry types.
+//
+// For advanced CBOR handling and custom marshaling, refer to [Marshaler] and [Unmarshaler], and the `CustomUnmarshalCBOR` example.
+//
+// The SurrealDB CBOR protocol is documented at https://surrealdb.com/docs/surrealdb/integration/cbor.
 //
 // # Custom CBOR Tags
 //
