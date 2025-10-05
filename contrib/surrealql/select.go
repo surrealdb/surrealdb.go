@@ -10,6 +10,7 @@ type SelectQuery struct {
 	fields      []*expr
 	omits       []string
 	from        []*expr
+	only        bool
 	whereClause *whereBuilder
 	orderBy     []orderByClause
 	limitVal    *int
@@ -84,6 +85,15 @@ func Select[T exprLike](targets ...T) *SelectQuery {
 		fields: []*expr{Expr("*")}, // Default to SELECT *
 		from:   ts,
 	}
+}
+
+// SelectOnly creates a new SELECT ONLY query starting with the FROM clause.
+//
+// See [Select] for details on the target parameter, general usage, and examples.
+func SelectOnly[T exprLike](targets ...T) *SelectQuery {
+	q := Select(targets...)
+	q.only = true
+	return q
 }
 
 // orderByClause represents an ORDER BY clause
@@ -373,7 +383,11 @@ func (q *SelectQuery) build(c *queryBuildContext) (sql string) {
 		for i, f := range q.from {
 			fromClauses[i] = f.Build(c.in("from"))
 		}
-		parts = append(parts, "FROM "+strings.Join(fromClauses, ", "))
+		from := "FROM "
+		if q.only {
+			from += "ONLY "
+		}
+		parts = append(parts, from+strings.Join(fromClauses, ", "))
 	}
 
 	// WHERE clause
