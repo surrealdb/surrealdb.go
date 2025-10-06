@@ -1,6 +1,6 @@
 package surrealql
 
-import "fmt"
+import "strings"
 
 // RelateQuery represents a RELATE query
 type RelateQuery struct {
@@ -11,6 +11,7 @@ type RelateQuery struct {
 	content      map[string]any
 	useContent   bool
 	returnClause string
+	only         bool
 }
 
 // Relate starts a RELATE query
@@ -22,6 +23,13 @@ func Relate[T exprLike](from T, edge string, to T) *RelateQuery {
 		to:          Expr(to),
 		content:     make(map[string]any),
 	}
+}
+
+// RelateOnly starts a RELATE ONLY query that creates and returns only one relation
+func RelateOnly[T exprLike](from T, edge string, to T) *RelateQuery {
+	r := Relate(from, edge, to)
+	r.only = true
+	return r
 }
 
 // Set adds a field or expression to the relation
@@ -52,27 +60,35 @@ func (q *RelateQuery) Build() (sql string, vars map[string]any) {
 }
 
 func (q *RelateQuery) build(c *queryBuildContext) (sql string) {
-	from := q.from.Build(c)
-	to := q.to.Build(c)
+	var b strings.Builder
 
-	// Don't escape record IDs with colons, only escape the edge table name
-	sql = fmt.Sprintf("RELATE %s->%s->%s",
-		from,
-		escapeIdent(q.edge),
-		to)
+	b.WriteString("RELATE ")
+
+	if q.only {
+		b.WriteString("ONLY ")
+	}
+
+	b.WriteString(q.from.Build(c))
+	b.WriteString("->")
+	b.WriteString(escapeIdent(q.edge))
+	b.WriteString("->")
+	b.WriteString(q.to.Build(c))
 
 	if q.useContent && len(q.content) > 0 {
 		paramName := c.generateAndAddParam("content", q.content)
-		sql += fmt.Sprintf(" CONTENT $%s", paramName)
+		b.WriteString(" CONTENT $")
+		b.WriteString(paramName)
 	} else if setClause := q.buildSetClause(c); setClause != "" {
-		sql += " SET " + setClause
+		b.WriteString(" SET ")
+		b.WriteString(setClause)
 	}
 
 	if q.returnClause != "" {
-		sql += " RETURN " + q.returnClause
+		b.WriteString(" RETURN ")
+		b.WriteString(q.returnClause)
 	}
 
-	return sql
+	return b.String()
 }
 
 // String returns the SurrealQL string

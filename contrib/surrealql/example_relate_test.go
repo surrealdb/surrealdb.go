@@ -25,6 +25,24 @@ func ExampleRelate() {
 	//   param_2: heart
 }
 
+func ExampleRelateOnly() {
+	// Create a "follows" relation between user and another user, ensuring the single relation itself,
+	// rather than an array containing the only relation, is returned.
+	query := surrealql.RelateOnly("users:123", "likes", "posts:456").
+		Set("liked_at", time.Date(2023, 10, 1, 12, 0, 0, 0, time.UTC)).
+		Set("reaction", "heart")
+
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: RELATE ONLY users:123->likes->posts:456 SET liked_at = $param_1, reaction = $param_2
+	// Vars:
+	//   param_1: 2023-10-01 12:00:00 +0000 UTC
+	//   param_2: heart
+}
+
 func ExampleRelate_compoundOperations() {
 	// RELATE with compound operations using the Set function
 	sql, vars := surrealql.Relate("users:123", "views", "posts:456").
