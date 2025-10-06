@@ -1,6 +1,6 @@
 package surrealql
 
-import "fmt"
+import "strings"
 
 // UpdateQuery represents an UPDATE query
 type UpdateQuery struct {
@@ -8,6 +8,7 @@ type UpdateQuery struct {
 	targets      []*expr
 	whereClause  *whereBuilder
 	returnClause string
+	only         bool
 }
 
 // Update starts an UPDATE query
@@ -20,6 +21,14 @@ func Update[T exprLike](targets ...T) *UpdateQuery {
 	for _, t := range targets {
 		q.targets = append(q.targets, Expr(t))
 	}
+
+	return q
+}
+
+// UpdateOnly starts an UPDATE ONLY query that updates and returns only one record
+func UpdateOnly[T exprLike](target T) *UpdateQuery {
+	q := Update(target)
+	q.only = true
 
 	return q
 }
@@ -66,31 +75,37 @@ func (q *UpdateQuery) Build() (sql string, vars map[string]any) {
 }
 
 func (q *UpdateQuery) build(c *queryBuildContext) (sql string) {
-	for _, t := range q.targets {
-		if sql != "" {
-			sql += ", "
-		}
+	var b strings.Builder
 
-		tSQL := t.Build(c)
+	b.WriteString("UPDATE ")
 
-		sql += tSQL
+	if q.only {
+		b.WriteString("ONLY ")
 	}
 
-	sql = fmt.Sprintf("UPDATE %s", sql)
+	for i, t := range q.targets {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(t.Build(c))
+	}
 
 	if setClause := q.buildSetClause(c); setClause != "" {
-		sql += " SET " + setClause
+		b.WriteString(" SET ")
+		b.WriteString(setClause)
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		sql += " WHERE " + q.whereClause.build(c)
+		b.WriteString(" WHERE ")
+		b.WriteString(q.whereClause.build(c))
 	}
 
 	if q.returnClause != "" {
-		sql += " RETURN " + q.returnClause
+		b.WriteString(" RETURN ")
+		b.WriteString(q.returnClause)
 	}
 
-	return sql
+	return b.String()
 }
 
 // String returns the SurrealQL string
