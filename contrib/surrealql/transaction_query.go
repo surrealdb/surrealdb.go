@@ -7,7 +7,7 @@ import (
 
 // TransactionQuery represents a transaction query with BEGIN/COMMIT statements
 type TransactionQuery struct {
-	statements []TransactionStatement
+	*StatementsBuilder[TransactionQuery]
 }
 
 // TransactionStatement represents a statement that can be executed within a transaction
@@ -50,77 +50,6 @@ type ReturnStatement struct {
 	args []any
 }
 
-// Let adds a LET statement to the transaction
-func (t *TransactionQuery) Let(variable string, value any) *TransactionQuery {
-	if !strings.HasPrefix(variable, "$") {
-		variable = "$" + variable
-	}
-	t.statements = append(t.statements, &LetStatement{
-		variable: variable,
-		value:    value,
-	})
-	return t
-}
-
-// LetTyped adds a typed LET statement to the transaction
-func (t *TransactionQuery) LetTyped(variable, dataType string, value any) *TransactionQuery {
-	if !strings.HasPrefix(variable, "$") {
-		variable = "$" + variable
-	}
-	t.statements = append(t.statements, &LetStatement{
-		variable: variable,
-		dataType: dataType,
-		value:    value,
-	})
-	return t
-}
-
-// If adds an IF statement to the transaction
-func (t *TransactionQuery) If(condition string) *IfBuilder {
-	ifStmt := &IfStatement{
-		condition: condition,
-	}
-	return &IfBuilder{
-		transaction: t,
-		ifStatement: ifStmt,
-	}
-}
-
-// Throw adds a THROW statement to the transaction
-func (t *TransactionQuery) Throw(err any) *TransactionQuery {
-	t.statements = append(t.statements, &ThrowStatement{
-		err: err,
-	})
-	return t
-}
-
-// Raw adds a raw SurrealQL statement to the transaction
-func (t *TransactionQuery) Raw(sql string) *TransactionQuery {
-	t.statements = append(t.statements, &RawStatement{
-		sql: sql,
-	})
-	return t
-}
-
-// Query adds any Query to the transaction
-func (t *TransactionQuery) Query(query Query) *TransactionQuery {
-	t.statements = append(t.statements, &QueryStatement{
-		query: query,
-	})
-	return t
-}
-
-// Return adds a RETURN statement to the transaction
-// The expr parameter is raw SQL that can contain placeholders (?)
-// Args are the values to substitute for the placeholders
-func (t *TransactionQuery) Return(expr string, args ...any) *TransactionQuery {
-	t.statements = append(t.statements, &ReturnStatement{
-		expr: expr,
-		args: args,
-	})
-	return t
-}
-
 // Build returns the SurrealQL string and parameters for the transaction
 func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
@@ -129,20 +58,7 @@ func (t *TransactionQuery) Build() (sql string, vars map[string]any) {
 
 	builder.WriteString("BEGIN TRANSACTION;\n")
 
-	for _, stmt := range t.statements {
-		if qs, ok := stmt.(*QueryStatement); ok {
-			sql, vars := qs.query.Build()
-			builder.WriteString(strings.TrimRight(sql, ";"))
-			builder.WriteString(";\n")
-			// Merge parameters
-			for k, v := range vars {
-				c.vars[k] = v
-			}
-		} else {
-			builder.WriteString(stmt.build(&c))
-			builder.WriteString(";\n")
-		}
-	}
+	t.build(&c, &builder)
 
 	builder.WriteString("COMMIT TRANSACTION;")
 
@@ -156,13 +72,13 @@ func (t *TransactionQuery) String() string {
 }
 
 // IfBuilder helps build IF statements
-type IfBuilder struct {
-	transaction *TransactionQuery
+type IfBuilder[T any] struct {
+	transaction *T
 	ifStatement *IfStatement
 }
 
 // Then adds statements to the THEN block
-func (ib *IfBuilder) Then(fn func(*ThenBuilder)) *IfBuilder {
+func (ib *IfBuilder[T]) Then(fn func(*ThenBuilder)) *IfBuilder[T] {
 	tb := &ThenBuilder{
 		statements: &ib.ifStatement.thenBlock,
 	}
@@ -171,18 +87,16 @@ func (ib *IfBuilder) Then(fn func(*ThenBuilder)) *IfBuilder {
 }
 
 // Else adds statements to the ELSE block
-func (ib *IfBuilder) Else(fn func(*ElseBuilder)) *TransactionQuery {
+func (ib *IfBuilder[T]) Else(fn func(*ElseBuilder)) *IfBuilder[T] {
 	eb := &ElseBuilder{
 		statements: &ib.ifStatement.elseBlock,
 	}
 	fn(eb)
-	ib.transaction.statements = append(ib.transaction.statements, ib.ifStatement)
-	return ib.transaction
+	return ib
 }
 
 // End completes the IF statement without an ELSE block
-func (ib *IfBuilder) End() *TransactionQuery {
-	ib.transaction.statements = append(ib.transaction.statements, ib.ifStatement)
+func (ib *IfBuilder[T]) End() *T {
 	return ib.transaction
 }
 
