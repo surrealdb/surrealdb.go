@@ -32,6 +32,22 @@ func ExampleUpdate_allInTable() {
 	// Var param_2: 2022-10-01 00:00:00 +0000 UTC
 }
 
+func ExampleUpdateOnly() {
+	// Update only one record in a table
+	query := surrealql.UpdateOnly(surrealql.Thing("users", 123)).
+		Set("name", "Alice")
+
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: UPDATE ONLY $id_1 SET name = $param_1
+	// Vars:
+	//   id_1: users:123
+	//   param_1: Alice
+}
+
 func ExampleUpdate_allInMultipleTables() {
 	// Update all records in multiple tables
 	query := surrealql.Update("users", "products").

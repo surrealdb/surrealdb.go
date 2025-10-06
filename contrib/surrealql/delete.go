@@ -1,10 +1,13 @@
 package surrealql
 
+import "strings"
+
 // DeleteQuery represents a DELETE query
 type DeleteQuery struct {
 	targets      []*expr
 	whereClause  *whereBuilder
 	returnClause string
+	only         bool
 }
 
 // Delete starts a DELETE query
@@ -16,6 +19,21 @@ func Delete[T exprLike](target T, targets ...T) *DeleteQuery {
 	for _, t := range targets {
 		q.targets = append(q.targets, Expr(t))
 	}
+	return q
+}
+
+// DeleteOnly starts a DELETE ONLY query that deletes and returns only one record
+//
+// Note that DELETE ONLY requires either ReturnBefore or ReturnAfter by its nature.
+// The standard DELETE returns an empty array by default so adding ONLY to it always fails
+// because there is no single record to return.
+//
+// Refer to [SurrealDB documentation] for details.
+//
+// [SurrealDB documentation]: https://surrealdb.com/docs/surrealql/statements/delete#basic-usage
+func DeleteOnly[T exprLike](target T) *DeleteQuery {
+	q := Delete(target)
+	q.only = true
 	return q
 }
 
@@ -40,6 +58,24 @@ func (q *DeleteQuery) ReturnNone() *DeleteQuery {
 	return q
 }
 
+// ReturnBefore sets RETURN BEFORE
+func (q *DeleteQuery) ReturnBefore() *DeleteQuery {
+	q.returnClause = ReturnBeforeClause
+	return q
+}
+
+// ReturnAfter sets RETURN AFTER
+func (q *DeleteQuery) ReturnAfter() *DeleteQuery {
+	q.returnClause = ReturnAfterClause
+	return q
+}
+
+// ReturnDiff sets RETURN DIFF
+func (q *DeleteQuery) ReturnDiff() *DeleteQuery {
+	q.returnClause = ReturnDiffClause
+	return q
+}
+
 // Build returns the SurrealQL string and parameters
 func (q *DeleteQuery) Build() (sql string, params map[string]any) {
 	c := newQueryBuildContext()
@@ -47,25 +83,32 @@ func (q *DeleteQuery) Build() (sql string, params map[string]any) {
 }
 
 func (q *DeleteQuery) build(c *queryBuildContext) (sql string) {
-	sql = "DELETE "
+	var b strings.Builder
+
+	b.WriteString("DELETE ")
+
+	if q.only {
+		b.WriteString("ONLY ")
+	}
 
 	for i, target := range q.targets {
 		if i > 0 {
-			sql += ", "
+			b.WriteString(", ")
 		}
-		tSQL := target.Build(c)
-		sql += tSQL
+		b.WriteString(target.Build(c))
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		sql += " WHERE " + q.whereClause.build(c)
+		b.WriteString(" WHERE ")
+		b.WriteString(q.whereClause.build(c))
 	}
 
 	if q.returnClause != "" {
-		sql += " RETURN " + q.returnClause
+		b.WriteString(" RETURN ")
+		b.WriteString(q.returnClause)
 	}
 
-	return sql
+	return b.String()
 }
 
 // String returns the SurrealQL string
