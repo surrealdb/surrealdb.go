@@ -71,8 +71,7 @@ func Select[T exprLike](targets ...T) *SelectQuery {
 				args = append(args, target)
 			}
 			return &SelectQuery{
-				fields: []*expr{Expr("*")},
-				from:   []*expr{Expr(targets[0], args...)},
+				from: []*expr{Expr(targets[0], args...)},
 			}
 		}
 	}
@@ -82,8 +81,7 @@ func Select[T exprLike](targets ...T) *SelectQuery {
 		ts = append(ts, Expr(target))
 	}
 	return &SelectQuery{
-		fields: []*expr{Expr("*")}, // Default to SELECT *
-		from:   ts,
+		from: ts,
 	}
 }
 
@@ -113,10 +111,6 @@ func (q *SelectQuery) Value(field any, args ...any) *SelectQuery {
 }
 
 func (q *SelectQuery) Fields(rawFieldExprs ...any) *SelectQuery {
-	if len(q.fields) == 1 && q.fields[0].isAll() {
-		q.fields = make([]*expr, 0, len(rawFieldExprs))
-	}
-
 	for _, r := range rawFieldExprs {
 		switch v := r.(type) {
 		case string:
@@ -133,36 +127,53 @@ func (q *SelectQuery) Fields(rawFieldExprs ...any) *SelectQuery {
 	return q
 }
 
-// Field adds a field to the SELECT query.
-func (q *SelectQuery) Field(field any, args ...any) *SelectQuery {
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0].isAll() {
-		q.fields = []*expr{}
-	}
+// Alias adds an aliased field to the SELECT query.
+//
+// An alternative to calling this `Alias(field, args...)` is to call:
+//
+//	q.Field(Expr(field, args...).As(alias))
+//
+// See [Expr] for details on the field parameter.
+func (q *SelectQuery) Alias(alias string, field any, args ...any) *SelectQuery {
+	return q.Field(fieldExpr(field, args...).As(alias))
+}
 
+// Field adds a field to the SELECT query.
+//
+// This is a more general version of [FieldName] and [FieldNameAs].
+// It can accept various types of field expressions such as strings, subqueries, and expressions.
+//
+// An alternative to calling this `Field(field, args...)` is to call:
+//
+//	q.Field(Expr(field, args...))
+//
+// See [Expr] for details on the field parameter.
+//
+// See [Alias] for adding aliased fields.
+func (q *SelectQuery) Field(field any, args ...any) *SelectQuery {
+	q.fields = append(q.fields, fieldExpr(field, args...))
+	return q
+}
+
+func fieldExpr(field any, args ...any) *expr {
 	switch v := field.(type) {
 	case string:
-		q.fields = append(q.fields, Expr(v))
+		return Expr(v, args...)
 	case *SelectQuery:
-		q.fields = append(q.fields, Expr(v))
+		return Expr(v)
 	case *expr:
-		q.fields = append(q.fields, v)
+		return v
 	default:
 		// Unsupported field type
 		panic(fmt.Sprintf("unsupported field type: %T", v))
 	}
-	return q
 }
 
 // FieldName adds a field to the SELECT query.
 func (q *SelectQuery) FieldName(field string) *SelectQuery {
 	escaped := escapeIdent(field)
 	ex := Expr(escaped)
-	if len(q.fields) == 1 && q.fields[0].isAll() {
-		q.fields = []*expr{ex}
-	} else {
-		q.fields = append(q.fields, ex)
-	}
+	q.fields = append(q.fields, ex)
 	return q
 }
 
@@ -170,13 +181,8 @@ func (q *SelectQuery) FieldName(field string) *SelectQuery {
 func (q *SelectQuery) FieldNameAs(field, alias string) *SelectQuery {
 	escaped := escapeIdent(field)
 	ex := Expr(escaped)
-	aliased := ex.As(escapeIdent(alias))
-	// If fields only contains "*", replace it
-	if len(q.fields) == 1 && q.fields[0].isAll() {
-		q.fields = []*expr{aliased}
-	} else {
-		q.fields = append(q.fields, aliased)
-	}
+	aliased := ex.As(alias)
+	q.fields = append(q.fields, aliased)
 	return q
 }
 
@@ -440,28 +446,35 @@ func (q *SelectQuery) build(c *queryBuildContext) (sql string) {
 
 // buildSelectClause builds the SELECT clause
 func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
-	if len(q.fields) == 0 {
-		return "SELECT *"
-	}
+	var b strings.Builder
 
-	fields := make([]string, len(q.fields))
-	for i, field := range q.fields {
-		fields[i] = field.Build(c)
-	}
-
-	base := "SELECT "
+	b.WriteString("SELECT ")
 
 	if q.value {
-		base += "VALUE "
+		b.WriteString("VALUE ")
 	}
 
-	base += strings.Join(fields, ", ")
-
-	if len(q.omits) > 0 {
-		return base + " OMIT " + strings.Join(q.omits, ", ")
+	if len(q.fields) == 0 {
+		b.WriteString("*")
+	} else {
+		for i, field := range q.fields {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(field.Build(c))
+		}
 	}
 
-	return base
+	for i, omit := range q.omits {
+		if i == 0 {
+			b.WriteString(" OMIT ")
+		} else {
+			b.WriteString(", ")
+		}
+		b.WriteString(omit)
+	}
+
+	return b.String()
 }
 
 // buildGroupClause builds the GROUP BY clause
