@@ -33,6 +33,37 @@ func ExampleCreate() {
 	//   param_3: 2023-10-01 12:00:00 +0000 UTC
 }
 
+func ExampleCreateOnly_autoID() {
+	// Create only one user
+	query := surrealql.CreateOnly("users").
+		Set("name", "Jane Doe")
+
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: CREATE ONLY users SET name = $param_1
+	// Vars:
+	//   param_1: Jane Doe
+}
+
+func ExampleCreateOnly_specificID() {
+	// Create only one user with a specific ID
+	query := surrealql.CreateOnly(surrealql.Thing("users", "jane")).
+		Set("name", "Jane Doe")
+
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: CREATE ONLY $id_1 SET name = $param_1
+	// Vars:
+	//   id_1: users:jane
+	//   param_1: Jane Doe
+}
+
 func ExampleCreate_compoundOperations() {
 	// CREATE with compound operations using the Set function
 	sql, vars := surrealql.Create("stats:daily").

@@ -1,7 +1,6 @@
 package surrealql
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -12,6 +11,7 @@ type CreateQuery struct {
 	content      map[string]any
 	useContent   bool
 	returnClause string
+	only         bool
 }
 
 // Create starts a CREATE query
@@ -32,6 +32,13 @@ func Create[T exprLike](target T, targets ...T) *CreateQuery {
 		targets:     ts,
 		content:     make(map[string]any),
 	}
+}
+
+// CreateOnly starts an CREATE ONLY query that creates and returns only one record
+func CreateOnly[T exprLike](target T) *CreateQuery {
+	c := Create(target)
+	c.only = true
+	return c
 }
 
 // Set adds a field or expression to set in the CREATE query
@@ -68,26 +75,36 @@ func (q *CreateQuery) Build() (sql string, vars map[string]any) {
 }
 
 func (q *CreateQuery) build(c *queryBuildContext) (sql string) {
-	var targets []string
+	var b strings.Builder
 
-	for _, t := range q.targets {
-		targets = append(targets, t.Build(c))
+	b.WriteString("CREATE ")
+
+	if q.only {
+		b.WriteString("ONLY ")
 	}
 
-	sql = fmt.Sprintf("CREATE %s", strings.Join(targets, ", "))
+	for i, t := range q.targets {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(t.Build(c))
+	}
 
 	if q.useContent && len(q.content) > 0 {
 		paramName := c.generateAndAddParam("content", q.content)
-		sql += fmt.Sprintf(" CONTENT $%s", paramName)
+		b.WriteString(" CONTENT $")
+		b.WriteString(paramName)
 	} else if setClause := q.buildSetClause(c); setClause != "" {
-		sql += " SET " + setClause
+		b.WriteString(" SET ")
+		b.WriteString(setClause)
 	}
 
 	if q.returnClause != "" {
-		sql += " RETURN " + q.returnClause
+		b.WriteString(" RETURN ")
+		b.WriteString(q.returnClause)
 	}
 
-	return sql
+	return b.String()
 }
 
 // String returns the SurrealQL string
