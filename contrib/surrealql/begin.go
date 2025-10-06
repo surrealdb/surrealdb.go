@@ -2,7 +2,11 @@ package surrealql
 
 // Begin creates a new transaction query
 func Begin() *TransactionQuery {
-	return &TransactionQuery{
-		statements: []TransactionStatement{},
+	q := &TransactionQuery{
+		StatementsBuilder: &StatementsBuilder[TransactionQuery]{},
 	}
+
+	q.self = q
+
+	return q
 }
