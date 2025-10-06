@@ -118,6 +118,29 @@ func ExampleSelect_fieldRaw() {
 	// Vars: map[]
 }
 
+func ExampleSelect_alias() {
+	// Select specific fields with an alias
+	query := surrealql.Select("users").
+		Field("*").
+		Alias("demodata", "? + ?", 1, 2).
+		Alias(
+			"followers_count",
+			surrealql.SelectOnly("follows").
+				Value("count()").
+				Where("out = $parent.id").
+				GroupAll(),
+		)
+	sql, vars := query.Build()
+	fmt.Println("SurrealQL:", sql)
+	dumpVars(vars)
+
+	// Output:
+	// SurrealQL: SELECT *, $param_1 + $param_2 AS demodata, (SELECT VALUE count() FROM ONLY follows WHERE out = $parent.id GROUP ALL) AS followers_count FROM users
+	// Vars:
+	//   param_1: 1
+	//   param_2: 2
+}
+
 func ExampleSelect_field() {
 	// Add fields to the SELECT query
 	query := surrealql.Select("users").
