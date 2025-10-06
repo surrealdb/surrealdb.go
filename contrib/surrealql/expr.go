@@ -112,14 +112,6 @@ func (f *expr) As(alias string) *expr {
 	}
 }
 
-func (f expr) isAll() bool {
-	// Check if the expression is a wildcard (e.g., "*")
-	if str, ok := f.expr.(string); ok && str == "*" {
-		return true
-	}
-	return false
-}
-
 // Build returns the SurrealQL expression for the field and any associated vars.
 func (f *expr) Build(c *queryBuildContext) (sql string) {
 	if f.isRawSQL {
