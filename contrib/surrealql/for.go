@@ -40,3 +40,9 @@ func (f *ForStatement) Build() (sql string, vars map[string]any) {
 
 	return builder.String(), c.vars
 }
+
+// String returns the SurrealQL string
+func (q *ForStatement) String() string {
+	sql, _ := q.Build()
+	return sql
+}
