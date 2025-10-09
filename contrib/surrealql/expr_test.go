@@ -8,7 +8,7 @@ import (
 
 func buildExpr(expr *expr) (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	sql = expr.Build(&c)
+	sql = expr.build(&c)
 	return sql, c.vars
 }
 
@@ -50,12 +50,18 @@ func TestExpr_fnArgFromFieldAlias(t *testing.T) {
 
 func TestExpr_fnArgFromValue(t *testing.T) {
 	sql, vars := buildExpr(Expr("math::sum(?)", []int{100}))
-	assert.Equal(t, "math::sum($fn_math_sum_1)", sql)
-	assert.Equal(t, map[string]any{"fn_math_sum_1": []int{100}}, vars)
+	assert.Equal(t, "math::sum($param_1)", sql)
+	assert.Equal(t, map[string]any{"param_1": []int{100}}, vars)
 }
 
 func TestExpr_fnArgFromValueAlias(t *testing.T) {
 	sql, vars := buildExpr(Expr("math::sum(?)", []int{100}).As("total_amount"))
-	assert.Equal(t, "math::sum($fn_math_sum_1) AS total_amount", sql)
-	assert.Equal(t, map[string]any{"fn_math_sum_1": []int{100}}, vars)
+	assert.Equal(t, "math::sum($param_1) AS total_amount", sql)
+	assert.Equal(t, map[string]any{"param_1": []int{100}}, vars)
+}
+
+func TestExpr_anyinside(t *testing.T) {
+	sql, vars := buildExpr(Expr("? ANYINSIDE (->friend->out)", Thing("stdudent", 1)))
+	assert.Equal(t, "$param_1 ANYINSIDE (->friend->out)", sql)
+	assert.Equal(t, map[string]any{"param_1": Thing("stdudent", 1)}, vars)
 }

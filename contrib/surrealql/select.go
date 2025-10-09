@@ -387,7 +387,7 @@ func (q *SelectQuery) build(c *queryBuildContext) (sql string) {
 	if len(q.from) > 0 {
 		fromClauses := make([]string, len(q.from))
 		for i, f := range q.from {
-			fromClauses[i] = f.Build(c.in("from"))
+			fromClauses[i] = f.build(c.in("from"))
 		}
 		from := "FROM "
 		if q.only {
@@ -461,7 +461,7 @@ func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(field.Build(c))
+			b.WriteString(field.build(c))
 		}
 	}
 

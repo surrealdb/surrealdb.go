@@ -33,7 +33,7 @@ func (f *ForStatement) Build() (sql string, vars map[string]any) {
 	builder.WriteString("FOR $")
 	builder.WriteString(f.item)
 	builder.WriteString(" IN ")
-	builder.WriteString(f.iterable.Build(&c))
+	builder.WriteString(f.iterable.build(&c))
 	builder.WriteString(" {\n")
 	f.build(&c, &builder)
 	builder.WriteString("};")
