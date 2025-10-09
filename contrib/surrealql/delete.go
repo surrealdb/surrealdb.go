@@ -95,7 +95,7 @@ func (q *DeleteQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(target.Build(c))
+		b.WriteString(target.build(c))
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {

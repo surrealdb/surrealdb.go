@@ -73,7 +73,7 @@ func buildExprLike(c *queryBuildContext, ex any, args []any) (sql string, valida
 			return "<invalid expr with expr>", fmt.Errorf("invalid expr with expr: <args> not allowed")
 		}
 
-		sql := v.Build(c)
+		sql := v.build(c)
 		return sql, nil
 	case models.Table:
 		name := c.generateAndAddParam("table", v)
@@ -112,8 +112,15 @@ func (f *expr) As(alias string) *expr {
 	}
 }
 
-// Build returns the SurrealQL expression for the field and any associated vars.
-func (f *expr) Build(c *queryBuildContext) (sql string) {
+// Build returns the SurrealQL expression and any associated vars
+// that can be used with the surrealdb.Query function.
+func (f *expr) Build() (sql string, vars map[string]any) {
+	c := newQueryBuildContext()
+	return f.build(&c), c.vars
+}
+
+// build returns the SurrealQL expression for the field and any associated vars.
+func (f *expr) build(c *queryBuildContext) (sql string) {
 	if f.isRawSQL {
 		// Handle raw SQL with placeholders
 		processedExpr := f.expr.(string)
@@ -130,8 +137,7 @@ func (f *expr) Build(c *queryBuildContext) (sql string) {
 				processedExpr = strings.Replace(processedExpr, "?", fmt.Sprintf("(%s)", subSQL), 1)
 			default:
 				// Regular value - create a parameter
-				p := f.buildPrefix()
-				paramName := c.generateAndAddParam(p, v)
+				paramName := c.generateAndAddParam("param", v)
 				processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
 			}
 		}
@@ -153,19 +159,8 @@ func (f *expr) Build(c *queryBuildContext) (sql string) {
 	return innerQL
 }
 
-func (f *expr) buildPrefix() string {
-	expr := f.expr.(string)
-
-	var prefix string
-	// Look for function names like "math::mean" or "count"
-	if idx := strings.Index(expr, "("); idx > 0 {
-		funcName := strings.TrimSpace(expr[:idx])
-		funcName = strings.ReplaceAll(funcName, "::", "_")
-		funcName = strings.ReplaceAll(funcName, ".", "_")
-		prefix = fmt.Sprintf("fn_%s", funcName)
-	} else {
-		prefix = "param"
-	}
-
-	return prefix
+// String returns the SurrealQL string
+func (q *expr) String() string {
+	sql, _ := q.Build()
+	return sql
 }

@@ -52,14 +52,14 @@ func ExampleExpr_withPlaceholders() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// SELECT $param_1 * $param_2 + $param_3 AS calculation, math::mean([$fn_math_mean_1,$fn_math_mean_2,$fn_math_mean_3]) AS average FROM dummy
+	// SELECT $param_1 * $param_2 + $param_3 AS calculation, math::mean([$param_4,$param_5,$param_6]) AS average FROM dummy
 	// Vars:
-	//   fn_math_mean_1: 1
-	//   fn_math_mean_2: 2
-	//   fn_math_mean_3: 3
 	//   param_1: 10
 	//   param_2: 20
 	//   param_3: 5
+	//   param_4: 1
+	//   param_5: 2
+	//   param_6: 3
 }
 
 // ExampleExpr_withoutAlias demonstrates using Expr when you don't need aliasing
@@ -133,8 +133,8 @@ func ExampleExpr_withValues() {
 	fmt.Println(sql)
 	dumpVarsInline(vars)
 	// Output:
-	// SELECT math::mean([$fn_math_mean_1,$fn_math_mean_2,$fn_math_mean_3]) AS average FROM dummy
-	// Vars: fn_math_mean_1=1 fn_math_mean_2=2 fn_math_mean_3=3
+	// SELECT math::mean([$param_1,$param_2,$param_3]) AS average FROM dummy
+	// Vars: param_1=1 param_2=2 param_3=3
 }
 
 // ExampleExpr_withVariable demonstrates using Expr with variable references
@@ -193,4 +193,17 @@ func ExampleExpr_selectFuncResultWithAlias() {
 
 	// Output:
 	// SELECT math::sum((SELECT total FROM orders)) AS total FROM dummy
+}
+
+func ExampleExpr_callAnyOnSelectValueResult() {
+	// Expr supports Build() method to get the SurrealQL string and associated vars
+	expr := surrealql.Expr("?.any()", surrealql.Select(surrealql.Thing("plan", "hobby")).Value("<-subscribed<-user"))
+	sql, vars := expr.Build()
+	fmt.Println(sql)
+	dumpVars(vars)
+
+	// Output:
+	// (SELECT VALUE <-subscribed<-user FROM $from_id_1).any()
+	// Vars:
+	//   from_id_1: plan:hobby
 }

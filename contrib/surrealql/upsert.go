@@ -150,7 +150,7 @@ func (q *UpsertQuery) build(c *queryBuildContext) (sql string) {
 			b.WriteString(", ")
 		}
 
-		tSQL := t.Build(c)
+		tSQL := t.build(c)
 		b.WriteString(tSQL)
 	}
 
@@ -717,7 +717,7 @@ func (c *upsertCommon) buildPrefix(bc *queryBuildContext, sql *strings.Builder) 
 			sql.WriteString(", ")
 		}
 
-		tSQL := t.Build(bc)
+		tSQL := t.build(bc)
 		sql.WriteString(tSQL)
 	}
 }

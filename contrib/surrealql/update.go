@@ -87,7 +87,7 @@ func (q *UpdateQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(t.Build(c))
+		b.WriteString(t.build(c))
 	}
 
 	if setClause := q.buildSetClause(c); setClause != "" {

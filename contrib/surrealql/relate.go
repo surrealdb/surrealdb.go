@@ -68,11 +68,11 @@ func (q *RelateQuery) build(c *queryBuildContext) (sql string) {
 		b.WriteString("ONLY ")
 	}
 
-	b.WriteString(q.from.Build(c))
+	b.WriteString(q.from.build(c))
 	b.WriteString("->")
 	b.WriteString(escapeIdent(q.edge))
 	b.WriteString("->")
-	b.WriteString(q.to.Build(c))
+	b.WriteString(q.to.build(c))
 
 	if q.useContent && len(q.content) > 0 {
 		paramName := c.generateAndAddParam("content", q.content)

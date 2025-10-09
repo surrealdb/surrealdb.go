@@ -36,7 +36,7 @@ func (sb *setsBuilder) buildSetClause(base *queryBuildContext) string {
 	var setParts []string
 
 	for _, setExpr := range sb.sets {
-		sql := setExpr.Build(base)
+		sql := setExpr.build(base)
 		setParts = append(setParts, sql)
 	}
 

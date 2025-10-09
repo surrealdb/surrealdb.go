@@ -87,7 +87,7 @@ func (q *CreateQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(t.Build(c))
+		b.WriteString(t.build(c))
 	}
 
 	if q.useContent && len(q.content) > 0 {
