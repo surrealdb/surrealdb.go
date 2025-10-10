@@ -9,14 +9,14 @@ import (
 	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
 )
 
-func ExampleTransactionQuery_Query() {
+func ExampleTransactionQuery_Do() {
 	// Create a transaction with multiple query builders
 	createUser := surrealql.Create("users:123").Set("name", "Alice")
 	updateUser := surrealql.Update("users:123").Set("email", "alice@example.com")
 
 	tx := surrealql.Begin().
-		Query(createUser).
-		Query(updateUser)
+		Do(createUser).
+		Do(updateUser)
 
 	sql, vars := tx.Build()
 	fmt.Println(sql)
@@ -48,18 +48,36 @@ func ExampleTransactionQuery_If() {
 			//   THROW "Insufficient funds, would have $\" + <string>account:one.dollars";
 			tb.Throw("Insufficient funds, would have $\" + <string>account:one.dollars")
 		}).
+		Else(func(eb *surrealql.ElseBuilder) {
+			eb.Raw(
+				"CREATE transfer SET amount = ?, from = ?, to = ?",
+				surrealql.Var("transfer_amount"),
+				surrealql.Thing("account", "one"),
+				surrealql.Thing("account", "two"),
+			)
+		}).
 		End()
 
-	sql, _ := tx.Build()
+	sql, vars := tx.Build()
 	fmt.Println(sql)
+
+	keys := sort.StringSlice(slices.Collect(maps.Keys(vars)))
+	sort.Stable(keys)
+	for _, key := range keys {
+		fmt.Printf("Var %s: %v\n", key, vars[key])
+	}
 	// Output:
 	// BEGIN TRANSACTION;
 	// LET $transfer_amount = 300;
 	// UPDATE account:one SET dollars -= $transfer_amount;
 	// IF account:one.dollars < 0 {
 	//     THROW "Insufficient funds, would have $\" + <string>account:one.dollars";
+	// } ELSE {
+	//     CREATE transfer SET amount = $transfer_amount, from = $param_1, to = $param_2;
 	// };
 	// COMMIT TRANSACTION;
+	// Var param_1: account:one
+	// Var param_2: account:two
 }
 
 // ExampleTransactionQuery_returningEarly demonstrates how to create a transaction with multiple query builders.
@@ -72,15 +90,15 @@ func ExampleTransactionQuery_returningEarly() {
 	updateAccount2 := surrealql.Raw("UPDATE account:two SET balance -= 300.00")
 
 	tx := surrealql.Begin().
-		Query(createAccount1).
-		Query(createAccount2).
+		Do(createAccount1).
+		Do(createAccount2).
 		If("!account:two.wants_to_send_money").
 		Then(func(tb *surrealql.ThenBuilder) {
 			tb.Throw("Customer doesn't want to send any money!")
 		}).
 		End().
-		Query(updateAccount1).
-		Query(updateAccount2)
+		Do(updateAccount1).
+		Do(updateAccount2)
 
 	sql, vars := tx.Build()
 	fmt.Println(sql)
@@ -128,7 +146,7 @@ func ExampleTransactionQuery_Return() {
 	tx := surrealql.Begin().
 		Let("name", "Alice").
 		Let("email", "alice@example.com").
-		Query(surrealql.Create("person").
+		Do(surrealql.Create("person").
 			Set("name", surrealql.Var("name")).
 			Set("email", surrealql.Var("email"))).
 		Return("$name")
@@ -150,7 +168,7 @@ func ExampleTransactionQuery_Return_withPlaceholders() {
 	tx := surrealql.Begin().
 		Let("a", 10).
 		Let("b", 20).
-		Query(surrealql.Create(surrealql.Table("test")).Set("v", "V")).
+		Do(surrealql.Create(surrealql.Table("test")).Set("v", "V")).
 		Return("? + ? + ?", surrealql.Var("a"), surrealql.Var("b"), 5)
 
 	sql, vars := tx.Build()

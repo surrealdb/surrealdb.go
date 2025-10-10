@@ -8,7 +8,7 @@ import (
 //
 // T is the type of the struct embedding this builder, allowing method chaining to return the correct type.
 type StatementsBuilder[T any] struct {
-	statements []TransactionStatement
+	statements []Statement
 
 	// self is a reference to the struct embedding this builder, allowing method chaining to return the correct type and avoid type assertions.
 	// It must be set by the embedding struct after initialization.
@@ -62,18 +62,14 @@ func (t *StatementsBuilder[T]) Throw(err any) *T {
 }
 
 // Raw adds a raw SurrealQL statement to the transaction
-func (t *StatementsBuilder[T]) Raw(sql string) *T {
-	t.statements = append(t.statements, &RawStatement{
-		sql: sql,
-	})
+func (t *StatementsBuilder[T]) Raw(expr string, args ...any) *T {
+	t.statements = append(t.statements, Expr(expr, args...))
 	return t.self
 }
 
-// Query adds any Query to the transaction
-func (t *StatementsBuilder[T]) Query(query Query) *T {
-	t.statements = append(t.statements, &QueryStatement{
-		query: query,
-	})
+// Do adds any Do to the transaction
+func (t *StatementsBuilder[T]) Do(query Query) *T {
+	t.statements = append(t.statements, query)
 	return t.self
 }
 

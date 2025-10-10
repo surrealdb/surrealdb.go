@@ -10,8 +10,8 @@ type TransactionQuery struct {
 	*StatementsBuilder[TransactionQuery]
 }
 
-// TransactionStatement represents a statement that can be executed within a transaction
-type TransactionStatement interface {
+// Statement represents a statement that can be executed within a transaction
+type Statement interface {
 	build(c *queryBuildContext, b *strings.Builder)
 }
 
@@ -25,23 +25,13 @@ type LetStatement struct {
 // IfStatement represents an IF statement within a transaction
 type IfStatement struct {
 	condition string
-	thenBlock []TransactionStatement
-	elseBlock []TransactionStatement
+	thenBlock []Statement
+	elseBlock []Statement
 }
 
 // ThrowStatement represents a THROW statement within a transaction
 type ThrowStatement struct {
 	err any
-}
-
-// RawStatement represents a raw SurrealQL statement within a transaction
-type RawStatement struct {
-	sql string
-}
-
-// QueryStatement wraps any Query to be used within a transaction
-type QueryStatement struct {
-	query Query
 }
 
 // ReturnStatement represents a RETURN statement within a transaction
@@ -79,19 +69,23 @@ type IfBuilder[T any] struct {
 
 // Then adds statements to the THEN block
 func (ib *IfBuilder[T]) Then(fn func(*ThenBuilder)) *IfBuilder[T] {
-	tb := &ThenBuilder{
-		statements: &ib.ifStatement.thenBlock,
+	tb := &ThenBuilder{}
+	tb.StatementsBuilder = &StatementsBuilder[ThenBuilder]{
+		self: tb,
 	}
 	fn(tb)
+	ib.ifStatement.thenBlock = tb.statements
 	return ib
 }
 
 // Else adds statements to the ELSE block
 func (ib *IfBuilder[T]) Else(fn func(*ElseBuilder)) *IfBuilder[T] {
-	eb := &ElseBuilder{
-		statements: &ib.ifStatement.elseBlock,
+	eb := &ElseBuilder{}
+	eb.StatementsBuilder = &StatementsBuilder[ElseBuilder]{
+		self: eb,
 	}
 	fn(eb)
+	ib.ifStatement.elseBlock = eb.statements
 	return ib
 }
 
@@ -102,44 +96,12 @@ func (ib *IfBuilder[T]) End() *T {
 
 // ThenBuilder helps build the THEN block of an IF statement
 type ThenBuilder struct {
-	statements *[]TransactionStatement
-}
-
-// Throw adds a THROW statement to the THEN block
-func (tb *ThenBuilder) Throw(err any) *ThenBuilder {
-	*tb.statements = append(*tb.statements, &ThrowStatement{
-		err: err,
-	})
-	return tb
-}
-
-// Raw adds a raw SurrealQL statement to the THEN block
-func (tb *ThenBuilder) Raw(sql string) *ThenBuilder {
-	*tb.statements = append(*tb.statements, &RawStatement{
-		sql: sql,
-	})
-	return tb
+	*StatementsBuilder[ThenBuilder]
 }
 
 // ElseBuilder helps build the ELSE block of an IF statement
 type ElseBuilder struct {
-	statements *[]TransactionStatement
-}
-
-// Throw adds a THROW statement to the ELSE block
-func (eb *ElseBuilder) Throw(err any) *ElseBuilder {
-	*eb.statements = append(*eb.statements, &ThrowStatement{
-		err: err,
-	})
-	return eb
-}
-
-// Raw adds a raw SurrealQL statement to the ELSE block
-func (eb *ElseBuilder) Raw(sql string) *ElseBuilder {
-	*eb.statements = append(*eb.statements, &RawStatement{
-		sql: sql,
-	})
-	return eb
+	*StatementsBuilder[ElseBuilder]
 }
 
 // Implementation of build methods for each statement type
@@ -199,14 +161,6 @@ func (t *ThrowStatement) build(c *queryBuildContext, b *strings.Builder) {
 	default:
 		fmt.Fprintf(b, "%v", v)
 	}
-}
-
-func (r *RawStatement) build(c *queryBuildContext, b *strings.Builder) {
-	b.WriteString(strings.TrimRight(r.sql, ";"))
-}
-
-func (q *QueryStatement) build(c *queryBuildContext, b *strings.Builder) {
-	q.query.build(c, b)
 }
 
 func (r *ReturnStatement) build(c *queryBuildContext, b *strings.Builder) {
