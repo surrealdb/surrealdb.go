@@ -11,8 +11,8 @@ import (
 
 func ExampleFor_insideTransaction() {
 	createUser := surrealql.Create("user").Set(`id = type::thing("user", $name)`).Set("name = $name")
-	createUsers := surrealql.For("name", `["Tobie", "Jaime"]`).Query(createUser)
-	tx := surrealql.Begin().Query(createUsers)
+	createUsers := surrealql.For("name", `["Tobie", "Jaime"]`).Do(createUser)
+	tx := surrealql.Begin().Do(createUsers)
 	sql, vars := tx.Build()
 	fmt.Println(sql)
 
@@ -30,11 +30,35 @@ func ExampleFor_insideTransaction() {
 	// COMMIT TRANSACTION;
 }
 
+func ExampleForStatement_Do_raw() {
+	st := surrealql.For("name", `["Tobie", "Jaime"]`).
+		// ForStatement supports the Raw method to add raw SurrealQL statements with parameterization
+		// Note that we can specify parameters using the "?" placeholder syntax
+		// and provide the corresponding arguments after the SQL string.
+		// The Var function is used to reference the loop variable within the raw statement.
+		Raw("CREATE type::thing('person', $name) SET name = ?, note = ?", surrealql.Var("name"), "created in loop")
+
+	sql, vars := st.Build()
+	fmt.Println(sql)
+
+	keys := sort.StringSlice(slices.Collect(maps.Keys(vars)))
+	sort.Stable(keys)
+	for _, key := range keys {
+		fmt.Printf("Var %s: %v\n", key, vars[key])
+	}
+
+	// Output:
+	// FOR $name IN ["Tobie", "Jaime"] {
+	// CREATE type::thing('person', $name) SET name = $name, note = $param_1;
+	// }
+	// Var param_1: created in loop
+}
+
 func ExampleForStatement_goSliceAsIterable() {
 	createUser := surrealql.Create("type::thing('person', $name)").Set("name = $name")
 
 	statement := surrealql.For("name", "?", []any{"Tobie", "Jaime"}).
-		Query(createUser)
+		Do(createUser)
 
 	sql, vars := statement.Build()
 	fmt.Println(sql)
@@ -58,7 +82,7 @@ func ExampleForStatement_subqueryAsIterable() {
 	createUser := surrealql.Update("$person").Set("can_vote = true")
 
 	statement := surrealql.For("person", subquery).
-		Query(createUser)
+		Do(createUser)
 
 	sql, vars := statement.Build()
 	fmt.Println(sql)
