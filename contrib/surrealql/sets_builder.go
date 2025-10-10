@@ -16,6 +16,10 @@ func newSetsBuilder() setsBuilder {
 	}
 }
 
+func (sb *setsBuilder) hasSets() bool {
+	return len(sb.sets) > 0
+}
+
 // addSet adds a field or expression to the SET clause
 // Can be used for simple assignment: addSet("name = ?", "value")
 // Or for compound operations: addSet("count += ?", 1)
@@ -28,17 +32,17 @@ func (sb *setsBuilder) addSet(expr string, args []any) {
 }
 
 // buildSetClause builds the SET clause and adds parameters to the base query
-func (sb *setsBuilder) buildSetClause(base *queryBuildContext) string {
+func (sb *setsBuilder) buildSetClause(base *queryBuildContext, b *strings.Builder) {
 	if len(sb.sets) == 0 {
-		return ""
+		return
 	}
 
-	var setParts []string
+	b.WriteString("SET ")
 
-	for _, setExpr := range sb.sets {
-		sql := setExpr.build(base)
-		setParts = append(setParts, sql)
+	for i, setExpr := range sb.sets {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		setExpr.build(base, b)
 	}
-
-	return strings.Join(setParts, ", ")
 }

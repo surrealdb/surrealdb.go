@@ -132,12 +132,12 @@ func (q *UpsertQuery) Replace(data map[string]any) *UpsertReplaceQuery {
 // This is valid in SurrealDB and will create the record if it doesn't exist
 func (q *UpsertQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
+func (q *UpsertQuery) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("UPSERT")
 
 	if q.only {
@@ -150,11 +150,8 @@ func (q *UpsertQuery) build(c *queryBuildContext) (sql string) {
 			b.WriteString(", ")
 		}
 
-		tSQL := t.build(c)
-		b.WriteString(tSQL)
+		t.build(c, b)
 	}
-
-	return b.String()
 }
 
 // String returns the SurrealQL string for an UPSERT without data modification
@@ -261,40 +258,35 @@ func (q *UpsertSetQuery) ExplainFull() *UpsertSetQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpsertSetQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertSetQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
-	q.buildExplain(&b)
-	q.buildPrefix(c, &b)
+func (q *UpsertSetQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildExplain(b)
+	q.buildPrefix(c, b)
 
 	// Build SET clause using common setsBuilder
-	if setClause := q.buildSetClause(c); setClause != "" || len(q.unsets) > 0 {
-		b.WriteString(" SET ")
-
-		var setParts []string
-
-		// Add the built SET clause from setsBuilder
-		if setClause != "" {
-			setParts = append(setParts, setClause)
+	if hasSets := q.hasSets(); hasSets || len(q.unsets) > 0 {
+		if hasSets {
+			b.WriteString(" ")
+			q.buildSetClause(c, b)
 		}
 
 		// Handle UNSET fields - single UNSET followed by comma-separated fields
 		if len(q.unsets) > 0 {
-			unsetFields := make([]string, len(q.unsets))
+			b.WriteString(" UNSET ")
 			for i, field := range q.unsets {
-				unsetFields[i] = escapeIdent(field)
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				b.WriteString(escapeIdent(field))
 			}
-			setParts = append(setParts, "UNSET "+strings.Join(unsetFields, ", "))
 		}
-
-		b.WriteString(strings.Join(setParts, ", "))
 	}
 
-	q.buildSuffix(c, &b)
-	return b.String()
+	q.buildSuffix(c, b)
 }
 
 // String returns the SurrealQL string
@@ -377,22 +369,21 @@ func (q *UpsertContentQuery) ExplainFull() *UpsertContentQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpsertContentQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertContentQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
-	q.buildExplain(&b)
-	q.buildPrefix(c, &b)
+func (q *UpsertContentQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildExplain(b)
+	q.buildPrefix(c, b)
 
 	if len(q.content) > 0 {
 		paramName := c.generateAndAddParam("upsert_content", q.content)
-		b.WriteString(fmt.Sprintf(" CONTENT $%s", paramName))
+		fmt.Fprintf(b, " CONTENT $%s", paramName)
 	}
 
-	q.buildSuffix(c, &b)
-	return b.String()
+	q.buildSuffix(c, b)
 }
 
 // String returns the SurrealQL string
@@ -475,22 +466,21 @@ func (q *UpsertMergeQuery) ExplainFull() *UpsertMergeQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpsertMergeQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertMergeQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
-	q.buildExplain(&b)
-	q.buildPrefix(c, &b)
+func (q *UpsertMergeQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildExplain(b)
+	q.buildPrefix(c, b)
 
 	if len(q.merge) > 0 {
 		paramName := c.generateAndAddParam("upsert_merge", q.merge)
-		b.WriteString(fmt.Sprintf(" MERGE $%s", paramName))
+		fmt.Fprintf(b, " MERGE $%s", paramName)
 	}
 
-	q.buildSuffix(c, &b)
-	return b.String()
+	q.buildSuffix(c, b)
 }
 
 // String returns the SurrealQL string
@@ -573,22 +563,21 @@ func (q *UpsertPatchQuery) ExplainFull() *UpsertPatchQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpsertPatchQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertPatchQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
-	q.buildExplain(&b)
-	q.buildPrefix(c, &b)
+func (q *UpsertPatchQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildExplain(b)
+	q.buildPrefix(c, b)
 
 	if len(q.patch) > 0 {
 		paramName := c.generateAndAddParam("upsert_patch", q.patch)
-		b.WriteString(fmt.Sprintf(" PATCH $%s", paramName))
+		fmt.Fprintf(b, " PATCH $%s", paramName)
 	}
 
-	q.buildSuffix(c, &b)
-	return b.String()
+	q.buildSuffix(c, b)
 }
 
 // String returns the SurrealQL string
@@ -671,22 +660,21 @@ func (q *UpsertReplaceQuery) ExplainFull() *UpsertReplaceQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpsertReplaceQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpsertReplaceQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
-	q.buildExplain(&b)
-	q.buildPrefix(c, &b)
+func (q *UpsertReplaceQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildExplain(b)
+	q.buildPrefix(c, b)
 
 	if len(q.replace) > 0 {
 		paramName := c.generateAndAddParam("upsert_replace", q.replace)
-		b.WriteString(fmt.Sprintf(" REPLACE $%s", paramName))
+		fmt.Fprintf(b, " REPLACE $%s", paramName)
 	}
 
-	q.buildSuffix(c, &b)
-	return b.String()
+	q.buildSuffix(c, b)
 }
 
 // String returns the SurrealQL string
@@ -717,15 +705,14 @@ func (c *upsertCommon) buildPrefix(bc *queryBuildContext, sql *strings.Builder) 
 			sql.WriteString(", ")
 		}
 
-		tSQL := t.build(bc)
-		sql.WriteString(tSQL)
+		t.build(bc, sql)
 	}
 }
 
 func (c *upsertCommon) buildSuffix(qCtx *queryBuildContext, sql *strings.Builder) {
 	if c.whereClause != nil && c.whereClause.hasConditions() {
-		sql.WriteString(" WHERE ")
-		sql.WriteString(c.whereClause.build(qCtx))
+		sql.WriteString(" ")
+		c.whereClause.build(qCtx, sql)
 	}
 
 	if c.returnClause != "" {

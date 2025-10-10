@@ -56,39 +56,37 @@ func (q *RelateQuery) Return(clause string) *RelateQuery {
 // Build returns the SurrealQL string and parameters
 func (q *RelateQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *RelateQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
+func (q *RelateQuery) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("RELATE ")
 
 	if q.only {
 		b.WriteString("ONLY ")
 	}
 
-	b.WriteString(q.from.build(c))
+	q.from.build(c, b)
 	b.WriteString("->")
 	b.WriteString(escapeIdent(q.edge))
 	b.WriteString("->")
-	b.WriteString(q.to.build(c))
+	q.to.build(c, b)
 
 	if q.useContent && len(q.content) > 0 {
 		paramName := c.generateAndAddParam("content", q.content)
 		b.WriteString(" CONTENT $")
 		b.WriteString(paramName)
-	} else if setClause := q.buildSetClause(c); setClause != "" {
-		b.WriteString(" SET ")
-		b.WriteString(setClause)
+	} else if q.hasSets() {
+		b.WriteString(" ")
+		q.buildSetClause(c, b)
 	}
 
 	if q.returnClause != "" {
 		b.WriteString(" RETURN ")
 		b.WriteString(q.returnClause)
 	}
-
-	return b.String()
 }
 
 // String returns the SurrealQL string

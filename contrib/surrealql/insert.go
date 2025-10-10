@@ -119,18 +119,16 @@ func (q *InsertQuery) ReturnDiff() *InsertQuery {
 
 // Build returns the SurrealQL string and parameters for the query
 func (q *InsertQuery) Build() (query string, vars map[string]any) {
+	var b strings.Builder
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *InsertQuery) build(c *queryBuildContext) (sql string) {
-	var builder strings.Builder
-
-	q.buildInsertClause(&builder)
-	q.buildDataOrValues(c, &builder)
-	q.buildReturnClause(&builder)
-
-	return builder.String()
+func (q *InsertQuery) build(c *queryBuildContext, b *strings.Builder) {
+	q.buildInsertClause(b)
+	q.buildDataOrValues(c, b)
+	q.buildReturnClause(b)
 }
 
 // buildInsertClause builds the INSERT clause part
@@ -161,8 +159,7 @@ func (q *InsertQuery) buildDataOrValues(c *queryBuildContext, builder *strings.B
 // buildValueQuery builds the value query part
 func (q *InsertQuery) buildValueQuery(c *queryBuildContext, builder *strings.Builder) {
 	builder.WriteString(" (")
-	sql := q.valueQuery.build(c)
-	builder.WriteString(sql)
+	q.valueQuery.build(c, builder)
 	builder.WriteString(")")
 }
 

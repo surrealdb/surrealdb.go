@@ -66,15 +66,17 @@ func buildExprLike(c *queryBuildContext, ex any, args []any) (sql string, valida
 		if len(args) > 0 {
 			return "<invalid expr with SelectQuery>", fmt.Errorf("invalid expr with SelectQuery: <args> not allowed")
 		}
-		sql := v.build(c)
-		return fmt.Sprintf("(%s)", sql), nil
+		var b strings.Builder
+		v.build(c, &b)
+		return fmt.Sprintf("(%s)", b.String()), nil
 	case *expr:
 		if len(args) > 0 {
 			return "<invalid expr with expr>", fmt.Errorf("invalid expr with expr: <args> not allowed")
 		}
 
-		sql := v.build(c)
-		return sql, nil
+		var b strings.Builder
+		v.build(c, &b)
+		return b.String(), nil
 	case models.Table:
 		name := c.generateAndAddParam("table", v)
 		return "$" + name, nil
@@ -116,11 +118,17 @@ func (f *expr) As(alias string) *expr {
 // that can be used with the surrealdb.Query function.
 func (f *expr) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return f.build(&c), c.vars
+	var b strings.Builder
+	f.build(&c, &b)
+	return b.String(), c.vars
 }
 
 // build returns the SurrealQL expression for the field and any associated vars.
-func (f *expr) build(c *queryBuildContext) (sql string) {
+func (f *expr) build(c *queryBuildContext, b *strings.Builder) {
+	b.WriteString(f.string(c))
+}
+
+func (f *expr) string(c *queryBuildContext) string {
 	if f.isRawSQL {
 		// Handle raw SQL with placeholders
 		processedExpr := f.expr.(string)
@@ -133,7 +141,9 @@ func (f *expr) build(c *queryBuildContext) (sql string) {
 				processedExpr = strings.Replace(processedExpr, "?", v.String(), 1)
 			case Query:
 				// Subquery - replace ? with the subquery
-				subSQL := v.build(c)
+				var b2 strings.Builder
+				v.build(c, &b2)
+				subSQL := b2.String()
 				processedExpr = strings.Replace(processedExpr, "?", fmt.Sprintf("(%s)", subSQL), 1)
 			default:
 				// Regular value - create a parameter

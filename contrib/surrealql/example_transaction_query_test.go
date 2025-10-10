@@ -29,9 +29,10 @@ func ExampleTransactionQuery_Query() {
 	// Output:
 	// BEGIN TRANSACTION;
 	// CREATE users:123 SET name = $param_1;
-	// UPDATE users:123 SET email = $param_1;
+	// UPDATE users:123 SET email = $param_2;
 	// COMMIT TRANSACTION;
-	// Var param_1: alice@example.com
+	// Var param_1: Alice
+	// Var param_2: alice@example.com
 }
 
 func ExampleTransactionQuery_If() {
@@ -81,18 +82,26 @@ func ExampleTransactionQuery_returningEarly() {
 		Query(updateAccount1).
 		Query(updateAccount2)
 
-	sql, _ := tx.Build()
+	sql, vars := tx.Build()
 	fmt.Println(sql)
+
+	keys := sort.StringSlice(slices.Collect(maps.Keys(vars)))
+	sort.Stable(keys)
+	for _, key := range keys {
+		fmt.Printf("Var %s: %v\n", key, vars[key])
+	}
 	// Output:
 	// BEGIN TRANSACTION;
 	// CREATE account:one SET balance = $param_1;
-	// CREATE account:two SET balance = $param_1;
+	// CREATE account:two SET balance = $param_2;
 	// IF !account:two.wants_to_send_money {
 	//     THROW "Customer doesn't want to send any money!";
 	// };
 	// UPDATE account:one SET balance += 300.00;
 	// UPDATE account:two SET balance -= 300.00;
 	// COMMIT TRANSACTION;
+	// Var param_1: 135605.16
+	// Var param_2: 91031.31
 }
 
 func ExampleTransactionQuery_LetTyped() {

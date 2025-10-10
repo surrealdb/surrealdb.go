@@ -71,12 +71,12 @@ func (q *CreateQuery) ReturnNone() *CreateQuery {
 // Build returns the SurrealQL string and parameters
 func (q *CreateQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *CreateQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
+func (q *CreateQuery) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("CREATE ")
 
 	if q.only {
@@ -87,24 +87,22 @@ func (q *CreateQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(t.build(c))
+		t.build(c, b)
 	}
 
 	if q.useContent && len(q.content) > 0 {
 		paramName := c.generateAndAddParam("content", q.content)
 		b.WriteString(" CONTENT $")
 		b.WriteString(paramName)
-	} else if setClause := q.buildSetClause(c); setClause != "" {
-		b.WriteString(" SET ")
-		b.WriteString(setClause)
+	} else if q.hasSets() {
+		b.WriteString(" ")
+		q.buildSetClause(c, b)
 	}
 
 	if q.returnClause != "" {
 		b.WriteString(" RETURN ")
 		b.WriteString(q.returnClause)
 	}
-
-	return b.String()
 }
 
 // String returns the SurrealQL string

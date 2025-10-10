@@ -12,7 +12,7 @@ type TransactionQuery struct {
 
 // TransactionStatement represents a statement that can be executed within a transaction
 type TransactionStatement interface {
-	build(c *queryBuildContext) string
+	build(c *queryBuildContext, b *strings.Builder)
 }
 
 // LetStatement represents a LET statement within a transaction
@@ -144,8 +144,7 @@ func (eb *ElseBuilder) Raw(sql string) *ElseBuilder {
 
 // Implementation of build methods for each statement type
 
-func (l *LetStatement) build(c *queryBuildContext) string {
-	var builder strings.Builder
+func (l *LetStatement) build(c *queryBuildContext, builder *strings.Builder) {
 	builder.WriteString("LET ")
 	builder.WriteString(l.variable)
 
@@ -158,28 +157,24 @@ func (l *LetStatement) build(c *queryBuildContext) string {
 
 	switch v := l.value.(type) {
 	case string:
-		builder.WriteString(fmt.Sprintf("%q", v))
+		fmt.Fprintf(builder, "%q", v)
 	case Query:
-		sql := v.build(c)
 		builder.WriteString("(")
-		builder.WriteString(sql)
+		v.build(c, builder)
 		builder.WriteString(")")
 	default:
-		builder.WriteString(fmt.Sprintf("%v", v))
+		fmt.Fprintf(builder, "%v", v)
 	}
-
-	return builder.String()
 }
 
-func (i *IfStatement) build(c *queryBuildContext) string {
-	var builder strings.Builder
+func (i *IfStatement) build(c *queryBuildContext, builder *strings.Builder) {
 	builder.WriteString("IF ")
 	builder.WriteString(i.condition)
 	builder.WriteString(" {\n")
 
 	for _, stmt := range i.thenBlock {
 		builder.WriteString("    ")
-		builder.WriteString(stmt.build(c))
+		stmt.build(c, builder)
 		builder.WriteString(";\n")
 	}
 
@@ -189,52 +184,61 @@ func (i *IfStatement) build(c *queryBuildContext) string {
 		builder.WriteString(" ELSE {\n")
 		for _, stmt := range i.elseBlock {
 			builder.WriteString("    ")
-			builder.WriteString(stmt.build(c))
+			stmt.build(c, builder)
 			builder.WriteString(";\n")
 		}
 		builder.WriteString("}")
 	}
-
-	return builder.String()
 }
 
-func (t *ThrowStatement) build(c *queryBuildContext) string {
+func (t *ThrowStatement) build(c *queryBuildContext, b *strings.Builder) {
+	b.WriteString("THROW ")
 	switch v := t.err.(type) {
 	case string:
-		return fmt.Sprintf("THROW %q", v)
+		fmt.Fprintf(b, "%q", v)
 	default:
-		return fmt.Sprintf("THROW %v", v)
+		fmt.Fprintf(b, "%v", v)
 	}
 }
 
-func (r *RawStatement) build(c *queryBuildContext) string {
-	return strings.TrimRight(r.sql, ";")
+func (r *RawStatement) build(c *queryBuildContext, b *strings.Builder) {
+	b.WriteString(strings.TrimRight(r.sql, ";"))
 }
 
-func (q *QueryStatement) build(c *queryBuildContext) string {
-	sql := q.query.build(c)
-	return strings.TrimRight(sql, ";")
+func (q *QueryStatement) build(c *queryBuildContext, b *strings.Builder) {
+	q.query.build(c, b)
 }
 
-func (r *ReturnStatement) build(c *queryBuildContext) string {
+func (r *ReturnStatement) build(c *queryBuildContext, b *strings.Builder) {
+	b.WriteString("RETURN ")
+
 	if len(r.args) == 0 {
 		// No placeholders, just return the raw expression
-		return fmt.Sprintf("RETURN %s", r.expr)
+		b.WriteString(r.expr)
+		return
 	}
 
 	// Process placeholders
-	processedExpr := r.expr
+	var startIndex int
 	for _, arg := range r.args {
+		placeholder := strings.Index(r.expr[startIndex:], "?")
+		if placeholder < 0 {
+			break
+		}
+		placeholder += startIndex
+		b.WriteString(r.expr[startIndex:placeholder])
 		// Check if arg is a Var (variable reference)
 		if varRef, ok := arg.(Var); ok {
 			// Replace the first ? with the variable reference
-			processedExpr = strings.Replace(processedExpr, "?", varRef.String(), 1)
+			b.WriteString(varRef.String())
 		} else {
 			// Regular value, create a parameter
 			paramName := c.generateAndAddParam("return_param", arg)
-			processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
+			b.WriteString("$")
+			b.WriteString(paramName)
 		}
+		// Update the start index
+		startIndex = placeholder + 1
 	}
-
-	return fmt.Sprintf("RETURN %s", processedExpr)
+	b.WriteString(r.expr[startIndex:])
 }

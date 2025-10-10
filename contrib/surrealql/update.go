@@ -71,12 +71,12 @@ func (q *UpdateQuery) ReturnDiff() *UpdateQuery {
 // Build returns the SurrealQL string and parameters
 func (q *UpdateQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *UpdateQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
+func (q *UpdateQuery) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("UPDATE ")
 
 	if q.only {
@@ -87,25 +87,23 @@ func (q *UpdateQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(t.build(c))
+		t.build(c, b)
 	}
 
-	if setClause := q.buildSetClause(c); setClause != "" {
-		b.WriteString(" SET ")
-		b.WriteString(setClause)
+	if q.hasSets() {
+		b.WriteString(" ")
+		q.buildSetClause(c, b)
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		b.WriteString(" WHERE ")
-		b.WriteString(q.whereClause.build(c))
+		b.WriteString(" ")
+		q.whereClause.build(c, b)
 	}
 
 	if q.returnClause != "" {
 		b.WriteString(" RETURN ")
 		b.WriteString(q.returnClause)
 	}
-
-	return b.String()
 }
 
 // String returns the SurrealQL string

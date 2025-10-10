@@ -91,17 +91,7 @@ func (t *StatementsBuilder[T]) Return(expr string, args ...any) *T {
 // Build returns the SurrealQL string and parameters for the transaction
 func (t *StatementsBuilder[T]) build(c *queryBuildContext, builder *strings.Builder) {
 	for _, stmt := range t.statements {
-		if qs, ok := stmt.(*QueryStatement); ok {
-			sql, vars := qs.query.Build()
-			builder.WriteString(strings.TrimRight(sql, ";"))
-			builder.WriteString(";\n")
-			// Merge parameters
-			for k, v := range vars {
-				c.vars[k] = v
-			}
-		} else {
-			builder.WriteString(stmt.build(c))
-			builder.WriteString(";\n")
-		}
+		stmt.build(c, builder)
+		builder.WriteString(";\n")
 	}
 }

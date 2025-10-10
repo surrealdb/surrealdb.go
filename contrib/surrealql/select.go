@@ -369,85 +369,80 @@ func (q *SelectQuery) ReturnAfter() *SelectQuery {
 // Build returns the SurrealQL string and parameters for the query
 func (q *SelectQuery) Build() (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *SelectQuery) build(c *queryBuildContext) (sql string) {
-	var parts []string
-
+func (q *SelectQuery) build(c *queryBuildContext, b *strings.Builder) {
 	// Add EXPLAIN if enabled
 	if q.explain {
-		parts = append(parts, "EXPLAIN")
+		b.WriteString("EXPLAIN ")
 	}
 
 	// SELECT clause
-	parts = append(parts, q.buildSelectClause(c))
+	q.buildSelectClause(c, b)
 
-	// FROM clause
-	if len(q.from) > 0 {
-		fromClauses := make([]string, len(q.from))
-		for i, f := range q.from {
-			fromClauses[i] = f.build(c.in("from"))
-		}
-		from := "FROM "
-		if q.only {
-			from += "ONLY "
-		}
-		parts = append(parts, from+strings.Join(fromClauses, ", "))
-	}
+	q.buildFromClause(c, b)
 
 	// WHERE clause
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		parts = append(parts, "WHERE "+q.whereClause.build(c))
+		b.WriteString(" ")
+		q.whereClause.build(c, b)
 	}
 
 	// SPLIT clause
 	if splitClause := q.buildSplitClause(); splitClause != "" {
-		parts = append(parts, splitClause)
+		b.WriteString(" ")
+		b.WriteString(splitClause)
 	}
 
 	// GROUP BY clause
 	if groupClause := q.buildGroupClause(); groupClause != "" {
-		parts = append(parts, groupClause)
+		b.WriteString(" ")
+		b.WriteString(groupClause)
 	}
 
 	// ORDER BY clause
 	if orderClause := q.buildOrderClause(); orderClause != "" {
-		parts = append(parts, orderClause)
+		b.WriteString(" ")
+		b.WriteString(orderClause)
 	}
 
 	// LIMIT clause
 	if q.limitVal != nil {
-		parts = append(parts, fmt.Sprintf("LIMIT %d", *q.limitVal))
+		b.WriteString(" ")
+		fmt.Fprintf(b, "LIMIT %d", *q.limitVal)
 	}
 
 	// START clause
 	if q.startVal != nil {
-		parts = append(parts, fmt.Sprintf("START %d", *q.startVal))
+		b.WriteString(" ")
+		fmt.Fprintf(b, "START %d", *q.startVal)
 	}
 
 	// FETCH clause
 	if fetchClause := q.buildFetchClause(); fetchClause != "" {
-		parts = append(parts, fetchClause)
+		b.WriteString(" ")
+		b.WriteString(fetchClause)
 	}
 
 	// PARALLEL clause
 	if q.parallel {
-		parts = append(parts, "PARALLEL")
+		b.WriteString(" ")
+		b.WriteString("PARALLEL")
 	}
 
 	// RETURN clause
 	if q.returnClause != "" {
-		parts = append(parts, "RETURN "+q.returnClause)
+		b.WriteString(" ")
+		b.WriteString("RETURN ")
+		b.WriteString(q.returnClause)
 	}
-
-	return strings.Join(parts, " ")
 }
 
 // buildSelectClause builds the SELECT clause
-func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
-	var b strings.Builder
-
+func (q *SelectQuery) buildSelectClause(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("SELECT ")
 
 	if q.value {
@@ -461,7 +456,7 @@ func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
 			if i > 0 {
 				b.WriteString(", ")
 			}
-			b.WriteString(field.build(c))
+			field.build(c, b)
 		}
 	}
 
@@ -473,8 +468,22 @@ func (q *SelectQuery) buildSelectClause(c *queryBuildContext) string {
 		}
 		b.WriteString(omit)
 	}
+}
 
-	return b.String()
+func (q *SelectQuery) buildFromClause(c *queryBuildContext, b *strings.Builder) {
+	// FROM clause
+	if len(q.from) > 0 {
+		b.WriteString(" FROM ")
+		if q.only {
+			b.WriteString("ONLY ")
+		}
+		for i, f := range q.from {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			f.build(c.in("from"), b)
+		}
+	}
 }
 
 // buildGroupClause builds the GROUP BY clause
@@ -566,26 +575,31 @@ func (w *whereBuilder) hasConditions() bool {
 	return len(w.conditions) > 0
 }
 
-func (w *whereBuilder) build(c *queryBuildContext) string {
+func (w *whereBuilder) build(c *queryBuildContext, b *strings.Builder) {
 	if len(w.conditions) == 0 {
-		return ""
+		return
 	}
 
-	var parts []string
+	b.WriteString("WHERE ")
+
 	for i, cond := range w.conditions {
+		if i > 0 {
+			b.WriteString(" AND ")
+		}
 		// Replace ? placeholders with named parameters
-		processedCondition := cond.condition
+		var start int
 		for _, arg := range cond.args {
 			paramName := c.generateAndAddParam("param", arg)
-			processedCondition = strings.Replace(processedCondition, "?", "$"+paramName, 1)
+			placeholder := strings.Index(cond.condition[start:], "?")
+			if placeholder < 0 {
+				break
+			}
+			placeholder += start
+			b.WriteString(cond.condition[start:placeholder])
+			b.WriteString("$")
+			b.WriteString(paramName)
+			start = placeholder + 1
 		}
-
-		if i == 0 {
-			parts = append(parts, processedCondition)
-		} else {
-			parts = append(parts, "AND "+processedCondition)
-		}
+		b.WriteString(cond.condition[start:])
 	}
-
-	return strings.Join(parts, " ")
 }

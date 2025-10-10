@@ -23,10 +23,10 @@ type Query interface {
 	// Build returns the SurrealQL string and parameters for the query
 	Build() (string, map[string]any)
 
-	// build returns the SurrealQL string in the provided build context.
+	// build generates the SurrealQL string in the provided build context.
 	// The build mutates the context, and the context is propagated across
 	// multiple sub queries so that variables are unique.
-	build(c *queryBuildContext) (sql string)
+	build(c *queryBuildContext, b *strings.Builder)
 
 	// String returns the SurrealQL string for the query
 	String() string
