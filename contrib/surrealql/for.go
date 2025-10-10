@@ -30,15 +30,19 @@ func (f *ForStatement) Build() (sql string, vars map[string]any) {
 
 	var builder strings.Builder
 
+	f.build(&c, &builder)
+
+	return builder.String(), c.vars
+}
+
+func (f *ForStatement) build(c *queryBuildContext, builder *strings.Builder) {
 	builder.WriteString("FOR $")
 	builder.WriteString(f.item)
 	builder.WriteString(" IN ")
-	builder.WriteString(f.iterable.build(&c))
+	f.iterable.build(c, builder)
 	builder.WriteString(" {\n")
-	f.build(&c, &builder)
-	builder.WriteString("};")
-
-	return builder.String(), c.vars
+	f.StatementsBuilder.build(c, builder)
+	builder.WriteString("}")
 }
 
 // String returns the SurrealQL string

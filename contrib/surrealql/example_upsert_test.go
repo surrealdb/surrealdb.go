@@ -215,7 +215,7 @@ func ExampleUpsert_unset() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// UPSERT product:cable SET name = $param_1, UNSET deprecated_field, legacy_data
+	// UPSERT product:cable SET name = $param_1 UNSET deprecated_field, legacy_data
 	// Vars:
 	//   param_1: USB Cable
 }

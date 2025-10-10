@@ -206,7 +206,7 @@ func TestUpsert_Basic(t *testing.T) {
 					Unset("deprecated_field").
 					Build()
 			},
-			wantSQL: "UPSERT product:cable SET name = $param_1, UNSET deprecated_field",
+			wantSQL: "UPSERT product:cable SET name = $param_1 UNSET deprecated_field",
 			wantVars: map[string]any{
 				"param_1": "USB Cable",
 			},
@@ -219,7 +219,7 @@ func TestUpsert_Basic(t *testing.T) {
 					Unset("deprecated_field", "legacy_data", "old_column").
 					Build()
 			},
-			wantSQL: "UPSERT product:storage SET name = $param_1, UNSET deprecated_field, legacy_data, old_column",
+			wantSQL: "UPSERT product:storage SET name = $param_1 UNSET deprecated_field, legacy_data, old_column",
 			wantVars: map[string]any{
 				"param_1": "SSD Storage",
 			},
@@ -453,7 +453,7 @@ func TestUpsert_TypeSafety(t *testing.T) {
 			Unset("deprecated")
 
 		sql, _ := q.Build()
-		expected := "UPSERT product:gadget SET name = $param_1, price = $param_2, UNSET deprecated"
+		expected := "UPSERT product:gadget SET name = $param_1, price = $param_2 UNSET deprecated"
 		if sql != expected {
 			t.Errorf("Expected %q, got %q", expected, sql)
 		}

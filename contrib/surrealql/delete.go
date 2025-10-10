@@ -79,12 +79,12 @@ func (q *DeleteQuery) ReturnDiff() *DeleteQuery {
 // Build returns the SurrealQL string and parameters
 func (q *DeleteQuery) Build() (sql string, params map[string]any) {
 	c := newQueryBuildContext()
-	return q.build(&c), c.vars
+	var b strings.Builder
+	q.build(&c, &b)
+	return b.String(), c.vars
 }
 
-func (q *DeleteQuery) build(c *queryBuildContext) (sql string) {
-	var b strings.Builder
-
+func (q *DeleteQuery) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("DELETE ")
 
 	if q.only {
@@ -95,20 +95,18 @@ func (q *DeleteQuery) build(c *queryBuildContext) (sql string) {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(target.build(c))
+		target.build(c, b)
 	}
 
 	if q.whereClause != nil && q.whereClause.hasConditions() {
-		b.WriteString(" WHERE ")
-		b.WriteString(q.whereClause.build(c))
+		b.WriteString(" ")
+		q.whereClause.build(c, b)
 	}
 
 	if q.returnClause != "" {
 		b.WriteString(" RETURN ")
 		b.WriteString(q.returnClause)
 	}
-
-	return b.String()
 }
 
 // String returns the SurrealQL string

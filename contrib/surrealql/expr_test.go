@@ -1,6 +1,7 @@
 package surrealql
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,8 +9,9 @@ import (
 
 func buildExpr(expr *expr) (sql string, vars map[string]any) {
 	c := newQueryBuildContext()
-	sql = expr.build(&c)
-	return sql, c.vars
+	var b strings.Builder
+	expr.build(&c, &b)
+	return b.String(), c.vars
 }
 
 func TestExpr_string(t *testing.T) {
