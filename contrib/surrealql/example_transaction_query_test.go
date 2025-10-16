@@ -186,3 +186,43 @@ func ExampleTransactionQuery_Return_withPlaceholders() {
 	//   return_param_1: 5
 	//   table_1: test
 }
+
+func ExampleTransactionQuery_Return_selectQueryString() {
+	// Create a transaction that returns the result of a SELECT query
+	tx := surrealql.Begin().
+		Let("name", "Alice").
+		Let("email", "alice@example.com").
+		Do(surrealql.Create("person").
+			Set("name", surrealql.Var("name"))).
+		Return("SELECT * FROM person")
+
+	sql, _ := tx.Build()
+	fmt.Println(sql)
+	// Output:
+	// BEGIN TRANSACTION;
+	// LET $name = "Alice";
+	// LET $email = "alice@example.com";
+	// CREATE person SET name = $name;
+	// RETURN SELECT * FROM person;
+	// COMMIT TRANSACTION;
+}
+
+func ExampleTransactionQuery_Return_selectQueryInstance() {
+	// Create a transaction that returns the result of a SELECT query
+	tx := surrealql.Begin().
+		Let("name", "Alice").
+		Let("email", "alice@example.com").
+		Do(surrealql.Create("person").
+			Set("name", surrealql.Var("name"))).
+		Return("?", surrealql.Select("person"))
+
+	sql, _ := tx.Build()
+	fmt.Println(sql)
+	// Output:
+	// BEGIN TRANSACTION;
+	// LET $name = "Alice";
+	// LET $email = "alice@example.com";
+	// CREATE person SET name = $name;
+	// RETURN (SELECT * FROM person);
+	// COMMIT TRANSACTION;
+}

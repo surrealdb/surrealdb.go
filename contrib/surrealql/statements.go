@@ -135,33 +135,5 @@ func (t *ThrowStatement) build(c *queryBuildContext, b *strings.Builder) {
 func (r *ReturnStatement) build(c *queryBuildContext, b *strings.Builder) {
 	b.WriteString("RETURN ")
 
-	if len(r.args) == 0 {
-		// No placeholders, just return the raw expression
-		b.WriteString(r.expr)
-		return
-	}
-
-	// Process placeholders
-	var startIndex int
-	for _, arg := range r.args {
-		placeholder := strings.Index(r.expr[startIndex:], "?")
-		if placeholder < 0 {
-			break
-		}
-		placeholder += startIndex
-		b.WriteString(r.expr[startIndex:placeholder])
-		// Check if arg is a Var (variable reference)
-		if varRef, ok := arg.(Var); ok {
-			// Replace the first ? with the variable reference
-			b.WriteString(varRef.String())
-		} else {
-			// Regular value, create a parameter
-			paramName := c.generateAndAddParam("return_param", arg)
-			b.WriteString("$")
-			b.WriteString(paramName)
-		}
-		// Update the start index
-		startIndex = placeholder + 1
-	}
-	b.WriteString(r.expr[startIndex:])
+	buildQueryStringWithPlaceholders(c, b, "return_param", r.expr, r.args)
 }
