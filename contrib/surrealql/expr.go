@@ -51,41 +51,52 @@ type exprLike interface {
 //
 // It panics if the type is unsupported, but it should happen only when
 // this library has a bug, because this function is private to prevent misuse.
-func buildExprLike(c *queryBuildContext, ex any, args []any) (sql string, validationErr error) {
+func buildExprLike(c *queryBuildContext, b *strings.Builder, ex any, args []any) error {
 	if ex == nil {
-		return "*", nil // Default to selecting all fields
+		// Default to selecting all fields
+		b.WriteString("*")
+		return nil
 	}
 
 	switch v := ex.(type) {
 	case string:
 		if len(args) > 0 {
-			return "<invalid expr with string>", fmt.Errorf("invalid expr with string %q: <args> not allowed", v)
+			b.WriteString("<invalid expr with string>")
+			return fmt.Errorf("invalid expr with string %q: <args> not allowed", v)
 		}
-		return v, nil
+		b.WriteString(v)
+		return nil
 	case *SelectQuery:
 		if len(args) > 0 {
-			return "<invalid expr with SelectQuery>", fmt.Errorf("invalid expr with SelectQuery: <args> not allowed")
+			b.WriteString("<invalid expr with SelectQuery>")
+			return fmt.Errorf("invalid expr with SelectQuery: <args> not allowed")
 		}
-		var b strings.Builder
-		v.build(c, &b)
-		return fmt.Sprintf("(%s)", b.String()), nil
+		b.WriteString("(")
+		v.build(c, b)
+		b.WriteString(")")
+		return nil
 	case *expr:
 		if len(args) > 0 {
-			return "<invalid expr with expr>", fmt.Errorf("invalid expr with expr: <args> not allowed")
+			b.WriteString("<invalid expr with expr>")
+			return fmt.Errorf("invalid expr with expr: <args> not allowed")
 		}
-
-		var b strings.Builder
-		v.build(c, &b)
-		return b.String(), nil
+		v.build(c, b)
+		return nil
 	case models.Table:
 		name := c.generateAndAddParam("table", v)
-		return "$" + name, nil
+		b.WriteString("$")
+		b.WriteString(name)
+		return nil
 	case *models.RecordID:
 		name := c.generateAndAddParam("id", v)
-		return "$" + name, nil
+		b.WriteString("$")
+		b.WriteString(name)
+		return nil
 	case models.RecordID:
 		name := c.generateAndAddParam("id", v)
-		return "$" + name, nil
+		b.WriteString("$")
+		b.WriteString(name)
+		return nil
 	default:
 		panic(fmt.Sprintf("unsupported select field type: %T", ex))
 	}
@@ -123,50 +134,56 @@ func (f *expr) Build() (sql string, vars map[string]any) {
 	return b.String(), c.vars
 }
 
-// build returns the SurrealQL expression for the field and any associated vars.
-func (f *expr) build(c *queryBuildContext, b *strings.Builder) {
-	b.WriteString(f.string(c))
-}
+func buildQueryStringWithPlaceholders(c *queryBuildContext, b *strings.Builder, prefix, snippet string, args []any) {
+	var startIndex int
+	for _, arg := range args {
+		placeholder := strings.Index(snippet[startIndex:], "?")
+		if placeholder < 0 {
+			break
+		}
+		placeholder += startIndex
+		b.WriteString(snippet[startIndex:placeholder])
 
-func (f *expr) string(c *queryBuildContext) string {
-	if f.isRawSQL {
-		// Handle raw SQL with placeholders
-		processedExpr := f.expr.(string)
-
-		for _, arg := range f.args {
-			// Check the type of argument
-			switch v := arg.(type) {
-			case Var:
-				// Variable reference - replace ? with the variable
-				processedExpr = strings.Replace(processedExpr, "?", v.String(), 1)
-			case Query:
-				// Subquery - replace ? with the subquery
-				var b2 strings.Builder
-				v.build(c, &b2)
-				subSQL := b2.String()
-				processedExpr = strings.Replace(processedExpr, "?", fmt.Sprintf("(%s)", subSQL), 1)
-			default:
-				// Regular value - create a parameter
-				paramName := c.generateAndAddParam("param", v)
-				processedExpr = strings.Replace(processedExpr, "?", "$"+paramName, 1)
-			}
+		switch v := arg.(type) {
+		case Var:
+			// Variable reference - replace ? with the variable
+			b.WriteString(v.String())
+		case Query:
+			// Subquery - replace ? with the subquery
+			b.WriteString("(")
+			v.build(c, b)
+			b.WriteString(")")
+		default:
+			// Regular value - create a parameter
+			paramName := c.generateAndAddParam(prefix, v)
+			b.WriteString("$")
+			b.WriteString(paramName)
 		}
 
-		if f.alias != "" {
-			return fmt.Sprintf("%s AS %s", processedExpr, escapeIdent(f.alias))
-		}
-		return processedExpr
+		// Update the start index
+		startIndex = placeholder + 1
 	}
 
-	innerQL, validationErr := buildExprLike(c, f.expr, f.args)
-	if validationErr != nil {
-		panic(validationErr)
+	b.WriteString(snippet[startIndex:])
+}
+
+// build returns the SurrealQL expression for the field and any associated vars.
+func (f *expr) build(c *queryBuildContext, b *strings.Builder) {
+	if f.isRawSQL {
+		// Handle raw SQL with placeholders
+		queryWithPlaceholders := f.expr.(string)
+
+		buildQueryStringWithPlaceholders(c, b, "param", queryWithPlaceholders, f.args)
+	} else {
+		if validationErr := buildExprLike(c, b, f.expr, f.args); validationErr != nil {
+			panic(validationErr)
+		}
 	}
 
 	if f.alias != "" {
-		return fmt.Sprintf("%s AS %s", innerQL, escapeIdent(f.alias))
+		b.WriteString(" AS ")
+		b.WriteString(escapeIdent(f.alias))
 	}
-	return innerQL
 }
 
 // String returns the SurrealQL string
