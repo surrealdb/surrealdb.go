@@ -8,6 +8,226 @@ import (
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
+func ExampleDB_SignIn_rootLevelUser() {
+	db, err := surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	db, err = testenv.Init(db, "exampledb_signin_rootlevel", "testdb", "testtable")
+	if err != nil {
+		panic(err)
+	}
+
+	// Sign in as the root user
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Username: "root",
+		Password: "root",
+	})
+	if err != nil {
+		panic(fmt.Sprintf("SignIn failed: %v", err))
+	}
+
+	err = db.Use(context.Background(), "exampledb_signin_rootlevel", "testdb")
+	if err != nil {
+		panic(fmt.Sprintf("Use failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `REMOVE USER IF EXISTS myuser ON ROOT`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE USER myuser ON ROOT PASSWORD 'mypassword' ROLES OWNER`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	if closeErr := db.Close(context.Background()); closeErr != nil {
+		panic(fmt.Sprintf("Failed to close the database connection: %v", closeErr))
+	}
+
+	db, err = surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Now sign in to the SurrealDB instance as the new root level user.
+	// Omitting namespace and database indicates that we want to authenticate
+	// as a root-level user.
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Username: "myuser",
+		Password: "mypassword",
+	})
+	if err != nil {
+		panic(fmt.Sprintf("SignIn failed: %v", err))
+	}
+
+	err = db.Use(context.Background(), "exampledb_signin_rootlevel", "testdb")
+	if err != nil {
+		panic(fmt.Sprintf("Use failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `SELECT * FROM testtable`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	if closeErr := db.Close(context.Background()); closeErr != nil {
+		panic(fmt.Sprintf("Failed to close the database connection: %v", closeErr))
+	}
+
+	fmt.Println("Root-level user SignIn tests completed successfully")
+
+	// Output:
+	// Root-level user SignIn tests completed successfully
+}
+
+func ExampleDB_SignIn_rootLevelUser_invalidAuthLevelNamespace() {
+	db, err := surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	db, err = testenv.Init(db, "exampledb_signin_rootlevel", "testdb", "testtable")
+	if err != nil {
+		panic(err)
+	}
+
+	// Sign in as the root user
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Username: "root",
+		Password: "root",
+	})
+	if err != nil {
+		panic(fmt.Sprintf("SignIn failed: %v", err))
+	}
+
+	err = db.Use(context.Background(), "exampledb_signin_rootlevel", "testdb")
+	if err != nil {
+		panic(fmt.Sprintf("Use failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `REMOVE USER IF EXISTS myuser ON ROOT`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE USER myuser ON ROOT PASSWORD 'mypassword' ROLES OWNER`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	if closeErr := db.Close(context.Background()); closeErr != nil {
+		panic(fmt.Sprintf("Failed to close the database connection: %v", closeErr))
+	}
+
+	db, err = surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Try to sign in to the namespace as the new root level user
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Namespace: "exampledb_signin_rootlevel",
+		Username:  "myuser",
+		Password:  "mypassword",
+	})
+	// This should fail because "myuser" is a root-level user, not a namespace-level user.
+	// Specifying the namespace indicates that we want to authenticate
+	// as a namespace-level user.
+	if err == nil {
+		panic("Expected SignIn to fail, but it succeeded")
+	}
+
+	fmt.Println("Root-level user SignIn tests completed successfully")
+
+	// Output:
+	// Root-level user SignIn tests completed successfully
+}
+
+func ExampleDB_SignIn_rootLevelUser_invalidAuthLevelDatabase() {
+	db, err := surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	db, err = testenv.Init(db, "exampledb_signin_rootlevel", "testdb", "testtable")
+	if err != nil {
+		panic(err)
+	}
+
+	// Sign in as the root user
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Username: "root",
+		Password: "root",
+	})
+	if err != nil {
+		panic(fmt.Sprintf("SignIn failed: %v", err))
+	}
+
+	err = db.Use(context.Background(), "exampledb_signin_rootlevel", "testdb")
+	if err != nil {
+		panic(fmt.Sprintf("Use failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `REMOVE USER IF EXISTS myuser ON ROOT`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE USER myuser ON ROOT PASSWORD 'mypassword' ROLES OWNER`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Query failed: %v", err))
+	}
+
+	if closeErr := db.Close(context.Background()); closeErr != nil {
+		panic(fmt.Sprintf("Failed to close the database connection: %v", closeErr))
+	}
+
+	db, err = surrealdb.FromEndpointURLString(
+		context.Background(),
+		testenv.GetSurrealDBWSURL(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Try to sign in to the namespace/database using the new root level user
+	_, err = db.SignIn(context.Background(), surrealdb.Auth{
+		Namespace: "exampledb_signin_rootlevel",
+		Database:  "testdb",
+		Username:  "myuser",
+		Password:  "mypassword",
+	})
+	// This should fail, because specifying both namespace and database
+	// indicates that we want to authenticate as a database-level user,
+	// which this user is not.
+	if err == nil {
+		panic("Expected SignIn to fail, but it succeeded")
+	}
+
+	fmt.Println("Root-level user SignIn tests completed successfully")
+
+	// Output:
+	// Root-level user SignIn tests completed successfully
+}
+
 func ExampleDB_SignIn_namespaceLevelUser() {
 	db, err := surrealdb.FromEndpointURLString(
 		context.Background(),

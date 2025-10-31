@@ -175,22 +175,51 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 //   - An Auth struct
 //   - A map[string]any with keys like: "namespace", "database", "scope", "user", "pass"
 //
-// Example with struct:
+// In either case, the username and the password are mandatory.
+// Depending on whether namespace and database are provided or not,
+// the user is signed in as a database-level user, a namespace-level user, or a root-level user.
+//
+// If namespace and database are provided, the user is signed in
+// as a database-level user.
 //
 //	db.SignIn(Auth{
 //	  Namespace: "app",
 //	  Database: "app",
-//	  Access: "user",
 //	  Username: "yusuke",
 //	  Password: "VerySecurePassword123!",
 //	})
 //
-// Example with map:
-//
 //	db.SignIn(map[string]any{
 //	  "NS": "app",
 //	  "DB": "app",
-//	  "AC": "user",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+//
+// If namespace is provided but database is omitted, the user is signed in
+// as a namespace-level user.
+//
+//	db.SignIn(Auth{
+//	  Namespace: "app",
+//	  Username: "yusuke",
+//	  Password: "VerySecurePassword123!",
+//	})
+//
+//	db.SignIn(map[string]any{
+//	  "NS": "app",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+//
+// If both namespace and database are omitted, the user is signed in
+// as a root-level user.
+//
+//	db.SignIn(Auth{
+//	  Username: "yusuke",
+//	  Password: "VerySecurePassword123!",
+//	})
+//
+//	db.SignIn(map[string]any{
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
