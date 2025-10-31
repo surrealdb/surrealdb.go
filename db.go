@@ -118,7 +118,6 @@ func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, erro
 // Public methods
 // --------------------------------------------------
 
-// WithContext
 // Deprecated: WithContext is deprecated and does nothing. Use context parameters in individual method calls instead.
 func (db *DB) WithContext(ctx context.Context) *DB {
 	return db
