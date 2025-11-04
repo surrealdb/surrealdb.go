@@ -178,6 +178,23 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 // Depending on whether namespace and database are provided or not,
 // the user is signed in as a database-level user, a namespace-level user, or a root-level user.
 //
+// Moreover, the Access field in the Auth struct or the "AC" key in the map[string]any
+// is optional, and is only needed when signing in as a record user, which is like
+// a database user that requires the namespace and database to be specified too.
+//
+// The following examples illustrate the different cases.
+//
+// The most complex case is signing in as a record user, which requires
+// specifying the Access field to indicate which access method to use for authentication.
+//
+//	db.SignIn(Auth{
+//	  Access:    "user",
+//	  Namespace: "app",
+//	  Database:  "app",
+//	  Username:  "yusuke",
+//	  Password:  "VerySecurePassword123!",
+//	})
+//
 // If namespace and database are provided, the user is signed in
 // as a database-level user.
 //
