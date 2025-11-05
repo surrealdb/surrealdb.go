@@ -247,6 +247,22 @@ func (db *DB) Invalidate(ctx context.Context) error {
 	return db.con.Invalidate(ctx)
 }
 
+// Authenticate authenticates the current connection with the provided token.
+//
+// This is mostly useful when you created a JWT authentication method on SurrealDB
+// using `DEFINE ACCESS ... TYPE JWT` query, so that SurrealDB can verify the token
+// provided via this method for authentication.
+//
+// After calling this method, all subsequent requests will be authenticated.
+// How the authentication is maintained depends on the connection type:
+//
+//   - For WebSocket connections, the token is kept in the session on the server side.
+//     This means connecting to the server again or creating a new connection to another server
+//     will require calling this method again to authenticate.
+//
+//   - For HTTP connections, the token is sent with every request via the `Authorization` header.
+//     This means that even if you create a new connection to another server,
+//     as long as you call this method on the new connection, the requests will be authenticated.
 func (db *DB) Authenticate(ctx context.Context, token string) error {
 	return db.con.Authenticate(ctx, token)
 }
