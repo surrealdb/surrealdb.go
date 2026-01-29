@@ -227,7 +227,7 @@ func (r *Restorer) fullFromReader(ctx context.Context, currentNamespace, current
 						i := 0
 						for k, v := range record.Data {
 							paramName := fmt.Sprintf("param_%d", i)
-							setItems = append(setItems, fmt.Sprintf("%s = $%s", k, paramName))
+							setItems = append(setItems, fmt.Sprintf("%s = $%s", sanitizeIdentifier(k), paramName))
 							vars[paramName] = v
 							i++
 						}
@@ -239,7 +239,7 @@ func (r *Restorer) fullFromReader(ctx context.Context, currentNamespace, current
 						_, err := surrealdb.Query[any](ctx, r.db, query, vars)
 						if err != nil {
 							// Try with INSERT if CREATE/UPSERT fails
-							insertQuery := fmt.Sprintf("INSERT INTO %s $data", record.Table)
+							insertQuery := fmt.Sprintf("INSERT INTO %s $data", sanitizeIdentifier(record.Table))
 							_, err = surrealdb.Query[any](ctx, r.db, insertQuery, map[string]any{
 								"data": record.Data,
 							})
@@ -373,10 +373,11 @@ func (r *Restorer) incrementalFromReader(ctx context.Context, currentNamespace, 
 }
 
 func (r *Restorer) ensureNamespaceDatabase(ctx context.Context, ns, db string,
-	createdNS map[string]bool, createdDB map[string]map[string]bool) {
+	createdNS map[string]bool, createdDB map[string]map[string]bool,
+) {
 	// Create namespace if not exists
 	if !createdNS[ns] {
-		query := fmt.Sprintf("DEFINE NAMESPACE IF NOT EXISTS %s", ns)
+		query := fmt.Sprintf("DEFINE NAMESPACE IF NOT EXISTS %s", sanitizeIdentifier(ns))
 		if _, err := surrealdb.Query[any](ctx, r.db, query, nil); err != nil {
 			// Namespace might already exist, which is fine
 			if r.Verbose {
@@ -397,7 +398,7 @@ func (r *Restorer) ensureNamespaceDatabase(ctx context.Context, ns, db string,
 			_ = r.db.Use(ctx, ns, db)
 		}
 
-		query := fmt.Sprintf("DEFINE DATABASE IF NOT EXISTS %s", db)
+		query := fmt.Sprintf("DEFINE DATABASE IF NOT EXISTS %s", sanitizeIdentifier(db))
 		if _, err := surrealdb.Query[any](ctx, r.db, query, nil); err != nil {
 			// Database might already exist, which is fine
 			if r.Verbose {
@@ -421,18 +422,25 @@ func formatRecordID(id any) string {
 		idStr = strings.TrimSuffix(idStr, "}")
 		parts := strings.Fields(idStr)
 		if len(parts) == 2 {
-			// Convert to table:id format
-			return fmt.Sprintf("%s:%s", parts[0], parts[1])
+			// Convert to table:id format, sanitizing the table name
+			return fmt.Sprintf("%s:%s", sanitizeIdentifier(parts[0]), parts[1])
 		}
 	}
 	// If it's already in the correct format or unknown, return as is
 	return idStr
 }
 
+// sanitizeIdentifier escapes a SurrealDB identifier to prevent injection.
+// It wraps the identifier in backticks and escapes any backticks within.
+func sanitizeIdentifier(id string) string {
+	escaped := strings.ReplaceAll(id, "`", "``")
+	return fmt.Sprintf("`%s`", escaped)
+}
+
 func (r *Restorer) applyChange(ctx context.Context, _ string, change surrealdump.Change) error {
 	if change.DefineTable != nil {
 		// Define table
-		query := fmt.Sprintf("DEFINE TABLE IF NOT EXISTS %s", change.DefineTable.Name)
+		query := fmt.Sprintf("DEFINE TABLE IF NOT EXISTS %s", sanitizeIdentifier(change.DefineTable.Name))
 		_, err := surrealdb.Query[any](ctx, r.db, query, nil)
 		return err
 	}
@@ -455,7 +463,7 @@ func (r *Restorer) applyChange(ctx context.Context, _ string, change surrealdump
 			i := 0
 			for k, v := range change.Update {
 				paramName := fmt.Sprintf("upd_param_%d", i)
-				setItems = append(setItems, fmt.Sprintf("%s = $%s", k, paramName))
+				setItems = append(setItems, fmt.Sprintf("%s = $%s", sanitizeIdentifier(k), paramName))
 				vars[paramName] = v
 				i++
 			}
