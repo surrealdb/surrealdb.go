@@ -104,10 +104,18 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 	s.Require().NoError(err, "should not return an error when initializing db")
 	s.db = db
 
+	// For HTTP connections, Use() must be called before SignIn() because HTTP
+	// requires namespace/database headers on every request.
 	err = db.Use(context.Background(), "test", "test")
+	s.Require().NoError(err, "should not return an error when setting namespace and database")
+
 	_ = signIn(s)
 
-	s.Require().NoError(err, "should not return an error when setting namespace and database")
+	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
+	// Explicitly define them after signing in as root to ensure they exist.
+	// The DEFINE commands will create the namespace/database if they don't exist.
+	_, err = surrealdb.Query[any](context.Background(), s.db, "DEFINE NAMESPACE IF NOT EXISTS test; DEFINE DATABASE IF NOT EXISTS test", nil)
+	s.Require().NoError(err, "should not return an error when defining namespace and database")
 }
 
 // Sign with the root user

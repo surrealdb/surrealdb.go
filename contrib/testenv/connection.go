@@ -326,6 +326,14 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 		return nil, fmt.Errorf("failed to authenticate: %w", err)
 	}
 
+	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
+	// Explicitly define them after signing in as root to ensure they exist.
+	_, err = surrealdb.Query[any](context.Background(), db,
+		"DEFINE NAMESPACE IF NOT EXISTS "+namespace+"; DEFINE DATABASE IF NOT EXISTS "+database, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to define namespace/database: %w", err)
+	}
+
 	// If no tables specified, get all tables in the database
 	if len(tables) == 0 {
 		query := "INFO FOR DB"
