@@ -306,6 +306,8 @@ func NewHTTP(database string, tables ...string) (*surrealdb.DB, error) {
 // Init initializes the testing environment.
 // It cleans up the specified tables in the namespace/database.
 // If no tables are specified, it will clean up all tables in the database.
+//
+//nolint:gocyclo // Test setup requires multiple sequential steps with error handling
 func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surrealdb.DB, error) {
 	var err error
 
@@ -324,6 +326,34 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 
 	if err = db.Authenticate(context.Background(), token); err != nil {
 		return nil, fmt.Errorf("failed to authenticate: %w", err)
+	}
+
+	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
+	// Explicitly define them after signing in as root to ensure they exist.
+	// We retry on transaction conflicts which can happen when multiple tests
+	// run in parallel and try to define namespaces/databases concurrently.
+	const maxRetries = 5
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE NAMESPACE IF NOT EXISTS "+namespace, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("failed to define namespace after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	}
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE DATABASE IF NOT EXISTS "+database, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("failed to define database after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
 	}
 
 	// If no tables specified, get all tables in the database
@@ -360,4 +390,26 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 	}
 
 	return db, nil
+}
+
+// DefineSchemalessTables defines the specified tables in the database if they do not already exist.
+// It retries on transaction conflicts which can happen when multiple tests
+// run in parallel and try to define tables concurrently.
+func DefineSchemalessTables(db *surrealdb.DB, tables ...string) error {
+	const maxRetries = 5
+	var err error
+	for _, table := range tables {
+		for i := 0; i < maxRetries; i++ {
+			_, err = surrealdb.Query[any](context.Background(), db,
+				"DEFINE TABLE IF NOT EXISTS "+table, nil)
+			if err == nil {
+				break
+			}
+			if i == maxRetries-1 {
+				return fmt.Errorf("failed to define table after %d retries: %w", maxRetries, err)
+			}
+			time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+		}
+	}
+	return nil
 }

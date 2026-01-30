@@ -12,7 +12,7 @@ import (
 
 // Send can be used to any SurrealDB RPC method including "select".
 func ExampleSend_select() {
-	db := testenv.MustNew("surrealdbexamples", "update", "person")
+	db := testenv.MustNew("surrealdbexamples", "updatedb", "person")
 
 	type Person struct {
 		ID models.RecordID `json:"id,omitempty"`

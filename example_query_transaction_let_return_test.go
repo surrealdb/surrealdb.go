@@ -10,10 +10,18 @@ import (
 )
 
 func ExampleQuery_transaction_let_return() {
-	db := testenv.MustNew("surrealdbexamples", "query", "t")
+	config := testenv.MustNewConfig("surrealdbexamples", "query", "t")
+	db := config.MustNew()
+	ctx := context.Background()
+
+	// Detect version to handle result format differences
+	v, err := testenv.GetVersion(ctx, db)
+	if err != nil {
+		panic(err)
+	}
 
 	createQueryResults, err := surrealdb.Query[[]any](
-		context.Background(),
+		ctx,
 		db,
 		`BEGIN;
 		 CREATE t:1 SET name = 'test';
@@ -27,13 +35,22 @@ func ExampleQuery_transaction_let_return() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Number of query results: %d\n", len(*createQueryResults))
-	fmt.Printf("First query result's status: %+s\n", (*createQueryResults)[0].Status)
-	fmt.Printf("Names contained in the first query result: %+v\n", (*createQueryResults)[0].Result)
 
-	//nolint:lll
+	// Transaction result format changed between v2 and v3:
+	// - v2.x: Returns only the RETURN result (1 result)
+	// - v3.x: Returns results for all statements (5 results)
+	var returnResult any
+	if v.IsV3OrLater() {
+		// In v3, the RETURN result is at index 3 (after BEGIN, CREATE, LET)
+		returnResult = (*createQueryResults)[3].Result
+	} else {
+		// In v2, only the RETURN result is returned
+		returnResult = (*createQueryResults)[0].Result
+	}
+	fmt.Printf("First query result's status: %+s\n", (*createQueryResults)[0].Status)
+	fmt.Printf("Names contained in the RETURN result: %+v\n", returnResult)
+
 	// Output:
-	// Number of query results: 1
 	// First query result's status: OK
-	// Names contained in the first query result: [test]
+	// Names contained in the RETURN result: [test]
 }

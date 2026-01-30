@@ -34,3 +34,6 @@ Temporary Items
 *.test
 *.cover
 *.log
+
+# scripts/test-all-versions.sh output
+testlog

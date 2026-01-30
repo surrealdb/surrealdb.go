@@ -37,7 +37,17 @@ func TestIntegrationDefineTable(t *testing.T) {
 		ql, vars = fieldQuery.Build()
 		_, err = surrealdb.Query[any](ctx, db, ql, vars)
 		if err != nil {
-			t.Fatalf("DEFINE FIELD failed: %v", err)
+			t.Fatalf("DEFINE FIELD timestamp failed: %v", err)
+		}
+
+		// Define action field (needed for SCHEMAFULL table in SurrealDB 3.x)
+		actionFieldQuery := surrealql.DefineField("action", "events").
+			Type("string")
+
+		ql, vars = actionFieldQuery.Build()
+		_, err = surrealdb.Query[any](ctx, db, ql, vars)
+		if err != nil {
+			t.Fatalf("DEFINE FIELD action failed: %v", err)
 		}
 
 		// Create some events using query
