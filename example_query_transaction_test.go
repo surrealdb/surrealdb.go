@@ -91,12 +91,13 @@ func ExampleQuery_transaction_throw() {
 
 	// Normalize error messages for version compatibility
 	// v2.x: "failed transaction"
-	// v3.x: "canceled transaction"
+	// v3.x: "cancelled transaction" (British spelling)
 	normalizeTransactionError := func(err error) string {
 		if err == nil {
 			return "<nil>"
 		}
 		s := err.Error()
+		s = strings.ReplaceAll(s, "cancelled transaction", "failed transaction")
 		s = strings.ReplaceAll(s, "canceled transaction", "failed transaction")
 		return s
 	}
