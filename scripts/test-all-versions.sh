@@ -4,11 +4,18 @@ set -e
 VERSIONS=("v2.6.0" "v3.0.0-beta.2")
 PROTOCOLS=("ws" "http")
 
+# Create logs directory
+LOGS_DIR="testlog"
+mkdir -p "$LOGS_DIR"
+
 for VERSION in "${VERSIONS[@]}"; do
     for PROTOCOL in "${PROTOCOLS[@]}"; do
         echo "=========================================="
         echo "Testing against SurrealDB $VERSION ($PROTOCOL)"
         echo "=========================================="
+
+        # Log file name based on version and protocol
+        LOG_FILE="$LOGS_DIR/${VERSION}_${PROTOCOL}.log"
 
         # Stop and remove any existing container
         docker rm -f surrealdb 2>/dev/null || true
@@ -34,13 +41,15 @@ for VERSION in "${VERSIONS[@]}"; do
             export SURREALDB_URL="ws://localhost:8000/rpc"
         fi
 
-        # Run tests
+        # Run tests (use -count=1 to disable test caching)
         echo "Running tests with SURREALDB_URL=$SURREALDB_URL..."
-        go test -v -race ./... || {
+        echo "Log file: $LOG_FILE"
+        if ! go test -v -race -count=1 ./... > "$LOG_FILE" 2>&1; then
             echo "Tests failed for SurrealDB $VERSION ($PROTOCOL)"
+            echo "See log file: $LOG_FILE"
             docker rm -f surrealdb
             exit 1
-        }
+        fi
 
         # Cleanup
         docker rm -f surrealdb
