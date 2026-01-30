@@ -22,9 +22,6 @@ const (
 const (
 	// VersionIntegrationTestWSURL is the WebSocket URL for version integration tests.
 	VersionIntegrationTestWSURL = "ws://localhost:" + VersionIntegrationTestPort + "/rpc"
-
-	// VersionBehaviorTestWSURL is the WebSocket URL for version behavior tests.
-	VersionBehaviorTestWSURL = "ws://localhost:" + VersionBehaviorTestPort + "/rpc"
 )
 
 // Docker port mapping helpers (format: "hostPort:containerPort").

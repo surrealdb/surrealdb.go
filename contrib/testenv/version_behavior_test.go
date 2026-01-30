@@ -38,10 +38,10 @@ func setupVersionTest(t *testing.T, version string) (db *surrealdb.DB, cleanup f
 	// Cleanup any existing container
 	_ = exec.CommandContext(ctx, "docker", "rm", "-f", containerName).Run()
 
-	// Start container on a different port to avoid conflicts
+	// Start container with dynamic port allocation (port 0 lets Docker choose)
 	cmd := exec.CommandContext(ctx, "docker", "run", "-d",
 		"--name", containerName,
-		"-p", VersionBehaviorTestPortMapping,
+		"-p", "0:8000",
 		fmt.Sprintf("surrealdb/surrealdb:%s", version),
 		"start", "--user", "root", "--pass", "root",
 	)
@@ -53,9 +53,28 @@ func setupVersionTest(t *testing.T, version string) (db *surrealdb.DB, cleanup f
 		_ = exec.CommandContext(cleanupCtx, "docker", "rm", "-f", containerName).Run()
 	}
 
+	// Get the dynamically allocated port
+	portCmd := exec.CommandContext(ctx, "docker", "port", containerName, "8000")
+	portOutput, err := portCmd.CombinedOutput()
+	if err != nil {
+		containerCleanup()
+		t.Fatalf("Failed to get container port: %v, output: %s", err, string(portOutput))
+	}
+	// Output format: "0.0.0.0:12345\n" - extract port number
+	portStr := string(portOutput)
+	// Find the last colon and extract port
+	for i := len(portStr) - 1; i >= 0; i-- {
+		if portStr[i] == ':' {
+			portStr = portStr[i+1:]
+			break
+		}
+	}
+	portStr = portStr[:len(portStr)-1] // Remove trailing newline
+	wsURL := fmt.Sprintf("ws://localhost:%s/rpc", portStr)
+
 	// Wait for container to be ready
 	for i := 0; i < 30; i++ {
-		db, err = surrealdb.FromEndpointURLString(ctx, VersionBehaviorTestWSURL)
+		db, err = surrealdb.FromEndpointURLString(ctx, wsURL)
 		if err == nil {
 			break
 		}
