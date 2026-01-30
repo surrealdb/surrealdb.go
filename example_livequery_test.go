@@ -414,7 +414,10 @@ func ExampleLive_withDiff() {
 			case []any:
 				// SurrealDB 3.x format (all actions) or 2.x format (CREATE/UPDATE only)
 				if notification.Action == connection.DeleteAction {
-					// 3.x DELETE with diff=true returns [{op: "remove", path: "", value: {record}}]
+					// 3.x DELETE with diff=true returns [{op: "remove" or "replace", path: "", value: {record}}]
+					// Note: The exact format may vary between 3.x beta versions:
+					// - Some versions include value with the deleted record
+					// - Some versions have value as nil
 					if len(result) != 1 {
 						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected 1 diff operation, got %d", len(result)))
 					}
@@ -422,19 +425,19 @@ func ExampleLive_withDiff() {
 					if !ok {
 						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected diff operation to be map[string]any, got %T", result[0]))
 					}
-					if diffOp["op"] != "remove" {
-						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected op='remove', got %v", diffOp["op"]))
+					op := diffOp["op"]
+					if op != "remove" && op != "replace" {
+						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected op='remove' or 'replace', got %v", op))
 					}
 					// 3.x uses "" for root path
 					if diffOp["path"] != "" {
 						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected path='', got %v", diffOp["path"]))
 					}
-					value, ok := diffOp["value"].(map[string]any)
-					if !ok {
-						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected value to be map[string]any, got %T", diffOp["value"]))
-					}
-					if value["name"] != "Screwdriver" {
-						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected value.name='Screwdriver', got %v", value["name"]))
+					// Value may be present with deleted record data, or nil in some beta versions
+					if value, ok := diffOp["value"].(map[string]any); ok && value != nil {
+						if value["name"] != "Screwdriver" {
+							panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected value.name='Screwdriver', got %v", value["name"]))
+						}
 					}
 					resultStr = "{deleted}"
 				} else {
