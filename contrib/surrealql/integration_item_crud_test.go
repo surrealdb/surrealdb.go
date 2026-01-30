@@ -109,6 +109,22 @@ func TestIntegrationCreateThenDelete(t *testing.T) {
 
 	// Setup: Create items with different active states
 	t.Run("Setup", func(t *testing.T) {
+		sdbVer, err := testenv.GetVersion(ctx, db)
+		if err != nil {
+			t.Fatalf("Failed to get SurrealDB version: %v", err)
+		}
+		t.Logf("Using SurrealDB version: %s", sdbVer.String())
+		if sdbVer.Major >= 3 {
+			t.Log("Defining the items_delete table for SurrealDB 3.x")
+			defineQuery := surrealql.DefineTable("items_delete").
+				Schemaless()
+			ql, vars := defineQuery.Build()
+			_, err := surrealdb.Query[any](ctx, db, ql, vars)
+			if err != nil {
+				t.Fatalf("Failed to define table: %v", err)
+			}
+		}
+
 		// Create active items
 		for i := 1; i <= 2; i++ {
 			_, err := surrealdb.Create[Item](ctx, db, "items_delete", Item{

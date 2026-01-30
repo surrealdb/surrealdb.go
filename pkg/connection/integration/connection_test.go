@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
@@ -78,6 +79,11 @@ func (s *ConnectionTestSuite) SetupSuite() {
 	})
 	s.Require().NoError(err)
 	_ = con.Let(context.Background(), constants.AuthTokenKey, *token.Result)
+
+	// This is mainly for SurrealDB v3 compatibility where
+	// the namespace and database must exist before performing operations.
+	db := testenv.MustNew("connection_integration", "connection_test", "users")
+	s.Require().NoError(testenv.DefineSchemalessTables(db, "users"))
 }
 
 func (s *ConnectionTestSuite) TearDownSuite() {

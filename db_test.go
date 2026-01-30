@@ -12,6 +12,7 @@ import (
 	"github.com/surrealdb/surrealdb.go"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -113,9 +114,8 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 
 	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
 	// Explicitly define them after signing in as root to ensure they exist.
-	// The DEFINE commands will create the namespace/database if they don't exist.
-	_, err = surrealdb.Query[any](context.Background(), s.db, "DEFINE NAMESPACE IF NOT EXISTS test; DEFINE DATABASE IF NOT EXISTS test", nil)
-	s.Require().NoError(err, "should not return an error when defining namespace and database")
+	db = testenv.MustNew("test", "test", "users")
+	s.Require().NoError(testenv.DefineSchemalessTables(db, "users"))
 }
 
 // Sign with the root user
