@@ -526,6 +526,7 @@ func ExampleQuery_null_none_customdatetime_roundtrip_legacy_fxamackercbor() {
 		 DEFINE FIELD nullable_nil ON t TYPE datetime | null;
 		 DEFINE FIELD option_zero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_zero_omitempty ON t TYPE option<datetime>;
+		 DEFINE FIELD option_zero_omitzero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_zero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_nil ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_nil_omitempty ON t TYPE option<datetime>;
@@ -754,6 +755,7 @@ func ExampleQuery_null_none_customdatetime_roundtrip_surrealcbor() {
 		 DEFINE FIELD nullable_nil ON t TYPE datetime | null;
 		 DEFINE FIELD option_zero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_zero_omitempty ON t TYPE option<datetime>;
+		 DEFINE FIELD option_zero_omitzero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_zero ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_nil ON t TYPE option<datetime>;
 		 DEFINE FIELD option_ptr_nil_omitempty ON t TYPE option<datetime>;

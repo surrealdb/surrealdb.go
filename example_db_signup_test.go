@@ -8,6 +8,8 @@ import (
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 )
 
+// nolint:gocyclo // Example covers end-to-end signup flow with version detection
+
 func ExampleDB_SignUp_databaseLevelRecordUser() {
 	// SignUp's sole purpose is to create a new record user in a database
 	// that has been configured to use RECORD access method type at the database level.
@@ -47,7 +49,15 @@ func ExampleDB_SignUp_databaseLevelRecordUser() {
 		panic(fmt.Sprintf("Use failed: %v", err))
 	}
 
-	setupQuery := `
+	// Detect SurrealDB version to use the correct function name
+	// SurrealDB 2.x uses type::thing(), SurrealDB 3.x uses type::record()
+	v, err := testenv.GetVersion(context.Background(), db)
+	if err != nil {
+		panic(fmt.Sprintf("GetVersion failed: %v", err))
+	}
+	recordFn := v.ThingOrRecordFn()
+
+	setupQuery := fmt.Sprintf(`
 		-- Define the user table with schema
 		DEFINE TABLE user SCHEMAFULL
 			PERMISSIONS
@@ -60,14 +70,14 @@ func ExampleDB_SignUp_databaseLevelRecordUser() {
 		REMOVE ACCESS IF EXISTS user ON DATABASE;
 		DEFINE ACCESS user ON DATABASE TYPE RECORD
 			SIGNIN (
-				SELECT * FROM type::thing("user", $user) WHERE crypto::argon2::compare(password, $pass)
+				SELECT * FROM %s("user", $user) WHERE crypto::argon2::compare(password, $pass)
 			)
 			SIGNUP (
-				CREATE type::thing("user", $user) CONTENT {
+				CREATE %s("user", $user) CONTENT {
 					password: crypto::argon2::generate($pass)
 				}
 			);
-	`
+	`, recordFn, recordFn)
 
 	_, err = surrealdb.Query[any](context.Background(), db, setupQuery, nil)
 	if err != nil {

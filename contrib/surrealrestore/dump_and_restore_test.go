@@ -239,6 +239,16 @@ func TestE2E_IncrementalDumpAndRestore(t *testing.T) {
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
+	// Check if this is SurrealDB 3.x - skip due to changefeed behavior changes
+	// This may be revisited once 3.0 GA is out and changefeed behavior is stable
+	v, vErr := testenv.GetVersion(ctx, db)
+	if vErr != nil {
+		t.Fatalf("Failed to get SurrealDB version: %v", vErr)
+	}
+	if v.IsV3OrLater() {
+		t.Skip("Skipping incremental dump/restore test on SurrealDB 3.x - changefeed behavior has changed significantly")
+	}
+
 	// Initialize database with change feed
 	sourceDB, err := testenv.Init(db, "e2e_incr", "source_db", "products")
 	if err != nil {

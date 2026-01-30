@@ -45,13 +45,31 @@ func ExampleNew() {
 	db, err := surrealdb.FromConnection(context.Background(), conn)
 	fmt.Println("FromConnection error:", err)
 
+	// normalizeAuthError normalizes authentication error messages for version compatibility
+	// rews wraps SignIn errors with "rews.Connection failed to sign in:" prefix
+	// SurrealDB 2.x: "rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication"
+	// SurrealDB 3.x: "rews.Connection failed to sign in: There was a problem with authentication"
+	normalizeAuthError := func(err error) string {
+		if err == nil {
+			return "<nil>"
+		}
+		errMsg := err.Error()
+		switch errMsg {
+		case "rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication":
+			return "authentication failed"
+		case "rews.Connection failed to sign in: There was a problem with authentication":
+			return "authentication failed"
+		}
+		return errMsg
+	}
+
 	// Attempt to sign in without setting namespace or database
 	// This should fail with an error, whose message will depend on the connection type.
 	_, err = db.SignIn(context.Background(), surrealdb.Auth{
 		Username: "root",
 		Password: "invalid",
 	})
-	fmt.Println("SignIn error:", err)
+	fmt.Println("SignIn error:", normalizeAuthError(err))
 
 	err = db.Use(context.Background(), "testNS", "testDB")
 	fmt.Println("Use error:", err)
@@ -62,7 +80,7 @@ func ExampleNew() {
 		Username: "root",
 		Password: "invalid",
 	})
-	fmt.Println("SignIn error:", err)
+	fmt.Println("SignIn error:", normalizeAuthError(err))
 
 	// Now let's try with the correct credentials
 	// This should succeed if the database is set up correctly.
@@ -70,7 +88,7 @@ func ExampleNew() {
 		Username: "root",
 		Password: "root",
 	})
-	fmt.Println("SignIn error:", err)
+	fmt.Println("SignIn error:", normalizeAuthError(err))
 
 	// The rews connection automatically handles reconnection,
 	// so even if the connection drops, it will attempt to reconnect
@@ -82,9 +100,9 @@ func ExampleNew() {
 	// Output:
 	// Connect error: <nil>
 	// FromConnection error: <nil>
-	// SignIn error: rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication
+	// SignIn error: authentication failed
 	// Use error: <nil>
-	// SignIn error: rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication
+	// SignIn error: authentication failed
 	// SignIn error: <nil>
 	// Close error: <nil>
 }
