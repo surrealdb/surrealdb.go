@@ -31,13 +31,14 @@ func ExampleQuery() {
 		panic(err)
 	}
 
+	recordID := models.NewRecordID("persons", "yusuke")
+
 	createQueryResults, err := surrealdb.Query[[]Person](
 		context.Background(),
 		db,
-		`CREATE type::thing($tb, $id) CONTENT $content`,
+		`CREATE $record_id CONTENT $content`,
 		map[string]any{
-			"tb": "persons",
-			"id": "yusuke",
+			"record_id": recordID,
 			"content": map[string]any{
 				"name": "Yusuke",
 				"nested_struct": NestedStruct{

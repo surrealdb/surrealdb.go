@@ -74,7 +74,8 @@ func ExampleDB_SignIn_rootLevelUser() {
 		panic(fmt.Sprintf("Use failed: %v", err))
 	}
 
-	_, err = surrealdb.Query[any](context.Background(), db, `SELECT * FROM testtable`, nil)
+	// Create table and query - SurrealDB 3.x requires table to exist before SELECT
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE TABLE testtable; SELECT * FROM testtable`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
@@ -297,7 +298,8 @@ func ExampleDB_SignIn_namespaceLevelUser() {
 		panic(fmt.Sprintf("Use failed: %v", err))
 	}
 
-	_, err = surrealdb.Query[any](context.Background(), db, `SELECT * FROM testtable`, nil)
+	// Create table and query - SurrealDB 3.x requires table to exist before SELECT
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE TABLE testtable; SELECT * FROM testtable`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
@@ -460,7 +462,8 @@ func ExampleDB_SignIn_databaseLevelUser() {
 		panic(fmt.Sprintf("Use failed: %v", err))
 	}
 
-	_, err = surrealdb.Query[any](context.Background(), db, `SELECT * FROM testtable`, nil)
+	// Create table and query - SurrealDB 3.x requires table to exist before SELECT
+	_, err = surrealdb.Query[any](context.Background(), db, `DEFINE TABLE testtable; SELECT * FROM testtable`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
 	}
@@ -567,11 +570,14 @@ func ExampleDB_signin_failure() {
 		Username: "root",
 		Password: "invalid",
 	})
+	//nolint:goconst // Keeping error messages inline for readability in examples
 	switch err.Error() {
 	case "namespace or database or both are not set":
 		// In case the connection is over HTTP, this error is expected
 	case "There was a problem with the database: There was a problem with authentication":
-		// In case the connection is over WebSocket, this error is expected
+		// In case the connection is over WebSocket on SurrealDB 2.x, this error is expected
+	case "There was a problem with authentication":
+		// In case the connection is over WebSocket on SurrealDB 3.x, this error is expected
 	default:
 		panic(fmt.Sprintf("Unexpected error: %v", err))
 	}
@@ -587,7 +593,19 @@ func ExampleDB_signin_failure() {
 		Username: "root",
 		Password: "invalid",
 	})
-	fmt.Println("SignIn error:", err)
+	// Normalize error message for version compatibility
+	// SurrealDB 2.x: "There was a problem with the database: There was a problem with authentication"
+	// SurrealDB 3.x: "There was a problem with authentication"
+	errMsg := err.Error()
+	//nolint:goconst // Keeping error messages inline for readability in examples
+	switch errMsg {
+	case "There was a problem with the database: There was a problem with authentication":
+		fmt.Println("SignIn error: authentication failed")
+	case "There was a problem with authentication":
+		fmt.Println("SignIn error: authentication failed")
+	default:
+		fmt.Println("SignIn error:", err)
+	}
 
 	// Now let's try with the correct credentials
 	// This should succeed if the database is set up correctly.
@@ -604,5 +622,5 @@ func ExampleDB_signin_failure() {
 	}
 
 	// Output:
-	// SignIn error: There was a problem with the database: There was a problem with authentication
+	// SignIn error: authentication failed
 }

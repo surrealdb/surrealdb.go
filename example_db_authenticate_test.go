@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // nolint:gocyclo // Example covers end-to-end JWT setup; splitting would reduce readability for docs
@@ -42,7 +43,7 @@ func ExampleDB_Authenticate_jwt_databaseLevelUser() {
 		panic(err)
 	}
 
-	db, err = testenv.Init(db, "exampledb_authenticate_jwt", "testdb")
+	db, err = testenv.Init(db, "exampledb_authenticate_jwt", "testdb", "user")
 	if err != nil {
 		panic(err)
 	}
@@ -76,6 +77,18 @@ func ExampleDB_Authenticate_jwt_databaseLevelUser() {
 	_, err = surrealdb.Query[any](ctx, db, defineAccessQuery, nil)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
+	}
+
+	// Create the user table and a test user record for SurrealDB 3.x
+	// SurrealDB 3.x requires the table to exist before querying,
+	// while SurrealDB 2.x does not.
+	_, err = surrealdb.Query[any](ctx, db, `
+		DEFINE TABLE user SCHEMAFULL;
+		DEFINE FIELD name ON user TYPE string;
+		CREATE user:test SET name = "test_user"
+	`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test user: %v", err))
 	}
 
 	// Create a signed JWT token using the private key
@@ -113,7 +126,9 @@ func ExampleDB_Authenticate_jwt_databaseLevelUser() {
 	}
 
 	// Verify authentication by performing a query
-	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM type::thing("user", "test")`, nil)
+	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM $id`, map[string]any{
+		"id": models.NewRecordID("user", "test"),
+	})
 	if err != nil {
 		panic(fmt.Sprintf("Query after JWT authentication failed: %v", err))
 	}
@@ -132,6 +147,7 @@ func ExampleDB_Authenticate_jwt_databaseLevelUser() {
 	// JWT-based authentication completed successfully
 }
 
+//nolint:gocyclo // Example functions are necessarily complex to demonstrate complete workflows
 func ExampleDB_Authenticate_jwt_hs512_databaseLevelUser() {
 	ctx := context.Background()
 
@@ -145,7 +161,7 @@ func ExampleDB_Authenticate_jwt_hs512_databaseLevelUser() {
 		panic(err)
 	}
 
-	db, err = testenv.Init(db, "exampledb_authenticate_jwt_hs512", "testdb")
+	db, err = testenv.Init(db, "exampledb_authenticate_jwt_hs512", "testdb", "user")
 	if err != nil {
 		panic(err)
 	}
@@ -182,6 +198,18 @@ func ExampleDB_Authenticate_jwt_hs512_databaseLevelUser() {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
 	}
 
+	// Create the user table and a test user record for SurrealDB 3.x
+	// SurrealDB 3.x requires the table to exist before querying,
+	// while SurrealDB 2.x does not.
+	_, err = surrealdb.Query[any](ctx, db, `
+		DEFINE TABLE user SCHEMAFULL;
+		DEFINE FIELD name ON user TYPE string;
+		CREATE user:test SET name = "test_user"
+	`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test user: %v", err))
+	}
+
 	// Create a signed JWT token using the symmetric key
 	// Only the required claims for database-level JWT access
 	claims := jwt.MapClaims{
@@ -216,7 +244,9 @@ func ExampleDB_Authenticate_jwt_hs512_databaseLevelUser() {
 	}
 
 	// Verify authentication by performing a query
-	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM type::thing("user", "test")`, nil)
+	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM $id`, map[string]any{
+		"id": models.NewRecordID("user", "test"),
+	})
 	if err != nil {
 		panic(fmt.Sprintf("Query after JWT authentication failed: %v", err))
 	}
@@ -289,6 +319,22 @@ func ExampleDB_Authenticate_jwt_hs512_namespaceLevelUser() {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
 	}
 
+	// Create a database and user table/record for the namespace-level auth test
+	// SurrealDB 3.x requires the table to exist before querying,
+	// while SurrealDB 2.x does not.
+	// First remove the database if it exists to ensure clean state
+	_, _ = surrealdb.Query[any](ctx, db, `REMOVE DATABASE IF EXISTS testdb`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `
+		DEFINE DATABASE testdb;
+		USE DB testdb;
+		DEFINE TABLE user SCHEMAFULL;
+		DEFINE FIELD name ON user TYPE string;
+		CREATE user:test SET name = "test_user"
+	`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test user: %v", err))
+	}
+
 	// Create a signed JWT token using the symmetric key (namespace-level claims)
 	claims := jwt.MapClaims{
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
@@ -326,7 +372,9 @@ func ExampleDB_Authenticate_jwt_hs512_namespaceLevelUser() {
 	}
 
 	// Verify authentication by performing a query
-	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM type::thing("user", "test")`, nil)
+	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM $id`, map[string]any{
+		"id": models.NewRecordID("user", "test"),
+	})
 	if err != nil {
 		panic(fmt.Sprintf("Query after JWT authentication failed: %v", err))
 	}
@@ -382,6 +430,24 @@ func ExampleDB_Authenticate_jwt_hs512_rootLevelUser() {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
 	}
 
+	// Create the namespace, database, table, and test user for root-level auth test
+	// SurrealDB 3.x requires the table to exist before querying,
+	// while SurrealDB 2.x does not.
+	// First remove namespace if it exists to ensure clean state
+	_, _ = surrealdb.Query[any](ctx, db, fmt.Sprintf(`REMOVE NAMESPACE IF EXISTS %s`, ns), nil)
+	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf(`
+		DEFINE NAMESPACE %s;
+		USE NS %s;
+		DEFINE DATABASE testdb;
+		USE DB testdb;
+		DEFINE TABLE user SCHEMAFULL;
+		DEFINE FIELD name ON user TYPE string;
+		CREATE user:test SET name = "test_user"
+	`, ns, ns), nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test user: %v", err))
+	}
+
 	// Root-level token claims (no ns/db)
 	claims := jwt.MapClaims{
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
@@ -411,7 +477,9 @@ func ExampleDB_Authenticate_jwt_hs512_rootLevelUser() {
 	if err != nil {
 		panic(fmt.Sprintf("Use failed after JWT auth: %v", err))
 	}
-	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM type::thing("user", "test")`, nil)
+	results, err := surrealdb.Query[any](ctx, db, `SELECT * FROM $id`, map[string]any{
+		"id": models.NewRecordID("user", "test"),
+	})
 	if err != nil {
 		panic(fmt.Sprintf("Query after JWT authentication failed: %v", err))
 	}

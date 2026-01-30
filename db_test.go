@@ -70,16 +70,26 @@ func TestSurrealDBSuite(t *testing.T) {
 	suite.Run(t, s)
 }
 
-// SetupTest is called after each test
+// SetupTest is called before each test
+func (s *SurrealDBTestSuite) SetupTest() {
+	// Create tables that tests expect to exist
+	// SurrealDB 3.x requires tables to exist before querying them,
+	// while 2.x does not.
+	tables := []string{"users", "persons", "knows", "person", "newuser"}
+	for _, table := range tables {
+		_, _ = surrealdb.Query[any](context.Background(), s.db, "DEFINE TABLE "+table, nil)
+	}
+}
+
+// TearDownTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
-	_, err := surrealdb.Delete[[]testUser, models.Table](context.Background(), s.db, "users")
-	s.Require().NoError(err)
-
-	_, err = surrealdb.Delete[[]testUser, models.Table](context.Background(), s.db, "persons")
-	s.Require().NoError(err)
-
-	_, err = surrealdb.Delete[[]testUser, models.Table](context.Background(), s.db, "knows")
-	s.Require().NoError(err)
+	// Use Query with REMOVE TABLE IF EXISTS for cleanup
+	// SurrealDB 3.x returns errors when deleting from non-existent tables using Delete RPC method,
+	// while 2.x does not.
+	tables := []string{"users", "persons", "knows", "person", "newuser"}
+	for _, table := range tables {
+		_, _ = surrealdb.Query[any](context.Background(), s.db, "REMOVE TABLE IF EXISTS "+table, nil)
+	}
 }
 
 // TearDownSuite is called after the s has finished running
@@ -209,10 +219,16 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 		{Username: "Mat", Password: "555"},
 	}
 
-	// create users
+	// Create users using RecordID (not Table) for cross-version compatibility.
+	// "Create with Table" means specifying only the table name (e.g., models.Table("users"))
+	// and letting SurrealDB generate record IDs automatically.
+	// In SurrealDB 2.x, Create with Table returns a single object.
+	// In SurrealDB 3.x, Create with Table returns an array, causing unmarshal errors.
+	// Using RecordID works consistently across both versions (returns a single object).
 	var createdUsers []testUser
-	for _, v := range users {
-		createdUser, err := surrealdb.Create[testUser](context.Background(), s.db, models.Table("users"), v)
+	for i, v := range users {
+		recordID := models.NewRecordID("users", fmt.Sprintf("user%d", i))
+		createdUser, err := surrealdb.Create[testUser](context.Background(), s.db, recordID, v)
 		s.Require().NoError(err)
 		createdUsers = append(createdUsers, *createdUser)
 	}
@@ -367,15 +383,20 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 	var wg sync.WaitGroup
 	totalGoroutines := 100
 
-	s.Run(fmt.Sprintf("Concurrent select non existent rows %d", totalGoroutines), func() {
+	s.Run(fmt.Sprintf("Concurrent select from undefined table %d", totalGoroutines), func() {
 		for i := 0; i < totalGoroutines; i++ {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
+				// The table "missing" was never defined with DEFINE TABLE
 				user, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("missing", j))
-				s.Require().NoError(err)
-				// With surrealcbor (new default), non-existent records return nil
-				s.Require().Nil(user)
+				// SurrealDB 2.x: SELECT from undefined table returns nil with no error
+				// SurrealDB 3.x: SELECT from undefined table returns error "The table 'missing' does not exist"
+				if err != nil {
+					s.Require().Contains(err.Error(), "does not exist")
+				} else {
+					s.Require().Nil(user)
+				}
 			}(i)
 		}
 		wg.Wait()

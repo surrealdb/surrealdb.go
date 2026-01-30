@@ -16,6 +16,13 @@ func ExampleSelect_nonExistentRecord_fxamackercbor() {
 	c.CBORImpl = testenv.CBORImplFxamackerCBOR
 
 	db := c.MustNew()
+	ctx := context.Background()
+
+	// Create the table first - SurrealDB 3.x requires the table to exist
+	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE user`, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	type User struct {
 		ID       *models.RecordID `json:"id,omitempty"`
@@ -24,7 +31,7 @@ func ExampleSelect_nonExistentRecord_fxamackercbor() {
 	}
 
 	// Try to select a record that doesn't exist
-	user, err := surrealdb.Select[User](context.Background(), db, models.NewRecordID("user", "does_not_exist"))
+	user, err := surrealdb.Select[User](ctx, db, models.NewRecordID("user", "does_not_exist"))
 	if err != nil {
 		panic(err)
 	}
@@ -53,6 +60,13 @@ func ExampleSelect_nonExistentRecord_surrealcbor() {
 	c.CBORImpl = testenv.CBORImplSurrealCBOR
 
 	db := c.MustNew()
+	ctx := context.Background()
+
+	// Create the table first - SurrealDB 3.x requires the table to exist
+	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE user`, nil)
+	if err != nil {
+		panic(err)
+	}
 
 	type User struct {
 		ID       *models.RecordID `json:"id,omitempty"`
@@ -61,7 +75,7 @@ func ExampleSelect_nonExistentRecord_surrealcbor() {
 	}
 
 	// Try to select a record that doesn't exist
-	user, err := surrealdb.Select[User](context.Background(), db, models.NewRecordID("user", "does_not_exist"))
+	user, err := surrealdb.Select[User](ctx, db, models.NewRecordID("user", "does_not_exist"))
 	if err != nil {
 		panic(err)
 	}

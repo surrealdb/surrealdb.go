@@ -1,3 +1,8 @@
+// Note: These examples use type::thing() which is the SurrealDB 2.x syntax.
+// For SurrealDB 3.x, use type::record() instead. The function signature is identical:
+//   - SurrealDB 2.x: type::thing("table", $id)
+//   - SurrealDB 3.x: type::record("table", $id)
+
 package surrealql_test
 
 import (

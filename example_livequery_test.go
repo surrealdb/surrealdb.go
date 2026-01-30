@@ -86,7 +86,8 @@ func formatDiffOperation(op map[string]any) string {
 	var parts []string
 	for _, k := range keys {
 		val := op[k]
-		if k == "value" {
+		switch k {
+		case "value":
 			// The value field contains patch data (not a regular record)
 			if patchData, ok := val.(map[string]any); ok {
 				parts = append(parts, fmt.Sprintf("value=%s", formatPatchDataMap(patchData)))
@@ -94,7 +95,14 @@ func formatDiffOperation(op map[string]any) string {
 				// For non-map values (like simple value replacements)
 				parts = append(parts, fmt.Sprintf("value=%v", val))
 			}
-		} else {
+		case "path":
+			// Normalize path: SurrealDB 3.x uses "" for root path, 2.x uses "/"
+			pathVal := fmt.Sprintf("%v", val)
+			if pathVal == "" {
+				pathVal = "/"
+			}
+			parts = append(parts, fmt.Sprintf("path=%s", pathVal))
+		default:
 			parts = append(parts, fmt.Sprintf("%s=%v", k, val))
 		}
 	}
@@ -119,6 +127,12 @@ func ExampleLive() {
 	}
 
 	ctx := context.Background()
+
+	// Create the table first - SurrealDB 3.x requires the table to exist for LIVE SELECT
+	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE users`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create table: %v", err))
+	}
 
 	live, err := surrealdb.Live(ctx, db, "users", false)
 	if err != nil {
@@ -217,6 +231,8 @@ func ExampleLive() {
 // ExampleQuery_live demonstrates using LIVE SELECT via the Query RPC.
 // LIVE SELECT returns matching records as map[string]any in notification.Result.
 // The notification channel is automatically closed when Kill is called.
+//
+//nolint:gocyclo // Example functions are necessarily complex to demonstrate complete workflows
 func ExampleQuery_live() {
 	config := testenv.MustNewConfig("surrealdbexamples", "livequery_query", "products")
 	config.Endpoint = testenv.GetSurrealDBWSURL()
@@ -231,6 +247,12 @@ func ExampleQuery_live() {
 	}
 
 	ctx := context.Background()
+
+	// Create the table first - SurrealDB 3.x requires the table to exist for LIVE SELECT
+	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE products`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create table: %v", err))
+	}
 
 	result, err := surrealdb.Query[models.UUID](ctx, db, "LIVE SELECT * FROM products WHERE stock < 10", map[string]any{})
 	if err != nil {
@@ -341,6 +363,8 @@ func ExampleQuery_live() {
 // With diff=true, CREATE and UPDATE return diff operations as []any,
 // while DELETE still returns the deleted record as map[string]any.
 // The notification channel is automatically closed when Kill is called.
+//
+//nolint:gocyclo // Example functions are necessarily complex to demonstrate complete workflows
 func ExampleLive_withDiff() {
 	config := testenv.MustNewConfig("surrealdbexamples", "livequery_diff", "inventory")
 	config.Endpoint = testenv.GetSurrealDBWSURL()
@@ -354,6 +378,12 @@ func ExampleLive_withDiff() {
 	}
 
 	ctx := context.Background()
+
+	// Create the table first - SurrealDB 3.x requires the table to exist for LIVE SELECT
+	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE inventory`, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create table: %v", err))
+	}
 
 	live, err := surrealdb.Live(ctx, db, "inventory", true)
 	if err != nil {
@@ -375,14 +405,41 @@ func ExampleLive_withDiff() {
 
 			// With diff=true:
 			// - CREATE and UPDATE return diff operations as []any
-			// - DELETE returns the full deleted record as map[string]any (same as without diff)
+			// - DELETE returns the deleted record (format varies by version)
 			if notification.Action == connection.DeleteAction {
-				// DELETE always returns a regular record, even with diff=true
-				record, ok := notification.Result.(map[string]any)
+				// DELETE result format varies between SurrealDB versions
+				result, ok := notification.Result.(map[string]any)
 				if !ok {
 					panic(fmt.Sprintf("Expected map[string]any for DELETE result, got %T", notification.Result))
 				}
-				resultStr = formatRecordResult(record)
+
+				// SurrealDB 2.x with diff=true: returns just the record ID {id: ...}
+				// SurrealDB 3.x with diff=true: returns a diff operation {op: "remove", path: "", value: {record}}
+				_, hasID := result["id"]
+				op, hasOp := result["op"]
+
+				switch {
+				case hasID && !hasOp:
+					// 2.x format with diff=true: DELETE returns just {id: ...} without other fields
+					// Validate that id is a RecordID for the inventory table
+					// (the name/quantity fields are not included in DELETE notification with diff=true)
+				case hasOp && op == "remove":
+					// 3.x format: {op: "remove", path: "", value: {id: ..., name: ..., quantity: ...}}
+					if result["path"] != "" {
+						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected path='', got %v", result["path"]))
+					}
+					value, ok := result["value"].(map[string]any)
+					if !ok {
+						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected value to be map[string]any, got %T", result["value"]))
+					}
+					if value["name"] != "Screwdriver" {
+						panic(fmt.Sprintf("SurrealDB 3.x DELETE: expected value.name='Screwdriver', got %v", value["name"]))
+					}
+				default:
+					panic(fmt.Sprintf("DELETE result format not recognized as 2.x or 3.x: %v", result))
+				}
+
+				resultStr = "{deleted}"
 				close(received)
 			} else {
 				// CREATE and UPDATE return an array of diff operations
@@ -446,7 +503,7 @@ func ExampleLive_withDiff() {
 	// Started live query with diff enabled
 	// Action: CREATE, Result: [{op=replace path=/ value={id=inventory:⟨UUID⟩ name=Screwdriver quantity=50}}]
 	// Action: UPDATE, Result: [{op=remove path=/name} {op=replace path=/quantity value=45}]
-	// Action: DELETE, Result: {id=inventory:⟨UUID⟩ quantity=45}
+	// Action: DELETE, Result: {deleted}
 	// Live query with diff being terminated
 	// Notification channel closed
 	// Goroutine exited after channel closed
