@@ -328,10 +328,30 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 
 	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
 	// Explicitly define them after signing in as root to ensure they exist.
-	_, err = surrealdb.Query[any](context.Background(), db,
-		"DEFINE NAMESPACE IF NOT EXISTS "+namespace+"; DEFINE DATABASE IF NOT EXISTS "+database, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to define namespace/database: %w", err)
+	// We retry on transaction conflicts which can happen when multiple tests
+	// run in parallel and try to define namespaces/databases concurrently.
+	const maxRetries = 5
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE NAMESPACE IF NOT EXISTS "+namespace, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("failed to define namespace after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	}
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE DATABASE IF NOT EXISTS "+database, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("failed to define database after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
 	}
 
 	// If no tables specified, get all tables in the database
