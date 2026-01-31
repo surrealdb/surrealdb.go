@@ -335,12 +335,12 @@ func ExampleQuery_live() {
 		panic("Timeout waiting for all notifications")
 	}
 
+	fmt.Println("Stopping live query notifications")
+
 	err = surrealdb.Kill(ctx, db, liveID)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to kill live query: %v", err))
 	}
-
-	fmt.Println("Live query terminated")
 
 	select {
 	case <-done:
@@ -354,7 +354,7 @@ func ExampleQuery_live() {
 	// Notification 1 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Widget price=9.99 stock=5}
 	// Notification 2 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Gadget price=19.99 stock=3}
 	// Notification 3 - Action: CREATE, Result: {id=products:⟨UUID⟩ name=Rare Item price=99.99 stock=1}
-	// Live query terminated
+	// Stopping live query notifications
 	// Notification channel closed
 	// Goroutine exited after channel closed
 }
