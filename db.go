@@ -168,6 +168,29 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 	return db.con.SignUp(ctx, authData)
 }
 
+// SignUpWithRefresh signs up a new user using a TYPE RECORD access method with WITH REFRESH enabled.
+// This is only supported in SurrealDB v3+ and returns both an access token and a refresh token.
+//
+// The authData parameter should be a map[string]any with the signup credentials:
+//
+//	tokens, err := db.SignUpWithRefresh(ctx, map[string]any{
+//	  "NS":   "app",
+//	  "DB":   "app",
+//	  "AC":   "user_access",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+//
+// The returned Tokens contains:
+//   - Access: JWT token (use with Authenticate() on new connections)
+//   - Refresh: Refresh token (format: "surreal-refresh-...")
+//
+// Note: Use this method instead of SignUp when the access method has WITH REFRESH enabled.
+// For access methods without WITH REFRESH, use SignUp instead.
+func (db *DB) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
+	return db.con.SignUpWithRefresh(ctx, authData)
+}
+
 // SignIn signs in an existing user.
 //
 // The authData parameter can be either:
@@ -239,8 +262,65 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 //	  "user": "yusuke",
 //	  "pass": "VerySecurePassword123!",
 //	})
+//
+// # Bearer Access Method
+//
+// For TYPE BEARER access methods (SurrealDB v3+), use the "key" parameter with
+// a bearer key obtained from ACCESS ... GRANT. Bearer keys have the format
+// "surreal-bearer-...". No username/password is needed:
+//
+//	db.SignIn(map[string]any{
+//	  "NS":  "app",
+//	  "DB":  "app",
+//	  "AC":  "bearer_api",
+//	  "key": bearerKey,  // from ACCESS bearer_api GRANT FOR USER/RECORD ...
+//	})
+//
+// Note: The "key" parameter is exclusively for bearer access grants.
+// For TYPE RECORD access methods with WITH REFRESH, use SignInWithRefresh instead.
 func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
 	return db.con.SignIn(ctx, authData)
+}
+
+// Tokens contains the access token and refresh token returned by SignInWithRefresh.
+// Access is the JWT token used for authentication.
+// Use this with Authenticate() to establish a session on a new connection.
+// Refresh is the refresh token used to obtain new tokens without credentials.
+// Use this with SignInWithRefresh to get a new Tokens.
+type Tokens = connection.Tokens
+
+// SignInWithRefresh signs in using a TYPE RECORD access method with WITH REFRESH enabled.
+// This is only supported in SurrealDB v3+ and returns both an access token and a refresh token.
+//
+// The authData parameter should be a map[string]any with the signin credentials:
+//
+//	// Initial signin with username/password
+//	pair, err := db.SignInWithRefresh(ctx, map[string]any{
+//	  "NS":   "app",
+//	  "DB":   "app",
+//	  "AC":   "user_access",
+//	  "user": "yusuke",
+//	  "pass": "VerySecurePassword123!",
+//	})
+//
+// The returned Tokens contains:
+//   - Access: JWT token (use with Authenticate() on new connections)
+//   - Refresh: Refresh token (format: "surreal-refresh-...")
+//
+// To obtain new tokens using the refresh token (no credentials needed):
+//
+//	newPair, err := db.SignInWithRefresh(ctx, map[string]any{
+//	  "NS":      "app",
+//	  "DB":      "app",
+//	  "AC":      "user_access",
+//	  "refresh": pair.Refresh,  // no username/password needed
+//	})
+//
+// Note: The "refresh" parameter is for record access refresh tokens only.
+// For bearer access methods, use SignIn with the "key" parameter.
+// For other access methods (system users, record users without refresh), use SignIn.
+func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
+	return db.con.SignInWithRefresh(ctx, authData)
 }
 
 func (db *DB) Invalidate(ctx context.Context) error {

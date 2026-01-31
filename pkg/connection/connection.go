@@ -18,6 +18,17 @@ type LiveHandler interface {
 	Live(table models.Table, diff bool) (*models.UUID, error)
 }
 
+// Tokens contains access and refresh tokens returned by SignInWithRefresh/SignUpWithRefresh.
+// This is only returned when using TYPE RECORD access methods with WITH REFRESH enabled (SurrealDB v3+).
+type Tokens struct {
+	// Access is the JWT token used for authentication.
+	// Use this with Authenticate() to establish a session on a new connection.
+	Access string `cbor:"access"`
+	// Refresh is the refresh token used to obtain new tokens without credentials.
+	// Use this with SignInWithRefresh to get new Tokens.
+	Refresh string `cbor:"refresh"`
+}
+
 type Connection interface {
 	Connect(ctx context.Context) error
 	Close(ctx context.Context) error
@@ -31,7 +42,9 @@ type Connection interface {
 	Let(ctx context.Context, key string, value any) error
 	Authenticate(ctx context.Context, token string) error
 	SignUp(ctx context.Context, authData any) (string, error)
+	SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error)
 	SignIn(ctx context.Context, authData any) (string, error)
+	SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error)
 	Invalidate(ctx context.Context) error
 	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)

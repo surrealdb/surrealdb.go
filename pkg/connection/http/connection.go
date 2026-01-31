@@ -208,6 +208,34 @@ func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
 	return token, nil
 }
 
+func (c *Connection) SignUpWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	tokens, err := rpc.SignUpWithRefresh(c, ctx, authData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store access token for Authorization header on subsequent requests
+	if err := c.Let(ctx, constants.AuthTokenKey, tokens.Access); err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
+}
+
+func (c *Connection) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	tokens, err := rpc.SignInWithRefresh(c, ctx, authData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store access token for Authorization header on subsequent requests
+	if err := c.Let(ctx, constants.AuthTokenKey, tokens.Access); err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
+}
+
 func (c *Connection) Invalidate(ctx context.Context) error {
 	if err := rpc.Invalidate(c, ctx); err != nil {
 		return err

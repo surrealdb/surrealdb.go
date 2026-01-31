@@ -24,15 +24,15 @@ import (
 //
 // v2.6.0 (with --allow-experimental bearer_access):
 //   - WITH REFRESH syntax IS accepted (no parse error)
-//   - However, signin still returns string token (not object with refresh)
+//   - However, signin/signup still return string token (not object with refresh)
 //   - The refresh token feature is NOT actually implemented in v2.6.0
 //   - Without the experimental flag, WITH REFRESH causes parse error
 //   - SignIn with "key" parameter set to the JWT token does NOT work (returns error)
 //
 // v3.0.0-beta.2:
 //   - WITH REFRESH IS supported for TYPE RECORD access methods
-//   - With WITH REFRESH, signin/signup return object: {"access": "JWT...", "refresh": "surreal-refresh-..."}
-//   - Without WITH REFRESH, signin returns string (JWT token)
+//   - With WITH REFRESH, both signin and signup return object: {"access": "JWT...", "refresh": "surreal-refresh-..."}
+//   - Without WITH REFRESH, signin/signup return string (JWT token)
 //   - The "access" field contains the JWT token
 //   - The "refresh" field contains a refresh token (format: "surreal-refresh-...")
 //   - Refresh token can be used for subsequent signin via {"refresh": refreshToken} parameter
@@ -40,7 +40,7 @@ import (
 //   - SignIn with "key" parameter set to the JWT token does NOT work (returns error)
 //     The "key" parameter is for bearer access grants, not JWT tokens
 //
-// Note that the only scenario where SignIn returns an object (instead of a string token)
+// Note that the only scenario where SignIn/SignUp returns an object (instead of a string token)
 // is SurrealDB v3 with TYPE RECORD access method combined with WITH REFRESH.
 // Also note that refresh tokens use the "refresh" parameter, never "key" (which is for bearer grants only).
 

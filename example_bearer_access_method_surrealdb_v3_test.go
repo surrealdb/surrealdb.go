@@ -65,14 +65,14 @@ func Example_bearerAccessMethod_v3_systemUser() {
 	// =========================================================================
 
 	// 1. Define a database-level user that will use bearer access
-	_, err = surrealdb.Query[any](ctx, db, `DEFINE USER apiuser ON DATABASE PASSWORD 'secret' ROLES EDITOR`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `DEFINE USER IF NOT EXISTS apiuser ON DATABASE PASSWORD 'secret' ROLES EDITOR`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("DEFINE USER failed: %v", err))
 	}
 
 	// 2. Define bearer access method for system users
 	// This allows generating bearer keys that authenticate as system users
-	_, err = surrealdb.Query[any](ctx, db, `DEFINE ACCESS bearer_api ON DATABASE TYPE BEARER FOR USER`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `DEFINE ACCESS IF NOT EXISTS bearer_api ON DATABASE TYPE BEARER FOR USER`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("DEFINE ACCESS failed: %v", err))
 	}
@@ -176,12 +176,12 @@ func Example_bearerAccessMethod_v3_recordUser() {
 	// =========================================================================
 
 	// 1. Define a table and create a record that will use bearer access
-	_, err = surrealdb.Query[any](ctx, db, `DEFINE TABLE services SCHEMAFULL`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `DEFINE TABLE IF NOT EXISTS services SCHEMAFULL`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("DEFINE TABLE failed: %v", err))
 	}
 
-	_, err = surrealdb.Query[any](ctx, db, `DEFINE FIELD name ON services TYPE string`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `DEFINE FIELD IF NOT EXISTS name ON services TYPE string`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("DEFINE FIELD failed: %v", err))
 	}
@@ -193,7 +193,7 @@ func Example_bearerAccessMethod_v3_recordUser() {
 
 	// 2. Define bearer access method for record users
 	// This allows generating bearer keys that authenticate as specific records
-	_, err = surrealdb.Query[any](ctx, db, `DEFINE ACCESS bearer_service_api ON DATABASE TYPE BEARER FOR RECORD`, nil)
+	_, err = surrealdb.Query[any](ctx, db, `DEFINE ACCESS IF NOT EXISTS bearer_service_api ON DATABASE TYPE BEARER FOR RECORD`, nil)
 	if err != nil {
 		panic(fmt.Sprintf("DEFINE ACCESS failed: %v", err))
 	}
