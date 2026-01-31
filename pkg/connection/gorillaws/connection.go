@@ -290,6 +290,14 @@ func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
 	return rpc.SignIn(c, ctx, authData)
 }
 
+func (c *Connection) SignUpWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	return rpc.SignUpWithRefresh(c, ctx, authData)
+}
+
+func (c *Connection) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	return rpc.SignInWithRefresh(c, ctx, authData)
+}
+
 func (c *Connection) Invalidate(ctx context.Context) error {
 	return rpc.Invalidate(c, ctx)
 }
