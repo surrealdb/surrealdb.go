@@ -561,7 +561,7 @@ func TestBehavior_BearerAccessHTTP_v2(t *testing.T) {
 	signinURL := httpURL + "/signin"
 
 	// 5. Call HTTP /signin endpoint directly
-	reqBody := fmt.Sprintf(`{"NS":"test_ns", "DB":"test_db", "AC":"bearer_api", "key":"%s"}`, bearerKey)
+	reqBody := fmt.Sprintf(`{"NS":"test_ns", "DB":"test_db", "AC":"bearer_api", "key":%q}`, bearerKey)
 	req, err := http.NewRequestWithContext(ctx, "POST", signinURL, strings.NewReader(reqBody))
 	require.NoError(t, err)
 	req.Header.Set("Accept", "application/json")
@@ -633,7 +633,7 @@ func TestBehavior_BearerAccessHTTP_v3(t *testing.T) {
 	signinURL := httpURL + "/signin"
 
 	// 5. Call HTTP /signin endpoint directly
-	reqBody := fmt.Sprintf(`{"NS":"test_ns", "DB":"test_db", "AC":"bearer_api", "key":"%s"}`, bearerKey)
+	reqBody := fmt.Sprintf(`{"NS":"test_ns", "DB":"test_db", "AC":"bearer_api", "key":%q}`, bearerKey)
 	req, err := http.NewRequestWithContext(ctx, "POST", signinURL, strings.NewReader(reqBody))
 	require.NoError(t, err)
 	req.Header.Set("Accept", "application/json")
