@@ -77,15 +77,34 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 }
 
 func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	request := &connection.RPCRequest{
+		Method: method,
+		Params: params,
+	}
+	return c.Call(ctx, request)
+}
+
+// Call sends a custom RPC request to SurrealDB and expects a response.
+// For HTTP connections, this method returns an error if req.Session or req.Txn is set,
+// as sessions and interactive transactions require WebSocket connections.
+func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], error) {
+	// HTTP connections do not support sessions or transactions
+	if request.Session != nil {
+		return nil, constants.ErrSessionsNotSupported
+	}
+	if request.Txn != nil {
+		return nil, constants.ErrTransactionsNotSupported
+	}
+
 	if c.BaseURL == "" {
 		return nil, constants.ErrNoBaseURL
 	}
 
-	request := &connection.RPCRequest{
-		ID:     rand.NewRequestID(constants.RequestIDLength),
-		Method: method,
-		Params: params,
+	// Set request ID if not already set
+	if request.ID == nil || request.ID == "" {
+		request.ID = rand.NewRequestID(constants.RequestIDLength)
 	}
+
 	reqBody, err := c.Marshaler.Marshal(request)
 	if err != nil {
 		return nil, err

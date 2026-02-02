@@ -12,8 +12,15 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
+
+// sendable is a constraint for types that can send RPC requests.
+// It is satisfied by *DB, *Session, and *Transaction.
+type sendable interface {
+	*DB | *Session | *Transaction
+}
 
 type VersionData struct {
 	Version   string `json:"version"`
@@ -453,22 +460,37 @@ func (db *DB) CloseLiveNotifications(liveQueryID string) error {
 
 //-------------------------------------------------------------------------------------------------------------------//
 
-func Kill(ctx context.Context, db *DB, id string) error {
+// Kill terminates a live query and closes the notification channel.
+// S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
+func Kill[S sendable](ctx context.Context, s S, id string) error {
 	// First kill the live query on the server
-	_, err := send[any](ctx, db, "kill", id)
+	_, err := send[any](ctx, s, "kill", id)
 	if err != nil {
 		return err
 	}
 
 	// Then close the notification channel to prevent leaks
-	return db.CloseLiveNotifications(id)
+	switch v := any(s).(type) {
+	case *DB:
+		return v.CloseLiveNotifications(id)
+	case *Session:
+		return v.CloseLiveNotifications(id)
+	case *Transaction:
+		// Transactions don't have their own live notification channels
+		return v.db.CloseLiveNotifications(id)
+	}
+	return nil
 }
 
-func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.UUID, error) {
-	return send[models.UUID](ctx, db, "live", table, diff)
+// Live starts a live query on a table.
+// S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
+func Live[S sendable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
+	return send[models.UUID](ctx, s, "live", table, diff)
 }
 
 // Query executes a query against the SurrealDB database.
+//
+// S can be *DB, *Session, or *Transaction.
 //
 // [Query] supports:
 //
@@ -582,8 +604,8 @@ func Live(ctx context.Context, db *DB, table models.Table, diff bool) (*models.U
 // If you tried to insert the same duplicate record using the [Query] RPC method with `INSERT` statement,
 // you may get no [RPCError], but a [QueryError] saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
-func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", sql, vars)
+func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", sql, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -592,6 +614,17 @@ func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string
 	var (
 		errs error
 	)
+
+	// Get the unmarshaler based on the sender type
+	var unmarshaler func([]byte, any) error
+	switch v := any(s).(type) {
+	case *DB:
+		unmarshaler = v.con.GetUnmarshaler().Unmarshal
+	case *Session:
+		unmarshaler = v.db.con.GetUnmarshaler().Unmarshal
+	case *Transaction:
+		unmarshaler = v.db.con.GetUnmarshaler().Unmarshal
+	}
 
 	// We unmarshal []QueryResult[cbor.RawMessage] first,
 	// and then unmarshal each cbor.RawMessage to TResult.
@@ -609,7 +642,7 @@ func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string
 		if result.Status == "ERR" {
 			var errMsg string
 			if result.Result != nil {
-				if err := db.con.GetUnmarshaler().Unmarshal(result.Result, &errMsg); err != nil {
+				if err := unmarshaler(result.Result, &errMsg); err != nil {
 					return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
 				}
 			}
@@ -618,7 +651,7 @@ func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string
 			}
 			errs = errors.Join(errs, e)
 		} else if result.Result != nil {
-			if err := db.con.GetUnmarshaler().Unmarshal(result.Result, &r); err != nil {
+			if err := unmarshaler(result.Result, &r); err != nil {
 				return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 			}
 		}
@@ -633,48 +666,61 @@ func Query[TResult any](ctx context.Context, db *DB, sql string, vars map[string
 	return &qr, errs
 }
 
-func Create[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, db, "create", what, data)
+// Create creates a new record in the database.
+// S can be *DB, *Session, or *Transaction.
+func Create[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
+	return send[TResult](ctx, s, "create", what, data)
 }
 
-func Select[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat) (*TResult, error) {
-	return send[TResult](ctx, db, "select", what)
+// Select retrieves records from the database.
+// S can be *DB, *Session, or *Transaction.
+func Select[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat) (*TResult, error) {
+	return send[TResult](ctx, s, "select", what)
 }
 
-// Patches either all records in a table or a single record with specified patches.
-func Patch[TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, patches []PatchData) (*[]PatchData, error) {
-	return send[[]PatchData](ctx, db, "patch", what, patches, true)
+// Patch applies patches to records in the database.
+// S can be *DB, *Session, or *Transaction.
+func Patch[TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, patches []PatchData) (*[]PatchData, error) {
+	return send[[]PatchData](ctx, s, "patch", what, patches, true)
 }
 
-func Delete[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat) (*TResult, error) {
-	return send[TResult](ctx, db, "delete", what)
+// Delete removes records from the database.
+// S can be *DB, *Session, or *Transaction.
+func Delete[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat) (*TResult, error) {
+	return send[TResult](ctx, s, "delete", what)
 }
 
-func Upsert[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, db, "upsert", what, data)
+// Upsert creates or updates a record in the database.
+// S can be *DB, *Session, or *Transaction.
+func Upsert[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
+	return send[TResult](ctx, s, "upsert", what, data)
 }
 
-// Update a table or record in the database like a PUT request.
-func Update[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, db, "update", what, data)
+// Update replaces a record in the database like a PUT request.
+// S can be *DB, *Session, or *Transaction.
+func Update[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
+	return send[TResult](ctx, s, "update", what, data)
 }
 
-// Merge a table or record in the database like a PATCH request.
-func Merge[TResult any, TWhat TableOrRecord](ctx context.Context, db *DB, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, db, "merge", what, data)
+// Merge merges data into a record in the database like a PATCH request.
+// S can be *DB, *Session, or *Transaction.
+func Merge[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
+	return send[TResult](ctx, s, "merge", what, data)
 }
 
 // Insert creates records with either specified IDs or generated IDs.
+// S can be *DB, *Session, or *Transaction.
 //
 // Insert cannot create a relationship. If you want to create a relationship,
 // use InsertRelation if you need to specify the ID of the relationship,
 // or use Relate if you want to create a relationship with a generated ID.
-func Insert[TResult any](ctx context.Context, db *DB, what models.Table, data any) (*[]TResult, error) {
-	return send[[]TResult](ctx, db, "insert", what, data)
+func Insert[TResult any, S sendable](ctx context.Context, s S, what models.Table, data any) (*[]TResult, error) {
+	return send[[]TResult](ctx, s, "insert", what, data)
 }
 
 // Relate creates a relationship between two records in the table
 // with a generated relationship ID.
+// S can be *DB, *Session, or *Transaction.
 //
 // The relation needs to be specified via the `Relation` field of the Relationship struct.
 //
@@ -689,11 +735,12 @@ func Insert[TResult any](ctx context.Context, db *DB, what models.Table, data an
 //
 // In case you only care about the returned relationship's ID,
 // use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func Relate[TResult any](ctx context.Context, db *DB, rel *Relationship) (*TResult, error) {
-	return send[TResult](ctx, db, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
+func Relate[TResult any, S sendable](ctx context.Context, s S, rel *Relationship) (*TResult, error) {
+	return send[TResult](ctx, s, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
 }
 
 // InsertRelation inserts a relation between two records in the database.
+// S can be *DB, *Session, or *Transaction.
 //
 // It creates a relationship from relationship.In to relationship.Out.
 //
@@ -702,7 +749,7 @@ func Relate[TResult any](ctx context.Context, db *DB, rel *Relationship) (*TResu
 //
 // In case you only care about the returned relationship's ID,
 // use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func InsertRelation[TResult any](ctx context.Context, db *DB, relationship *Relationship) (*TResult, error) {
+func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relationship *Relationship) (*TResult, error) {
 	rel := map[string]any{
 		"in":  relationship.In,
 		"out": relationship.Out,
@@ -714,14 +761,15 @@ func InsertRelation[TResult any](ctx context.Context, db *DB, relationship *Rela
 		rel[k] = v
 	}
 
-	return send[TResult](ctx, db, "insert_relation", relationship.Relation, rel)
+	return send[TResult](ctx, s, "insert_relation", relationship.Relation, rel)
 }
 
 // QueryRaw composes a query from the provided QueryStmt objects,
 // and execute it using the query RPC method.
+// S can be *DB, *Session, or *Transaction.
 //
 // You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
-func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
+func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
 	preparedQuery := ""
 	parameters := map[string]any{}
 	for i := 0; i < len(*queries); i++ {
@@ -736,15 +784,28 @@ func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 		return fmt.Errorf("no query to run")
 	}
 
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, db, "query", preparedQuery, parameters)
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", preparedQuery, parameters)
 	if err != nil {
 		return err
+	}
+
+	// Get the unmarshaler based on the sender type
+	var unmarshaler interface {
+		Unmarshal(data []byte, v any) error
+	}
+	switch v := any(s).(type) {
+	case *DB:
+		unmarshaler = v.con.GetUnmarshaler()
+	case *Session:
+		unmarshaler = v.db.con.GetUnmarshaler()
+	case *Transaction:
+		unmarshaler = v.db.con.GetUnmarshaler()
 	}
 
 	for i := 0; i < len(*queries); i++ {
 		// assign results
 		(*queries)[i].Result = (*res)[i]
-		(*queries)[i].unmarshaler = db.con.GetUnmarshaler()
+		(*queries)[i].unmarshaler = unmarshaler
 	}
 
 	return nil
@@ -753,10 +814,44 @@ func QueryRaw(ctx context.Context, db *DB, queries *[]QueryStmt) error {
 // send is a helper function to send a request to the SurrealDB server
 // in case the expected response is a connection.RPCResponse[TResult].
 // If one expects other types of responses, use db.con.Send directly.
-func send[TResult any](ctx context.Context, db *DB, method string, params ...any) (*TResult, error) {
+//
+// The function uses a type switch to determine how to send the request:
+//   - *DB: uses connection.Send (no session/txn context)
+//   - *Session: uses connection.Call with session UUID
+//   - *Transaction: uses connection.Call with session and txn UUIDs
+func send[TResult any, S sendable](ctx context.Context, s S, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
-	if err := connection.Send(db.con, ctx, &res, method, params...); err != nil {
-		return nil, err
+
+	switch v := any(s).(type) {
+	case *DB:
+		if err := connection.Send(v.con, ctx, &res, method, params...); err != nil {
+			return nil, err
+		}
+	case *Session:
+		if v.isClosed() {
+			return nil, constants.ErrSessionClosed
+		}
+		req := &connection.RPCRequest{
+			Method:  method,
+			Params:  params,
+			Session: v.id,
+		}
+		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+			return nil, err
+		}
+	case *Transaction:
+		if v.isClosed() {
+			return nil, constants.ErrTransactionClosed
+		}
+		req := &connection.RPCRequest{
+			Method:  method,
+			Params:  params,
+			Session: v.sessionID,
+			Txn:     v.id,
+		}
+		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+			return nil, err
+		}
 	}
 
 	return res.Result, nil

@@ -314,6 +314,17 @@ func (c *Connection) CloseLiveNotifications(id string) error {
 
 // Send implements connection.Connection.
 func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	request := &connection.RPCRequest{
+		Method: method,
+		Params: params,
+	}
+	return c.Call(ctx, request)
+}
+
+// Call implements connection.Connection.
+// Unlike Send, Call accepts an RPCRequest directly, allowing you to set
+// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
@@ -328,22 +339,22 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 	default:
 	}
 
-	id := rand.NewRequestID(constants.RequestIDLength)
-	request := &connection.RPCRequest{
-		ID:     id,
-		Method: method,
-		Params: params,
+	// Set request ID if not already set
+	id := req.ID
+	if id == nil || id == "" {
+		id = rand.NewRequestID(constants.RequestIDLength)
+		req.ID = id
 	}
 
-	c.logDebug("Sending RPC request", "id", id, "method", method)
+	c.logDebug("Sending RPC request", "id", id, "method", req.Method)
 
-	responseChan, err := c.CreateResponseChannel(id)
+	responseChan, err := c.CreateResponseChannel(fmt.Sprintf("%v", id))
 	if err != nil {
 		return nil, err
 	}
-	defer c.RemoveResponseChannel(id)
+	defer c.RemoveResponseChannel(fmt.Sprintf("%v", id))
 
-	if err := c.write(request); err != nil {
+	if err := c.write(req); err != nil {
 		return nil, err
 	}
 

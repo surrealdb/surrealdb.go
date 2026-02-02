@@ -171,8 +171,10 @@ func setupWSConnection(t *testing.T, namespace, database string) *gorillaws.Conn
 
 	c := surrealcbor.New()
 	wsURL := testenv.GetSurrealDBWSURL()
+	// gorillaws.Connect appends "/rpc" to BaseURL, so we need to strip it if present
+	baseURL := strings.TrimSuffix(wsURL, "/rpc")
 	conn := gorillaws.New(&connection.Config{
-		BaseURL:     wsURL,
+		BaseURL:     baseURL,
 		Marshaler:   c,
 		Unmarshaler: c,
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
@@ -212,6 +214,8 @@ func setupHTTPConnection(t *testing.T, namespace, database string) *surrealhttp.
 	wsURL := testenv.GetSurrealDBWSURL()
 	httpURL := strings.ReplaceAll(wsURL, "ws://", "http://")
 	httpURL = strings.ReplaceAll(httpURL, "wss://", "https://")
+	// Remove /rpc suffix that's needed for WebSocket but not for HTTP
+	httpURL = strings.TrimSuffix(httpURL, "/rpc")
 
 	conn := surrealhttp.New(&connection.Config{
 		BaseURL:     httpURL,
@@ -268,6 +272,8 @@ func setupHTTPConnectionInfo(t *testing.T, namespace, database string) *httpConn
 	wsURL := testenv.GetSurrealDBWSURL()
 	httpURL := strings.ReplaceAll(wsURL, "ws://", "http://")
 	httpURL = strings.ReplaceAll(httpURL, "wss://", "https://")
+	// Remove /rpc suffix that's needed for WebSocket but not for HTTP
+	httpURL = strings.TrimSuffix(httpURL, "/rpc")
 
 	conn := surrealhttp.New(&connection.Config{
 		BaseURL:     httpURL,
