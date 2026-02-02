@@ -1,4 +1,4 @@
-package surrealdb_test
+package testenv
 
 import (
 	"bytes"
@@ -15,7 +15,6 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
@@ -170,7 +169,7 @@ func setupWSConnection(t *testing.T, namespace, database string) *gorillaws.Conn
 	t.Helper()
 
 	c := surrealcbor.New()
-	wsURL := testenv.GetSurrealDBWSURL()
+	wsURL := GetSurrealDBWSURL()
 	// gorillaws.Connect appends "/rpc" to BaseURL, so we need to strip it if present
 	baseURL := strings.TrimSuffix(wsURL, "/rpc")
 	conn := gorillaws.New(&connection.Config{
@@ -211,7 +210,7 @@ func setupHTTPConnection(t *testing.T, namespace, database string) *surrealhttp.
 
 	c := surrealcbor.New()
 	// Derive HTTP URL from WebSocket URL
-	wsURL := testenv.GetSurrealDBWSURL()
+	wsURL := GetSurrealDBWSURL()
 	httpURL := strings.ReplaceAll(wsURL, "ws://", "http://")
 	httpURL = strings.ReplaceAll(httpURL, "wss://", "https://")
 	// Remove /rpc suffix that's needed for WebSocket but not for HTTP
@@ -269,7 +268,7 @@ func setupHTTPConnectionInfo(t *testing.T, namespace, database string) *httpConn
 
 	c := surrealcbor.New()
 	// Derive HTTP URL from WebSocket URL
-	wsURL := testenv.GetSurrealDBWSURL()
+	wsURL := GetSurrealDBWSURL()
 	httpURL := strings.ReplaceAll(wsURL, "ws://", "http://")
 	httpURL = strings.ReplaceAll(httpURL, "wss://", "https://")
 	// Remove /rpc suffix that's needed for WebSocket but not for HTTP
@@ -395,10 +394,10 @@ func sendHTTPInTransaction[T any](
 }
 
 // getVersion gets and checks the SurrealDB version via a separate DB connection
-func getVersion(t *testing.T) *testenv.SurrealDBVersion {
+func getVersion(t *testing.T) *SurrealDBVersion {
 	t.Helper()
-	db := testenv.MustNew("version_check", "version_check", "dummy")
-	v, err := testenv.GetVersion(context.Background(), db)
+	db := MustNew("version_check", "version_check", "dummy")
+	v, err := GetVersion(context.Background(), db)
 	require.NoError(t, err)
 	_ = db.Close(context.Background())
 	return v
@@ -416,7 +415,7 @@ func TestExplore_HTTPConnection_Sessions(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_http", "session_test", "test_table")
+	_ = MustNew("explore_http", "session_test", "test_table")
 
 	info := setupHTTPConnectionInfo(t, "explore_http", "session_test")
 	ctx := context.Background()
@@ -490,7 +489,7 @@ func TestExplore_HTTPConnection_Transactions(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_http", "txn_test", "test_table")
+	_ = MustNew("explore_http", "txn_test", "test_table")
 
 	info := setupHTTPConnectionInfo(t, "explore_http", "txn_test")
 	ctx := context.Background()
@@ -575,7 +574,7 @@ func TestExplore_HTTPConnection_Transactions(t *testing.T) {
 // This confirms that the HTTP connection is properly set up and only session/transaction
 // RPCs are unsupported.
 func TestExplore_HTTPConnection_QueryWorks(t *testing.T) {
-	_ = testenv.MustNew("explore_http", "query_test", "test_table")
+	_ = MustNew("explore_http", "query_test", "test_table")
 
 	conn := setupHTTPConnection(t, "explore_http", "query_test")
 	ctx := context.Background()
@@ -629,7 +628,7 @@ func TestExplore_AttachRPC(t *testing.T) {
 	}
 
 	// Ensure namespace/database exist
-	_ = testenv.MustNew("explore_sessions", "attach_test", "test_table")
+	_ = MustNew("explore_sessions", "attach_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_sessions", "attach_test")
 	ctx := context.Background()
@@ -687,7 +686,7 @@ func TestExplore_SessionWorkflow(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_sessions", "workflow_test", "test_table")
+	_ = MustNew("explore_sessions", "workflow_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_sessions", "workflow_test")
 	ctx := context.Background()
@@ -776,7 +775,7 @@ func TestExplore_DetachRPC(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_sessions", "detach_test", "test_table")
+	_ = MustNew("explore_sessions", "detach_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_sessions", "detach_test")
 	ctx := context.Background()
@@ -821,7 +820,7 @@ func TestExplore_BeginRPC(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn", "begin_test", "test_table")
+	_ = MustNew("explore_txn", "begin_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "begin_test")
 	ctx := context.Background()
@@ -883,7 +882,7 @@ func TestExplore_CommitRPC(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn", "commit_test", "test_table")
+	_ = MustNew("explore_txn", "commit_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "commit_test")
 	ctx := context.Background()
@@ -924,7 +923,7 @@ func TestExplore_CancelRPC(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn", "cancel_test", "test_table")
+	_ = MustNew("explore_txn", "cancel_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "cancel_test")
 	ctx := context.Background()
@@ -964,7 +963,7 @@ func TestExplore_TransactionIsolation(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn", "isolation_test", "users")
+	_ = MustNew("explore_txn", "isolation_test", "users")
 
 	conn := setupWSConnection(t, "explore_txn", "isolation_test")
 	ctx := context.Background()
@@ -1054,7 +1053,7 @@ func TestExplore_TransactionAutoCommit(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn", "autocommit_test", "items")
+	_ = MustNew("explore_txn", "autocommit_test", "items")
 
 	conn := setupWSConnection(t, "explore_txn", "autocommit_test")
 	ctx := context.Background()
@@ -1141,7 +1140,7 @@ func TestExplore_CRUDInTransaction(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_crud_txn", "crud_test", "products")
+	_ = MustNew("explore_crud_txn", "crud_test", "products")
 
 	conn := setupWSConnection(t, "explore_crud_txn", "crud_test")
 	ctx := context.Background()
@@ -1203,7 +1202,7 @@ func TestExplore_QueryWithTxnTopLevel(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn_toplevel", "txn_toplevel_test", "records")
+	_ = MustNew("explore_txn_toplevel", "txn_toplevel_test", "records")
 
 	conn := setupWSConnection(t, "explore_txn_toplevel", "txn_toplevel_test")
 	ctx := context.Background()
@@ -1365,7 +1364,7 @@ func TestExplore_MultipleTransactions(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_multi_txn", "multi_txn_test", "accounts")
+	_ = MustNew("explore_multi_txn", "multi_txn_test", "accounts")
 
 	conn := setupWSConnection(t, "explore_multi_txn", "multi_txn_test")
 	ctx := context.Background()
@@ -1447,7 +1446,7 @@ func TestExplore_TransactionOwnership(t *testing.T) {
 		t.Skipf("Skipping: SurrealDB version %s does not support sessions/transactions (requires v3+)", v)
 	}
 
-	_ = testenv.MustNew("explore_txn_ownership", "ownership_test", "items")
+	_ = MustNew("explore_txn_ownership", "ownership_test", "items")
 
 	conn := setupWSConnection(t, "explore_txn_ownership", "ownership_test")
 	ctx := context.Background()
