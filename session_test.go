@@ -12,6 +12,16 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// getVersion gets and checks the SurrealDB version via a separate DB connection
+func getVersion(t *testing.T) *testenv.SurrealDBVersion {
+	t.Helper()
+	db := testenv.MustNew("version_check", "version_check", "dummy")
+	v, err := testenv.GetVersion(context.Background(), db)
+	require.NoError(t, err)
+	_ = db.Close(context.Background())
+	return v
+}
+
 // mustNewWS creates a WebSocket connection for testing.
 // It uses GetSurrealDBWSURL() to always get a WebSocket URL,
 // even if SURREALDB_URL is set to an HTTP URL (e.g., in CI).
