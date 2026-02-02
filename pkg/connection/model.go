@@ -2,9 +2,9 @@ package connection
 
 // RPCError represents a JSON-RPC error
 type RPCError struct {
-	Code        int    `json:"code" msgpack:"code"`
-	Message     string `json:"message,omitempty" msgpack:"message,omitempty"`
-	Description string `json:"description,omitempty" msgpack:"message,omitempty"`
+	Code        int    `json:"code"`
+	Message     string `json:"message,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 func (r RPCError) Error() string {
@@ -23,27 +23,30 @@ func (r *RPCError) Is(target error) bool {
 	return ok
 }
 
-// RPCRequest represents an incoming JSON-RPC request
+// RPCRequest represents an incoming JSON-RPC request.
+// For SurrealDB v3+, Session and Txn can be set to scope the request to a specific session or transaction.
 type RPCRequest struct {
-	ID     any    `json:"id" msgpack:"id"`
-	Method string `json:"method,omitempty" msgpack:"method,omitempty"`
-	Params []any  `json:"params,omitempty" msgpack:"params,omitempty"`
+	ID      any    `json:"id"`
+	Method  string `json:"method,omitempty"`
+	Params  []any  `json:"params,omitempty"`
+	Session any    `json:"session,omitempty"` // SurrealDB v3: session UUID for session-scoped operations
+	Txn     any    `json:"txn,omitempty"`     // SurrealDB v3: transaction UUID for transaction-scoped operations
 }
 
 // RPCResponse represents an outgoing JSON-RPC response
 type RPCResponse[T any] struct {
 	// ID is the ID of the request this response corresponds to.
 	// Note that this is always nil in case of HTTPConnection.
-	ID     any       `json:"id" msgpack:"id"`
-	Error  *RPCError `json:"error,omitempty" msgpack:"error,omitempty"`
-	Result *T        `json:"result,omitempty" msgpack:"result,omitempty"`
+	ID     any       `json:"id"`
+	Error  *RPCError `json:"error,omitempty"`
+	Result *T        `json:"result,omitempty"`
 }
 
 // RPCNotification represents an outgoing JSON-RPC notification
 type RPCNotification struct {
-	ID     any    `json:"id" msgpack:"id"`
-	Method string `json:"method,omitempty" msgpack:"method,omitempty"`
-	Params []any  `json:"params,omitempty" msgpack:"params,omitempty"`
+	ID     any    `json:"id"`
+	Method string `json:"method,omitempty"`
+	Params []any  `json:"params,omitempty"`
 }
 
 type RPCFunction string
@@ -73,4 +76,11 @@ var (
 	Merge        RPCFunction = "merge"
 	Patch        RPCFunction = "patch"
 	Delete       RPCFunction = "delete"
+
+	// SurrealDB v3+ session and transaction methods
+	Attach RPCFunction = "attach"
+	Detach RPCFunction = "detach"
+	Begin  RPCFunction = "begin"
+	Commit RPCFunction = "commit"
+	Cancel RPCFunction = "cancel"
 )

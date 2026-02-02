@@ -7,10 +7,11 @@ import (
 )
 
 func SignUp(c connection.Connection, ctx context.Context, authData any) (string, error) {
-	var token connection.RPCResponse[string]
-	if err := connection.Send(c, ctx, &token, "signup", authData); err != nil {
-		return "", err
-	}
+	return authToken(c, ctx, "signup", authData)
+}
 
-	return *token.Result, nil
+// SignUpWithRefresh signs up using a TYPE RECORD access method with WITH REFRESH enabled.
+// This is only supported in SurrealDB v3+ and returns both an access token and a refresh token.
+func SignUpWithRefresh(c connection.Connection, ctx context.Context, authData any) (*connection.Tokens, error) {
+	return authWithRefresh(c, ctx, "signup", authData)
 }

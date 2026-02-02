@@ -290,6 +290,14 @@ func (c *Connection) SignIn(ctx context.Context, authData any) (string, error) {
 	return rpc.SignIn(c, ctx, authData)
 }
 
+func (c *Connection) SignUpWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	return rpc.SignUpWithRefresh(c, ctx, authData)
+}
+
+func (c *Connection) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	return rpc.SignInWithRefresh(c, ctx, authData)
+}
+
 func (c *Connection) Invalidate(ctx context.Context) error {
 	return rpc.Invalidate(c, ctx)
 }
@@ -315,6 +323,17 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 // HTTP and WebSocket, to behave differently in case of a timeout.
 // The WebSocketConnection would return ErrTimeout, while the HTTPConnection would return context.DeadlineExceeded.
 func (c *Connection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	request := &connection.RPCRequest{
+		Method: method,
+		Params: params,
+	}
+	return c.Call(ctx, request)
+}
+
+// Call sends a custom RPC request to SurrealDB and expects a response.
+// Unlike Send, Call accepts an RPCRequest directly, allowing you to set
+// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
@@ -332,20 +351,20 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 	default:
 	}
 
-	id := rand.NewRequestID(constants.RequestIDLength)
-	request := &connection.RPCRequest{
-		ID:     id,
-		Method: method,
-		Params: params,
+	// Set request ID if not already set
+	id := req.ID
+	if id == nil || id == "" {
+		id = rand.NewRequestID(constants.RequestIDLength)
+		req.ID = id
 	}
 
-	responseChan, err := c.CreateResponseChannel(id)
+	responseChan, err := c.CreateResponseChannel(fmt.Sprintf("%v", id))
 	if err != nil {
 		return nil, err
 	}
-	defer c.RemoveResponseChannel(id)
+	defer c.RemoveResponseChannel(fmt.Sprintf("%v", id))
 
-	if err := c.write(request); err != nil {
+	if err := c.write(req); err != nil {
 		return nil, err
 	}
 

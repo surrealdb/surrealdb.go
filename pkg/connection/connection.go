@@ -18,6 +18,17 @@ type LiveHandler interface {
 	Live(table models.Table, diff bool) (*models.UUID, error)
 }
 
+// Tokens contains access and refresh tokens returned by SignInWithRefresh/SignUpWithRefresh.
+// This is only returned when using TYPE RECORD access methods with WITH REFRESH enabled (SurrealDB v3+).
+type Tokens struct {
+	// Access is the JWT token used for authentication.
+	// Use this with Authenticate() to establish a session on a new connection.
+	Access string `cbor:"access"`
+	// Refresh is the refresh token used to obtain new tokens without credentials.
+	// Use this with SignInWithRefresh to get new Tokens.
+	Refresh string `cbor:"refresh"`
+}
+
 type Connection interface {
 	Connect(ctx context.Context) error
 	Close(ctx context.Context) error
@@ -27,11 +38,23 @@ type Connection interface {
 	//
 	// The `ctx` is used to cancel the request if the context is canceled.
 	Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error)
+	// Call sends a custom RPC request to SurrealDB and expects a response.
+	// Unlike Send, Call accepts an RPCRequest directly, allowing you to set
+	// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+	//
+	// The `req` is the RPC request to send. The ID field will be set automatically if empty.
+	// The `ctx` is used to cancel the request if the context is canceled.
+	//
+	// For HTTP connections, this method returns an error if req.Session or req.Txn is set,
+	// as sessions and transactions require WebSocket connections.
+	Call(ctx context.Context, req *RPCRequest) (*RPCResponse[cbor.RawMessage], error)
 	Use(ctx context.Context, namespace string, database string) error
 	Let(ctx context.Context, key string, value any) error
 	Authenticate(ctx context.Context, token string) error
 	SignUp(ctx context.Context, authData any) (string, error)
+	SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error)
 	SignIn(ctx context.Context, authData any) (string, error)
+	SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error)
 	Invalidate(ctx context.Context) error
 	Unset(ctx context.Context, key string) error
 	LiveNotifications(id string) (chan Notification, error)
