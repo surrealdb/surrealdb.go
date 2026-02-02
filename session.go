@@ -1,3 +1,4 @@
+//nolint:dupl // Session methods intentionally mirror DB methods with similar structure
 package surrealdb
 
 import (
@@ -402,22 +403,7 @@ func (s *Session) CloseLiveNotifications(liveQueryID string) error {
 	return s.db.con.CloseLiveNotifications(liveQueryID)
 }
 
-// connection returns the underlying connection for internal use.
-func (s *Session) connection() connection.Connection {
-	return s.db.con
-}
-
-// sessionID returns the session ID for internal use.
-func (s *Session) sessionID() *models.UUID {
-	return s.id
-}
-
-// txnID returns nil since Session doesn't have a transaction.
-func (s *Session) txnID() *models.UUID {
-	return nil
-}
-
-// isClosed returns whether the session is closed.
+// isClosed returns whether the session is closed (for internal use by send function).
 func (s *Session) isClosed() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

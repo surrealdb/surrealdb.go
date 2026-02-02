@@ -146,7 +146,7 @@ func TestSession_BeginTransaction(t *testing.T) {
 
 	session, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	// Authenticate and select namespace/database on the session
 	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
@@ -186,7 +186,7 @@ func TestSession_Query(t *testing.T) {
 
 	session, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	// Authenticate and select namespace/database
 	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
@@ -240,7 +240,7 @@ func TestSession_Isolation_Namespace(t *testing.T) {
 	// Create session 1 pointing to db1
 	session1, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session1.Detach(ctx)
+	defer func() { _ = session1.Detach(ctx) }()
 
 	_, err = session1.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)
@@ -250,7 +250,7 @@ func TestSession_Isolation_Namespace(t *testing.T) {
 	// Create session 2 pointing to db2
 	session2, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session2.Detach(ctx)
+	defer func() { _ = session2.Detach(ctx) }()
 
 	_, err = session2.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)
@@ -300,7 +300,7 @@ func TestSession_Isolation_Variables(t *testing.T) {
 	// Create two sessions
 	session1, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session1.Detach(ctx)
+	defer func() { _ = session1.Detach(ctx) }()
 
 	_, err = session1.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)
@@ -309,7 +309,7 @@ func TestSession_Isolation_Variables(t *testing.T) {
 
 	session2, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session2.Detach(ctx)
+	defer func() { _ = session2.Detach(ctx) }()
 
 	_, err = session2.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)
@@ -355,7 +355,7 @@ func TestSession_CRUD_Query(t *testing.T) {
 
 	session, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)
@@ -435,7 +435,7 @@ func TestSession_CRUD_RPCs(t *testing.T) {
 
 	session, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
 	require.NoError(t, err)

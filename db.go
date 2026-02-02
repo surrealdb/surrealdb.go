@@ -843,7 +843,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 			return nil, err
 		}
 	case *Transaction:
-		if v.isClosed() {
+		if v.IsClosed() {
 			return nil, constants.ErrTransactionClosed
 		}
 		req := &connection.RPCRequest{

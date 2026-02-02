@@ -11,7 +11,7 @@ import (
 
 // ExampleDB_Begin demonstrates starting an interactive transaction.
 // Interactive transactions allow executing statements one at a time
-// and conditionally committing or cancelling based on results.
+// and conditionally committing or canceling based on results.
 // This feature requires SurrealDB v3+ and WebSocket connections.
 func ExampleDB_Begin() {
 	ctx := context.Background()
@@ -21,14 +21,20 @@ func ExampleDB_Begin() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close(ctx)
+	defer func() {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db: %v", closeErr)
+		}
+	}()
 
 	// Sign in and select namespace/database
-	if _, err := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
-		log.Fatal(err)
+	_, err = db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
-	if err := db.Use(ctx, "test", "test"); err != nil {
-		log.Fatal(err)
+	err = db.Use(ctx, "test", "test")
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
 
 	// Start an interactive transaction
@@ -47,9 +53,9 @@ func ExampleDB_Begin() {
 
 	// Perform operations within the transaction
 	type Product struct {
-		ID    string  `json:"id"`
-		Name  string  `json:"name"`
-		Stock int     `json:"stock"`
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Stock int    `json:"stock"`
 	}
 
 	// Create a product
@@ -73,7 +79,8 @@ func ExampleDB_Begin() {
 	}
 
 	// Commit the transaction to persist changes
-	if err := tx.Commit(ctx); err != nil {
+	err = tx.Commit(ctx)
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -93,14 +100,20 @@ func ExampleTransaction_conditionalCommit() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close(ctx)
+	defer func() {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db: %v", closeErr)
+		}
+	}()
 
 	// Sign in and configure
-	if _, err := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
-		log.Fatal(err)
+	_, err = db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
-	if err := db.Use(ctx, "test", "test"); err != nil {
-		log.Fatal(err)
+	err = db.Use(ctx, "test", "test")
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
 
 	// Start transaction
@@ -141,16 +154,18 @@ func ExampleTransaction_conditionalCommit() {
 		}
 
 		// Commit the transaction
-		if err := tx.Commit(ctx); err != nil {
+		err = tx.Commit(ctx)
+		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("Transaction committed: inventory updated")
 	} else {
 		// Not enough stock - cancel transaction
-		if err := tx.Cancel(ctx); err != nil {
+		err = tx.Cancel(ctx)
+		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("Transaction cancelled: insufficient stock")
+		fmt.Println("Transaction canceled: insufficient stock")
 	}
 
 	// Output depends on inventory state
@@ -159,6 +174,8 @@ func ExampleTransaction_conditionalCommit() {
 // ExampleTransaction_isolation demonstrates transaction isolation.
 // Changes made in a transaction are not visible to other connections
 // until the transaction is committed.
+//
+//nolint:gocyclo // Example code - complexity is acceptable for demonstration purposes
 func ExampleTransaction_isolation() {
 	ctx := context.Background()
 
@@ -167,21 +184,31 @@ func ExampleTransaction_isolation() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db1.Close(ctx)
+	defer func() {
+		if closeErr := db1.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db1: %v", closeErr)
+		}
+	}()
 
 	db2, err := surrealdb.FromEndpointURLString(ctx, testenv.GetSurrealDBWSURL())
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
-	defer db2.Close(ctx)
+	defer func() {
+		if closeErr := db2.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db2: %v", closeErr)
+		}
+	}()
 
 	// Configure both connections
 	for _, db := range []*surrealdb.DB{db1, db2} {
-		if _, err := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
-			log.Fatal(err)
+		_, signInErr := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+		if signInErr != nil {
+			log.Fatal(signInErr)
 		}
-		if err := db.Use(ctx, "test", "test"); err != nil {
-			log.Fatal(err)
+		useErr := db.Use(ctx, "test", "test")
+		if useErr != nil {
+			log.Fatal(useErr)
 		}
 	}
 
@@ -218,7 +245,8 @@ func ExampleTransaction_isolation() {
 	}
 
 	// Commit
-	if err := tx.Commit(ctx); err != nil {
+	err = tx.Commit(ctx)
+	if err != nil {
 		log.Fatal(err)
 	}
 

@@ -21,11 +21,16 @@ func ExampleDB_Attach() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close(ctx)
+	defer func() {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db: %v", closeErr)
+		}
+	}()
 
 	// Sign in as root on the main connection
-	if _, err := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
-		log.Fatal(err)
+	_, err = db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
 
 	// Create an additional session
@@ -33,21 +38,24 @@ func ExampleDB_Attach() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	fmt.Printf("Session created with ID: %s\n", session.ID())
 
 	// The session starts unauthenticated - sign in and select namespace/database
-	if _, err := session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
+	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := session.Use(ctx, "test", "test"); err != nil {
+	err = session.Use(ctx, "test", "test")
+	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Set a session-scoped variable
-	if err := session.Let(ctx, "user_id", "user123"); err != nil {
+	err = session.Let(ctx, "user_id", "user123")
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -69,7 +77,7 @@ func ExampleDB_Attach() {
 }
 
 // ExampleSession_Begin demonstrates starting a transaction within a session.
-// Transactions within sessions are isolated and can be committed or cancelled.
+// Transactions within sessions are isolated and can be committed or canceled.
 func ExampleSession_Begin() {
 	ctx := context.Background()
 
@@ -78,14 +86,20 @@ func ExampleSession_Begin() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close(ctx)
+	defer func() {
+		if closeErr := db.Close(ctx); closeErr != nil {
+			log.Printf("Failed to close db: %v", closeErr)
+		}
+	}()
 
 	// Sign in and set up
-	if _, err := db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
-		log.Fatal(err)
+	_, err = db.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
-	if err := db.Use(ctx, "test", "test"); err != nil {
-		log.Fatal(err)
+	err = db.Use(ctx, "test", "test")
+	if err != nil {
+		log.Fatal(err) //nolint:gocritic // Example code - log.Fatal is acceptable
 	}
 
 	// Create a session
@@ -93,13 +107,15 @@ func ExampleSession_Begin() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	// Authenticate and configure the session
-	if _, err := session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"}); err != nil {
+	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})
+	if err != nil {
 		log.Fatal(err)
 	}
-	if err := session.Use(ctx, "test", "test"); err != nil {
+	err = session.Use(ctx, "test", "test")
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -116,7 +132,8 @@ func ExampleSession_Begin() {
 	// ... your operations here ...
 
 	// Commit or cancel
-	if err := tx.Commit(ctx); err != nil {
+	err = tx.Commit(ctx)
+	if err != nil {
 		log.Fatal(err)
 	}
 

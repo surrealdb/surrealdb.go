@@ -11,7 +11,7 @@ import (
 
 // Transaction represents an interactive SurrealDB transaction on a WebSocket connection.
 // Unlike text-based transactions (BEGIN TRANSACTION; ... COMMIT;), interactive transactions
-// allow executing statements one at a time and conditionally committing or cancelling.
+// allow executing statements one at a time and conditionally committing or canceling.
 //
 // Transactions are only supported on WebSocket connections (SurrealDB v3+).
 //
@@ -81,7 +81,7 @@ func (tx *Transaction) SessionID() *models.UUID {
 	return tx.sessionID
 }
 
-// IsClosed returns whether the transaction has been committed or cancelled.
+// IsClosed returns whether the transaction has been committed or canceled.
 func (tx *Transaction) IsClosed() bool {
 	tx.mu.RLock()
 	defer tx.mu.RUnlock()
@@ -111,7 +111,7 @@ func (tx *Transaction) Commit(ctx context.Context) error {
 // Cancel cancels the transaction, discarding all changes.
 // After calling Cancel, the transaction cannot be used anymore.
 //
-// It's safe to call Cancel on an already committed or cancelled transaction;
+// It's safe to call Cancel on an already committed or canceled transaction;
 // it will return ErrTransactionClosed but won't cause any harm.
 func (tx *Transaction) Cancel(ctx context.Context) error {
 	tx.mu.Lock()
@@ -129,26 +129,4 @@ func (tx *Transaction) Cancel(ctx context.Context) error {
 
 	tx.closed = true
 	return nil
-}
-
-// connection returns the underlying connection for internal use.
-func (tx *Transaction) connection() connection.Connection {
-	return tx.db.con
-}
-
-// sessionID returns the session ID for internal use.
-func (tx *Transaction) sessionIDInternal() *models.UUID {
-	return tx.sessionID
-}
-
-// txnID returns the transaction ID for internal use.
-func (tx *Transaction) txnID() *models.UUID {
-	return tx.id
-}
-
-// isClosed returns whether the transaction is closed.
-func (tx *Transaction) isClosed() bool {
-	tx.mu.RLock()
-	defer tx.mu.RUnlock()
-	return tx.closed
 }

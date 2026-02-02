@@ -140,7 +140,7 @@ func TestTransaction_Cancel(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, results)
 	require.Len(t, *results, 1)
-	assert.Empty(t, (*results)[0].Result, "Cancelled transaction data should be rolled back")
+	assert.Empty(t, (*results)[0].Result, "Canceled transaction data should be rolled back")
 }
 
 // TestTransaction_DoubleCommit tests that committing a committed transaction returns an error.
@@ -168,7 +168,7 @@ func TestTransaction_DoubleCommit(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrTransactionClosed, "Error should be ErrTransactionClosed")
 }
 
-// TestTransaction_DoubleCancel tests that cancelling a cancelled transaction returns an error.
+// TestTransaction_DoubleCancel tests that canceling a canceled transaction returns an error.
 func TestTransaction_DoubleCancel(t *testing.T) {
 	v := getVersion(t)
 	if !v.IsV3OrLater() {
@@ -406,7 +406,7 @@ func TestTransaction_QueryWithVariables(t *testing.T) {
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
-	defer tx.Cancel(ctx)
+	defer func() { _ = tx.Cancel(ctx) }()
 
 	type User struct {
 		ID   string `json:"id"`
@@ -447,7 +447,7 @@ func TestTransaction_InSession(t *testing.T) {
 	// Create a session
 	session, err := db.Attach(ctx)
 	require.NoError(t, err)
-	defer session.Detach(ctx)
+	defer func() { _ = session.Detach(ctx) }()
 
 	// Authenticate and select namespace/database
 	_, err = session.SignIn(ctx, map[string]any{"user": "root", "pass": "root"})

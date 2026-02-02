@@ -21,5 +21,5 @@ var (
 	ErrSessionsNotSupported     = errors.New("sessions require WebSocket connection")
 	ErrTransactionsNotSupported = errors.New("interactive transactions require WebSocket connection")
 	ErrSessionClosed            = errors.New("session already detached")
-	ErrTransactionClosed        = errors.New("transaction already committed or cancelled")
+	ErrTransactionClosed        = errors.New("transaction already committed or canceled")
 )

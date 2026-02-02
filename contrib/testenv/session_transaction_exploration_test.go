@@ -100,8 +100,10 @@ func sendCustomRPC[T any](
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Use the underlying gorilla connection to write
-	conn.Conn.WriteMessage(2, data) // 2 = BinaryMessage
+	// Use the underlying gorilla connection to write (2 is BinaryMessage)
+	if err := conn.Conn.WriteMessage(2, data); err != nil {
+		return nil, fmt.Errorf("failed to write message: %w", err)
+	}
 
 	// Wait for response with timeout
 	select {
@@ -788,9 +790,9 @@ func TestExplore_DetachRPC(t *testing.T) {
 
 	// Test detach with session at top level succeeds
 	t.Run("detach with session at top level succeeds", func(t *testing.T) {
-		res, err := sendInSession[any](conn, ctx, "detach", &sessionUUID)
-		require.NoError(t, err, "detach with session at top level should succeed")
-		assert.NotNil(t, res, "response should not be nil")
+		detachRes, detachErr := sendInSession[any](conn, ctx, "detach", &sessionUUID)
+		require.NoError(t, detachErr, "detach with session at top level should succeed")
+		assert.NotNil(t, detachRes, "response should not be nil")
 	})
 
 	// Create another session for testing double detach
@@ -897,9 +899,9 @@ func TestExplore_CommitRPC(t *testing.T) {
 	// Test commit with txn in map fails (wrong format)
 	t.Run("commit with txn in map fails", func(t *testing.T) {
 		var commitRes connection.RPCResponse[any]
-		err := connection.Send(conn, ctx, &commitRes, "commit", map[string]any{"txn": txnID})
-		require.Error(t, err, "commit with txn in map should fail")
-		assert.Contains(t, err.Error(), "transaction", "error should mention transaction")
+		sendErr := connection.Send(conn, ctx, &commitRes, "commit", map[string]any{"txn": txnID})
+		require.Error(t, sendErr, "commit with txn in map should fail")
+		assert.Contains(t, sendErr.Error(), "transaction", "error should mention transaction")
 	})
 
 	// Start another transaction for testing direct param
@@ -938,8 +940,8 @@ func TestExplore_CancelRPC(t *testing.T) {
 	// Test cancel with direct param succeeds (correct format)
 	t.Run("cancel with direct param succeeds", func(t *testing.T) {
 		var cancelRes connection.RPCResponse[any]
-		err := connection.Send(conn, ctx, &cancelRes, "cancel", txnID)
-		require.NoError(t, err, "cancel with direct param should succeed")
+		sendErr := connection.Send(conn, ctx, &cancelRes, "cancel", txnID)
+		require.NoError(t, sendErr, "cancel with direct param should succeed")
 	})
 
 	// Start another transaction for testing map format
@@ -1129,7 +1131,7 @@ func TestExplore_TransactionAutoCommit(t *testing.T) {
 		if arr, ok := result.([]any); ok {
 			count = len(arr)
 		}
-		assert.Equal(t, 0, count, "cancelled transaction data should be rolled back")
+		assert.Equal(t, 0, count, "canceled transaction data should be rolled back")
 	})
 }
 
@@ -1283,7 +1285,7 @@ func TestExplore_QueryWithTxnTopLevel(t *testing.T) {
 		var cancelRes connection.RPCResponse[any]
 		err := connection.Send(conn, ctx, &cancelRes, "cancel", txnID)
 		require.NoError(t, err, "cancel should succeed")
-		t.Logf("Transaction cancelled")
+		t.Logf("Transaction canceled")
 
 		// Check data is rolled back - use a different connection to avoid any session state issues
 		conn3 := setupWSConnection(t, "explore_txn_toplevel", "txn_toplevel_test")
@@ -1307,7 +1309,7 @@ func TestExplore_QueryWithTxnTopLevel(t *testing.T) {
 		if ok {
 			count = len(resultArr)
 		}
-		assert.Equal(t, 0, count, "cancelled transaction data should be rolled back")
+		assert.Equal(t, 0, count, "canceled transaction data should be rolled back")
 		t.Logf("SELECT after cancel count: %d", count)
 	})
 
