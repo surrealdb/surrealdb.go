@@ -22,6 +22,12 @@ type sendable interface {
 	*DB | *Session | *Transaction
 }
 
+// liveQueryable is a constraint for types that support live queries.
+// Live queries are session-scoped and not supported within transactions.
+type liveQueryable interface {
+	*DB | *Session
+}
+
 type VersionData struct {
 	Version   string `json:"version"`
 	Build     string `json:"build"`
@@ -462,7 +468,7 @@ func (db *DB) CloseLiveNotifications(liveQueryID string) error {
 
 // Kill terminates a live query and closes the notification channel.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
-func Kill[S sendable](ctx context.Context, s S, id string) error {
+func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 	// First kill the live query on the server
 	_, err := send[any](ctx, s, "kill", id)
 	if err != nil {
@@ -475,16 +481,13 @@ func Kill[S sendable](ctx context.Context, s S, id string) error {
 		return v.CloseLiveNotifications(id)
 	case *Session:
 		return v.CloseLiveNotifications(id)
-	case *Transaction:
-		// Transactions don't have their own live notification channels
-		return v.db.CloseLiveNotifications(id)
 	}
 	return nil
 }
 
 // Live starts a live query on a table.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
-func Live[S sendable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
+func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
 	return send[models.UUID](ctx, s, "live", table, diff)
 }
 
