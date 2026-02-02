@@ -38,6 +38,16 @@ type Connection interface {
 	//
 	// The `ctx` is used to cancel the request if the context is canceled.
 	Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error)
+	// Call sends a custom RPC request to SurrealDB and expects a response.
+	// Unlike Send, Call accepts an RPCRequest directly, allowing you to set
+	// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+	//
+	// The `req` is the RPC request to send. The ID field will be set automatically if empty.
+	// The `ctx` is used to cancel the request if the context is canceled.
+	//
+	// For HTTP connections, this method returns an error if req.Session or req.Txn is set,
+	// as sessions and transactions require WebSocket connections.
+	Call(ctx context.Context, req *RPCRequest) (*RPCResponse[cbor.RawMessage], error)
 	Use(ctx context.Context, namespace string, database string) error
 	Let(ctx context.Context, key string, value any) error
 	Authenticate(ctx context.Context, token string) error
