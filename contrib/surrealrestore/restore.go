@@ -431,9 +431,12 @@ func formatRecordID(id any) string {
 }
 
 // sanitizeIdentifier escapes a SurrealDB identifier to prevent injection.
-// It wraps the identifier in backticks and escapes any backticks within.
+// It wraps the identifier in backticks and escapes backslashes and backticks within.
+// SurrealDB uses backslash escaping (e.g., \` for a literal backtick).
 func sanitizeIdentifier(id string) string {
-	escaped := strings.ReplaceAll(id, "`", "``")
+	// Escape backslashes first, then backticks
+	escaped := strings.ReplaceAll(id, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "`", "\\`")
 	return fmt.Sprintf("`%s`", escaped)
 }
 
