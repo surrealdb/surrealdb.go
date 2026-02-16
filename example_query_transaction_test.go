@@ -113,15 +113,13 @@ func ExampleQuery_transaction_throw() {
 	fmt.Printf("# of ERR results: %d\n", len(errResults))
 	fmt.Println("=== Func error ===")
 	fmt.Printf("Error: %v\n", normalizeTransactionError(err))
-	fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
-	fmt.Printf("Error is QueryError: %v\n", errors.Is(err, &surrealdb.QueryError{}))
+	fmt.Printf("Error is ServerError: %v\n", errors.Is(err, &surrealdb.ServerError{}))
 	for i, r := range errResults {
 		fmt.Printf("=== QueryResult[%d] ===\n", i)
 		fmt.Printf("Status: %v\n", r.Status)
 		fmt.Printf("Result: %v\n", r.Result)
 		fmt.Printf("Error: %v\n", normalizeTransactionError(r.Error))
-		fmt.Printf("Error is RPCError: %v\n", errors.Is(r.Error, &surrealdb.RPCError{}))
-		fmt.Printf("Error is QueryError: %v\n", errors.Is(r.Error, &surrealdb.QueryError{}))
+		fmt.Printf("Error is ServerError: %v\n", errors.Is(r.Error, &surrealdb.ServerError{}))
 	}
 
 	// Output:
@@ -129,20 +127,17 @@ func ExampleQuery_transaction_throw() {
 	// === Func error ===
 	// Error: An error occurred: test
 	// The query was not executed due to a failed transaction
-	// Error is RPCError: false
-	// Error is QueryError: true
+	// Error is ServerError: true
 	// === QueryResult[0] ===
 	// Status: ERR
 	// Result: <nil>
 	// Error: An error occurred: test
-	// Error is RPCError: false
-	// Error is QueryError: true
+	// Error is ServerError: true
 	// === QueryResult[1] ===
 	// Status: ERR
 	// Result: <nil>
 	// Error: The query was not executed due to a failed transaction
-	// Error is RPCError: false
-	// Error is QueryError: true
+	// Error is ServerError: true
 }
 
 // See https://github.com/surrealdb/surrealdb.go/issues/177

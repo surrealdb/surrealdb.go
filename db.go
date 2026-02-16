@@ -453,7 +453,10 @@ func Send[Result any](ctx context.Context, db *DB, res *connection.RPCResponse[R
 		return fmt.Errorf("provided method is not allowed")
 	}
 
-	return connection.Send(db.con, ctx, res, method, params...)
+	if err := connection.Send(db.con, ctx, res, method, params...); err != nil {
+		return convertError(err)
+	}
+	return nil
 }
 
 func (db *DB) LiveNotifications(liveQueryID string) (chan connection.Notification, error) {
@@ -558,22 +561,27 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 // # Handling errors
 //
 // If the query fails, the returned error will be a `joinError` created by the [errors.Join] function,
-// which contains all the errors that occurred during the query execution.
+// which contains all the [ServerError] instances that occurred during the query execution.
 // The caller can check the Error field of each [QueryResult] to see if the query failed,
 // or check the returned error from the [Query] function to see if the query failed.
 //
 // If the caller wants to handle the query errors, if any, it can check the Error field of each [QueryResult],
-// or call:
+// or use [errors.As] to extract a [ServerError]:
 //
-//	errors.Is(err, &surrealdb.QueryError{})
+//	var se *surrealdb.ServerError
+//	if errors.As(err, &se) {
+//	    fmt.Println(se.Kind(), se.Error())
+//	}
 //
-// on the returned error to see if it is (or contains) a [QueryError].
+// The [ServerError] carries structured information including Kind, Details, and a cause chain.
+// Use the helper functions [IsNotAllowed], [IsNotFound], etc. for ergonomic error checking,
+// or inspect [ServerError.Kind] directly.
 //
 // # Query errors are non-retriable
 //
-// If the error is a [QueryError], the caller should NOT retry the query,
-// because the query is already executed and the error is not recoverable,
-// and often times the error is caused by a bug in the query itself.
+// If the error is a [ServerError] from a query result (Kind is e.g. [ErrorKindQuery]),
+// the caller should NOT retry the query, because the query is already executed and the
+// error is not recoverable, and often times the error is caused by a bug in the query itself.
 //
 // # When can you safely retry the query when this function returns an error?
 //
@@ -582,14 +590,16 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 // In such cases, the caller can retry the query by calling the [Query] function again.
 //
 // For this function, the caller may retry when the error is:
-//   - [RPCError]: because we should get a RPC error only when the RPC failed due to anything other than the query error
+//   - A [ServerError] with Kind [ErrorKindInternal] or [ErrorKindConnection]: because these indicate
+//     transient server issues, not query-level errors.
 //   - [constants.ErrTimeout]: This means we send the HTTP request or a WebSocket message to SurrealDB in timely manner,
 //     which is often due to temporary network issues or server overload.
 //
 // # What non-retriable errors will Query return?
 //
 // However, if the error is any of the following, the caller should NOT retry the query:
-//   - [QueryError]: This means the query failed due to a syntax error, a type error, or a logical error in the query itself.
+//   - A [ServerError] from a query result: This means the query failed due to a syntax error,
+//     a type error, or a logical error in the query itself.
 //   - Unmarshal error: This means the response from the server could not be unmarshaled into the expected type,
 //     which is often due to a bug in the code or a mismatch between the expected type and the actual response type.
 //   - Marshal error: This means the request could not be marshaled using CBOR,
@@ -597,26 +607,18 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 //     SurrealDB, such as a struct with unsupported types.
 //   - Anything else: It's just safer to not retry when we aren't sure if the error is whether transient or permanent.
 //
-// # RPCError is retriable only for Query
+// # RPC errors vs query result errors
 //
-// Note that [RPCError] is retriable only for the [Query] RPC method,
-// because in other cases, the [RPCError] may also indicate a query error.
-// For example, if you tried to insert a duplicate record using the [Insert] RPC,
-// you may get an [RPCError] saying so, which is not retriable.
-//
-// If you tried to insert the same duplicate record using the [Query] RPC method with `INSERT` statement,
-// you may get no [RPCError], but a [QueryError] saying so, enabling you to easily diferentiate
-// between retriable and non-retriable errors.
+// For [Query], RPC-level errors (from the transport layer) are converted to [ServerError]
+// and returned directly. Per-statement errors are also [ServerError] instances, joined via
+// [errors.Join]. Use [ServerError.Kind] or the helper functions to distinguish between them.
 func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", sql, vars)
+	rawRes, err := send[[]rawQueryResult](ctx, s, "query", sql, vars)
 	if err != nil {
 		return nil, err
 	}
 
-	// The query errors, if any
-	var (
-		errs error
-	)
+	var errs error
 
 	// Get the unmarshaler based on the sender type
 	var unmarshaler func([]byte, any) error
@@ -629,18 +631,18 @@ func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars m
 		unmarshaler = v.db.con.GetUnmarshaler().Unmarshal
 	}
 
-	// We unmarshal []QueryResult[cbor.RawMessage] first,
+	// We unmarshal []rawQueryResult first (with Result as cbor.RawMessage),
 	// and then unmarshal each cbor.RawMessage to TResult.
 	// This is necessary because the Result field can be a string in case Status is "ERR".
 	// In that case if we directly unmarshaled to TResult using []QueryResult[TResult],
 	// it would fail with "cannot unmarshal UTF-8 text string into Go struct field"
 	// because CBOR string cannot be unmarshaled into TResult except when TResult is a string.
-	qr := make([]QueryResult[TResult], len(*res))
+	qr := make([]QueryResult[TResult], len(*rawRes))
 
-	for i, result := range *res {
+	for i, result := range *rawRes {
 		var (
 			r TResult
-			e *QueryError
+			e *ServerError
 		)
 		if result.Status == "ERR" {
 			var errMsg string
@@ -649,9 +651,7 @@ func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars m
 					return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
 				}
 			}
-			e = &QueryError{
-				Message: errMsg,
-			}
+			e = parseQueryError(errMsg, result.Kind, result.Details, result.Cause)
 			errs = errors.Join(errs, e)
 		} else if result.Result != nil {
 			if err := unmarshaler(result.Result, &r); err != nil {
@@ -787,7 +787,7 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 		return fmt.Errorf("no query to run")
 	}
 
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", preparedQuery, parameters)
+	rawRes, err := send[[]rawQueryResult](ctx, s, "query", preparedQuery, parameters)
 	if err != nil {
 		return err
 	}
@@ -806,8 +806,23 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 	}
 
 	for i := 0; i < len(*queries); i++ {
-		// assign results
-		(*queries)[i].Result = (*res)[i]
+		raw := (*rawRes)[i]
+		var e *ServerError
+		if raw.Status == "ERR" {
+			var errMsg string
+			if raw.Result != nil {
+				if unmarshalErr := unmarshaler.Unmarshal(raw.Result, &errMsg); unmarshalErr == nil {
+					// Use the unmarshaled error message
+				}
+			}
+			e = parseQueryError(errMsg, raw.Kind, raw.Details, raw.Cause)
+		}
+		(*queries)[i].Result = QueryResult[cbor.RawMessage]{
+			Status: raw.Status,
+			Time:   raw.Time,
+			Result: raw.Result,
+			Error:  e,
+		}
 		(*queries)[i].unmarshaler = unmarshaler
 	}
 
@@ -828,7 +843,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 	switch v := any(s).(type) {
 	case *DB:
 		if err := connection.Send(v.con, ctx, &res, method, params...); err != nil {
-			return nil, err
+			return nil, convertError(err)
 		}
 	case *Session:
 		if v.isClosed() {
@@ -840,7 +855,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 			Session: v.id,
 		}
 		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
-			return nil, err
+			return nil, convertError(err)
 		}
 	case *Transaction:
 		if v.IsClosed() {
@@ -853,7 +868,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 			Txn:     v.id,
 		}
 		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
-			return nil, err
+			return nil, convertError(err)
 		}
 	}
 

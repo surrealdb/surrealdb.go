@@ -1,26 +1,18 @@
 package connection
 
-// RPCError represents a JSON-RPC error
+// RPCError represents a JSON-RPC error from the SurrealDB server.
+// It captures both the legacy format (code + message) and the new structured
+// format (kind + details + cause) introduced in SurrealDB 3.x.
 type RPCError struct {
-	Code        int    `json:"code"`
-	Message     string `json:"message,omitempty"`
-	Description string `json:"description,omitempty"`
+	Code    int       `json:"code"`
+	Message string    `json:"message,omitempty"`
+	Kind    string    `json:"kind,omitempty"`
+	Details any       `json:"details,omitempty"`
+	Cause   *RPCError `json:"cause,omitempty"`
 }
 
 func (r RPCError) Error() string {
-	if r.Description != "" {
-		return r.Description
-	}
 	return r.Message
-}
-
-func (r *RPCError) Is(target error) bool {
-	if target == nil {
-		return r == nil
-	}
-
-	_, ok := target.(*RPCError)
-	return ok
 }
 
 // RPCRequest represents an incoming JSON-RPC request.

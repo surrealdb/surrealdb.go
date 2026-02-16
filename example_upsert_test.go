@@ -234,10 +234,10 @@ func ExampleUpsert_rpc_error() {
 		default:
 			fmt.Printf("Unknown Error: %v\n", err)
 		}
-		fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
+		fmt.Printf("Error is ServerError: %v\n", errors.Is(err, &surrealdb.ServerError{}))
 	}
 
 	// Output:
 	// Encountered expected error for SurrealDB 2.x or 3.x
-	// Error is RPCError: true
+	// Error is ServerError: true
 }

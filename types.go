@@ -8,7 +8,15 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// Deprecated: Use [ServerError] instead. RPCError is kept as a type alias
+// for backward compatibility. Server errors are now returned as *ServerError
+// with structured kind, details, and cause information.
 type RPCError = connection.RPCError
+
+// Deprecated: Use [ServerError] instead. QueryError is kept as a type alias
+// for backward compatibility. Query errors are now returned as *ServerError
+// with Kind set to the appropriate ErrorKind.
+type QueryError = ServerError
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {
@@ -20,35 +28,23 @@ type PatchData struct {
 // QueryResult is a struct that represents one of the results
 // of a SurrealDB query RPC method call, made via [Query], for example.
 type QueryResult[T any] struct {
-	Status string      `json:"status"`
-	Time   string      `json:"time"`
-	Result T           `json:"result"`
-	Error  *QueryError `json:"-"`
+	Status string       `json:"status"`
+	Time   string       `json:"time"`
+	Result T            `json:"result"`
+	Error  *ServerError `json:"-"`
 }
 
-// QueryError represents an error that occurred during a query execution.
-//
-// The caller can type-assert the return errror to QueryError to see if
-// the error is a query error or not.
-type QueryError struct {
-	Message string
-}
-
-func (e *QueryError) Error() string {
-	if e == nil {
-		return ""
-	}
-
-	return e.Message
-}
-
-func (e *QueryError) Is(target error) bool {
-	if target == nil {
-		return e == nil
-	}
-
-	_, ok := target.(*QueryError)
-	return ok
+// rawQueryResult is used internally to decode query results from CBOR
+// before converting to the public QueryResult type. It captures the new
+// structured error fields (kind, details, cause) alongside the standard
+// status/time/result fields.
+type rawQueryResult struct {
+	Status  string               `json:"status"`
+	Time    string               `json:"time"`
+	Result  cbor.RawMessage      `json:"result"`
+	Kind    string               `json:"kind,omitempty"`
+	Details any                  `json:"details,omitempty"`
+	Cause   *connection.RPCError `json:"cause,omitempty"`
 }
 
 type QueryStmt struct {
