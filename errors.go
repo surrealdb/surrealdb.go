@@ -2,6 +2,7 @@ package surrealdb
 
 import (
 	"errors"
+	"math"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
@@ -157,10 +158,12 @@ func getDetailString(details any, key string) string {
 // getDetailMapString extracts a string field from a variant's inner details.
 //
 // New format: { "kind": "Table", "details": { "name": "users" } }
-//   -> getDetailMapString(d, "Table", "name") returns "users"
+//
+//	-> getDetailMapString(d, "Table", "name") returns "users"
 //
 // Old format: { "Table": { "name": "users" } }
-//   -> getDetailMapString(d, "Table", "name") returns "users"
+//
+//	-> getDetailMapString(d, "Table", "name") returns "users"
 func getDetailMapString(details any, key, field string) string {
 	v := getDetailValue(details, key)
 	if m, ok := v.(map[string]any); ok {
@@ -325,17 +328,17 @@ func (e *ServerError) IsTimedOut() bool {
 	return hasDetailKey(e.details, "TimedOut")
 }
 
-// IsCancelled returns true if the query was cancelled.
+// IsCancelled returns true if the query was canceled.
 // Only meaningful when Kind() is ErrorKindQuery.
 func (e *ServerError) IsCancelled() bool {
-	return hasDetailKey(e.details, "Cancelled")
+	return hasDetailKey(e.details, "Cancelled") //nolint:misspell // matches server wire format
 }
 
 // Timeout returns the timeout duration as (secs, nanos) if this is a
 // timeout error. The ok return value is false if this is not a timeout
 // error or the duration is not available.
 // Only meaningful when Kind() is ErrorKindQuery.
-func (e *ServerError) Timeout() (secs int, nanos int, ok bool) {
+func (e *ServerError) Timeout() (secs, nanos int, ok bool) {
 	v := getDetailValue(e.details, "TimedOut")
 	m, mOk := v.(map[string]any)
 	if !mOk {
@@ -460,7 +463,7 @@ func parseRpcError(raw *connection.RPCError) *ServerError {
 // duplicates the error kind (e.g. { "kind": "AlreadyExists", "details":
 // { "kind": "Record", ... } }). When the outer kind matches the resolved
 // error kind, we unwrap to expose the inner detail directly.
-func parseQueryError(message string, kind string, details any, rawCause *connection.RPCError) *ServerError {
+func parseQueryError(message, kind string, details any, rawCause *connection.RPCError) *ServerError {
 	var cause *ServerError
 	if rawCause != nil {
 		cause = parseRpcError(rawCause)
@@ -606,6 +609,9 @@ func toInt(v any) (int, bool) {
 	case float64:
 		return int(n), true
 	case uint64:
+		if n > uint64(math.MaxInt) {
+			return 0, false
+		}
 		return int(n), true
 	}
 	return 0, false

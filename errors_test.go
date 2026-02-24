@@ -246,12 +246,12 @@ func TestV3_Query_TimedOut(t *testing.T) {
 	assert.Equal(t, 0, nanos)
 }
 
-func TestV3_Query_Cancelled(t *testing.T) {
+func TestV3_Query_Canceled(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32005,
 		Kind:    "Query",
-		Message: "Query cancelled",
-		Details: map[string]any{"kind": "Cancelled"},
+		Message: "Query canceled",
+		Details: map[string]any{"kind": "Cancelled"}, //nolint:misspell // matches server wire format
 	})
 
 	assert.True(t, err.IsCancelled())
@@ -710,12 +710,12 @@ func TestOldFormat_Query_TimedOut(t *testing.T) {
 	assert.Equal(t, 0, nanos)
 }
 
-func TestOldFormat_Query_Cancelled(t *testing.T) {
+func TestOldFormat_Query_Canceled(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32005,
 		Kind:    "Query",
-		Message: "Query cancelled",
-		Details: map[string]any{"Cancelled": map[string]any{}},
+		Message: "Query canceled",
+		Details: map[string]any{"Cancelled": map[string]any{}}, //nolint:misspell // matches server wire format
 	})
 
 	assert.True(t, err.IsCancelled())
@@ -1019,7 +1019,7 @@ func TestServerError_Message_WithCause(t *testing.T) {
 // ================================================================= //
 
 func TestBackwardCompat_QueryErrorIsServerError(t *testing.T) {
-	var qe *QueryError = &ServerError{kind: "Query", message: "test"}
+	qe := &QueryError{kind: "Query", message: "test"}
 
 	var se *ServerError
 	assert.True(t, errors.As(qe, &se))

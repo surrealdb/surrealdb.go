@@ -11,7 +11,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
-func setupStructuredErrorTest(t *testing.T) (*surrealdb.DB, *SurrealDBVersion) {
+func setupStructuredErrorTest(t *testing.T) *surrealdb.DB {
 	t.Helper()
 
 	db, err := New("test_errors", "structured_errors", "person")
@@ -30,11 +30,11 @@ func setupStructuredErrorTest(t *testing.T) (*surrealdb.DB, *SurrealDBVersion) {
 		t.Skipf("Structured errors require SurrealDB v3+, got %s", v)
 	}
 
-	return db, v
+	return db
 }
 
 func TestStructuredErrors_InvalidCredentials(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
 	_, err := db.SignIn(context.Background(), surrealdb.Auth{
 		Username: "invalid",
@@ -54,9 +54,9 @@ func TestStructuredErrors_InvalidCredentials(t *testing.T) {
 }
 
 func TestStructuredErrors_InvalidSyntax(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
-	_, err := surrealdb.Query[any](context.Background(), db, "SEL ECT * FORM person", nil)
+	_, err := surrealdb.Query[any](context.Background(), db, "SEL ECT * FORM person", nil) //nolint:misspell // intentionally malformed SurrealQL
 
 	require.Error(t, err)
 
@@ -66,7 +66,7 @@ func TestStructuredErrors_InvalidSyntax(t *testing.T) {
 }
 
 func TestStructuredErrors_UserThrow(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
 	res, err := surrealdb.Query[any](context.Background(), db, `THROW "custom user error"`, nil)
 
@@ -85,7 +85,7 @@ func TestStructuredErrors_UserThrow(t *testing.T) {
 }
 
 func TestStructuredErrors_DuplicateRecord(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
 	_, err := surrealdb.Query[any](context.Background(), db,
 		`CREATE person:dup SET name = "first"`, nil)
@@ -111,7 +111,7 @@ func TestStructuredErrors_DuplicateRecord(t *testing.T) {
 }
 
 func TestStructuredErrors_SchemaViolation(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
 	_, err := surrealdb.Query[any](context.Background(), db,
 		`DEFINE FIELD age ON person TYPE int`, nil)
@@ -134,7 +134,7 @@ func TestStructuredErrors_SchemaViolation(t *testing.T) {
 }
 
 func TestStructuredErrors_MultiStatementMixed(t *testing.T) {
-	db, _ := setupStructuredErrorTest(t)
+	db := setupStructuredErrorTest(t)
 
 	res, err := surrealdb.Query[any](context.Background(), db,
 		`RETURN 1; THROW "fail"; RETURN 3`, nil)
