@@ -195,7 +195,19 @@ type ServerError struct {
 }
 
 // Error implements the error interface.
+// When a cause chain is present, the messages are joined with ": "
+// so that the full chain is visible in logs and fmt output, since
+// Go has no automatic error-chain display like JS or Python.
 func (e *ServerError) Error() string {
+	if e.cause == nil {
+		return e.message
+	}
+	return e.message + ": " + e.cause.Error()
+}
+
+// Message returns the server's error message for this error only,
+// without appending the cause chain. Use Error() for the full chain.
+func (e *ServerError) Message() string {
 	return e.message
 }
 
@@ -234,11 +246,17 @@ func (e *ServerError) Unwrap() error {
 	return e.cause
 }
 
-// Is supports errors.Is matching. Any *ServerError target matches
-// any *ServerError in the chain, enabling errors.Is(err, &ServerError{}).
+// Is supports errors.Is matching.
+// A zero-kind target acts as a catch-all: errors.Is(err, &ServerError{})
+// matches any *ServerError. A target with a non-empty kind only matches
+// if this error has the same kind, enabling
+// errors.Is(err, &ServerError{kind: "NotFound"}).
 func (e *ServerError) Is(target error) bool {
-	_, ok := target.(*ServerError)
-	return ok
+	t, ok := target.(*ServerError)
+	if !ok {
+		return false
+	}
+	return t.kind == "" || t.kind == e.kind
 }
 
 // HasKind checks if this error or any error in the cause chain matches
@@ -376,7 +394,13 @@ func (e *ServerError) FunctionName() string {
 	return getDetailMapString(e.details, "Function", "name")
 }
 
-// --- NotFound ---
+// TargetName returns the target name that is not allowed, if applicable.
+// Only meaningful when Kind() is ErrorKindNotAllowed.
+func (e *ServerError) TargetName() string {
+	return getDetailMapString(e.details, "Target", "name")
+}
+
+// --- NotFound / AlreadyExists ---
 
 // TableName returns the table name that was not found or already exists,
 // if applicable. Works for both ErrorKindNotFound and ErrorKindAlreadyExists.
@@ -390,16 +414,22 @@ func (e *ServerError) RecordID() string {
 	return getDetailMapString(e.details, "Record", "id")
 }
 
-// NamespaceName returns the namespace name that was not found, if applicable.
-// Only meaningful when Kind() is ErrorKindNotFound.
+// NamespaceName returns the namespace name that was not found or already exists,
+// if applicable. Works for both ErrorKindNotFound and ErrorKindAlreadyExists.
 func (e *ServerError) NamespaceName() string {
 	return getDetailMapString(e.details, "Namespace", "name")
 }
 
-// DatabaseName returns the database name that was not found, if applicable.
-// Only meaningful when Kind() is ErrorKindNotFound.
+// DatabaseName returns the database name that was not found or already exists,
+// if applicable. Works for both ErrorKindNotFound and ErrorKindAlreadyExists.
 func (e *ServerError) DatabaseName() string {
 	return getDetailMapString(e.details, "Database", "name")
+}
+
+// SessionID returns the session ID that was not found or already exists,
+// if applicable. Works for both ErrorKindNotFound and ErrorKindAlreadyExists.
+func (e *ServerError) SessionID() string {
+	return getDetailMapString(e.details, "Session", "id")
 }
 
 // ------------------------------------------------------------------ //

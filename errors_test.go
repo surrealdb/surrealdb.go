@@ -79,6 +79,17 @@ func TestV3_NotAllowed_Function(t *testing.T) {
 	assert.Equal(t, "fn::custom", err.FunctionName())
 }
 
+func TestV3_NotAllowed_Target(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32602,
+		Kind:    "NotAllowed",
+		Message: "Target not allowed",
+		Details: map[string]any{"kind": "Target", "details": map[string]any{"name": "some_target"}},
+	})
+
+	assert.Equal(t, "some_target", err.TargetName())
+}
+
 func TestV3_NotFound_Table(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
@@ -147,6 +158,7 @@ func TestV3_NotFound_Session(t *testing.T) {
 	})
 
 	assert.Equal(t, "NotFound", err.Kind())
+	assert.Equal(t, "abc-123", err.SessionID())
 }
 
 func TestV3_AlreadyExists_Record(t *testing.T) {
@@ -386,11 +398,14 @@ func TestV3_QueryError_WithCause(t *testing.T) {
 
 	assert.Equal(t, "NotAllowed", err.Kind())
 	assert.True(t, err.IsTokenExpired())
+	assert.Equal(t, "Permission denied: Session expired", err.Error())
+	assert.Equal(t, "Permission denied", err.Message())
 
 	cause := err.ServerCause()
 	require.NotNil(t, cause)
 	assert.Equal(t, "Internal", cause.Kind())
 	assert.Equal(t, "Session expired", cause.Error())
+	assert.Equal(t, "Session expired", cause.Message())
 }
 
 // ================================================================= //
@@ -453,6 +468,42 @@ func TestV3_QueryError_DoubleWrappedDetails_KindMismatchNotUnwrapped(t *testing.
 //  Old format backward compatibility (externally-tagged)             //
 // ================================================================= //
 
+func TestV3_AlreadyExists_Namespace(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "AlreadyExists",
+		Message: "Namespace already exists",
+		Details: map[string]any{"kind": "Namespace", "details": map[string]any{"name": "test_ns"}},
+	})
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "test_ns", err.NamespaceName())
+}
+
+func TestV3_AlreadyExists_Database(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "AlreadyExists",
+		Message: "Database already exists",
+		Details: map[string]any{"kind": "Database", "details": map[string]any{"name": "test_db"}},
+	})
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "test_db", err.DatabaseName())
+}
+
+func TestV3_AlreadyExists_Session(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "AlreadyExists",
+		Message: "Session already exists",
+		Details: map[string]any{"kind": "Session", "details": map[string]any{"id": "sess-456"}},
+	})
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "sess-456", err.SessionID())
+}
+
 func TestOldFormat_NotAllowed_TokenExpired(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32002,
@@ -510,6 +561,17 @@ func TestOldFormat_NotAllowed_Function(t *testing.T) {
 	assert.Equal(t, "fn::custom", err.FunctionName())
 }
 
+func TestOldFormat_NotAllowed_Target(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32602,
+		Kind:    "NotAllowed",
+		Message: "Target not allowed",
+		Details: map[string]any{"Target": map[string]any{"name": "some_target"}},
+	})
+
+	assert.Equal(t, "some_target", err.TargetName())
+}
+
 func TestOldFormat_NotFound_Table(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
@@ -555,6 +617,17 @@ func TestOldFormat_NotFound_Database(t *testing.T) {
 	assert.Equal(t, "test", err.DatabaseName())
 }
 
+func TestOldFormat_NotFound_Session(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Session not found",
+		Details: map[string]any{"Session": map[string]any{"id": "abc-123"}},
+	})
+
+	assert.Equal(t, "abc-123", err.SessionID())
+}
+
 func TestOldFormat_AlreadyExists_Record(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
@@ -563,7 +636,9 @@ func TestOldFormat_AlreadyExists_Record(t *testing.T) {
 		Details: map[string]any{"Record": map[string]any{"id": "users:123"}},
 	})
 
+	assert.Equal(t, "AlreadyExists", err.Kind())
 	assert.Equal(t, "users:123", err.RecordID())
+	assert.Equal(t, "", err.TableName())
 }
 
 func TestOldFormat_AlreadyExists_Table(t *testing.T) {
@@ -585,6 +660,7 @@ func TestOldFormat_Validation_Parse(t *testing.T) {
 		Details: "Parse",
 	})
 
+	assert.Equal(t, "Validation", err.Kind())
 	assert.True(t, err.IsParseError())
 	assert.Equal(t, "", err.ParameterName())
 }
@@ -598,6 +674,7 @@ func TestOldFormat_Validation_InvalidParameter(t *testing.T) {
 	})
 
 	assert.Equal(t, "limit", err.ParameterName())
+	assert.False(t, err.IsParseError())
 }
 
 func TestOldFormat_Query_NotExecuted(t *testing.T) {
@@ -608,7 +685,10 @@ func TestOldFormat_Query_NotExecuted(t *testing.T) {
 		Details: map[string]any{"NotExecuted": map[string]any{}},
 	})
 
+	assert.Equal(t, "Query", err.Kind())
 	assert.True(t, err.IsNotExecuted())
+	assert.False(t, err.IsTimedOut())
+	assert.False(t, err.IsCancelled())
 }
 
 func TestOldFormat_Query_TimedOut(t *testing.T) {
@@ -649,6 +729,7 @@ func TestOldFormat_Configuration_LiveQuery(t *testing.T) {
 		Details: map[string]any{"LiveQueryNotSupported": map[string]any{}},
 	})
 
+	assert.Equal(t, "Configuration", err.Kind())
 	assert.True(t, err.IsLiveQueryNotSupported())
 }
 
@@ -660,6 +741,7 @@ func TestOldFormat_Serialization_Deserialization(t *testing.T) {
 		Details: map[string]any{"Deserialization": map[string]any{}},
 	})
 
+	assert.Equal(t, "Serialization", err.Kind())
 	assert.True(t, err.IsDeserialization())
 }
 
@@ -759,15 +841,20 @@ func TestCauseChain_DeepParsedRecursively(t *testing.T) {
 	})
 
 	assert.Equal(t, "NotAllowed", err.Kind())
+	assert.Equal(t, "Top level: Middle: Root cause", err.Error())
+	assert.Equal(t, "Top level", err.Message())
 
 	middle := err.ServerCause()
 	require.NotNil(t, middle)
 	assert.Equal(t, "NotFound", middle.Kind())
+	assert.Equal(t, "Middle: Root cause", middle.Error())
+	assert.Equal(t, "Middle", middle.Message())
 
 	root := middle.ServerCause()
 	require.NotNil(t, root)
 	assert.Equal(t, "Internal", root.Kind())
 	assert.Equal(t, "Root cause", root.Error())
+	assert.Equal(t, "Root cause", root.Message())
 	assert.Nil(t, root.ServerCause())
 }
 
@@ -897,9 +984,34 @@ func TestServerError_Is_MatchesAnyServerError(t *testing.T) {
 	assert.True(t, errors.Is(err, &ServerError{}))
 }
 
+func TestServerError_Is_MatchesSameKind(t *testing.T) {
+	err := &ServerError{kind: "NotFound", message: "test"}
+	assert.True(t, errors.Is(err, &ServerError{kind: "NotFound"}))
+}
+
+func TestServerError_Is_DoesNotMatchDifferentKind(t *testing.T) {
+	err := &ServerError{kind: "NotFound", message: "test"}
+	assert.False(t, errors.Is(err, &ServerError{kind: "NotAllowed"}))
+}
+
 func TestServerError_Is_DoesNotMatchOtherTypes(t *testing.T) {
 	err := &ServerError{kind: "NotFound", message: "test"}
 	assert.False(t, errors.Is(err, errors.New("test")))
+}
+
+func TestServerError_Message_WithoutCause(t *testing.T) {
+	err := &ServerError{kind: "Internal", message: "test"}
+	assert.Equal(t, "test", err.Message())
+	assert.Equal(t, "test", err.Error())
+}
+
+func TestServerError_Message_WithCause(t *testing.T) {
+	err := &ServerError{
+		kind: "NotAllowed", message: "Top",
+		cause: &ServerError{kind: "Internal", message: "Bottom"},
+	}
+	assert.Equal(t, "Top", err.Message())
+	assert.Equal(t, "Top: Bottom", err.Error())
 }
 
 // ================================================================= //
