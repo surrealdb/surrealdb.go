@@ -136,7 +136,7 @@ func ExampleDB_record_user_custom_struct() {
 		Database  string `json:"DB"`
 		Access    string `json:"AC"`
 		Name      string `json:"name"`
-		Password  string `json:"password"`
+		Password  string `json:"password"` //nolint:gosec // G117: test auth struct
 		Email     string `json:"email"`
 	}
 
@@ -145,7 +145,7 @@ func ExampleDB_record_user_custom_struct() {
 		Database  string `json:"DB"`
 		Access    string `json:"AC"`
 		Email     string `json:"email"`
-		Password  string `json:"password"`
+		Password  string `json:"password"` //nolint:gosec // G117: test auth struct
 	}
 
 	_, err := db.SignUp(context.Background(), &User{

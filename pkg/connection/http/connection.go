@@ -150,7 +150,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 }
 
 func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // G704: URL from user-configured endpoint
 	if err != nil {
 		return nil, fmt.Errorf("error making HTTP request: %w", err)
 	}

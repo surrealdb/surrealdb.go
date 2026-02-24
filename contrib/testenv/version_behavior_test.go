@@ -229,7 +229,7 @@ func TestBehavior_LiveSelectNonExistentTable_v3(t *testing.T) {
 type testUser struct {
 	ID       *models.RecordID `json:"id,omitempty"`
 	Username string           `json:"username"`
-	Password string           `json:"password"`
+	Password string           `json:"password"` //nolint:gosec // G117: test auth struct
 }
 
 func TestBehavior_CreateWithTable_v2(t *testing.T) {
@@ -568,7 +568,7 @@ func TestBehavior_BearerAccessHTTP_v2(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL from trusted test config
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -640,7 +640,7 @@ func TestBehavior_BearerAccessHTTP_v3(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL from trusted test config
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

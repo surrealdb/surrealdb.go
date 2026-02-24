@@ -192,7 +192,7 @@ func TestConnection(t *testing.T) {
 		// Test with struct auth data
 		type AuthStruct struct {
 			Username string `json:"user"`
-			Password string `json:"pass"`
+			Password string `json:"pass"` //nolint:gosec // G117: test auth struct
 		}
 
 		authStruct := AuthStruct{

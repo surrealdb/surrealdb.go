@@ -811,9 +811,7 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 		if raw.Status == "ERR" {
 			var errMsg string
 			if raw.Result != nil {
-				if unmarshalErr := unmarshaler.Unmarshal(raw.Result, &errMsg); unmarshalErr == nil {
-					// Use the unmarshaled error message
-				}
+				_ = unmarshaler.Unmarshal(raw.Result, &errMsg)
 			}
 			e = parseQueryError(errMsg, raw.Kind, raw.Details, raw.Cause)
 		}

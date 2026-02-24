@@ -95,7 +95,7 @@ func (h *TestLogHandler) Handle(ctx context.Context, r slog.Record) error {
 		var sb strings.Builder
 		for {
 			frame, more := frames.Next()
-			sb.WriteString(fmt.Sprintf("%s:%d ", frame.File, frame.Line))
+			fmt.Fprintf(&sb, "%s:%d ", frame.File, frame.Line)
 			if !more {
 				break
 			}

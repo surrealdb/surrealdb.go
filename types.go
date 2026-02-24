@@ -76,7 +76,7 @@ type Auth struct {
 	Scope     string `json:"SC,omitempty"`
 	Access    string `json:"AC,omitempty"`
 	Username  string `json:"user,omitempty"`
-	Password  string `json:"pass,omitempty"`
+	Password  string `json:"pass,omitempty"` //nolint:gosec // G117: user-supplied auth credential
 }
 
 // Deprecated: Use map[string]any instead

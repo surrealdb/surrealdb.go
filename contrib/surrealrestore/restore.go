@@ -197,7 +197,7 @@ func (r *Restorer) fullFromReader(ctx context.Context, currentNamespace, current
 						r.stats.TablesRestored++
 
 						if r.Verbose {
-							log.Printf("Restoring table: %s", tableKey)
+							log.Printf("Restoring table: %s", tableKey) //nolint:gosec // G706: tableKey is from parsed dump metadata
 						}
 					}
 
@@ -362,7 +362,8 @@ func (r *Restorer) incrementalFromReader(ctx context.Context, currentNamespace, 
 						currentDatabase = db
 					}
 					if r.Verbose {
-						log.Printf("Found incremental metadata: namespace=%s, database=%s", currentNamespace, currentDatabase)
+						log.Printf("Found incremental metadata: namespace=%s, database=%s", //nolint:gosec // G706
+							currentNamespace, currentDatabase)
 					}
 				}
 			}
@@ -381,7 +382,7 @@ func (r *Restorer) ensureNamespaceDatabase(ctx context.Context, ns, db string,
 		if _, err := surrealdb.Query[any](ctx, r.db, query, nil); err != nil {
 			// Namespace might already exist, which is fine
 			if r.Verbose {
-				log.Printf("Note: namespace %s might already exist", ns)
+				log.Printf("Note: namespace %s might already exist", ns) //nolint:gosec // G706: ns is from parsed dump metadata
 			}
 		} else {
 			r.stats.NamespacesCreated++
@@ -402,7 +403,7 @@ func (r *Restorer) ensureNamespaceDatabase(ctx context.Context, ns, db string,
 		if _, err := surrealdb.Query[any](ctx, r.db, query, nil); err != nil {
 			// Database might already exist, which is fine
 			if r.Verbose {
-				log.Printf("Note: database %s.%s might already exist", ns, db)
+				log.Printf("Note: database %s.%s might already exist", ns, db) //nolint:gosec // G706: values from config
 			}
 		} else {
 			r.stats.DatabasesCreated++

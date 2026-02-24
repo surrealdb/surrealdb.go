@@ -13,7 +13,7 @@ import (
 // a simple user struct for testing
 type testUser struct {
 	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	Password string `json:"password,omitempty"` //nolint:gosec // G117: test auth struct
 	ID       string `json:"id,omitempty"`
 }
 

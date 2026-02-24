@@ -40,7 +40,7 @@ type Config struct {
 
 	Endpoint string
 	Username string
-	Password string
+	Password string //nolint:gosec // G117: user-supplied auth credential
 
 	// Input options (mutually exclusive: Input OR Dir)
 

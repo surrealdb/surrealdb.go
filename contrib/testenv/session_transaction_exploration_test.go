@@ -349,7 +349,7 @@ func sendCustomHTTPRPC[T any](
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", info.token))
 
 	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) //nolint:gosec // G704: URL from trusted test config
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}

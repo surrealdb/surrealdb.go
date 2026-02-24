@@ -20,7 +20,7 @@ import (
 
 type testUser struct {
 	Username string           `json:"username,omitempty"`
-	Password string           `json:"password,omitempty"`
+	Password string           `json:"password,omitempty"` //nolint:gosec // G117: test auth struct
 	ID       *models.RecordID `json:"id,omitempty"`
 }
 

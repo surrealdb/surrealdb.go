@@ -12,7 +12,7 @@ type Config struct {
 	// Authentication username
 	Username string
 	// Authentication password
-	Password string
+	Password string //nolint:gosec // G117: user-supplied auth credential
 
 	// Namespace to dump
 	Namespace string
