@@ -4,27 +4,26 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
 // ================================================================= //
-//  Error parsing: new format (kind present)                          //
+//  V3 format: { "kind": "...", "details": ... } (internally-tagged) //
 // ================================================================= //
 
-func TestParseRpcError_NewFormat_NotAllowed_TokenExpired(t *testing.T) {
+func TestV3_NotAllowed_TokenExpired(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32002,
 		Kind:    "NotAllowed",
 		Message: "Token has expired",
-		Details: map[string]any{"Auth": "TokenExpired"},
+		Details: map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}},
 	})
 
 	assert.Equal(t, "NotAllowed", err.Kind())
 	assert.Equal(t, -32002, err.Code())
 	assert.Equal(t, "Token has expired", err.Error())
-	assert.Equal(t, map[string]any{"Auth": "TokenExpired"}, err.Details())
 	assert.Nil(t, err.ServerCause())
 
 	assert.True(t, err.IsTokenExpired())
@@ -34,7 +33,439 @@ func TestParseRpcError_NewFormat_NotAllowed_TokenExpired(t *testing.T) {
 	assert.Equal(t, "", err.FunctionName())
 }
 
-func TestParseRpcError_NewFormat_NotAllowed_InvalidAuth(t *testing.T) {
+func TestV3_NotAllowed_InvalidAuth(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32002,
+		Kind:    "NotAllowed",
+		Message: "There was a problem with authentication",
+		Details: map[string]any{"kind": "Auth", "details": map[string]any{"kind": "InvalidAuth"}},
+	})
+
+	assert.True(t, err.IsInvalidAuth())
+	assert.False(t, err.IsTokenExpired())
+}
+
+func TestV3_NotAllowed_Method(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32602,
+		Kind:    "NotAllowed",
+		Message: "Method not allowed",
+		Details: map[string]any{"kind": "Method", "details": map[string]any{"name": "begin"}},
+	})
+
+	assert.Equal(t, "begin", err.MethodName())
+	assert.False(t, err.IsTokenExpired())
+}
+
+func TestV3_NotAllowed_Scripting(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32602,
+		Kind:    "NotAllowed",
+		Message: "Scripting is blocked",
+		Details: map[string]any{"kind": "Scripting"},
+	})
+
+	assert.True(t, err.IsScriptingBlocked())
+}
+
+func TestV3_NotAllowed_Function(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32602,
+		Kind:    "NotAllowed",
+		Message: "Function not allowed",
+		Details: map[string]any{"kind": "Function", "details": map[string]any{"name": "fn::custom"}},
+	})
+
+	assert.Equal(t, "fn::custom", err.FunctionName())
+}
+
+func TestV3_NotFound_Table(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Table not found",
+		Details: map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}},
+	})
+
+	assert.Equal(t, "NotFound", err.Kind())
+	assert.Equal(t, "users", err.TableName())
+	assert.Equal(t, "", err.RecordID())
+	assert.Equal(t, "", err.MethodName())
+}
+
+func TestV3_NotFound_Record(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Record not found",
+		Details: map[string]any{"kind": "Record", "details": map[string]any{"id": "users:123"}},
+	})
+
+	assert.Equal(t, "users:123", err.RecordID())
+	assert.Equal(t, "", err.TableName())
+}
+
+func TestV3_NotFound_Method(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32601,
+		Kind:    "NotFound",
+		Message: "Method not found",
+		Details: map[string]any{"kind": "Method", "details": map[string]any{"name": "unknown_method"}},
+	})
+
+	assert.Equal(t, "unknown_method", err.MethodName())
+}
+
+func TestV3_NotFound_Namespace(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Namespace not found",
+		Details: map[string]any{"kind": "Namespace", "details": map[string]any{"name": "test"}},
+	})
+
+	assert.Equal(t, "test", err.NamespaceName())
+}
+
+func TestV3_NotFound_Database(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Database not found",
+		Details: map[string]any{"kind": "Database", "details": map[string]any{"name": "test"}},
+	})
+
+	assert.Equal(t, "test", err.DatabaseName())
+}
+
+func TestV3_NotFound_Session(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Session not found",
+		Details: map[string]any{"kind": "Session", "details": map[string]any{"id": "abc-123"}},
+	})
+
+	assert.Equal(t, "NotFound", err.Kind())
+}
+
+func TestV3_AlreadyExists_Record(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "AlreadyExists",
+		Message: "Database record `person:dup` already exists",
+		Details: map[string]any{"kind": "Record", "details": map[string]any{"id": "person:dup"}},
+	})
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "person:dup", err.RecordID())
+	assert.Equal(t, "", err.TableName())
+}
+
+func TestV3_AlreadyExists_Table(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "AlreadyExists",
+		Message: "Table already exists",
+		Details: map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}},
+	})
+
+	assert.Equal(t, "users", err.TableName())
+}
+
+func TestV3_Validation_Parse(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32700,
+		Kind:    "Validation",
+		Message: "Parse error",
+		Details: map[string]any{"kind": "Parse"},
+	})
+
+	assert.Equal(t, "Validation", err.Kind())
+	assert.True(t, err.IsParseError())
+	assert.Equal(t, "", err.ParameterName())
+}
+
+func TestV3_Validation_InvalidParameter(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32603,
+		Kind:    "Validation",
+		Message: "Invalid parameter",
+		Details: map[string]any{"kind": "InvalidParameter", "details": map[string]any{"name": "limit"}},
+	})
+
+	assert.Equal(t, "limit", err.ParameterName())
+	assert.False(t, err.IsParseError())
+}
+
+func TestV3_Query_NotExecuted(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32003,
+		Kind:    "Query",
+		Message: "Query not executed",
+		Details: map[string]any{"kind": "NotExecuted"},
+	})
+
+	assert.Equal(t, "Query", err.Kind())
+	assert.True(t, err.IsNotExecuted())
+	assert.False(t, err.IsTimedOut())
+	assert.False(t, err.IsCancelled())
+	_, _, ok := err.Timeout()
+	assert.False(t, ok)
+}
+
+func TestV3_Query_TimedOut(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32004,
+		Kind:    "Query",
+		Message: "Query timed out",
+		Details: map[string]any{
+			"kind": "TimedOut",
+			"details": map[string]any{
+				"duration": map[string]any{"secs": 5, "nanos": 0},
+			},
+		},
+	})
+
+	assert.True(t, err.IsTimedOut())
+	secs, nanos, ok := err.Timeout()
+	assert.True(t, ok)
+	assert.Equal(t, 5, secs)
+	assert.Equal(t, 0, nanos)
+}
+
+func TestV3_Query_Cancelled(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32005,
+		Kind:    "Query",
+		Message: "Query cancelled",
+		Details: map[string]any{"kind": "Cancelled"},
+	})
+
+	assert.True(t, err.IsCancelled())
+}
+
+func TestV3_Configuration_LiveQuery(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32604,
+		Kind:    "Configuration",
+		Message: "Live queries not supported",
+		Details: map[string]any{"kind": "LiveQueryNotSupported"},
+	})
+
+	assert.Equal(t, "Configuration", err.Kind())
+	assert.True(t, err.IsLiveQueryNotSupported())
+}
+
+func TestV3_Serialization_Deserialization(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32008,
+		Kind:    "Serialization",
+		Message: "Deserialization failed",
+		Details: map[string]any{"kind": "Deserialization"},
+	})
+
+	assert.Equal(t, "Serialization", err.Kind())
+	assert.True(t, err.IsDeserialization())
+}
+
+func TestV3_Thrown(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32006,
+		Kind:    "Thrown",
+		Message: "Custom user error",
+	})
+
+	assert.Equal(t, "Thrown", err.Kind())
+	assert.Equal(t, "Custom user error", err.Error())
+}
+
+func TestV3_Internal(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "Internal",
+		Message: "Something went wrong",
+	})
+
+	assert.Equal(t, "Internal", err.Kind())
+}
+
+func TestV3_NoDetails(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "NotFound",
+		Message: "Not found",
+	})
+
+	assert.Equal(t, "NotFound", err.Kind())
+	assert.Nil(t, err.Details())
+	assert.Equal(t, "", err.TableName())
+	assert.Equal(t, "", err.RecordID())
+}
+
+func TestV3_NilDetails(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32000,
+		Kind:    "Internal",
+		Message: "Error",
+		Details: nil,
+	})
+
+	assert.Nil(t, err.Details())
+}
+
+// ================================================================= //
+//  V3 format: query result errors                                    //
+// ================================================================= //
+
+func TestV3_QueryError_NotFound(t *testing.T) {
+	err := parseQueryError(
+		"Table not found",
+		"NotFound",
+		map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}},
+		nil,
+	)
+
+	assert.Equal(t, "NotFound", err.Kind())
+	assert.Equal(t, 0, err.Code())
+	assert.Equal(t, "Table not found", err.Error())
+	assert.Equal(t, "users", err.TableName())
+}
+
+func TestV3_QueryError_AlreadyExists(t *testing.T) {
+	err := parseQueryError(
+		"Database record `person:dup` already exists",
+		"AlreadyExists",
+		map[string]any{"kind": "Record", "details": map[string]any{"id": "person:dup"}},
+		nil,
+	)
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "person:dup", err.RecordID())
+}
+
+func TestV3_QueryError_Thrown(t *testing.T) {
+	err := parseQueryError(
+		"An error occurred: custom user error",
+		"Thrown",
+		nil,
+		nil,
+	)
+
+	assert.Equal(t, "Thrown", err.Kind())
+	assert.Equal(t, 0, err.Code())
+	assert.Equal(t, "An error occurred: custom user error", err.Error())
+	assert.Nil(t, err.Details())
+}
+
+func TestV3_QueryError_OldFormat_MessageOnly(t *testing.T) {
+	err := parseQueryError(
+		"There was a problem with the database: Table not found",
+		"",
+		nil,
+		nil,
+	)
+
+	assert.Equal(t, "Internal", err.Kind())
+	assert.Equal(t, 0, err.Code())
+	assert.Equal(t, "There was a problem with the database: Table not found", err.Error())
+	assert.Nil(t, err.Details())
+}
+
+func TestV3_QueryError_WithCause(t *testing.T) {
+	err := parseQueryError(
+		"Permission denied",
+		"NotAllowed",
+		map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}},
+		&connection.RPCError{
+			Code:    -32000,
+			Kind:    "Internal",
+			Message: "Session expired",
+		},
+	)
+
+	assert.Equal(t, "NotAllowed", err.Kind())
+	assert.True(t, err.IsTokenExpired())
+
+	cause := err.ServerCause()
+	require.NotNil(t, cause)
+	assert.Equal(t, "Internal", cause.Kind())
+	assert.Equal(t, "Session expired", cause.Error())
+}
+
+// ================================================================= //
+//  V3 format: double-wrapped details unwrapping                      //
+// ================================================================= //
+
+func TestV3_QueryError_DoubleWrappedDetails(t *testing.T) {
+	err := parseQueryError(
+		"Record already exists",
+		"AlreadyExists",
+		map[string]any{
+			"kind": "AlreadyExists",
+			"details": map[string]any{
+				"kind":    "Record",
+				"details": map[string]any{"id": "person:dup"},
+			},
+		},
+		nil,
+	)
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	assert.Equal(t, "person:dup", err.RecordID())
+}
+
+func TestV3_QueryError_DoubleWrappedDetails_NotFound(t *testing.T) {
+	err := parseQueryError(
+		"Table not found",
+		"NotFound",
+		map[string]any{
+			"kind": "NotFound",
+			"details": map[string]any{
+				"kind":    "Table",
+				"details": map[string]any{"name": "users"},
+			},
+		},
+		nil,
+	)
+
+	assert.Equal(t, "NotFound", err.Kind())
+	assert.Equal(t, "users", err.TableName())
+}
+
+func TestV3_QueryError_DoubleWrappedDetails_KindMismatchNotUnwrapped(t *testing.T) {
+	details := map[string]any{
+		"kind": "NotFound",
+		"details": map[string]any{
+			"kind":    "Table",
+			"details": map[string]any{"name": "users"},
+		},
+	}
+
+	err := parseQueryError("Error", "AlreadyExists", details, nil)
+
+	assert.Equal(t, "AlreadyExists", err.Kind())
+	// Should NOT unwrap because outer kind "NotFound" != error kind "AlreadyExists"
+	assert.Equal(t, "", err.TableName())
+}
+
+// ================================================================= //
+//  Old format backward compatibility (externally-tagged)             //
+// ================================================================= //
+
+func TestOldFormat_NotAllowed_TokenExpired(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{
+		Code:    -32002,
+		Kind:    "NotAllowed",
+		Message: "Token has expired",
+		Details: map[string]any{"Auth": "TokenExpired"},
+	})
+
+	assert.True(t, err.IsTokenExpired())
+	assert.False(t, err.IsInvalidAuth())
+}
+
+func TestOldFormat_NotAllowed_InvalidAuth(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32002,
 		Kind:    "NotAllowed",
@@ -46,7 +477,7 @@ func TestParseRpcError_NewFormat_NotAllowed_InvalidAuth(t *testing.T) {
 	assert.False(t, err.IsTokenExpired())
 }
 
-func TestParseRpcError_NewFormat_NotAllowed_Method(t *testing.T) {
+func TestOldFormat_NotAllowed_Method(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32602,
 		Kind:    "NotAllowed",
@@ -55,10 +486,9 @@ func TestParseRpcError_NewFormat_NotAllowed_Method(t *testing.T) {
 	})
 
 	assert.Equal(t, "begin", err.MethodName())
-	assert.False(t, err.IsTokenExpired())
 }
 
-func TestParseRpcError_NewFormat_NotAllowed_Scripting(t *testing.T) {
+func TestOldFormat_NotAllowed_Scripting(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32602,
 		Kind:    "NotAllowed",
@@ -69,7 +499,7 @@ func TestParseRpcError_NewFormat_NotAllowed_Scripting(t *testing.T) {
 	assert.True(t, err.IsScriptingBlocked())
 }
 
-func TestParseRpcError_NewFormat_NotAllowed_Function(t *testing.T) {
+func TestOldFormat_NotAllowed_Function(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32602,
 		Kind:    "NotAllowed",
@@ -80,7 +510,7 @@ func TestParseRpcError_NewFormat_NotAllowed_Function(t *testing.T) {
 	assert.Equal(t, "fn::custom", err.FunctionName())
 }
 
-func TestParseRpcError_NewFormat_NotFound_Table(t *testing.T) {
+func TestOldFormat_NotFound_Table(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "NotFound",
@@ -88,13 +518,11 @@ func TestParseRpcError_NewFormat_NotFound_Table(t *testing.T) {
 		Details: map[string]any{"Table": map[string]any{"name": "users"}},
 	})
 
-	assert.Equal(t, "NotFound", err.Kind())
 	assert.Equal(t, "users", err.TableName())
 	assert.Equal(t, "", err.RecordID())
-	assert.Equal(t, "", err.MethodName())
 }
 
-func TestParseRpcError_NewFormat_NotFound_Record(t *testing.T) {
+func TestOldFormat_NotFound_Record(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "NotFound",
@@ -103,21 +531,9 @@ func TestParseRpcError_NewFormat_NotFound_Record(t *testing.T) {
 	})
 
 	assert.Equal(t, "users:123", err.RecordID())
-	assert.Equal(t, "", err.TableName())
 }
 
-func TestParseRpcError_NewFormat_NotFound_Method(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32601,
-		Kind:    "NotFound",
-		Message: "Method not found",
-		Details: map[string]any{"Method": map[string]any{"name": "unknown_method"}},
-	})
-
-	assert.Equal(t, "unknown_method", err.MethodName())
-}
-
-func TestParseRpcError_NewFormat_NotFound_Namespace(t *testing.T) {
+func TestOldFormat_NotFound_Namespace(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "NotFound",
@@ -128,7 +544,7 @@ func TestParseRpcError_NewFormat_NotFound_Namespace(t *testing.T) {
 	assert.Equal(t, "test", err.NamespaceName())
 }
 
-func TestParseRpcError_NewFormat_NotFound_Database(t *testing.T) {
+func TestOldFormat_NotFound_Database(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "NotFound",
@@ -139,7 +555,7 @@ func TestParseRpcError_NewFormat_NotFound_Database(t *testing.T) {
 	assert.Equal(t, "test", err.DatabaseName())
 }
 
-func TestParseRpcError_NewFormat_AlreadyExists_Record(t *testing.T) {
+func TestOldFormat_AlreadyExists_Record(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "AlreadyExists",
@@ -147,12 +563,10 @@ func TestParseRpcError_NewFormat_AlreadyExists_Record(t *testing.T) {
 		Details: map[string]any{"Record": map[string]any{"id": "users:123"}},
 	})
 
-	assert.Equal(t, "AlreadyExists", err.Kind())
 	assert.Equal(t, "users:123", err.RecordID())
-	assert.Equal(t, "", err.TableName())
 }
 
-func TestParseRpcError_NewFormat_AlreadyExists_Table(t *testing.T) {
+func TestOldFormat_AlreadyExists_Table(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32000,
 		Kind:    "AlreadyExists",
@@ -163,7 +577,7 @@ func TestParseRpcError_NewFormat_AlreadyExists_Table(t *testing.T) {
 	assert.Equal(t, "users", err.TableName())
 }
 
-func TestParseRpcError_NewFormat_Validation_Parse(t *testing.T) {
+func TestOldFormat_Validation_Parse(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32700,
 		Kind:    "Validation",
@@ -171,12 +585,11 @@ func TestParseRpcError_NewFormat_Validation_Parse(t *testing.T) {
 		Details: "Parse",
 	})
 
-	assert.Equal(t, "Validation", err.Kind())
 	assert.True(t, err.IsParseError())
 	assert.Equal(t, "", err.ParameterName())
 }
 
-func TestParseRpcError_NewFormat_Validation_InvalidParameter(t *testing.T) {
+func TestOldFormat_Validation_InvalidParameter(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32603,
 		Kind:    "Validation",
@@ -185,10 +598,9 @@ func TestParseRpcError_NewFormat_Validation_InvalidParameter(t *testing.T) {
 	})
 
 	assert.Equal(t, "limit", err.ParameterName())
-	assert.False(t, err.IsParseError())
 }
 
-func TestParseRpcError_NewFormat_Query_NotExecuted(t *testing.T) {
+func TestOldFormat_Query_NotExecuted(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32003,
 		Kind:    "Query",
@@ -196,15 +608,10 @@ func TestParseRpcError_NewFormat_Query_NotExecuted(t *testing.T) {
 		Details: map[string]any{"NotExecuted": map[string]any{}},
 	})
 
-	assert.Equal(t, "Query", err.Kind())
 	assert.True(t, err.IsNotExecuted())
-	assert.False(t, err.IsTimedOut())
-	assert.False(t, err.IsCancelled())
-	_, _, ok := err.Timeout()
-	assert.False(t, ok)
 }
 
-func TestParseRpcError_NewFormat_Query_TimedOut(t *testing.T) {
+func TestOldFormat_Query_TimedOut(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32004,
 		Kind:    "Query",
@@ -223,7 +630,7 @@ func TestParseRpcError_NewFormat_Query_TimedOut(t *testing.T) {
 	assert.Equal(t, 0, nanos)
 }
 
-func TestParseRpcError_NewFormat_Query_Cancelled(t *testing.T) {
+func TestOldFormat_Query_Cancelled(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32005,
 		Kind:    "Query",
@@ -234,7 +641,7 @@ func TestParseRpcError_NewFormat_Query_Cancelled(t *testing.T) {
 	assert.True(t, err.IsCancelled())
 }
 
-func TestParseRpcError_NewFormat_Configuration_LiveQuery(t *testing.T) {
+func TestOldFormat_Configuration_LiveQuery(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32604,
 		Kind:    "Configuration",
@@ -242,11 +649,10 @@ func TestParseRpcError_NewFormat_Configuration_LiveQuery(t *testing.T) {
 		Details: map[string]any{"LiveQueryNotSupported": map[string]any{}},
 	})
 
-	assert.Equal(t, "Configuration", err.Kind())
 	assert.True(t, err.IsLiveQueryNotSupported())
 }
 
-func TestParseRpcError_NewFormat_Serialization_Deserialization(t *testing.T) {
+func TestOldFormat_Serialization_Deserialization(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
 		Code:    -32008,
 		Kind:    "Serialization",
@@ -254,60 +660,46 @@ func TestParseRpcError_NewFormat_Serialization_Deserialization(t *testing.T) {
 		Details: map[string]any{"Deserialization": map[string]any{}},
 	})
 
-	assert.Equal(t, "Serialization", err.Kind())
 	assert.True(t, err.IsDeserialization())
 }
 
-func TestParseRpcError_NewFormat_Thrown(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32006,
-		Kind:    "Thrown",
-		Message: "Custom user error",
-	})
-
-	assert.Equal(t, "Thrown", err.Kind())
-	assert.Equal(t, "Custom user error", err.Error())
-}
-
-func TestParseRpcError_NewFormat_Internal(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "Internal",
-		Message: "Something went wrong",
-	})
-
-	assert.Equal(t, "Internal", err.Kind())
-}
-
-func TestParseRpcError_NewFormat_NoDetails(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotFound",
-		Message: "Not found",
-	})
+func TestOldFormat_QueryError(t *testing.T) {
+	err := parseQueryError(
+		"Table not found",
+		"NotFound",
+		map[string]any{"Table": map[string]any{"name": "users"}},
+		nil,
+	)
 
 	assert.Equal(t, "NotFound", err.Kind())
-	assert.Nil(t, err.Details())
-	assert.Equal(t, "", err.TableName())
-	assert.Equal(t, "", err.RecordID())
+	assert.Equal(t, "users", err.TableName())
 }
 
-func TestParseRpcError_NewFormat_NilDetails(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "Internal",
-		Message: "Error",
-		Details: nil,
-	})
+func TestOldFormat_QueryError_WithCause(t *testing.T) {
+	err := parseQueryError(
+		"Permission denied",
+		"NotAllowed",
+		map[string]any{"Auth": "TokenExpired"},
+		&connection.RPCError{
+			Code:    -32000,
+			Kind:    "Internal",
+			Message: "Session expired",
+		},
+	)
 
-	assert.Nil(t, err.Details())
+	assert.Equal(t, "NotAllowed", err.Kind())
+	assert.True(t, err.IsTokenExpired())
+
+	cause := err.ServerCause()
+	require.NotNil(t, cause)
+	assert.Equal(t, "Internal", cause.Kind())
 }
 
 // ================================================================= //
-//  Error parsing: old format (kind absent, derive from code)         //
+//  Legacy code-to-kind mapping (no kind field, derive from code)     //
 // ================================================================= //
 
-func TestParseRpcError_OldFormat_LegacyCodeMapping(t *testing.T) {
+func TestLegacy_CodeToKindMapping(t *testing.T) {
 	tests := []struct {
 		code         int
 		expectedKind string
@@ -332,30 +724,18 @@ func TestParseRpcError_OldFormat_LegacyCodeMapping(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run("", func(t *testing.T) {
-			err := parseRpcError(&connection.RPCError{
-				Code:    tt.code,
-				Message: "test",
-			})
-			assert.Equal(t, tt.expectedKind, err.Kind())
-		})
+		err := parseRpcError(&connection.RPCError{Code: tt.code, Message: "test"})
+		assert.Equal(t, tt.expectedKind, err.Kind())
 	}
 }
 
-func TestParseRpcError_OldFormat_UnknownCodeMapsToInternal(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -99999,
-		Message: "Unknown",
-	})
-
+func TestLegacy_UnknownCodeMapsToInternal(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{Code: -99999, Message: "Unknown"})
 	assert.Equal(t, "Internal", err.Kind())
 }
 
-func TestParseRpcError_OldFormat_PreservesCodeAndMessage(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32002,
-		Message: "Invalid credentials",
-	})
+func TestLegacy_PreservesCodeAndMessage(t *testing.T) {
+	err := parseRpcError(&connection.RPCError{Code: -32002, Message: "Invalid credentials"})
 
 	assert.Equal(t, -32002, err.Code())
 	assert.Equal(t, "Invalid credentials", err.Error())
@@ -364,75 +744,16 @@ func TestParseRpcError_OldFormat_PreservesCodeAndMessage(t *testing.T) {
 }
 
 // ================================================================= //
-//  Error parsing: query result errors                                //
-// ================================================================= //
-
-func TestParseQueryError_NewFormat(t *testing.T) {
-	err := parseQueryError(
-		"Table not found",
-		"NotFound",
-		map[string]any{"Table": map[string]any{"name": "users"}},
-		nil,
-	)
-
-	assert.Equal(t, "NotFound", err.Kind())
-	assert.Equal(t, 0, err.Code())
-	assert.Equal(t, "Table not found", err.Error())
-	assert.Equal(t, "users", err.TableName())
-}
-
-func TestParseQueryError_OldFormat_MessageOnly(t *testing.T) {
-	err := parseQueryError(
-		"There was a problem with the database: Table not found",
-		"",
-		nil,
-		nil,
-	)
-
-	assert.Equal(t, "Internal", err.Kind())
-	assert.Equal(t, 0, err.Code())
-	assert.Equal(t, "There was a problem with the database: Table not found", err.Error())
-	assert.Nil(t, err.Details())
-}
-
-func TestParseQueryError_WithCauseChain(t *testing.T) {
-	err := parseQueryError(
-		"Permission denied",
-		"NotAllowed",
-		map[string]any{"Auth": "TokenExpired"},
-		&connection.RPCError{
-			Code:    -32000,
-			Kind:    "Internal",
-			Message: "Session expired",
-		},
-	)
-
-	assert.Equal(t, "NotAllowed", err.Kind())
-	assert.True(t, err.IsTokenExpired())
-
-	cause := err.ServerCause()
-	require.NotNil(t, cause)
-	assert.Equal(t, "Internal", cause.Kind())
-	assert.Equal(t, "Session expired", cause.Error())
-}
-
-// ================================================================= //
 //  Cause chain traversal                                             //
 // ================================================================= //
 
 func TestCauseChain_DeepParsedRecursively(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top level",
+		Code: -32000, Kind: "NotAllowed", Message: "Top level",
 		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "NotFound",
-			Message: "Middle",
+			Code: -32000, Kind: "NotFound", Message: "Middle",
 			Cause: &connection.RPCError{
-				Code:    -32000,
-				Kind:    "Internal",
-				Message: "Root cause",
+				Code: -32000, Kind: "Internal", Message: "Root cause",
 			},
 		},
 	})
@@ -452,13 +773,9 @@ func TestCauseChain_DeepParsedRecursively(t *testing.T) {
 
 func TestCauseChain_HasKindTraversesChain(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top",
+		Code: -32000, Kind: "NotAllowed", Message: "Top",
 		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "NotFound",
-			Message: "Nested",
+			Code: -32000, Kind: "NotFound", Message: "Nested",
 		},
 	})
 
@@ -469,14 +786,10 @@ func TestCauseChain_HasKindTraversesChain(t *testing.T) {
 
 func TestCauseChain_FindCauseReturnsMatchingError(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top",
+		Code: -32000, Kind: "NotAllowed", Message: "Top",
 		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "NotFound",
-			Message: "Nested not found",
-			Details: map[string]any{"Table": map[string]any{"name": "users"}},
+			Code: -32000, Kind: "NotFound", Message: "Nested not found",
+			Details: map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}},
 		},
 	})
 
@@ -488,36 +801,19 @@ func TestCauseChain_FindCauseReturnsMatchingError(t *testing.T) {
 }
 
 func TestCauseChain_FindCauseReturnsSelfIfMatch(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotFound",
-		Message: "Self",
-	})
-
-	found := err.FindCause("NotFound")
-	assert.Equal(t, err, found)
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "NotFound", Message: "Self"})
+	assert.Equal(t, err, err.FindCause("NotFound"))
 }
 
 func TestCauseChain_FindCauseReturnsNilWhenNotFound(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotFound",
-		Message: "No match",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "NotFound", Message: "No match"})
 	assert.Nil(t, err.FindCause("AlreadyExists"))
 }
 
 func TestCauseChain_UnwrapTraversal(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top",
-		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "Internal",
-			Message: "Bottom",
-		},
+		Code: -32000, Kind: "NotAllowed", Message: "Top",
+		Cause: &connection.RPCError{Code: -32000, Kind: "Internal", Message: "Bottom"},
 	})
 
 	unwrapped := errors.Unwrap(err)
@@ -537,21 +833,15 @@ func TestUnknownKinds_CreatesBaseServerError(t *testing.T) {
 		Code:    -32000,
 		Kind:    "FutureErrorKind",
 		Message: "Some new error",
-		Details: map[string]any{"SomeNewDetail": map[string]any{"foo": "bar"}},
+		Details: map[string]any{"kind": "SomeNewDetail", "details": map[string]any{"foo": "bar"}},
 	})
 
 	assert.Equal(t, "FutureErrorKind", err.Kind())
 	assert.Equal(t, "Some new error", err.Error())
-	assert.Equal(t, map[string]any{"SomeNewDetail": map[string]any{"foo": "bar"}}, err.Details())
 }
 
 func TestUnknownKinds_DoesNotLoseInformation(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "BrandNew",
-		Message: "Details preserved",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "BrandNew", Message: "Details preserved"})
 	assert.Equal(t, "BrandNew", err.Kind())
 }
 
@@ -573,12 +863,7 @@ func TestErrorKindConstants(t *testing.T) {
 }
 
 func TestErrorKindCanBeUsedForComparison(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotFound",
-		Message: "Test",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "NotFound", Message: "Test"})
 	assert.Equal(t, ErrorKindNotFound, err.Kind())
 }
 
@@ -587,11 +872,7 @@ func TestErrorKindCanBeUsedForComparison(t *testing.T) {
 // ================================================================= //
 
 func TestServerError_ImplementsError(t *testing.T) {
-	var err error = &ServerError{
-		kind:    "Internal",
-		message: "test",
-	}
-
+	var err error = &ServerError{kind: "Internal", message: "test"}
 	assert.Equal(t, "test", err.Error())
 }
 
@@ -622,26 +903,18 @@ func TestServerError_Is_DoesNotMatchOtherTypes(t *testing.T) {
 }
 
 // ================================================================= //
-//  Backward compatibility                                            //
+//  Backward compatibility aliases                                    //
 // ================================================================= //
 
 func TestBackwardCompat_QueryErrorIsServerError(t *testing.T) {
-	var qe *QueryError = &ServerError{
-		kind:    "Query",
-		message: "test",
-	}
+	var qe *QueryError = &ServerError{kind: "Query", message: "test"}
 
 	var se *ServerError
 	assert.True(t, errors.As(qe, &se))
 }
 
 func TestBackwardCompat_ErrorsIs_QueryError(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32003,
-		Kind:    "Query",
-		Message: "test",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32003, Kind: "Query", Message: "test"})
 	assert.True(t, errors.Is(err, &QueryError{}))
 }
 
@@ -650,128 +923,67 @@ func TestBackwardCompat_ErrorsIs_QueryError(t *testing.T) {
 // ================================================================= //
 
 func TestHelpers_IsServerError(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "Internal",
-		Message: "boom",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "Internal", Message: "boom"})
 	assert.True(t, IsServerError(err))
 	assert.False(t, IsServerError(errors.New("not a server error")))
 }
 
 func TestHelpers_IsNotAllowed(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32002,
-		Kind:    "NotAllowed",
-		Message: "Token expired",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32002, Kind: "NotAllowed", Message: "Token expired"})
 	assert.True(t, IsNotAllowed(err))
 	assert.False(t, IsNotFound(err))
 }
 
 func TestHelpers_IsNotFound(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32601,
-		Kind:    "NotFound",
-		Message: "Table not found",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32601, Kind: "NotFound", Message: "Table not found"})
 	assert.True(t, IsNotFound(err))
 	assert.False(t, IsNotAllowed(err))
 }
 
 func TestHelpers_IsAlreadyExists(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "AlreadyExists",
-		Message: "Record exists",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "AlreadyExists", Message: "Record exists"})
 	assert.True(t, IsAlreadyExists(err))
 }
 
 func TestHelpers_IsValidation(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32700,
-		Kind:    "Validation",
-		Message: "Parse error",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32700, Kind: "Validation", Message: "Parse error"})
 	assert.True(t, IsValidation(err))
 }
 
 func TestHelpers_IsConfiguration(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32604,
-		Kind:    "Configuration",
-		Message: "Not supported",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32604, Kind: "Configuration", Message: "Not supported"})
 	assert.True(t, IsConfiguration(err))
 }
 
 func TestHelpers_IsThrown(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32006,
-		Kind:    "Thrown",
-		Message: "User error",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32006, Kind: "Thrown", Message: "User error"})
 	assert.True(t, IsThrown(err))
 }
 
 func TestHelpers_IsQueryError(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32003,
-		Kind:    "Query",
-		Message: "Query failed",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32003, Kind: "Query", Message: "Query failed"})
 	assert.True(t, IsQueryError(err))
 }
 
 func TestHelpers_IsSerialization(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32007,
-		Kind:    "Serialization",
-		Message: "Serialization failed",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32007, Kind: "Serialization", Message: "Serialization failed"})
 	assert.True(t, IsSerialization(err))
 }
 
 func TestHelpers_IsConnectionError(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32001,
-		Kind:    "Connection",
-		Message: "Connection failed",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32001, Kind: "Connection", Message: "Connection failed"})
 	assert.True(t, IsConnectionError(err))
 }
 
 func TestHelpers_IsInternal(t *testing.T) {
-	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "Internal",
-		Message: "Internal error",
-	})
-
+	err := parseRpcError(&connection.RPCError{Code: -32000, Kind: "Internal", Message: "Internal error"})
 	assert.True(t, IsInternal(err))
 }
 
 func TestHelpers_HasKind(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top",
-		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "NotFound",
-			Message: "Nested",
-		},
+		Code: -32000, Kind: "NotAllowed", Message: "Top",
+		Cause: &connection.RPCError{Code: -32000, Kind: "NotFound", Message: "Nested"},
 	})
 
 	assert.True(t, HasKind(err, "NotAllowed"))
@@ -782,14 +994,10 @@ func TestHelpers_HasKind(t *testing.T) {
 
 func TestHelpers_FindCause(t *testing.T) {
 	err := parseRpcError(&connection.RPCError{
-		Code:    -32000,
-		Kind:    "NotAllowed",
-		Message: "Top",
+		Code: -32000, Kind: "NotAllowed", Message: "Top",
 		Cause: &connection.RPCError{
-			Code:    -32000,
-			Kind:    "NotFound",
-			Message: "Nested",
-			Details: map[string]any{"Table": map[string]any{"name": "users"}},
+			Code: -32000, Kind: "NotFound", Message: "Nested",
+			Details: map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}},
 		},
 	})
 
@@ -810,7 +1018,7 @@ func TestConvertError_RPCError(t *testing.T) {
 		Code:    -32002,
 		Kind:    "NotAllowed",
 		Message: "Token expired",
-		Details: map[string]any{"Auth": "TokenExpired"},
+		Details: map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}},
 	}
 
 	converted := convertError(rpcErr)
@@ -828,15 +1036,68 @@ func TestConvertError_NonRPCError_PassesThrough(t *testing.T) {
 }
 
 // ================================================================= //
-//  Detail helpers                                                    //
+//  Detail helpers: new format                                        //
 // ================================================================= //
 
-func TestHasDetailKey_String(t *testing.T) {
+func TestDetailKind(t *testing.T) {
+	assert.Equal(t, "Auth", detailKind(map[string]any{"kind": "Auth"}))
+	assert.Equal(t, "Parse", detailKind(map[string]any{"kind": "Parse"}))
+	assert.Equal(t, "", detailKind("Parse"))
+	assert.Equal(t, "", detailKind(nil))
+	assert.Equal(t, "", detailKind(map[string]any{"other": "value"}))
+}
+
+func TestDetailInner(t *testing.T) {
+	inner := detailInner(map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}})
+	assert.Equal(t, map[string]any{"kind": "TokenExpired"}, inner)
+
+	assert.Nil(t, detailInner(map[string]any{"kind": "Parse"}))
+	assert.Nil(t, detailInner("Parse"))
+	assert.Nil(t, detailInner(nil))
+}
+
+func TestHasDetailKey_V3_UnitVariant(t *testing.T) {
+	details := map[string]any{"kind": "Parse"}
+	assert.True(t, hasDetailKey(details, "Parse"))
+	assert.False(t, hasDetailKey(details, "Other"))
+}
+
+func TestHasDetailKey_V3_NewtypeVariant(t *testing.T) {
+	details := map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}}
+	assert.True(t, hasDetailKey(details, "Auth"))
+	assert.False(t, hasDetailKey(details, "TokenExpired"))
+}
+
+func TestGetDetailValue_V3(t *testing.T) {
+	details := map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}}
+	inner := getDetailValue(details, "Auth")
+	assert.Equal(t, map[string]any{"kind": "TokenExpired"}, inner)
+	assert.Nil(t, getDetailValue(details, "Missing"))
+}
+
+func TestGetDetailString_V3(t *testing.T) {
+	details := map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}}
+	assert.Equal(t, "TokenExpired", getDetailString(details, "Auth"))
+	assert.Equal(t, "", getDetailString(details, "Missing"))
+}
+
+func TestGetDetailMapString_V3(t *testing.T) {
+	details := map[string]any{"kind": "Table", "details": map[string]any{"name": "users"}}
+	assert.Equal(t, "users", getDetailMapString(details, "Table", "name"))
+	assert.Equal(t, "", getDetailMapString(details, "Table", "missing"))
+	assert.Equal(t, "", getDetailMapString(details, "Missing", "name"))
+}
+
+// ================================================================= //
+//  Detail helpers: old format (backward compat)                      //
+// ================================================================= //
+
+func TestHasDetailKey_Old_String(t *testing.T) {
 	assert.True(t, hasDetailKey("Parse", "Parse"))
 	assert.False(t, hasDetailKey("Parse", "Other"))
 }
 
-func TestHasDetailKey_Map(t *testing.T) {
+func TestHasDetailKey_Old_Map(t *testing.T) {
 	details := map[string]any{"Table": map[string]any{"name": "users"}}
 	assert.True(t, hasDetailKey(details, "Table"))
 	assert.False(t, hasDetailKey(details, "Record"))
@@ -846,13 +1107,13 @@ func TestHasDetailKey_Nil(t *testing.T) {
 	assert.False(t, hasDetailKey(nil, "anything"))
 }
 
-func TestGetDetailValue_Map(t *testing.T) {
+func TestGetDetailValue_Old_Map(t *testing.T) {
 	details := map[string]any{"Auth": "TokenExpired"}
 	assert.Equal(t, "TokenExpired", getDetailValue(details, "Auth"))
 	assert.Nil(t, getDetailValue(details, "Missing"))
 }
 
-func TestGetDetailValue_String(t *testing.T) {
+func TestGetDetailValue_Old_String(t *testing.T) {
 	assert.Nil(t, getDetailValue("Parse", "Parse"))
 }
 
@@ -860,10 +1121,8 @@ func TestGetDetailValue_Nil(t *testing.T) {
 	assert.Nil(t, getDetailValue(nil, "anything"))
 }
 
-func TestGetDetailMapString(t *testing.T) {
-	details := map[string]any{
-		"Table": map[string]any{"name": "users"},
-	}
+func TestGetDetailMapString_Old(t *testing.T) {
+	details := map[string]any{"Table": map[string]any{"name": "users"}}
 	assert.Equal(t, "users", getDetailMapString(details, "Table", "name"))
 	assert.Equal(t, "", getDetailMapString(details, "Table", "missing"))
 	assert.Equal(t, "", getDetailMapString(details, "Missing", "name"))
@@ -917,7 +1176,6 @@ func TestCatchAll_ServerErrorViaErrorsAs(t *testing.T) {
 
 func TestCatchAll_NonServerError_DoesNotMatch(t *testing.T) {
 	err := errors.New("not a server error")
-
 	var se *ServerError
 	assert.False(t, errors.As(err, &se))
 }

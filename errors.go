@@ -63,13 +63,53 @@ func resolveKind(kind string, code int) string {
 }
 
 // ------------------------------------------------------------------ //
-//  Detail helpers (serde externally-tagged enum navigation)           //
+//  Detail helpers                                                     //
 // ------------------------------------------------------------------ //
+//
+// SurrealDB v3 switched from serde externally-tagged enums to a
+// recursive { "kind": "...", "details": ... } format for error details.
+//
+// Old (v2, externally-tagged):
+//   Unit:    "Parse"
+//   Newtype: { "Auth": "TokenExpired" }
+//   Struct:  { "Table": { "name": "users" } }
+//
+// New (v3, internally-tagged):
+//   Unit:    { "kind": "Parse" }
+//   Newtype: { "kind": "Auth", "details": { "kind": "TokenExpired" } }
+//   Struct:  { "kind": "Table", "details": { "name": "users" } }
+//
+// All helpers support both formats for backward compatibility.
 
-// hasDetailKey checks if details contains key (handles serde tagged format).
-// Unit variants: "VariantName" (top-level string)
-// Struct/newtype variants: { "VariantName": ... } (object key)
+// detailKind returns the "kind" string from a { kind, details? } detail
+// object. Returns "" if details is not in internally-tagged format.
+func detailKind(details any) string {
+	m, ok := details.(map[string]any)
+	if !ok {
+		return ""
+	}
+	k, _ := m["kind"].(string)
+	return k
+}
+
+// detailInner returns the "details" value from a { kind, details? }
+// detail object. Returns nil if not present.
+func detailInner(details any) any {
+	m, ok := details.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m["details"]
+}
+
+// hasDetailKey checks if details matches the given variant key.
+// Supports both old and new formats.
 func hasDetailKey(details any, key string) bool {
+	// New format: { "kind": "Parse" }
+	if detailKind(details) == key {
+		return true
+	}
+	// Old format: "Parse" (bare string) or { "Parse": ... } (map key)
 	switch d := details.(type) {
 	case string:
 		return d == key
@@ -80,18 +120,47 @@ func hasDetailKey(details any, key string) bool {
 	return false
 }
 
-// getDetailValue gets the value for key from details.
-// Returns nil if key is not present or details is a string/nil.
+// getDetailValue returns the inner value for a given variant key.
+// New format: if kind == key, returns details["details"].
+// Old format: returns details[key].
 func getDetailValue(details any, key string) any {
+	// New format: { "kind": "Auth", "details": { "kind": "TokenExpired" } }
+	if detailKind(details) == key {
+		return detailInner(details)
+	}
+	// Old format: { "Auth": "TokenExpired" }
 	if d, ok := details.(map[string]any); ok {
 		return d[key]
 	}
 	return nil
 }
 
-// getDetailMapString extracts a string field from a nested detail map.
-// For example, getDetailMapString(details, "Table", "name") extracts
-// the "name" field from { "Table": { "name": "users" } }.
+// getDetailString returns a string from the inner details of a variant.
+// New format: if kind == key and details["details"] is { "kind": val }, returns val.
+// Also handles direct string inner for old newtype variants.
+func getDetailString(details any, key string) string {
+	inner := getDetailValue(details, key)
+	if inner == nil {
+		return ""
+	}
+	// New format newtype: inner is { "kind": "TokenExpired" }
+	if k := detailKind(inner); k != "" {
+		return k
+	}
+	// Old format newtype: inner is "TokenExpired"
+	if s, ok := inner.(string); ok {
+		return s
+	}
+	return ""
+}
+
+// getDetailMapString extracts a string field from a variant's inner details.
+//
+// New format: { "kind": "Table", "details": { "name": "users" } }
+//   -> getDetailMapString(d, "Table", "name") returns "users"
+//
+// Old format: { "Table": { "name": "users" } }
+//   -> getDetailMapString(d, "Table", "name") returns "users"
 func getDetailMapString(details any, key, field string) string {
 	v := getDetailValue(details, key)
 	if m, ok := v.(map[string]any); ok {
@@ -142,9 +211,10 @@ func (e *ServerError) Code() int {
 }
 
 // Details returns the kind-specific structured details.
-// The value is either a string (for unit variants like "Parse"),
-// a map[string]any (for struct variants like {"Table": {"name": "users"}}),
-// or nil when not provided by the server.
+// In SurrealDB v3, this follows the { "kind": "...", "details": ... } format.
+// In older versions, this may be a string (unit variants) or a map with the
+// variant name as key (externally-tagged format).
+// Returns nil when not provided by the server.
 func (e *ServerError) Details() any {
 	return e.details
 }
@@ -279,13 +349,13 @@ func (e *ServerError) IsDeserialization() bool {
 // IsTokenExpired returns true if the auth token has expired.
 // Only meaningful when Kind() is ErrorKindNotAllowed.
 func (e *ServerError) IsTokenExpired() bool {
-	return getDetailValue(e.details, "Auth") == "TokenExpired"
+	return getDetailString(e.details, "Auth") == "TokenExpired"
 }
 
 // IsInvalidAuth returns true if authentication credentials are invalid.
 // Only meaningful when Kind() is ErrorKindNotAllowed.
 func (e *ServerError) IsInvalidAuth() bool {
-	return getDetailValue(e.details, "Auth") == "InvalidAuth"
+	return getDetailString(e.details, "Auth") == "InvalidAuth"
 }
 
 // IsScriptingBlocked returns true if scripting is blocked.
@@ -355,13 +425,28 @@ func parseRpcError(raw *connection.RPCError) *ServerError {
 
 // parseQueryError parses a query result error into a *ServerError.
 // Query result errors use result as the message field and have no code.
+//
+// The server's query result path may double-wrap details: the outer object
+// duplicates the error kind (e.g. { "kind": "AlreadyExists", "details":
+// { "kind": "Record", ... } }). When the outer kind matches the resolved
+// error kind, we unwrap to expose the inner detail directly.
 func parseQueryError(message string, kind string, details any, rawCause *connection.RPCError) *ServerError {
 	var cause *ServerError
 	if rawCause != nil {
 		cause = parseRpcError(rawCause)
 	}
+
+	resolved := resolveKind(kind, 0)
+
+	// Unwrap double-wrapped details when the outer kind matches the error kind.
+	if dk := detailKind(details); dk != "" && dk == resolved {
+		if inner := detailInner(details); inner != nil {
+			details = inner
+		}
+	}
+
 	return &ServerError{
-		kind:    resolveKind(kind, 0),
+		kind:    resolved,
 		code:    0,
 		message: message,
 		details: details,
