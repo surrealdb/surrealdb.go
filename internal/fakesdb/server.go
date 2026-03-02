@@ -535,7 +535,7 @@ func (h *Handler) applyFailure(socket *gws.Conn, failure FailureConfig, req *con
 				return fmt.Errorf("failed to send corrupted message: %w", err)
 			}
 			for i := 0; i < len(data) && i < 10; i++ {
-				data[cryptoRandInt(len(data))] = byte(cryptoRandInt(256))
+				data[cryptoRandInt(len(data))] = byte(cryptoRandInt(256)) //nolint:gosec // 0-255 fits in byte
 			}
 			if err := socket.WriteMessage(gws.OpcodeBinary, data); err != nil {
 				log.Printf("Error writing corrupted message: %v", err)

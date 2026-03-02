@@ -80,7 +80,7 @@ func (q *ShowChangesForTableQuery) Build() (sql string, vars map[string]any) {
 	}
 
 	if q.limit > 0 {
-		builder.WriteString(fmt.Sprintf(" LIMIT %d", q.limit))
+		fmt.Fprintf(&builder, " LIMIT %d", q.limit)
 	}
 
 	return builder.String(), c.vars

@@ -107,7 +107,7 @@ func (q *DefineTableQuery) Build() (query string, params map[string]any) {
 	if len(q.permissions) > 0 {
 		builder.WriteString(" PERMISSIONS")
 		for _, p := range q.permissions {
-			builder.WriteString(fmt.Sprintf(" %s %s", strings.ToUpper(p.perm), p.value))
+			fmt.Fprintf(&builder, " %s %s", strings.ToUpper(p.perm), p.value)
 		}
 	}
 

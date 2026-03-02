@@ -282,7 +282,7 @@ func TestDecode_map_withAllSupportedTypes(t *testing.T) {
 			if num < 0 {
 				require.FailNowf(t, "Negative number found in AnyMap", "key: %s, value: %d", k, num)
 			}
-			expected.AnyMap[k] = uint64(num)
+			expected.AnyMap[k] = uint64(num) //nolint:gosec // num >= 0 is checked above
 		} else {
 			expected.AnyMap[k] = v
 		}
