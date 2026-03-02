@@ -101,6 +101,7 @@ type StubResponse struct {
 	// Result is the successful RPCResponse result to return (mutually exclusive with Error)
 	Result any
 	// Error is the error to return (mutually exclusive with Result)
+	//nolint:staticcheck //v2 backward compat with RPCError
 	Error *connection.RPCError
 	// Failures defines failure injection configurations for this response
 	Failures []FailureConfig
@@ -567,6 +568,7 @@ func (h *Handler) sendResponse(socket *gws.Conn, id, result any) {
 func (h *Handler) sendError(socket *gws.Conn, id any, code int, message string) {
 	var resp connection.RPCResponse[any]
 	resp.ID = id
+	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	resp.Error = &connection.RPCError{
 		Code:    code,
 		Message: message,
@@ -630,6 +632,7 @@ func SimpleStubResponse(method string, response any) StubResponse {
 func ErrorStubResponse(method string, code int, message string) StubResponse {
 	return StubResponse{
 		Matcher: MatchMethod(method),
+		//nolint:staticcheck // v2 backward compat with RPCError
 		Error: &connection.RPCError{
 			Code:    code,
 			Message: message,
