@@ -16,12 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # v3.0.0-beta.2 with Go 1.25.0
-          - surrealdb-version: 'v3.0.0-beta.2'
+          # v3.0.1 with Go 1.25.0
+          - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          - surrealdb-version: 'v3.0.0-beta.2'
+          - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
