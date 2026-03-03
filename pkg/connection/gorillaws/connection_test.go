@@ -147,6 +147,7 @@ func TestHandleResponse_ErrorWithoutID(t *testing.T) {
 	mockUnmarshal := &mockUnmarshaler{
 		unmarshalFunc: func(data []byte, v any) error {
 			if res, ok := v.(*connection.RPCResponse[cbor.RawMessage]); ok {
+				//nolint:staticcheck // v2 backward compat with RPCError
 				res.Error = &connection.RPCError{
 					Code:    -32600,
 					Message: "Invalid Request",

@@ -39,6 +39,16 @@ func TestRestorerFull(t *testing.T) {
 		t.Fatalf("Failed to init source db: %v", err)
 	}
 
+	// Check if this is SurrealDB 3.x - skip due to changefeed behavior changes
+	// This may be revisited once 3.0 GA is out and changefeed behavior is stable
+	v, vErr := testenv.GetVersion(ctx, sourceDB)
+	if vErr != nil {
+		t.Fatalf("Failed to get SurrealDB version: %v", vErr)
+	}
+	if v.IsV3OrLater() {
+		t.Skip("Skipping incremental dump/restore test on SurrealDB 3.x - changefeed behavior has changed significantly")
+	}
+
 	// Insert test data
 	type TestRecord struct {
 		ID   string `json:"id,omitempty"`

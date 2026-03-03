@@ -33,6 +33,14 @@ linters:
     goconst:
       min-len: 2
       min-occurrences: 3
+    gosec:
+      excludes:
+        # Password fields are fundamental to a DB SDK
+        - G117
+        # HTTP requests use URLs from user configuration, not tainted input
+        - G704
+        # Log messages contain DB metadata (namespace/table names), not user input
+        - G706
     gocritic:
       disabled-checks:
         - dupImport

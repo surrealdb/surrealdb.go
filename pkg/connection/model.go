@@ -1,10 +1,70 @@
 package connection
 
-// RPCError represents a JSON-RPC error
+import (
+	"errors"
+	"reflect"
+
+	"github.com/fxamacker/cbor/v2"
+)
+
+// wireDecMode is a CBOR decode mode that decodes maps with string keys
+// to map[string]any instead of map[any]any. This ensures the Details field
+// in wireError is always map[string]any for consistent detail helper behavior.
+var wireDecMode cbor.DecMode
+
+//nolint:gochecknoinits // init is used to set up the CBOR decode mode for wireError
+func init() {
+	var err error
+	wireDecMode, err = cbor.DecOptions{
+		DefaultMapType: reflect.TypeOf(map[string]any(nil)),
+	}.DecMode()
+	if err != nil {
+		panic(err)
+	}
+}
+
+// RPCError represents a JSON-RPC error from the SurrealDB server.
+//
+// On SurrealDB v3 servers, use errors.As to extract a *ServerError for richer
+// structured error information (Kind, Details, Cause).
+//
+// Deprecated: Use [ServerError] instead on SurrealDB v3 for richer error information.
+// TODO(v2-compat): Remove in next major release.
 type RPCError struct {
-	Code        int    `json:"code"`
-	Message     string `json:"message,omitempty"`
+	// Code is the JSON-RPC numeric error code.
+	// SurrealDB v2 and v3: Always present for RPC-level errors.
+	Code int `json:"code"`
+
+	// Message is the error message from the server.
+	// SurrealDB v2 and v3: Always present.
+	Message string `json:"message,omitempty"`
+
+	// Description is a human-readable description of the error.
+	// SurrealDB v2 only: Not populated by v3 servers.
+	// Use ServerError on SurrealDB v3 instead.
+	//
+	// Deprecated: Not populated by SurrealDB v3 servers.
+	// TODO(v2-compat): Remove in next major release.
 	Description string `json:"description,omitempty"`
+
+	// wire stores the full deserialized error data (v2 and v3 fields).
+	// RPCError.As delegates to wireError.As for errors.As extraction of *ServerError.
+	wire *wireError
+}
+
+// UnmarshalCBOR deserializes the RPC error from CBOR.
+// It first deserializes into wireError (capturing all v2+v3 fields),
+// then populates the v2 public fields and creates a ServerError for the v3 view.
+func (r *RPCError) UnmarshalCBOR(data []byte) error {
+	w := &wireError{}
+	if err := wireDecMode.Unmarshal(data, w); err != nil {
+		return err
+	}
+	r.Code = w.Code
+	r.Message = w.Message
+	r.Description = w.Description
+	r.wire = w
+	return nil
 }
 
 func (r RPCError) Error() string {
@@ -15,12 +75,16 @@ func (r RPCError) Error() string {
 }
 
 func (r *RPCError) Is(target error) bool {
-	if target == nil {
-		return r == nil
+	switch target.(type) {
+	case RPCError, *RPCError, ServerError, *ServerError:
+		return true
+	default:
+		return false
 	}
+}
 
-	_, ok := target.(*RPCError)
-	return ok
+func (r *RPCError) As(err any) bool {
+	return errors.As(r.wire, err)
 }
 
 // RPCRequest represents an incoming JSON-RPC request.

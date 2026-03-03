@@ -8,7 +8,22 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
+// Deprecated: Use [ServerError] instead on SurrealDB v3 for richer error information.
+// TODO(v2-compat): Remove in next major release.
+//
+//nolint:staticcheck // v2 backward compat with RPCError
 type RPCError = connection.RPCError
+
+// ServerError represents a structured error from SurrealDB v3.
+// Only use this when you know you are running against a SurrealDB v3 server.
+//
+// Extract from RPC errors using errors.As:
+//
+//	var se *surrealdb.ServerError
+//	if errors.As(err, &se) {
+//	    fmt.Println(se.Kind, se.Details)
+//	}
+type ServerError = connection.ServerError
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {
@@ -80,7 +95,7 @@ type Auth struct {
 	Scope     string `json:"SC,omitempty"`
 	Access    string `json:"AC,omitempty"`
 	Username  string `json:"user,omitempty"`
-	Password  string `json:"pass,omitempty"`
+	Password  string `json:"pass,omitempty"` //nolint:gosec // G117: user-supplied auth credential
 }
 
 // Deprecated: Use map[string]any instead
