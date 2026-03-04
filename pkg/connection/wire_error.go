@@ -14,6 +14,13 @@ type wireError struct {
 	Cause       *wireError `json:"cause,omitempty"`       // SurrealDB v3 only
 }
 
+// hasContent reports whether w carries any meaningful error data.
+// A zero-value wireError (e.g. from CBOR deserializing an empty cause object)
+// is treated as absent so it doesn't produce a spurious ServerError.Cause.
+func (w *wireError) hasContent() bool {
+	return w.Code != 0 || w.Message != "" || w.Kind != "" || w.Details != nil
+}
+
 func (w *wireError) Error() string {
 	if w == nil {
 		return "<nil>"
@@ -33,7 +40,7 @@ func (r *wireError) As(err any) bool {
 		e.Details = r.Details
 
 		var cause ServerError
-		if errors.As(r.Cause, &cause) {
+		if r.Cause != nil && r.Cause.hasContent() && errors.As(r.Cause, &cause) {
 			e.Cause = &cause
 		}
 
@@ -47,7 +54,7 @@ func (r *wireError) As(err any) bool {
 		}
 
 		var cause ServerError
-		if errors.As(r.Cause, &cause) {
+		if r.Cause != nil && r.Cause.hasContent() && errors.As(r.Cause, &cause) {
 			se.Cause = &cause
 		}
 
