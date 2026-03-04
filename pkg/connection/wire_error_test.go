@@ -97,3 +97,26 @@ func TestWireError_As_RPCError_And_ServerError(t *testing.T) {
 	// Error() joins the cause chain with ": ".
 	assert.Equal(t, "Token has expired: Session invalidated", se.Error())
 }
+
+// TestWireError_As_ZeroValueCause verifies that a non-nil but zero-value
+// *wireError cause (e.g. from CBOR deserializing an empty cause object)
+// does NOT produce a spurious ServerError.Cause.
+func TestWireError_As_ZeroValueCause(t *testing.T) {
+	w := &wireError{
+		Code:    -32002,
+		Message: "Auth failed",
+		Kind:    "NotAllowed",
+		Cause:   &wireError{}, // zero-value: server sent empty cause object
+	}
+
+	var se ServerError
+	require.True(t, errors.As(w, &se))
+	assert.Equal(t, -32002, se.Code)
+	assert.Equal(t, "Auth failed", se.Message)
+	assert.Equal(t, "NotAllowed", se.Kind)
+	assert.Nil(t, se.Cause, "zero-value wireError cause should not produce a ServerError.Cause")
+
+	var sePtr *ServerError
+	require.True(t, errors.As(w, &sePtr))
+	assert.Nil(t, sePtr.Cause, "zero-value wireError cause should not produce a ServerError.Cause (pointer)")
+}
