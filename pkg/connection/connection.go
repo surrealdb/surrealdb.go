@@ -110,7 +110,7 @@ func (bc *Toolkit) CreateNotificationChannel(liveQueryID string) (chan Notificat
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, liveQueryID)
 	}
 
-	ch := make(chan Notification)
+	ch := make(chan Notification, 16)
 	bc.NotificationChannels[liveQueryID] = ch
 
 	return ch, nil
@@ -173,4 +173,29 @@ func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 	close(ch)
 	delete(bc.NotificationChannels, liveQueryID)
 	return nil
+}
+
+// SendNotification safely sends a notification to the channel identified by id.
+// It holds the read lock during the send to prevent CloseLiveNotifications from
+// closing the channel concurrently, which would cause a "send on closed channel" panic.
+// Returns true if the notification was sent, false if the channel was not found
+// or was full (dropped).
+func (bc *Toolkit) SendNotification(id string, notification Notification) bool {
+	bc.NotificationChannelsLock.RLock()
+	ch, ok := bc.NotificationChannels[id]
+	if !ok {
+		bc.NotificationChannelsLock.RUnlock()
+		return false
+	}
+
+	select {
+	case ch <- notification:
+		bc.NotificationChannelsLock.RUnlock()
+		return true
+	default:
+		// Channel is full, drop the notification to avoid blocking
+		// while holding the read lock.
+		bc.NotificationChannelsLock.RUnlock()
+		return false
+	}
 }

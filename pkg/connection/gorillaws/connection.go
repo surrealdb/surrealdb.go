@@ -537,15 +537,11 @@ func (c *Connection) handleResponse(res []byte) {
 			return
 		}
 
-		LiveNotificationChan, ok := c.GetNotificationChannel(channelID.String())
-		if !ok {
+		if !c.SendNotification(channelID.String(), notification) {
 			c.logger.Error(
 				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
 				"result", fmt.Sprint(rpcRes.Result),
 			)
-			return
 		}
-
-		LiveNotificationChan <- notification
 	}
 }
