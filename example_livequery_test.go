@@ -150,6 +150,12 @@ func ExampleLive() {
 	done := make(chan bool)
 	go func() {
 		for notification := range notifications {
+			// KILLED is sent by the server when Kill() is called; the channel
+			// will be closed immediately after. Skip it — no result to process.
+			if notification.Action == connection.KilledAction {
+				continue
+			}
+
 			// Live queries without diff return the record as map[string]any
 			record, ok := notification.Result.(map[string]any)
 			if !ok {
@@ -272,6 +278,12 @@ func ExampleQuery_live() {
 	notificationCount := 0
 	go func() {
 		for notification := range notifications {
+			// KILLED is sent by the server when Kill() is called; the channel
+			// will be closed immediately after. Skip it — no result to process.
+			if notification.Action == connection.KilledAction {
+				continue
+			}
+
 			notificationCount++
 
 			// LIVE SELECT returns matching records as map[string]any
@@ -411,6 +423,13 @@ func ExampleLive_withDiff() {
 			// - SurrealDB 2.x: CREATE/UPDATE return []any diffs, DELETE returns map[string]any with {id: ...}
 			// - SurrealDB 3.x: All actions return []any diffs
 			switch result := notification.Result.(type) {
+			case nil:
+				// KILLED notification: server signals the live query has been
+				// terminated. The channel will close immediately after; skip.
+				if notification.Action == connection.KilledAction {
+					continue
+				}
+				panic(fmt.Sprintf("Unexpected nil result for action %s", notification.Action))
 			case []any:
 				// SurrealDB 3.x format (all actions) or 2.x format (CREATE/UPDATE only)
 				if notification.Action == connection.DeleteAction {
