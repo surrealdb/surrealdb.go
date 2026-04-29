@@ -13,4 +13,5 @@ const (
 	CreateAction Action = "CREATE"
 	UpdateAction Action = "UPDATE"
 	DeleteAction Action = "DELETE"
+	KilledAction Action = "KILLED"
 )
