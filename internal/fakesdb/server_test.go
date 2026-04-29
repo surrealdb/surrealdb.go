@@ -166,8 +166,10 @@ func TestAuthenticationFlow(t *testing.T) {
 			}
 		}()
 
-		// Generate token with short expiration
-		token, err := server.GenerateTokenWithExpiration("testuser", "mytoken", 100*time.Millisecond)
+		// Long enough for connect + Use + Authenticate + first query on a loaded CI
+		// runner; a very short TTL can expire before the first select runs.
+		const tokenTTL = 1 * time.Second
+		token, err := server.GenerateTokenWithExpiration("testuser", "mytoken", tokenTTL)
 		require.NoError(t, err)
 		require.Equal(t, "mytoken", token)
 
@@ -186,8 +188,8 @@ func TestAuthenticationFlow(t *testing.T) {
 		_, err = surrealdb.Select[map[string]any, string](ctx, db, "test:1")
 		assert.NoError(t, err)
 
-		// Wait for token to expire
-		time.Sleep(150 * time.Millisecond)
+		// Wait until after expiry (slightly past TTL for timer resolution)
+		time.Sleep(tokenTTL + 200*time.Millisecond)
 
 		// Query should fail with expired token
 		_, err = surrealdb.Select[map[string]any, string](ctx, db, "test:2")
