@@ -462,6 +462,16 @@ func (c *Connection) handleError(err error) bool {
 		return true
 	}
 
+	// Handle timeout and network errors to prevent readLoop from
+	// retrying on a dead connection, which can cause panics.
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		c.closeMutex.Lock()
+		c.connCloseError = err
+		c.closeMutex.Unlock()
+		return true
+	}
+
 	c.logger.Error(err.Error())
 	return false
 }
@@ -537,15 +547,11 @@ func (c *Connection) handleResponse(res []byte) {
 			return
 		}
 
-		LiveNotificationChan, ok := c.GetNotificationChannel(channelID.String())
-		if !ok {
+		if !c.SendNotification(channelID.String(), notification) {
 			c.logger.Error(
 				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
 				"result", fmt.Sprint(rpcRes.Result),
 			)
-			return
 		}
-
-		LiveNotificationChan <- notification
 	}
 }

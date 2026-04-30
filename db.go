@@ -149,6 +149,9 @@ func (db *DB) Use(ctx context.Context, ns, database string) error {
 func (db *DB) Info(ctx context.Context) (map[string]any, error) {
 	var info connection.RPCResponse[map[string]any]
 	err := connection.Send(db.con, ctx, &info, "info")
+	if info.Result == nil {
+		return nil, err
+	}
 	return *info.Result, err
 }
 

@@ -146,12 +146,11 @@ func (c *Connection) handleResponse(data []byte) {
 			return
 		}
 
-		notificationChan, ok := c.GetNotificationChannel(notification.ID.String())
-		if !ok {
-			return
+		if !c.SendNotification(notification.ID.String(), notification) {
+			c.logError(
+				fmt.Sprintf("unavailable NotificationChannel %+v", notification.ID.String()),
+			)
 		}
-
-		notificationChan <- notification
 	}
 }
 
