@@ -527,6 +527,74 @@ func (s *SurrealDBTestSuite) TestQueryRaw() {
 	s.Require().NoError(err)
 }
 
+func (s *SurrealDBTestSuite) TestVersion() {
+	s.Run("returns version data", func() {
+		ver, err := s.db.Version(context.Background())
+		s.Require().NoError(err)
+		s.Require().NotNil(ver)
+	})
+}
+
+func (s *SurrealDBTestSuite) TestLetUnset() {
+	s.Run("let sets variable readable via query", func() {
+		err := s.db.Let(context.Background(), "testvar", "hello")
+		s.Require().NoError(err)
+
+		result, err := surrealdb.Query[string](context.Background(), s.db, "RETURN $testvar", nil)
+		s.Require().NoError(err)
+		s.Require().NotNil(result)
+		s.Equal("hello", (*result)[0].Result)
+	})
+
+	s.Run("unset removes variable", func() {
+		err := s.db.Let(context.Background(), "testvar2", "world")
+		s.Require().NoError(err)
+
+		err = s.db.Unset(context.Background(), "testvar2")
+		s.Require().NoError(err)
+
+		result, err := surrealdb.Query[any](context.Background(), s.db, "RETURN $testvar2", nil)
+		s.Require().NoError(err)
+		s.Require().NotNil(result)
+		s.Nil((*result)[0].Result)
+	})
+}
+
+func (s *SurrealDBTestSuite) TestUpsert() {
+	s.Run("creates record if not exists", func() {
+		user, err := surrealdb.Upsert[testUser](context.Background(), s.db,
+			models.NewRecordID("users", "upsert1"),
+			testUser{Username: "upsert_user", Password: "pass"})
+		s.Require().NoError(err)
+		s.Require().NotNil(user)
+		s.Equal("upsert_user", user.Username)
+	})
+
+	s.Run("updates record if exists", func() {
+		_, err := surrealdb.Upsert[testUser](context.Background(), s.db,
+			models.NewRecordID("users", "upsert2"),
+			testUser{Username: "original", Password: "pass"})
+		s.Require().NoError(err)
+
+		user, err := surrealdb.Upsert[testUser](context.Background(), s.db,
+			models.NewRecordID("users", "upsert2"),
+			testUser{Username: "updated", Password: "pass"})
+		s.Require().NoError(err)
+		s.Require().NotNil(user)
+		s.Equal("updated", user.Username)
+	})
+}
+
+func (s *SurrealDBTestSuite) TestInvalidate() {
+	s.Run("invalidates session", func() {
+		err := s.db.Invalidate(context.Background())
+		s.Require().NoError(err)
+
+		// Re-sign in so other tests are not affected
+		_ = signIn(s)
+	})
+}
+
 func (s *SurrealDBTestSuite) TestRPCError() {
 	s.Run("Test valid query", func() {
 		_, err := surrealdb.Query[[]testUser](context.Background(), s.db, "SELECT * FROM users", map[string]any{})
