@@ -89,9 +89,16 @@ func ExampleQuery_transaction_throw() {
 		nil,
 	)
 
-	// Normalize error messages for version compatibility
+	// Normalize error messages for version compatibility.
+	//
 	// v2.x: "failed transaction"
 	// v3.x: uses British spelling in error messages
+	//
+	// Post surrealdb/surrealdb#7275 (fix for #7207) also emits a dedicated
+	// "Cannot COMMIT: the transaction was aborted due to a prior error" row
+	// for the failed COMMIT. That change is not yet in a released tag (latest
+	// is v3.0.5), so we strip the line here to keep the example output stable
+	// across v2.x, released v3.0.x and post-#7275 builds from main.
 	normalizeTransactionError := func(err error) string {
 		if err == nil {
 			return "<nil>"
@@ -99,15 +106,29 @@ func ExampleQuery_transaction_throw() {
 		s := err.Error()
 		s = strings.ReplaceAll(s, "cancelled transaction", "failed transaction") //nolint:misspell
 		s = strings.ReplaceAll(s, "canceled transaction", "failed transaction")
-		return s
+		lines := strings.Split(s, "\n")
+		kept := lines[:0]
+		for _, line := range lines {
+			if strings.HasPrefix(line, "Cannot COMMIT:") {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		return strings.Join(kept, "\n")
 	}
 
-	// Filter to only show ERR results (v3 adds OK results for BEGIN)
+	// Filter to only show ERR results (v3 adds OK results for BEGIN).
+	// Also skip the post-#7275 "Cannot COMMIT: ..." row for the same reason
+	// as above, so errResults length stays at 2 across SurrealDB versions.
 	var errResults []surrealdb.QueryResult[*int]
 	for _, r := range *queryResults {
-		if r.Status == "ERR" {
-			errResults = append(errResults, r)
+		if r.Status != "ERR" {
+			continue
 		}
+		if r.Error != nil && strings.HasPrefix(r.Error.Error(), "Cannot COMMIT:") {
+			continue
+		}
+		errResults = append(errResults, r)
 	}
 
 	fmt.Printf("# of ERR results: %d\n", len(errResults))
