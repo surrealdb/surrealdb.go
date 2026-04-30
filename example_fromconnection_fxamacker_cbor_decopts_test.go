@@ -31,7 +31,7 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_defaultLimit() {
 	conf.Logger = nil
 	conn := gorillaws.New(conf)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 	defer cancel()
 
 	db, err := surrealdb.FromConnection(ctx, conn)
@@ -83,7 +83,7 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit() {
 		conf.Logger = nil
 		conn := gws.New(conf)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 		defer cancel()
 
 		db, err := surrealdb.FromConnection(ctx, conn)
@@ -130,7 +130,7 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit() {
 		}
 		conn := gws.New(conf)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 		defer cancel()
 
 		db, err := surrealdb.FromConnection(ctx, conn)
@@ -187,7 +187,7 @@ func ExampleCborUnmarshaler_DecOptions_customLargeLimit() {
 	}
 	conn := gorillaws.New(conf)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 	defer cancel()
 
 	db, err := surrealdb.FromConnection(ctx, conn)
@@ -224,9 +224,29 @@ func ExampleCborUnmarshaler_DecOptions_customLargeLimit() {
 	// Successfully retrieved record with 20 items
 }
 
+// Timeouts used across the examples in this file.
+//
+// These are deliberately generous so that the examples do not flake on slow CI
+// runners where the initial WebSocket handshake, Use, SignIn and query round
+// trips can easily take longer than a second combined. They should still be
+// short enough to keep the example test suite fast in the happy path, since a
+// successful query resolves in milliseconds regardless of the upper bound.
+const (
+	// setupTimeout is shared across FromConnection + Use + SignIn in each example.
+	setupTimeout = 10 * time.Second
+	// queryTimeout bounds individual helper queries (DELETE/CREATE/SELECT).
+	//
+	// It must also be long enough to cover the intentionally-hung SELECT in
+	// ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit where
+	// the unmarshaler rejects the response and the request is drained via
+	// context cancellation — so making this huge directly increases the wall
+	// time of that example.
+	queryTimeout = 5 * time.Second
+)
+
 // setupTable prepares a clean table for testing by deleting any existing records
 func setupTable(db *surrealdb.DB, tableName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
 
 	// Clean up the table
@@ -236,7 +256,7 @@ func setupTable(db *surrealdb.DB, tableName string) {
 
 // createRecords creates a test record in the specified table
 func createRecords(db *surrealdb.DB, tableName string, arraySize int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
 
 	// Create array with specified number of elements
@@ -258,7 +278,7 @@ func createRecords(db *surrealdb.DB, tableName string, arraySize int) {
 }
 
 func selectRecords(db *surrealdb.DB, tableName string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
 
 	// Create test data structure
