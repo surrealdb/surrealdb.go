@@ -28,7 +28,7 @@
 //	hits, err := client.Recall(ctx, spectron.RecallRequest{Query: "what do I do at Acme"})
 //
 // All methods take a context.Context as the first argument; cancellation is
-// honoured by both regular requests and SSE streams.
+// honored by both regular requests and SSE streams.
 //
 // This package is bundled with the surrealdb.go module but does not share
 // transport or codec plumbing with the core SurrealDB client.

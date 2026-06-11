@@ -62,7 +62,7 @@ func frame(eventName, payload string) ChatChunk {
 }
 
 // iterateSSE consumes an SSE stream from r, yielding each frame as a
-// ChatChunk via yield. It honours ctx cancellation: when ctx is done, the
+// ChatChunk via yield. It honors ctx cancellation: when ctx is done, the
 // iterator stops without yielding a further error (the response body close
 // will already surface the cancellation to the caller of the outer call,
 // if needed).

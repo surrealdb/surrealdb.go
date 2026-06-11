@@ -54,7 +54,7 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"contentHash":"h","deduplicated":false,"id":"d1","status":"ok"}`)
+		_, _ = io.WriteString(w, `{"contentHash":"h","deduplicated":false,"id":"d1","status":"ready"}`)
 	}))
 	defer srv.Close()
 
@@ -68,15 +68,15 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 	resp, err := c.Documents().Upload(context.Background(), body,
 		WithFilename("returns.pdf"),
 		WithContentType("application/pdf"),
-		WithScope(Scope{"org": "acme", "user": "tobie"}),
+		WithScope(Scope{scopeAcme, "user/tobie"}),
 	)
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
 	}
-	if resp.ID != "d1" || resp.ContentHash != "h" || resp.Status != "ok" {
+	if resp.ID != "d1" || resp.ContentHash != "h" || resp.Status != DocReady {
 		t.Errorf("response = %+v", resp)
 	}
-	if gotPath != "/api/v1/ctx-1/documents" {
+	if gotPath != docsPath {
 		t.Errorf("path = %q", gotPath)
 	}
 	if string(gotFile) != "PDFBYTES" {
@@ -89,20 +89,13 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 		t.Errorf("file mime = %q", gotMime)
 	}
 
-	// Scope must be sent as a JSON list-of-pairs.
-	var scope []map[string]string
+	// Scope is sent as a JSON array of slash-path strings (spectron #218).
+	var scope []string
 	if err := json.Unmarshal([]byte(gotScope), &scope); err != nil {
 		t.Fatalf("scope json: %v (raw=%q)", err, gotScope)
 	}
-	if len(scope) != 2 {
-		t.Fatalf("scope len = %d", len(scope))
-	}
-	// Sorted by key.
-	if scope[0]["key"] != "org" || scope[0]["value"] != "acme" {
-		t.Errorf("scope[0] = %v", scope[0])
-	}
-	if scope[1]["key"] != "user" || scope[1]["value"] != "tobie" {
-		t.Errorf("scope[1] = %v", scope[1])
+	if len(scope) != 2 || scope[0] != scopeAcme || scope[1] != "user/tobie" {
+		t.Errorf("scope = %v", scope)
 	}
 }
 
@@ -132,7 +125,7 @@ func TestDocumentsUploadDefaultsAndSanitisation(t *testing.T) {
 		t.Fatalf("Upload: %v", err)
 	}
 	if strings.ContainsAny(gotFilename, "/\\") {
-		t.Errorf("filename should be sanitised, got %q", gotFilename)
+		t.Errorf("filename should be sanitized, got %q", gotFilename)
 	}
 }
 

@@ -18,11 +18,11 @@ import (
 //	    fmt.Println(apiErr.StatusCode, apiErr.TraceID)
 //	}
 var (
-	// ErrAuth signals a 401 — bearer token missing, malformed, or rejected.
+	// ErrAuth signals a 401: bearer token missing, malformed, or rejected.
 	ErrAuth = errors.New("spectron: authentication failed")
-	// ErrScope signals a 403 — token does not authorize the requested principal scope.
+	// ErrScope signals a 403: token does not authorize the requested principal scope.
 	ErrScope = errors.New("spectron: scope forbidden")
-	// ErrNotFound signals a 404 — addressed entity / document / session does not exist.
+	// ErrNotFound signals a 404: addressed entity, document, or session does not exist.
 	ErrNotFound = errors.New("spectron: not found")
 )
 

@@ -44,7 +44,7 @@ func WithScope(scope Scope) UploadOption {
 	return func(o *uploadOptions) { o.scope = scope }
 }
 
-// Upload uploads a document for the Client's context.
+// Upload ingests a new document into the Client's context (POST /documents).
 //
 // body supplies the file bytes; pass an *os.File for filesystem paths or
 // a bytes.Reader for in-memory uploads. The Reader is consumed in full
@@ -54,6 +54,17 @@ func WithScope(scope Scope) UploadOption {
 // Upload is not idempotent; transient failures are surfaced rather than
 // retried.
 func (d *Documents) Upload(ctx context.Context, body io.Reader, opts ...UploadOption) (*UploadResponse, error) {
+	return d.upload(ctx, http.MethodPost, d.client.base+"/documents", body, opts...)
+}
+
+// upload performs a multipart document write. method and path select the
+// endpoint so Upload (POST /documents) and Reprocess (PUT /documents/{id})
+// share one implementation.
+//
+// The OpenAPI spec leaves the multipart body for these endpoints undocumented;
+// the server expects a "file" part plus an optional JSON "scope" field, which
+// is the shape produced here.
+func (d *Documents) upload(ctx context.Context, method, path string, body io.Reader, opts ...UploadOption) (*UploadResponse, error) {
 	if body == nil {
 		return nil, &APIError{Message: "upload body is required"}
 	}
@@ -87,7 +98,7 @@ func (d *Documents) Upload(ctx context.Context, body io.Reader, opts ...UploadOp
 		return nil, &APIError{Message: fmt.Sprintf("write multipart file: %v", err)}
 	}
 
-	// Optional scope field, serialised as JSON to match Python's behaviour.
+	// Optional scope field, serialized as the JSON array of scope paths.
 	if len(o.scope) > 0 {
 		scopeJSON, err := json.Marshal(o.scope)
 		if err != nil {
@@ -109,10 +120,9 @@ func (d *Documents) Upload(ctx context.Context, body io.Reader, opts ...UploadOp
 		return nil, &APIError{Message: fmt.Sprintf("close multipart: %v", err)}
 	}
 
-	path := d.client.base + "/documents"
 	resp, err := d.client.do(
 		ctx,
-		http.MethodPost,
+		method,
 		path,
 		buf.Bytes(),
 		mw.FormDataContentType(),

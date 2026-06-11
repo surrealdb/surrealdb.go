@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+// headerOnBehalfOf is the delegation header. When a request carries it, the
+// server attributes the work to the named principal, subject to the calling
+// token's own grants. Set on a derived Client via [Client.OnBehalfOf].
+const headerOnBehalfOf = "X-Spectron-On-Behalf-Of"
+
 // Client is a Spectron API client pinned to a single context.
 //
 // A Client is safe for concurrent use; the underlying *http.Client is
@@ -26,15 +31,25 @@ type Client struct {
 	http      *http.Client
 	base      string // /api/v1/{context}
 
-	docs *Documents
+	// onBehalfOf, when non-empty, is sent as the X-Spectron-On-Behalf-Of
+	// delegation header on every request. Set via [Client.OnBehalfOf].
+	onBehalfOf string
+
+	docs       *Documents
+	entities   *Entities
+	scopes     *Scopes
+	sessions   *Sessions
+	principals *Principals
+	keys       *Keys
+	traces     *Traces
 }
 
 // New constructs a Spectron Client.
 //
 // All three positional arguments are required:
-//   - contextID — context id, e.g. "acme-prod".
-//   - endpoint  — full URL of the Spectron host, e.g. "https://api.spectron.example".
-//   - apiKey    — bearer token, sent as Authorization: Bearer <key>.
+//   - contextID: context id, e.g. "acme-prod".
+//   - endpoint:  full URL of the Spectron host, e.g. "https://api.spectron.example".
+//   - apiKey:    bearer token, sent as Authorization: Bearer <key>.
 //
 // Options may override timeout, retry cap, or user agent. The SDK never
 // reads environment variables; pass secrets explicitly.
@@ -62,12 +77,39 @@ func New(contextID, endpoint, apiKey string, opts ...Option) (*Client, error) {
 		http:      &http.Client{},
 		base:      "/api/v1/" + url.PathEscape(contextID),
 	}
-	c.docs = &Documents{client: c}
+	c.bindNamespaces()
 	return c, nil
 }
 
+// bindNamespaces (re)points every sub-client at c. Called once on construction
+// and again on each [Client.OnBehalfOf] clone so the sub-clients delegate too.
+func (c *Client) bindNamespaces() {
+	c.docs = &Documents{client: c}
+	c.entities = &Entities{client: c}
+	c.scopes = &Scopes{client: c}
+	c.sessions = &Sessions{client: c}
+	c.principals = &Principals{client: c}
+	c.keys = &Keys{client: c}
+	c.traces = &Traces{client: c}
+}
+
+// OnBehalfOf returns a derived Client that attributes every request to the
+// named principal via the X-Spectron-On-Behalf-Of header. The server still
+// enforces the calling token's own grants, so delegation can only narrow
+// access. The returned Client shares the underlying HTTP transport with the
+// receiver; do not call [Client.Close] on both. An empty principal id returns
+// an undelegated clone.
+//
+//	hits, err := client.OnBehalfOf("user:bob").Recall(ctx, req)
+func (c *Client) OnBehalfOf(principalID string) *Client {
+	clone := *c
+	clone.onBehalfOf = principalID
+	clone.bindNamespaces()
+	return &clone
+}
+
 // Close releases idle connections held by the Client. It is safe to call
-// multiple times. Outstanding in-flight requests are not cancelled.
+// multiple times. Outstanding in-flight requests are not canceled.
 func (c *Client) Close() error {
 	c.http.CloseIdleConnections()
 	return nil
@@ -81,6 +123,35 @@ func (c *Client) Endpoint() string { return c.endpoint }
 
 // Documents returns the document sub-client.
 func (c *Client) Documents() *Documents { return c.docs }
+
+// Entities returns the entity sub-client.
+func (c *Client) Entities() *Entities { return c.entities }
+
+// Scopes returns the scope sub-client.
+func (c *Client) Scopes() *Scopes { return c.scopes }
+
+// Sessions returns the session sub-client.
+func (c *Client) Sessions() *Sessions { return c.sessions }
+
+// Principals returns the principal sub-client.
+func (c *Client) Principals() *Principals { return c.principals }
+
+// Keys returns the self-service key sub-client.
+func (c *Client) Keys() *Keys { return c.keys }
+
+// Traces returns the trace sub-client.
+func (c *Client) Traces() *Traces { return c.traces }
+
+// getJSON issues a GET to path with the supplied query parameters and decodes
+// the JSON response into dst. GETs are safe to retry on 5xx and transport
+// failures, so they carry no Idempotency-Key but still pass through the retry
+// loop (see shouldRetry).
+func (c *Client) getJSON(ctx context.Context, path string, query url.Values, dst any) error {
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	return c.doJSON(ctx, http.MethodGet, path, nil, dst, false)
+}
 
 func (c *Client) buildURL(path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
@@ -182,6 +253,12 @@ func (c *Client) do(
 			headers.Set(k, v)
 		}
 	}
+	// Delegation: a Client derived via OnBehalfOf carries a principal id that is
+	// attributed to every request it issues. Applied here, the single transport
+	// choke point, so JSON, multipart, SSE, and raw reads all delegate alike.
+	if c.onBehalfOf != "" {
+		headers.Set(headerOnBehalfOf, c.onBehalfOf)
+	}
 	if stream {
 		// Caller asked for a streaming response; ask the server to keep the
 		// connection open.
@@ -252,7 +329,7 @@ func (c *Client) do(
 		}
 
 		// Successful response. For non-streaming calls we rely on the per-
-		// attempt timeout context already attached to the request; cancelling
+		// attempt timeout context already attached to the request; canceling
 		// it now would terminate the body read in flight. Keep the cancel
 		// alive by deferring it to body close via a wrapper.
 		if cancel != nil {
@@ -276,7 +353,7 @@ func (c *cancelOnClose) Close() error {
 	return err
 }
 
-// sleepCtx sleeps for d, returning early if ctx is cancelled.
+// sleepCtx sleeps for d, returning early if ctx is canceled.
 func sleepCtx(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()

@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// Shared test fixtures kept as constants so repeated literals do not trip
+// goconst across the test files in this package.
+const (
+	scopeAcme    = "team/acme"
+	sessionS1    = "s1"
+	principalBob = "user:bob"
+	docsPath     = "/api/v1/ctx-1/documents"
+)
+
 // newTestClient spins up a Spectron client pointing at the provided
 // httptest.Server with a short retry schedule for fast tests.
 func newTestClient(t *testing.T, srv *httptest.Server, opts ...Option) *Client {
@@ -37,20 +46,20 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 		gotCT = r.Header.Get("Content-Type")
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"mode":"fact","sessionId":"s1","turnId":"t1"}`)
+		_, _ = io.WriteString(w, `{"mode":"full","sessionId":"s1","turnId":"t1"}`)
 	}))
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
 	resp, err := c.Remember(context.Background(), RememberRequest{
 		Text:      "hi",
-		SessionID: "s1",
-		Scope:     Scope{"org": "acme"},
+		SessionID: sessionS1,
+		Scope:     Scope{scopeAcme},
 	})
 	if err != nil {
 		t.Fatalf("Remember: %v", err)
 	}
-	if resp.Mode != "fact" || resp.SessionID != "s1" || resp.TurnID != "t1" {
+	if resp.Mode != InferFull || resp.SessionID != sessionS1 || resp.TurnID != "t1" {
 		t.Errorf("unexpected response %+v", resp)
 	}
 	if gotMethod != "POST" {
@@ -71,14 +80,16 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	if gotBody["text"] != "hi" {
 		t.Errorf("body text = %v", gotBody["text"])
 	}
+	// The /facts request body is snake_case: session_id, not sessionId.
+	if gotBody["session_id"] != sessionS1 {
+		t.Errorf("session_id = %v (sessionId=%v)", gotBody["session_id"], gotBody["sessionId"])
+	}
+	// Scope is a plain JSON array of slash-path strings (spectron #218).
 	scope, ok := gotBody["scope"].([]any)
 	if !ok || len(scope) != 1 {
 		t.Errorf("scope wire shape = %#v", gotBody["scope"])
-	} else {
-		first := scope[0].(map[string]any)
-		if first["key"] != "org" || first["value"] != "acme" {
-			t.Errorf("scope[0] = %v", first)
-		}
+	} else if scope[0] != scopeAcme {
+		t.Errorf("scope[0] = %v", scope[0])
 	}
 }
 

@@ -65,6 +65,9 @@ func chatWirePayload(req ChatRequest, stream bool) map[string]any {
 	if len(req.Scope) > 0 {
 		out["scope"] = req.Scope
 	}
+	if len(req.Labels) > 0 {
+		out["labels"] = req.Labels
+	}
 	if req.Model != "" {
 		out["model"] = req.Model
 	}
