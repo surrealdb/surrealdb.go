@@ -18,7 +18,7 @@ var errNoUnmarshaler = fmt.Errorf("no custom unmarshaler found")
 // This avoids expensive Interface() calls for primitive types that definitely don't implement it
 func canImplementUnmarshaler(t reflect.Type) bool {
 	// Dereference pointer types to check the underlying type
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -59,7 +59,7 @@ type decoder struct {
 
 func (d *decoder) decode(v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return fmt.Errorf("unmarshal requires non-nil pointer")
 	}
 
@@ -96,7 +96,7 @@ func (d *decoder) decodeValue(v reflect.Value) error {
 	}
 
 	// Handle pointer types after checking for None/null
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			v.Set(reflect.New(v.Type().Elem()))
 		}

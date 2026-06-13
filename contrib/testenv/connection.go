@@ -330,8 +330,8 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 
 	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
 	// Explicitly define them after signing in as root to ensure they exist.
-	if err = DefineNamespaceAndDatabase(db, namespace, database); err != nil {
-		return nil, err
+	if defErr := DefineNamespaceAndDatabase(db, namespace, database); defErr != nil {
+		return nil, defErr
 	}
 
 	// If no tables specified, get all tables in the database
