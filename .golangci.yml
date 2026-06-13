@@ -33,6 +33,9 @@ linters:
     goconst:
       min-len: 2
       min-occurrences: 3
+      # Repeated string literals in tests (field names, fixture values) read
+      # more clearly inline than hoisted into shared constants.
+      ignore-tests: true
     gosec:
       excludes:
         # Password fields are fundamental to a DB SDK
