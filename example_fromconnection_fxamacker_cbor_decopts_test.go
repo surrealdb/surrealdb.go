@@ -53,6 +53,13 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_defaultLimit() {
 		panic(fmt.Sprintf("SignIn failed: %v", err))
 	}
 
+	// USE before SignIn leaves the namespace/database uncreated since
+	// SurrealDB 3.x (surrealdb/surrealdb#239), so define them explicitly now
+	// that we are signed in as root.
+	if err = testenv.DefineNamespaceAndDatabase(db, "example", "test"); err != nil {
+		panic(fmt.Sprintf("Failed to define namespace/database: %v", err))
+	}
+
 	// Setup table and ensure it's clean before test
 	tableName := "test_default_limit"
 	setupTable(db, tableName)
@@ -103,6 +110,13 @@ func ExampleFromConnection_cborUnmarshaler_decOptions_customSmallLimit() {
 		})
 		if err != nil {
 			panic(fmt.Sprintf("SignIn failed: %v", err))
+		}
+
+		// USE before SignIn leaves the namespace/database uncreated since
+		// SurrealDB 3.x (surrealdb/surrealdb#239), so define them explicitly
+		// now that we are signed in as root.
+		if err = testenv.DefineNamespaceAndDatabase(db, "example", "test"); err != nil {
+			panic(fmt.Sprintf("Failed to define namespace/database: %v", err))
 		}
 
 		// Setup table and ensure it's clean before test
@@ -207,6 +221,13 @@ func ExampleCborUnmarshaler_DecOptions_customLargeLimit() {
 	})
 	if err != nil {
 		panic(fmt.Sprintf("SignIn failed: %v", err))
+	}
+
+	// USE before SignIn leaves the namespace/database uncreated since
+	// SurrealDB 3.x (surrealdb/surrealdb#239), so define them explicitly now
+	// that we are signed in as root.
+	if err = testenv.DefineNamespaceAndDatabase(db, "example", "test"); err != nil {
+		panic(fmt.Sprintf("Failed to define namespace/database: %v", err))
 	}
 
 	// Setup table and ensure it's clean before test
