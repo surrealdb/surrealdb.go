@@ -43,17 +43,18 @@ func captureServer(t *testing.T, reply string, cs *capture) *httptest.Server {
 }
 
 func TestScopeMarshalNormalizes(t *testing.T) {
-	// Order-preserving de-dup, dropping empties (surrealdb.py #264 / ScopeSet).
-	b, err := json.Marshal(Scope{"team/acme", "", "org/acme", "team/acme"})
+	// Per-clause order-preserving de-dup, dropping empty paths and empty clauses
+	// (DNF ScopeSets contract, spectron #713).
+	b, err := json.Marshal(ScopeSets{{"team/acme", "", "team/acme"}, {}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if string(b) != `["team/acme","org/acme"]` {
+	if string(b) != `[["team/acme"]]` {
 		t.Errorf("normalized scope wire = %s", b)
 	}
-	// Empty scope marshals to an empty array (the field is omitted upstream via
-	// omitempty when the slice is empty).
-	if b, _ := json.Marshal(Scope{}); string(b) != `[]` {
+	// Empty selector marshals to an empty array (the field is omitted upstream
+	// via omitempty when the slice is empty).
+	if b, _ := json.Marshal(ScopeSets{}); string(b) != `[]` {
 		t.Errorf("empty scope wire = %s", b)
 	}
 }
@@ -65,21 +66,25 @@ func TestScopeDedupOnWire(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	if _, err := c.Remember(context.Background(), RememberRequest{
-		Text:  "x",
-		Scope: Scope{"team/acme", "", "team/acme", "org/acme"},
+		Text:   "x",
+		Scopes: ScopeSets{{"team/acme", "", "team/acme", "org/acme"}},
 	}); err != nil {
 		t.Fatalf("Remember: %v", err)
 	}
-	raw, ok := cs.body["scope"].([]any)
-	if !ok {
-		t.Fatalf("scope wire = %#v", cs.body["scope"])
+	raw, ok := cs.body["scopes"].([]any)
+	if !ok || len(raw) != 1 {
+		t.Fatalf("scopes wire = %#v", cs.body["scopes"])
 	}
-	got := make([]string, len(raw))
-	for i, v := range raw {
+	clause, ok := raw[0].([]any)
+	if !ok {
+		t.Fatalf("scopes clause = %#v", raw[0])
+	}
+	got := make([]string, len(clause))
+	for i, v := range clause {
 		got[i], _ = v.(string)
 	}
 	if len(got) != 2 || got[0] != "team/acme" || got[1] != "org/acme" {
-		t.Errorf("deduped scope = %v", got)
+		t.Errorf("deduped scope clause = %v", got)
 	}
 }
 
@@ -93,7 +98,7 @@ func TestRememberManyWireIsSnakeCase(t *testing.T) {
 		Messages:  []BatchMessage{{Role: RoleUser, Content: "hi"}},
 		SessionID: "s",
 		Extract:   ExtractWholeConversation,
-		Scope:     Scope{scopeAcme},
+		Scopes:    ScopeSets{{scopeAcme}},
 	})
 	if err != nil {
 		t.Fatalf("RememberMany: %v", err)
@@ -128,7 +133,7 @@ func TestRecallWireIsCamelCase(t *testing.T) {
 	resp, err := c.Recall(context.Background(), RecallRequest{
 		Query:  "q",
 		Mode:   MemoryModeHybrid,
-		Lens:   []string{scopeAcme},
+		Lens:   ScopeSets{{scopeAcme}},
 		Labels: []string{"tier=gold"},
 	})
 	if err != nil {
@@ -138,8 +143,12 @@ func TestRecallWireIsCamelCase(t *testing.T) {
 		t.Errorf("mode wire = %v", cs.body["mode"])
 	}
 	lens, ok := cs.body["lens"].([]any)
-	if !ok || len(lens) != 1 || lens[0] != scopeAcme {
-		t.Errorf("lens wire = %#v", cs.body["lens"])
+	if !ok || len(lens) != 1 {
+		t.Fatalf("lens wire = %#v", cs.body["lens"])
+	}
+	lensClause, ok := lens[0].([]any)
+	if !ok || len(lensClause) != 1 || lensClause[0] != scopeAcme {
+		t.Errorf("lens clause = %#v", lens[0])
 	}
 	if _, snake := cs.body["session_id"]; snake {
 		t.Errorf("query body must stay camelCase, found session_id")
@@ -216,12 +225,12 @@ func TestDocumentsQueryDecodesHit(t *testing.T) {
 
 func TestSessionsCreateScopeWire(t *testing.T) {
 	var cs capture
-	srv := captureServer(t, `{"id":"sess1","scope":["team/acme"],"createdAt":"now"}`, &cs)
+	srv := captureServer(t, `{"id":"sess1","scopes":[["team/acme"]],"createdAt":"now"}`, &cs)
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
 	sess, err := c.Sessions().Create(context.Background(), CreateSessionRequest{
-		Scope:    Scope{scopeAcme},
+		Scopes:   ScopeSets{{scopeAcme}},
 		Metadata: json.RawMessage(`{"source":"test"}`),
 	})
 	if err != nil {
@@ -230,11 +239,15 @@ func TestSessionsCreateScopeWire(t *testing.T) {
 	if cs.path != "/api/v1/ctx-1/sessions" {
 		t.Errorf("path = %q", cs.path)
 	}
-	scope, ok := cs.body["scope"].([]any)
-	if !ok || len(scope) != 1 || scope[0] != scopeAcme {
-		t.Errorf("scope wire = %#v", cs.body["scope"])
+	scopes, ok := cs.body["scopes"].([]any)
+	if !ok || len(scopes) != 1 {
+		t.Fatalf("scopes wire = %#v", cs.body["scopes"])
 	}
-	if sess.ID != "sess1" || len(sess.Scope) != 1 {
+	clause, ok := scopes[0].([]any)
+	if !ok || len(clause) != 1 || clause[0] != scopeAcme {
+		t.Errorf("scopes clause = %#v", scopes[0])
+	}
+	if sess.ID != "sess1" || len(sess.Scopes) != 1 {
 		t.Errorf("session = %+v", sess)
 	}
 }

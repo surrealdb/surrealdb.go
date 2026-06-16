@@ -23,7 +23,9 @@ type UploadOption func(*uploadOptions)
 type uploadOptions struct {
 	filename    string
 	contentType string
-	scope       Scope
+	scopes      ScopeSets
+	labels      []string
+	title       string
 }
 
 // WithFilename sets the filename advertised in the multipart Content-
@@ -38,10 +40,23 @@ func WithContentType(ct string) UploadOption {
 	return func(o *uploadOptions) { o.contentType = ct }
 }
 
-// WithScope attaches a principal scope to the upload. The scope is sent
-// as a JSON field in the multipart payload.
-func WithScope(scope Scope) UploadOption {
-	return func(o *uploadOptions) { o.scope = scope }
+// WithScopes attaches a DNF scope selector to the upload. The scopes are sent
+// in the "metadata" JSON part of the multipart payload (which the server reads
+// before the file part).
+func WithScopes(scopes ScopeSets) UploadOption {
+	return func(o *uploadOptions) { o.scopes = scopes }
+}
+
+// WithLabels attaches "key=value" labels to the upload. The labels are sent in
+// the "metadata" JSON part of the multipart payload.
+func WithLabels(labels []string) UploadOption {
+	return func(o *uploadOptions) { o.labels = labels }
+}
+
+// WithTitle sets the document title sent in the "metadata" JSON part of the
+// multipart payload.
+func WithTitle(title string) UploadOption {
+	return func(o *uploadOptions) { o.title = title }
 }
 
 // Upload ingests a new document into the Client's context (POST /documents).
@@ -61,9 +76,9 @@ func (d *Documents) Upload(ctx context.Context, body io.Reader, opts ...UploadOp
 // endpoint so Upload (POST /documents) and Reprocess (PUT /documents/{id})
 // share one implementation.
 //
-// The OpenAPI spec leaves the multipart body for these endpoints undocumented;
-// the server expects a "file" part plus an optional JSON "scope" field, which
-// is the shape produced here.
+// The body matches the spec's DocumentUploadForm: an optional "metadata" JSON
+// part (carrying scopes/labels/title) followed by the "file" part. The server
+// reads the metadata part before the file part, so it MUST be written first.
 func (d *Documents) upload(ctx context.Context, method, path string, body io.Reader, opts ...UploadOption) (*UploadResponse, error) {
 	if body == nil {
 		return nil, &APIError{Message: "upload body is required"}
@@ -84,6 +99,31 @@ func (d *Documents) upload(ctx context.Context, method, path string, body io.Rea
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 
+	// Optional metadata part, written before the file part so the server can
+	// read scopes/labels/title before it streams the bytes (matching
+	// UploadMetadataJson). Field names mirror the spec's camelCase shape.
+	if len(o.scopes) > 0 || len(o.labels) > 0 || o.title != "" {
+		meta := struct {
+			Scopes ScopeSets `json:"scopes,omitempty"`
+			Labels []string  `json:"labels,omitempty"`
+			Title  string    `json:"title,omitempty"`
+		}{Scopes: o.scopes, Labels: o.labels, Title: o.title}
+		metaJSON, err := json.Marshal(meta)
+		if err != nil {
+			return nil, &APIError{Message: fmt.Sprintf("marshal metadata: %v", err)}
+		}
+		metaHeader := textproto.MIMEHeader{}
+		metaHeader.Set("Content-Disposition", `form-data; name="metadata"`)
+		metaHeader.Set("Content-Type", "application/json")
+		metaPart, err := mw.CreatePart(metaHeader)
+		if err != nil {
+			return nil, &APIError{Message: fmt.Sprintf("build multipart: %v", err)}
+		}
+		if _, err := metaPart.Write(metaJSON); err != nil {
+			return nil, &APIError{Message: fmt.Sprintf("write multipart metadata: %v", err)}
+		}
+	}
+
 	// File part.
 	partHeader := textproto.MIMEHeader{}
 	partHeader.Set("Content-Disposition", fmt.Sprintf(
@@ -96,24 +136,6 @@ func (d *Documents) upload(ctx context.Context, method, path string, body io.Rea
 	}
 	if _, err := filePart.Write(fileBytes); err != nil {
 		return nil, &APIError{Message: fmt.Sprintf("write multipart file: %v", err)}
-	}
-
-	// Optional scope field, serialized as the JSON array of scope paths.
-	if len(o.scope) > 0 {
-		scopeJSON, err := json.Marshal(o.scope)
-		if err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("marshal scope: %v", err)}
-		}
-		fieldHeader := textproto.MIMEHeader{}
-		fieldHeader.Set("Content-Disposition", `form-data; name="scope"`)
-		fieldHeader.Set("Content-Type", "application/json")
-		fieldPart, err := mw.CreatePart(fieldHeader)
-		if err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("build multipart: %v", err)}
-		}
-		if _, err := fieldPart.Write(scopeJSON); err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("write multipart scope: %v", err)}
-		}
 	}
 
 	if err := mw.Close(); err != nil {

@@ -13,7 +13,7 @@ type Sessions struct {
 
 // CreateSessionRequest is the input to [Sessions.Create].
 type CreateSessionRequest struct {
-	Scope Scope `json:"scope,omitempty"`
+	Scopes ScopeSets `json:"scopes,omitempty"`
 	// Metadata is a free-form JSON object attached to the session. Encode it
 	// yourself (for example with json.Marshal) and pass the result here.
 	Metadata rawObject `json:"metadata,omitempty"`
@@ -21,9 +21,9 @@ type CreateSessionRequest struct {
 
 // Session is a conversational session in the context.
 type Session struct {
-	ID        string `json:"id"`
-	Scope     Scope  `json:"scope"`
-	CreatedAt string `json:"createdAt"`
+	ID        string    `json:"id"`
+	Scopes    ScopeSets `json:"scopes"`
+	CreatedAt string    `json:"createdAt"`
 }
 
 // Create opens a new session, optionally scoped and carrying metadata.

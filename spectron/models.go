@@ -2,31 +2,44 @@ package spectron
 
 import "encoding/json"
 
-// Scope is an ordered, de-duplicated set of hierarchical scope paths in
-// canonical slash form, e.g. "team/eng" or "org/apple/product/ipad". A
-// key/value pair is written as the two segments "key/value". Empty represents
-// the caller's default write region.
+// ScopeSets is a DNF (OR-of-ANDs) scope selector. The outer slice is an OR of
+// clauses; each inner clause is an AND of hierarchical scope paths in canonical
+// slash form (e.g. "team/eng", "org/apple/product/ipad"). A key/value pair is
+// written as the two segments "key/value". A single clause holding one path is
+// the common case. Empty represents the caller's default write region.
 //
-// On the wire it is a plain JSON array of strings. [Scope.MarshalJSON] drops
-// empty entries and de-duplicates while preserving first-seen order, mirroring
-// the server's ScopeSet contract; the order-stable output keeps the
-// Idempotency-Key stable across retries.
-type Scope []string
+// As an example, ScopeSets{{"team/a"}, {"team/b", "clearance/secret"}} means
+// "team/a OR (team/b AND clearance/secret)".
+//
+// On the wire it is a JSON array of arrays of strings, matching the server's
+// ScopeSets contract. [ScopeSets.MarshalJSON] drops empty paths, de-duplicates
+// paths within each clause while preserving first-seen order, and drops any
+// clause that ends up empty (the server rejects empty inner clauses); the
+// order-stable output keeps the Idempotency-Key stable across retries.
+type ScopeSets [][]string
 
-// MarshalJSON encodes the scope as an ordered, de-duplicated JSON string array,
-// dropping empty paths.
-func (s Scope) MarshalJSON() ([]byte, error) {
-	out := make([]string, 0, len(s))
-	seen := make(map[string]struct{}, len(s))
-	for _, path := range s {
-		if path == "" {
+// MarshalJSON encodes the selector as a JSON array of arrays of strings,
+// dropping empty paths, de-duplicating paths within each clause, and dropping
+// empty clauses.
+func (s ScopeSets) MarshalJSON() ([]byte, error) {
+	out := make([][]string, 0, len(s))
+	for _, clause := range s {
+		paths := make([]string, 0, len(clause))
+		seen := make(map[string]struct{}, len(clause))
+		for _, path := range clause {
+			if path == "" {
+				continue
+			}
+			if _, dup := seen[path]; dup {
+				continue
+			}
+			seen[path] = struct{}{}
+			paths = append(paths, path)
+		}
+		if len(paths) == 0 {
 			continue
 		}
-		if _, dup := seen[path]; dup {
-			continue
-		}
-		seen[path] = struct{}{}
-		out = append(out, path)
+		out = append(out, paths)
 	}
 	return json.Marshal(out)
 }
@@ -169,7 +182,7 @@ type RememberRequest struct {
 	Text           string          `json:"text,omitempty"`
 	Infer          InferMode       `json:"infer,omitempty"`
 	SessionID      string          `json:"session_id,omitempty"`
-	Scope          Scope           `json:"scope,omitempty"`
+	Scopes         ScopeSets       `json:"scopes,omitempty"`
 	Role           *TurnRole       `json:"role,omitempty"`
 	MemoryCategory *MemoryCategory `json:"memory_category,omitempty"`
 	Labels         []string        `json:"labels,omitempty"`
@@ -201,7 +214,7 @@ type RememberManyRequest struct {
 	Extract   BatchExtractionMode `json:"extract,omitempty"`
 	Infer     InferMode           `json:"infer,omitempty"`
 	SessionID string              `json:"session_id,omitempty"`
-	Scope     Scope               `json:"scope,omitempty"`
+	Scopes    ScopeSets           `json:"scopes,omitempty"`
 	Labels    []string            `json:"labels,omitempty"`
 }
 
@@ -221,7 +234,7 @@ type RecallRequest struct {
 	SessionID  string          `json:"sessionId,omitempty"`
 	Include    []string        `json:"include,omitempty"`
 	Labels     []string        `json:"labels,omitempty"`
-	Lens       []string        `json:"lens,omitempty"`
+	Lens       ScopeSets       `json:"lens,omitempty"`
 	ScopeView  string          `json:"scopeView,omitempty"`
 	Source     string          `json:"source,omitempty"`
 	Location   *GeoFilter      `json:"location,omitempty"`
@@ -267,12 +280,12 @@ type ForgetResponse struct {
 // ChatRequest is the input to [Client.Chat] and [Client.ChatStream]. It maps to
 // the spec's ChatRequestJson (camelCase body).
 type ChatRequest struct {
-	Message     string   `json:"message"`
-	SessionID   string   `json:"sessionId,omitempty"`
-	Scope       Scope    `json:"scope,omitempty"`
-	Model       string   `json:"model,omitempty"`
-	Labels      []string `json:"labels,omitempty"`
-	BypassCache bool     `json:"bypassCache,omitempty"`
+	Message     string    `json:"message"`
+	SessionID   string    `json:"sessionId,omitempty"`
+	Scopes      ScopeSets `json:"scopes,omitempty"`
+	Model       string    `json:"model,omitempty"`
+	Labels      []string  `json:"labels,omitempty"`
+	BypassCache bool      `json:"bypassCache,omitempty"`
 }
 
 // ChatResponse is the (non-streaming) result of [Client.Chat].

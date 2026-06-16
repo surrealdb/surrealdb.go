@@ -212,11 +212,11 @@ func (c *Client) Fsck(ctx context.Context, req FsckRequest) (*FsckReport, error)
 
 // ContextQueryRequest is the input to [Client.QueryContext].
 type ContextQueryRequest struct {
-	Query     string   `json:"query"`
-	K         int      `json:"k,omitempty"`
-	Labels    []string `json:"labels,omitempty"`
-	Lens      []string `json:"lens,omitempty"`
-	ScopeView string   `json:"scopeView,omitempty"`
+	Query     string    `json:"query"`
+	K         int       `json:"k,omitempty"`
+	Labels    []string  `json:"labels,omitempty"`
+	Lens      ScopeSets `json:"lens,omitempty"`
+	ScopeView string    `json:"scopeView,omitempty"`
 }
 
 // ContextQueryResponse is the result of [Client.QueryContext]: a single fused

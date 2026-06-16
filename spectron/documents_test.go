@@ -20,7 +20,7 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 		gotFile     []byte
 		gotFilename string
 		gotMime     string
-		gotScope    string
+		gotMetadata string
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +34,7 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 			t.Errorf("media type = %q", mediaType)
 		}
 		mr := multipart.NewReader(r.Body, params["boundary"])
+		var partOrder []string
 		for {
 			part, err := mr.NextPart()
 			if err == io.EOF {
@@ -43,15 +44,21 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 				t.Errorf("next part: %v", err)
 				return
 			}
+			partOrder = append(partOrder, part.FormName())
 			data, _ := io.ReadAll(part)
 			switch part.FormName() {
 			case "file":
 				gotFile = data
 				gotFilename = part.FileName()
 				gotMime = part.Header.Get("Content-Type")
-			case "scope":
-				gotScope = string(data)
+			case "metadata":
+				gotMetadata = string(data)
 			}
+		}
+		// The server reads the metadata part before it streams the file, so it
+		// must come first on the wire (spectron #713).
+		if len(partOrder) != 2 || partOrder[0] != "metadata" || partOrder[1] != "file" {
+			t.Errorf("part order = %v", partOrder)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"contentHash":"h","deduplicated":false,"id":"d1","status":"ready"}`)
@@ -68,7 +75,7 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 	resp, err := c.Documents().Upload(context.Background(), body,
 		WithFilename("returns.pdf"),
 		WithContentType("application/pdf"),
-		WithScope(Scope{scopeAcme, "user/tobie"}),
+		WithScopes(ScopeSets{{scopeAcme, "user/tobie"}}),
 	)
 	if err != nil {
 		t.Fatalf("Upload: %v", err)
@@ -89,13 +96,17 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 		t.Errorf("file mime = %q", gotMime)
 	}
 
-	// Scope is sent as a JSON array of slash-path strings (spectron #218).
-	var scope []string
-	if err := json.Unmarshal([]byte(gotScope), &scope); err != nil {
-		t.Fatalf("scope json: %v (raw=%q)", err, gotScope)
+	// Scope is sent in the "metadata" JSON part as a DNF selector: an array of
+	// clauses, each a string array of slash-paths (spectron #713).
+	var meta struct {
+		Scopes [][]string `json:"scopes"`
 	}
-	if len(scope) != 2 || scope[0] != scopeAcme || scope[1] != "user/tobie" {
-		t.Errorf("scope = %v", scope)
+	if err := json.Unmarshal([]byte(gotMetadata), &meta); err != nil {
+		t.Fatalf("metadata json: %v (raw=%q)", err, gotMetadata)
+	}
+	if len(meta.Scopes) != 1 || len(meta.Scopes[0]) != 2 ||
+		meta.Scopes[0][0] != scopeAcme || meta.Scopes[0][1] != "user/tobie" {
+		t.Errorf("scopes = %v", meta.Scopes)
 	}
 }
 

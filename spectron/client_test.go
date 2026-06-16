@@ -54,7 +54,7 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	resp, err := c.Remember(context.Background(), RememberRequest{
 		Text:      "hi",
 		SessionID: sessionS1,
-		Scope:     Scope{scopeAcme},
+		Scopes:    ScopeSets{{scopeAcme}},
 	})
 	if err != nil {
 		t.Fatalf("Remember: %v", err)
@@ -84,12 +84,15 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	if gotBody["session_id"] != sessionS1 {
 		t.Errorf("session_id = %v (sessionId=%v)", gotBody["session_id"], gotBody["sessionId"])
 	}
-	// Scope is a plain JSON array of slash-path strings (spectron #218).
-	scope, ok := gotBody["scope"].([]any)
-	if !ok || len(scope) != 1 {
-		t.Errorf("scope wire shape = %#v", gotBody["scope"])
-	} else if scope[0] != scopeAcme {
-		t.Errorf("scope[0] = %v", scope[0])
+	// Scopes is a DNF selector: a JSON array of clauses, each a string array
+	// of slash-paths (spectron #713).
+	scopes, ok := gotBody["scopes"].([]any)
+	if !ok || len(scopes) != 1 {
+		t.Fatalf("scopes wire shape = %#v", gotBody["scopes"])
+	}
+	clause, ok := scopes[0].([]any)
+	if !ok || len(clause) != 1 || clause[0] != scopeAcme {
+		t.Errorf("scopes clause = %#v", scopes[0])
 	}
 }
 

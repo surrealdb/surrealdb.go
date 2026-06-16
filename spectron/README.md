@@ -102,7 +102,7 @@ client.Remember(ctx, spectron.RememberRequest{Text: "I work at Acme as CTO"})
 client.Remember(ctx, spectron.RememberRequest{
     Text:      "Acme acquired Beta",
     SessionID: "sess:abc",
-    Scope:     spectron.Scope{"team/acme"},
+    Scopes:    spectron.ScopeSets{{"team/acme"}},
     Infer:     spectron.InferFull,
 })
 
@@ -126,7 +126,7 @@ res, err := client.Recall(ctx, spectron.RecallRequest{
     Query: "what role do I have at Acme",
     K:     10,
     Mode:  spectron.MemoryModeHybrid,
-    Lens:  []string{"team/acme"},
+    Lens:  spectron.ScopeSets{{"team/acme"}},
 })
 for _, hit := range res.Hits {
     fmt.Println(hit.Score, hit.Source, hit.Text)
@@ -224,23 +224,33 @@ Every non-2xx response also yields an `*APIError` carrying `StatusCode`,
 
 ## Scope
 
-Scope is a `spectron.Scope` (a `[]string`): an ordered, de-duplicated set of
-hierarchical scope paths in canonical slash form, e.g. `"team/eng"` or
+Scope is a `spectron.ScopeSets` (a `[][]string`): a DNF (OR-of-ANDs) selector.
+The outer slice is an OR of clauses; each inner clause is an AND of hierarchical
+scope paths in canonical slash form, e.g. `"team/eng"` or
 `"org/apple/product/ipad"`. A key/value pair is written as the two segments
 `"key/value"`. Empty represents the caller's default write region.
 
-It is sent on the wire as a plain JSON array. Marshaling drops empty entries and
-de-duplicates while preserving first-seen order, so equivalent inputs produce the
-same body and the `Idempotency-Key` stays stable across retries.
+A single clause holding one path is the common case. To express co-ownership
+(OR) use multiple clauses; to require several paths together (AND) put them in
+one clause:
+
+- `spectron.ScopeSets{{"team/acme"}}` — a single scope.
+- `spectron.ScopeSets{{"team/a"}, {"team/b"}}` — `team/a OR team/b`.
+- `spectron.ScopeSets{{"team/b", "clearance/secret"}}` — `team/b AND clearance/secret`.
+
+It is sent on the wire as a JSON array of arrays. Marshaling drops empty paths,
+de-duplicates paths within each clause (preserving first-seen order), and drops
+empty clauses, so equivalent inputs produce the same body and the
+`Idempotency-Key` stays stable across retries.
 
 ```go
 client.Remember(ctx, spectron.RememberRequest{
-    Text:  "...",
-    Scope: spectron.Scope{"team/acme"},
+    Text:   "...",
+    Scopes: spectron.ScopeSets{{"team/acme"}},
 })
 
 client.Documents().Upload(ctx, body,
-    spectron.WithScope(spectron.Scope{"team/acme", "user/tobie"}),
+    spectron.WithScopes(spectron.ScopeSets{{"team/acme", "user/tobie"}}),
 )
 ```
 
