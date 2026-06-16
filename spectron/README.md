@@ -13,10 +13,10 @@ if err != nil {
 defer client.Close()
 
 ctx := context.Background()
-if _, err := client.Remember(ctx, spectron.RememberRequest{Text: "I work at Acme as CTO"}); err != nil {
+if _, err := client.Remember(ctx, &spectron.RememberRequest{Text: "I work at Acme as CTO"}); err != nil {
     return err
 }
-hits, err := client.Recall(ctx, spectron.RecallRequest{Query: "what do I do at Acme"})
+hits, err := client.Recall(ctx, &spectron.RecallRequest{Query: "what do I do at Acme"})
 if err != nil {
     return err
 }
@@ -97,16 +97,16 @@ One `Client` serves both blocking and concurrent use; every method takes a
 ### Remember
 
 ```go
-client.Remember(ctx, spectron.RememberRequest{Text: "I work at Acme as CTO"})
+client.Remember(ctx, &spectron.RememberRequest{Text: "I work at Acme as CTO"})
 
-client.Remember(ctx, spectron.RememberRequest{
+client.Remember(ctx, &spectron.RememberRequest{
     Text:      "Acme acquired Beta",
     SessionID: "sess:abc",
     Scopes:    spectron.ScopeSets{{"team/acme"}},
     Infer:     spectron.InferFull,
 })
 
-client.RememberMany(ctx, spectron.RememberManyRequest{
+client.RememberMany(ctx, &spectron.RememberManyRequest{
     Messages: []spectron.BatchMessage{
         {Role: spectron.RoleUser, Content: "I just got promoted to CTO"},
         {Role: spectron.RoleAssistant, Content: "Congratulations!"},
@@ -122,7 +122,7 @@ collapses onto the previous attempt server-side.
 ### Recall
 
 ```go
-res, err := client.Recall(ctx, spectron.RecallRequest{
+res, err := client.Recall(ctx, &spectron.RecallRequest{
     Query: "what role do I have at Acme",
     K:     10,
     Mode:  spectron.MemoryModeHybrid,
@@ -144,11 +144,11 @@ client.Forget(ctx, "draft notes", spectron.WithPurge())
 ### Chat
 
 ```go
-reply, _ := client.Chat(ctx, spectron.ChatRequest{Message: "what's my role?"})
+reply, _ := client.Chat(ctx, &spectron.ChatRequest{Message: "what's my role?"})
 fmt.Println(reply.Reply)
 
 // Streaming via Go 1.23 range-over-func.
-for chunk, err := range client.ChatStream(ctx, spectron.ChatRequest{Message: "what's my role?"}) {
+for chunk, err := range client.ChatStream(ctx, &spectron.ChatRequest{Message: "what's my role?"}) {
     if err != nil {
         return err
     }
@@ -192,7 +192,7 @@ without error.
 ## Errors
 
 ```go
-_, err := client.Recall(ctx, spectron.RecallRequest{Query: "..."})
+_, err := client.Recall(ctx, &spectron.RecallRequest{Query: "..."})
 switch {
 case errors.Is(err, spectron.ErrNotFound):
     var api *spectron.APIError
@@ -244,7 +244,7 @@ empty clauses, so equivalent inputs produce the same body and the
 `Idempotency-Key` stays stable across retries.
 
 ```go
-client.Remember(ctx, spectron.RememberRequest{
+client.Remember(ctx, &spectron.RememberRequest{
     Text:   "...",
     Scopes: spectron.ScopeSets{{"team/acme"}},
 })
@@ -267,7 +267,7 @@ HTTP transport, and sub-clients delegate too.
 
 ```go
 agent := client.OnBehalfOf("user:bob")
-hits, _ := agent.Recall(ctx, spectron.RecallRequest{Query: "what's my role?"})
+hits, _ := agent.Recall(ctx, &spectron.RecallRequest{Query: "what's my role?"})
 _, _ = agent.Documents().List(ctx, spectron.ListDocumentsOptions{})
 
 // Confirm the resolved identity, including the delegation in effect.

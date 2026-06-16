@@ -65,27 +65,13 @@ func TestScopeDedupOnWire(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	if _, err := c.Remember(context.Background(), RememberRequest{
+	if _, err := c.Remember(context.Background(), &RememberRequest{
 		Text:   "x",
 		Scopes: ScopeSets{{"team/acme", "", "team/acme", "org/acme"}},
 	}); err != nil {
 		t.Fatalf("Remember: %v", err)
 	}
-	raw, ok := cs.body["scopes"].([]any)
-	if !ok || len(raw) != 1 {
-		t.Fatalf("scopes wire = %#v", cs.body["scopes"])
-	}
-	clause, ok := raw[0].([]any)
-	if !ok {
-		t.Fatalf("scopes clause = %#v", raw[0])
-	}
-	got := make([]string, len(clause))
-	for i, v := range clause {
-		got[i], _ = v.(string)
-	}
-	if len(got) != 2 || got[0] != "team/acme" || got[1] != "org/acme" {
-		t.Errorf("deduped scope clause = %v", got)
-	}
+	assertSingleScopeClause(t, cs.body["scopes"], "team/acme", "org/acme")
 }
 
 func TestRememberManyWireIsSnakeCase(t *testing.T) {
@@ -94,7 +80,7 @@ func TestRememberManyWireIsSnakeCase(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.RememberMany(context.Background(), RememberManyRequest{
+	resp, err := c.RememberMany(context.Background(), &RememberManyRequest{
 		Messages:  []BatchMessage{{Role: RoleUser, Content: "hi"}},
 		SessionID: "s",
 		Extract:   ExtractWholeConversation,
@@ -130,7 +116,7 @@ func TestRecallWireIsCamelCase(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.Recall(context.Background(), RecallRequest{
+	resp, err := c.Recall(context.Background(), &RecallRequest{
 		Query:  "q",
 		Mode:   MemoryModeHybrid,
 		Lens:   ScopeSets{{scopeAcme}},
@@ -142,14 +128,7 @@ func TestRecallWireIsCamelCase(t *testing.T) {
 	if cs.body["mode"] != "hybrid" {
 		t.Errorf("mode wire = %v", cs.body["mode"])
 	}
-	lens, ok := cs.body["lens"].([]any)
-	if !ok || len(lens) != 1 {
-		t.Fatalf("lens wire = %#v", cs.body["lens"])
-	}
-	lensClause, ok := lens[0].([]any)
-	if !ok || len(lensClause) != 1 || lensClause[0] != scopeAcme {
-		t.Errorf("lens clause = %#v", lens[0])
-	}
+	assertSingleScopeClause(t, cs.body["lens"], scopeAcme)
 	if _, snake := cs.body["session_id"]; snake {
 		t.Errorf("query body must stay camelCase, found session_id")
 	}
@@ -201,7 +180,7 @@ func TestDocumentsQueryDecodesHit(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.Documents().Query(context.Background(), DocumentQueryRequest{
+	resp, err := c.Documents().Query(context.Background(), &DocumentQueryRequest{
 		Query: "q",
 		Mode:  ModeHybrid,
 	})
@@ -239,14 +218,7 @@ func TestSessionsCreateScopeWire(t *testing.T) {
 	if cs.path != "/api/v1/ctx-1/sessions" {
 		t.Errorf("path = %q", cs.path)
 	}
-	scopes, ok := cs.body["scopes"].([]any)
-	if !ok || len(scopes) != 1 {
-		t.Fatalf("scopes wire = %#v", cs.body["scopes"])
-	}
-	clause, ok := scopes[0].([]any)
-	if !ok || len(clause) != 1 || clause[0] != scopeAcme {
-		t.Errorf("scopes clause = %#v", scopes[0])
-	}
+	assertSingleScopeClause(t, cs.body["scopes"], scopeAcme)
 	if sess.ID != "sess1" || len(sess.Scopes) != 1 {
 		t.Errorf("session = %+v", sess)
 	}

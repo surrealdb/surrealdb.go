@@ -70,7 +70,7 @@ type AuditOptions struct {
 	Limit int
 }
 
-func (o AuditOptions) values() url.Values {
+func (o *AuditOptions) values() url.Values {
 	q := url.Values{}
 	if o.Principal != "" {
 		q.Set("principal", o.Principal)
@@ -111,7 +111,7 @@ type AuditResponse struct {
 }
 
 // Audit lists audited operations for the context, newest first.
-func (c *Client) Audit(ctx context.Context, opts AuditOptions) (*AuditResponse, error) {
+func (c *Client) Audit(ctx context.Context, opts *AuditOptions) (*AuditResponse, error) {
 	var out AuditResponse
 	if err := c.getJSON(ctx, c.base+"/audit", opts.values(), &out); err != nil {
 		return nil, err

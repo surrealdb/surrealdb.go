@@ -6,7 +6,7 @@ import (
 )
 
 // Recall searches the context for hits matching the query.
-func (c *Client) Recall(ctx context.Context, req RecallRequest) (*RecallResponse, error) {
+func (c *Client) Recall(ctx context.Context, req *RecallRequest) (*RecallResponse, error) {
 	var out RecallResponse
 	if err := c.doJSON(ctx, http.MethodPost, c.base+"/query", req, &out, false); err != nil {
 		return nil, err

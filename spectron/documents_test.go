@@ -14,17 +14,22 @@ import (
 	"time"
 )
 
-func TestDocumentsUploadMultipart(t *testing.T) {
-	var (
-		gotPath     string
-		gotFile     []byte
-		gotFilename string
-		gotMime     string
-		gotMetadata string
-	)
+// capturedUpload records the multipart upload a test server received.
+type capturedUpload struct {
+	path      string
+	file      []byte
+	filename  string
+	mime      string
+	metadata  string
+	partOrder []string
+}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
+// captureUploadServer returns a server that records the multipart upload it
+// receives into rec and replies with a fixed ready document.
+func captureUploadServer(t *testing.T, rec *capturedUpload) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.path = r.URL.Path
 		mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 		if err != nil {
 			t.Errorf("parse content-type: %v", err)
@@ -34,7 +39,6 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 			t.Errorf("media type = %q", mediaType)
 		}
 		mr := multipart.NewReader(r.Body, params["boundary"])
-		var partOrder []string
 		for {
 			part, err := mr.NextPart()
 			if err == io.EOF {
@@ -44,25 +48,25 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 				t.Errorf("next part: %v", err)
 				return
 			}
-			partOrder = append(partOrder, part.FormName())
+			rec.partOrder = append(rec.partOrder, part.FormName())
 			data, _ := io.ReadAll(part)
 			switch part.FormName() {
 			case "file":
-				gotFile = data
-				gotFilename = part.FileName()
-				gotMime = part.Header.Get("Content-Type")
+				rec.file = data
+				rec.filename = part.FileName()
+				rec.mime = part.Header.Get("Content-Type")
 			case "metadata":
-				gotMetadata = string(data)
+				rec.metadata = string(data)
 			}
-		}
-		// The server reads the metadata part before it streams the file, so it
-		// must come first on the wire (spectron #713).
-		if len(partOrder) != 2 || partOrder[0] != "metadata" || partOrder[1] != "file" {
-			t.Errorf("part order = %v", partOrder)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, `{"contentHash":"h","deduplicated":false,"id":"d1","status":"ready"}`)
 	}))
+}
+
+func TestDocumentsUploadMultipart(t *testing.T) {
+	var rec capturedUpload
+	srv := captureUploadServer(t, &rec)
 	defer srv.Close()
 
 	c, err := New("ctx-1", srv.URL, "sk", WithTimeout(2*time.Second))
@@ -83,31 +87,31 @@ func TestDocumentsUploadMultipart(t *testing.T) {
 	if resp.ID != "d1" || resp.ContentHash != "h" || resp.Status != DocReady {
 		t.Errorf("response = %+v", resp)
 	}
-	if gotPath != docsPath {
-		t.Errorf("path = %q", gotPath)
+	if rec.path != docsPath {
+		t.Errorf("path = %q", rec.path)
 	}
-	if string(gotFile) != "PDFBYTES" {
-		t.Errorf("file bytes = %q", string(gotFile))
+	if string(rec.file) != "PDFBYTES" {
+		t.Errorf("file bytes = %q", string(rec.file))
 	}
-	if gotFilename != "returns.pdf" {
-		t.Errorf("filename = %q", gotFilename)
+	if rec.filename != "returns.pdf" {
+		t.Errorf("filename = %q", rec.filename)
 	}
-	if gotMime != "application/pdf" {
-		t.Errorf("file mime = %q", gotMime)
+	if rec.mime != "application/pdf" {
+		t.Errorf("file mime = %q", rec.mime)
+	}
+	// The server reads the metadata part before it streams the file, so it must
+	// come first on the wire (spectron #713).
+	if len(rec.partOrder) != 2 || rec.partOrder[0] != "metadata" || rec.partOrder[1] != "file" {
+		t.Errorf("part order = %v", rec.partOrder)
 	}
 
 	// Scope is sent in the "metadata" JSON part as a DNF selector: an array of
 	// clauses, each a string array of slash-paths (spectron #713).
-	var meta struct {
-		Scopes [][]string `json:"scopes"`
+	var meta map[string]any
+	if err := json.Unmarshal([]byte(rec.metadata), &meta); err != nil {
+		t.Fatalf("metadata json: %v (raw=%q)", err, rec.metadata)
 	}
-	if err := json.Unmarshal([]byte(gotMetadata), &meta); err != nil {
-		t.Fatalf("metadata json: %v (raw=%q)", err, gotMetadata)
-	}
-	if len(meta.Scopes) != 1 || len(meta.Scopes[0]) != 2 ||
-		meta.Scopes[0][0] != scopeAcme || meta.Scopes[0][1] != "user/tobie" {
-		t.Errorf("scopes = %v", meta.Scopes)
-	}
+	assertSingleScopeClause(t, meta["scopes"], scopeAcme, "user/tobie")
 }
 
 func TestDocumentsUploadDefaultsAndSanitisation(t *testing.T) {

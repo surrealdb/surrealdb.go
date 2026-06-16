@@ -215,7 +215,7 @@ type DocumentQueryResponse struct {
 }
 
 // Query runs passage retrieval over the context's documents.
-func (d *Documents) Query(ctx context.Context, req DocumentQueryRequest) (*DocumentQueryResponse, error) {
+func (d *Documents) Query(ctx context.Context, req *DocumentQueryRequest) (*DocumentQueryResponse, error) {
 	var out DocumentQueryResponse
 	if err := d.client.doJSON(ctx, http.MethodPost, d.client.base+"/documents/query", req, &out, false); err != nil {
 		return nil, err

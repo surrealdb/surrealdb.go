@@ -31,7 +31,7 @@ func TestOnBehalfOfSetsHeader(t *testing.T) {
 	c := newTestClient(t, srv)
 
 	// Delegated call carries the header.
-	if _, err := c.OnBehalfOf(principalBob).Recall(context.Background(), RecallRequest{Query: "q"}); err != nil {
+	if _, err := c.OnBehalfOf(principalBob).Recall(context.Background(), &RecallRequest{Query: "q"}); err != nil {
 		t.Fatalf("Recall: %v", err)
 	}
 	if gotHeader != principalBob {
@@ -41,7 +41,7 @@ func TestOnBehalfOfSetsHeader(t *testing.T) {
 	// Undelegated call from the parent client must NOT carry the header. This
 	// also proves OnBehalfOf returns an independent clone.
 	gotHeader = ""
-	if _, err := c.Recall(context.Background(), RecallRequest{Query: "q"}); err != nil {
+	if _, err := c.Recall(context.Background(), &RecallRequest{Query: "q"}); err != nil {
 		t.Fatalf("Recall: %v", err)
 	}
 	if gotHeader != "" {

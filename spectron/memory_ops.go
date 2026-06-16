@@ -130,7 +130,7 @@ type InspectOptions struct {
 	ValidUntil string
 }
 
-func (o InspectOptions) values() url.Values {
+func (o *InspectOptions) values() url.Values {
 	q := url.Values{}
 	if o.Ref != "" {
 		q.Set("ref", o.Ref)
@@ -153,7 +153,7 @@ func (o InspectOptions) values() url.Values {
 // Inspect returns a low-level diagnostic view of the substrate. The shape is
 // deliberately untyped in the spec, so the raw JSON object is returned for the
 // caller to decode.
-func (c *Client) Inspect(ctx context.Context, opts InspectOptions) (rawObject, error) {
+func (c *Client) Inspect(ctx context.Context, opts *InspectOptions) (rawObject, error) {
 	var out rawObject
 	if err := c.getJSON(ctx, c.base+"/inspect", opts.values(), &out); err != nil {
 		return nil, err
@@ -229,7 +229,7 @@ type ContextQueryResponse struct {
 
 // QueryContext returns a single composed context string for the query, ready to
 // splice into a prompt.
-func (c *Client) QueryContext(ctx context.Context, req ContextQueryRequest) (*ContextQueryResponse, error) {
+func (c *Client) QueryContext(ctx context.Context, req *ContextQueryRequest) (*ContextQueryResponse, error) {
 	var out ContextQueryResponse
 	if err := c.doJSON(ctx, http.MethodPost, c.base+"/context", req, &out, false); err != nil {
 		return nil, err

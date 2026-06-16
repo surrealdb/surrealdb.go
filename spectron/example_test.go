@@ -32,10 +32,10 @@ func ExampleClient_Remember() {
 	defer client.Close()
 
 	ctx := context.Background()
-	if _, err := client.Remember(ctx, spectron.RememberRequest{Text: "I work at Acme as CTO"}); err != nil {
+	if _, err = client.Remember(ctx, &spectron.RememberRequest{Text: "I work at Acme as CTO"}); err != nil {
 		panic(err)
 	}
-	hits, err := client.Recall(ctx, spectron.RecallRequest{Query: "role at Acme"})
+	hits, err := client.Recall(ctx, &spectron.RecallRequest{Query: "role at Acme"})
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +55,7 @@ func ExampleClient_Recall_errorHandling() {
 	client, _ := spectron.New("acme", srv.URL, "sk-demo")
 	defer client.Close()
 
-	_, err := client.Recall(context.Background(), spectron.RecallRequest{Query: "x"})
+	_, err := client.Recall(context.Background(), &spectron.RecallRequest{Query: "x"})
 	switch {
 	case errors.Is(err, spectron.ErrNotFound):
 		var api *spectron.APIError

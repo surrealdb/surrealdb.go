@@ -96,62 +96,12 @@ func (d *Documents) upload(ctx context.Context, method, path string, body io.Rea
 		return nil, &APIError{Message: fmt.Sprintf("read upload body: %v", err)}
 	}
 
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-
-	// Optional metadata part, written before the file part so the server can
-	// read scopes/labels/title before it streams the bytes (matching
-	// UploadMetadataJson). Field names mirror the spec's camelCase shape.
-	if len(o.scopes) > 0 || len(o.labels) > 0 || o.title != "" {
-		meta := struct {
-			Scopes ScopeSets `json:"scopes,omitempty"`
-			Labels []string  `json:"labels,omitempty"`
-			Title  string    `json:"title,omitempty"`
-		}{Scopes: o.scopes, Labels: o.labels, Title: o.title}
-		metaJSON, err := json.Marshal(meta)
-		if err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("marshal metadata: %v", err)}
-		}
-		metaHeader := textproto.MIMEHeader{}
-		metaHeader.Set("Content-Disposition", `form-data; name="metadata"`)
-		metaHeader.Set("Content-Type", "application/json")
-		metaPart, err := mw.CreatePart(metaHeader)
-		if err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("build multipart: %v", err)}
-		}
-		if _, err := metaPart.Write(metaJSON); err != nil {
-			return nil, &APIError{Message: fmt.Sprintf("write multipart metadata: %v", err)}
-		}
-	}
-
-	// File part.
-	partHeader := textproto.MIMEHeader{}
-	partHeader.Set("Content-Disposition", fmt.Sprintf(
-		`form-data; name="file"; filename=%q`, sanitiseFilename(o.filename),
-	))
-	partHeader.Set("Content-Type", o.contentType)
-	filePart, err := mw.CreatePart(partHeader)
+	buf, contentType, err := buildUploadBody(&o, fileBytes)
 	if err != nil {
-		return nil, &APIError{Message: fmt.Sprintf("build multipart: %v", err)}
-	}
-	if _, err := filePart.Write(fileBytes); err != nil {
-		return nil, &APIError{Message: fmt.Sprintf("write multipart file: %v", err)}
+		return nil, err
 	}
 
-	if err := mw.Close(); err != nil {
-		return nil, &APIError{Message: fmt.Sprintf("close multipart: %v", err)}
-	}
-
-	resp, err := d.client.do(
-		ctx,
-		method,
-		path,
-		buf.Bytes(),
-		mw.FormDataContentType(),
-		nil,
-		false,
-		false,
-	)
+	resp, err := d.client.do(ctx, method, path, buf.Bytes(), contentType, nil, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -173,6 +123,58 @@ func (d *Documents) upload(ctx context.Context, method, path string, body io.Rea
 		}
 	}
 	return &out, nil
+}
+
+// buildUploadBody assembles the DocumentUploadForm multipart body: an optional
+// "metadata" JSON part (scopes/labels/title) written before the "file" part, in
+// the order the server parses them. It returns the body buffer and the
+// content type to send.
+func buildUploadBody(o *uploadOptions, fileBytes []byte) (*bytes.Buffer, string, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+
+	// Metadata part first so the server can read scopes/labels/title before it
+	// streams the bytes (matching UploadMetadataJson's camelCase shape).
+	if len(o.scopes) > 0 || len(o.labels) > 0 || o.title != "" {
+		meta := struct {
+			Scopes ScopeSets `json:"scopes,omitempty"`
+			Labels []string  `json:"labels,omitempty"`
+			Title  string    `json:"title,omitempty"`
+		}{Scopes: o.scopes, Labels: o.labels, Title: o.title}
+		metaJSON, marshalErr := json.Marshal(meta)
+		if marshalErr != nil {
+			return nil, "", &APIError{Message: fmt.Sprintf("marshal metadata: %v", marshalErr)}
+		}
+		if err := writeMultipartPart(mw, `form-data; name="metadata"`, "application/json", metaJSON); err != nil {
+			return nil, "", err
+		}
+	}
+
+	disposition := fmt.Sprintf(`form-data; name="file"; filename=%q`, sanitiseFilename(o.filename))
+	if err := writeMultipartPart(mw, disposition, o.contentType, fileBytes); err != nil {
+		return nil, "", err
+	}
+
+	if err := mw.Close(); err != nil {
+		return nil, "", &APIError{Message: fmt.Sprintf("close multipart: %v", err)}
+	}
+	return &buf, mw.FormDataContentType(), nil
+}
+
+// writeMultipartPart writes a single multipart part with the given
+// Content-Disposition, content type, and body bytes.
+func writeMultipartPart(mw *multipart.Writer, disposition, contentType string, content []byte) error {
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", disposition)
+	header.Set("Content-Type", contentType)
+	part, err := mw.CreatePart(header)
+	if err != nil {
+		return &APIError{Message: fmt.Sprintf("build multipart: %v", err)}
+	}
+	if _, err = part.Write(content); err != nil {
+		return &APIError{Message: fmt.Sprintf("write multipart: %v", err)}
+	}
+	return nil
 }
 
 // sanitiseFilename strips path separators and quotes from a filename so it

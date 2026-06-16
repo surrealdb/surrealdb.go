@@ -24,15 +24,33 @@ const (
 
 // newTestClient spins up a Spectron client pointing at the provided
 // httptest.Server with a short retry schedule for fast tests.
-func newTestClient(t *testing.T, srv *httptest.Server, opts ...Option) *Client {
+func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	opts = append([]Option{WithTimeout(2 * time.Second), WithMaxRetries(3)}, opts...)
-	c, err := New("ctx-1", srv.URL, "sk-test", opts...)
+	c, err := New("ctx-1", srv.URL, "sk-test", WithTimeout(2*time.Second), WithMaxRetries(3))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
 	return c
+}
+
+// assertSingleScopeClause checks that a captured wire value is a DNF scope
+// selector of exactly one clause holding exactly the given paths, in order.
+func assertSingleScopeClause(t *testing.T, wire any, want ...string) {
+	t.Helper()
+	clauses, ok := wire.([]any)
+	if !ok || len(clauses) != 1 {
+		t.Fatalf("scope wire = %#v", wire)
+	}
+	clause, ok := clauses[0].([]any)
+	if !ok || len(clause) != len(want) {
+		t.Fatalf("scope clause = %#v", clauses[0])
+	}
+	for i, w := range want {
+		if clause[i] != w {
+			t.Errorf("scope clause[%d] = %v, want %q", i, clause[i], w)
+		}
+	}
 }
 
 func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
@@ -51,7 +69,7 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.Remember(context.Background(), RememberRequest{
+	resp, err := c.Remember(context.Background(), &RememberRequest{
 		Text:      "hi",
 		SessionID: sessionS1,
 		Scopes:    ScopeSets{{scopeAcme}},
@@ -86,14 +104,7 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	}
 	// Scopes is a DNF selector: a JSON array of clauses, each a string array
 	// of slash-paths (spectron #713).
-	scopes, ok := gotBody["scopes"].([]any)
-	if !ok || len(scopes) != 1 {
-		t.Fatalf("scopes wire shape = %#v", gotBody["scopes"])
-	}
-	clause, ok := scopes[0].([]any)
-	if !ok || len(clause) != 1 || clause[0] != scopeAcme {
-		t.Errorf("scopes clause = %#v", scopes[0])
-	}
+	assertSingleScopeClause(t, gotBody["scopes"], scopeAcme)
 }
 
 func TestRecallNoIdempotencyKey(t *testing.T) {
@@ -105,7 +116,7 @@ func TestRecallNoIdempotencyKey(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.Recall(context.Background(), RecallRequest{Query: "q"})
+	resp, err := c.Recall(context.Background(), &RecallRequest{Query: "q"})
 	if err != nil {
 		t.Fatalf("Recall: %v", err)
 	}
@@ -129,7 +140,7 @@ func TestRetryOn503Succeeds(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	_, err := c.Remember(context.Background(), RememberRequest{Text: "x"})
+	_, err := c.Remember(context.Background(), &RememberRequest{Text: "x"})
 	if err != nil {
 		t.Fatalf("Remember after retries: %v", err)
 	}
@@ -149,7 +160,7 @@ func TestNoRetryOn400(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	_, err := c.Remember(context.Background(), RememberRequest{Text: "x"})
+	_, err := c.Remember(context.Background(), &RememberRequest{Text: "x"})
 	if err == nil {
 		t.Fatal("expected error on 400")
 	}
@@ -172,7 +183,7 @@ func TestNotFoundMapsToErrNotFound(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	_, err := c.Recall(context.Background(), RecallRequest{Query: "q"})
+	_, err := c.Recall(context.Background(), &RecallRequest{Query: "q"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -202,7 +213,7 @@ func TestAuthAndScopeMapping(t *testing.T) {
 			_, _ = io.WriteString(w, `{"message":"x"}`)
 		}))
 		c := newTestClient(t, srv)
-		_, err := c.Recall(context.Background(), RecallRequest{Query: "q"})
+		_, err := c.Recall(context.Background(), &RecallRequest{Query: "q"})
 		if !errors.Is(err, tc.want) {
 			t.Errorf("status %d -> want %v, got %v", tc.status, tc.want, err)
 		}
@@ -243,7 +254,7 @@ func TestChatNonStreaming(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	resp, err := c.Chat(context.Background(), ChatRequest{Message: "hello"})
+	resp, err := c.Chat(context.Background(), &ChatRequest{Message: "hello"})
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
 	}
@@ -273,7 +284,7 @@ func TestChatStreamEndToEnd(t *testing.T) {
 	c := newTestClient(t, srv)
 	var got strings.Builder
 	var done bool
-	for chunk, err := range c.ChatStream(context.Background(), ChatRequest{Message: "hi"}) {
+	for chunk, err := range c.ChatStream(context.Background(), &ChatRequest{Message: "hi"}) {
 		if err != nil {
 			t.Fatalf("stream: %v", err)
 		}

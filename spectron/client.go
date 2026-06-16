@@ -246,7 +246,7 @@ func (c *Client) do(
 	idempotent bool,
 	stream bool,
 ) (*http.Response, error) {
-	url := c.buildURL(path)
+	reqURL := c.buildURL(path)
 	headers := c.baseHeaders(contentType)
 	for k, vs := range extraHeaders {
 		for _, v := range vs {
@@ -266,77 +266,92 @@ func (c *Client) do(
 	}
 
 	schedule := backoffFor(c.cfg.maxRetries)
-	attempt := 0
 	method = strings.ToUpper(method)
 
-	for {
-		reqCtx := ctx
-		var cancel context.CancelFunc
-		if !stream && c.cfg.timeout > 0 {
-			reqCtx, cancel = context.WithTimeout(ctx, c.cfg.timeout)
-		}
-
-		var bodyReader io.Reader
-		if bodyBytes != nil {
-			bodyReader = bytes.NewReader(bodyBytes)
-		}
-
-		req, err := http.NewRequestWithContext(reqCtx, method, url, bodyReader)
+	for attempt := 0; ; attempt++ {
+		resp, retry, err := c.attemptOnce(ctx, method, reqURL, bodyBytes, headers, attempt, idempotent, stream)
 		if err != nil {
-			if cancel != nil {
-				cancel()
-			}
-			return nil, &APIError{Message: fmt.Sprintf("build request: %v", err)}
+			return nil, err
 		}
-		req.Header = headers.Clone()
-
-		resp, doErr := c.http.Do(req)
-		if doErr != nil {
-			if cancel != nil {
-				cancel()
-			}
-			if !shouldRetry(method, 0, attempt, c.cfg.maxRetries, idempotent) {
-				return nil, &APIError{Message: fmt.Sprintf("connection failed: %v", doErr)}
-			}
-			if err := sleepCtx(ctx, schedule[attempt]); err != nil {
-				return nil, &APIError{Message: fmt.Sprintf("connection failed: %v", err)}
-			}
-			attempt++
-			continue
+		if !retry {
+			return resp, nil
 		}
-
-		status := resp.StatusCode
-		if status >= 400 && shouldRetry(method, status, attempt, c.cfg.maxRetries, idempotent) {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
-			if cancel != nil {
-				cancel()
-			}
-			if err := sleepCtx(ctx, schedule[attempt]); err != nil {
-				return nil, &APIError{Message: fmt.Sprintf("connection failed: %v", err)}
-			}
-			attempt++
-			continue
+		if err := sleepCtx(ctx, schedule[attempt]); err != nil {
+			return nil, &APIError{Message: fmt.Sprintf("connection failed: %v", err)}
 		}
-
-		if status >= 400 {
-			data, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			if cancel != nil {
-				cancel()
-			}
-			return nil, errorFromResponse(status, decodeJSON(data), resp.Header)
-		}
-
-		// Successful response. For non-streaming calls we rely on the per-
-		// attempt timeout context already attached to the request; canceling
-		// it now would terminate the body read in flight. Keep the cancel
-		// alive by deferring it to body close via a wrapper.
-		if cancel != nil {
-			resp.Body = &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
-		}
-		return resp, nil
 	}
+}
+
+// attemptOnce performs a single HTTP exchange. It returns the response on
+// success; otherwise retry reports whether the caller should back off and try
+// again, and err carries the terminal error when retry is false.
+func (c *Client) attemptOnce(
+	ctx context.Context,
+	method, reqURL string,
+	bodyBytes []byte,
+	headers http.Header,
+	attempt int,
+	idempotent, stream bool,
+) (resp *http.Response, retry bool, err error) {
+	// requestContext returns a non-nil cancel (a no-op when there is no
+	// per-attempt timeout) so every exit path can call it unconditionally.
+	reqCtx, cancel := c.requestContext(ctx, stream)
+
+	req, err := http.NewRequestWithContext(reqCtx, method, reqURL, bodyReaderFor(bodyBytes))
+	if err != nil {
+		cancel()
+		return nil, false, &APIError{Message: fmt.Sprintf("build request: %v", err)}
+	}
+	req.Header = headers.Clone()
+
+	resp, err = c.http.Do(req)
+	if err != nil {
+		cancel()
+		if !shouldRetry(method, 0, attempt, c.cfg.maxRetries, idempotent) {
+			return nil, false, &APIError{Message: fmt.Sprintf("connection failed: %v", err)}
+		}
+		return nil, true, nil
+	}
+
+	status := resp.StatusCode
+	switch {
+	case status >= 400 && shouldRetry(method, status, attempt, c.cfg.maxRetries, idempotent):
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		cancel()
+		return nil, true, nil
+	case status >= 400:
+		data, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		cancel()
+		return nil, false, errorFromResponse(status, decodeJSON(data), resp.Header)
+	}
+
+	// Successful response. The per-attempt timeout context is still attached to
+	// the request; canceling it now would terminate the body read in flight, so
+	// keep it alive by tying cancel to body close.
+	resp.Body = &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+	return resp, false, nil
+}
+
+// requestContext derives the per-attempt context. When a timeout is configured
+// for a non-streaming call it returns a timeout context; otherwise it returns
+// the parent context paired with a no-op cancel, so callers never need a nil
+// check before releasing it.
+func (c *Client) requestContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
+	if !stream && c.cfg.timeout > 0 {
+		return context.WithTimeout(ctx, c.cfg.timeout)
+	}
+	return ctx, func() {}
+}
+
+// bodyReaderFor wraps a replayable JSON body for a single attempt, returning a
+// nil reader (a bodyless request) when there are no bytes to send.
+func bodyReaderFor(bodyBytes []byte) io.Reader {
+	if bodyBytes == nil {
+		return nil
+	}
+	return bytes.NewReader(bodyBytes)
 }
 
 // cancelOnClose ties a context.CancelFunc to the lifetime of a response

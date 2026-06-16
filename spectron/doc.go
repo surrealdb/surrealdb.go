@@ -20,12 +20,12 @@
 //	}
 //	defer client.Close()
 //
-//	_, err = client.Remember(ctx, spectron.RememberRequest{Text: "I work at Acme as CTO"})
+//	_, err = client.Remember(ctx, &spectron.RememberRequest{Text: "I work at Acme as CTO"})
 //	if err != nil {
 //	    return err
 //	}
 //
-//	hits, err := client.Recall(ctx, spectron.RecallRequest{Query: "what do I do at Acme"})
+//	hits, err := client.Recall(ctx, &spectron.RecallRequest{Query: "what do I do at Acme"})
 //
 // All methods take a context.Context as the first argument; cancellation is
 // honored by both regular requests and SSE streams.

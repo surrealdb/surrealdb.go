@@ -13,14 +13,14 @@ var backoffSchedule = []time.Duration{
 	1 * time.Second,
 }
 
-func backoffFor(max int) []time.Duration {
-	if max < 0 {
-		max = 0
+func backoffFor(maxRetries int) []time.Duration {
+	if maxRetries < 0 {
+		maxRetries = 0
 	}
-	if max > len(backoffSchedule) {
-		max = len(backoffSchedule)
+	if maxRetries > len(backoffSchedule) {
+		maxRetries = len(backoffSchedule)
 	}
-	return backoffSchedule[:max]
+	return backoffSchedule[:maxRetries]
 }
 
 // shouldRetry returns true when an attempt that produced the given status
@@ -29,8 +29,8 @@ func backoffFor(max int) []time.Duration {
 // a retry, 4xx never does.
 //
 // status == 0 means "no response received" (transport failure).
-func shouldRetry(method string, status, attempt, max int, idempotent bool) bool {
-	if attempt >= max {
+func shouldRetry(method string, status, attempt, maxRetries int, idempotent bool) bool {
+	if attempt >= maxRetries {
 		return false
 	}
 	if method != http.MethodGet && !idempotent {

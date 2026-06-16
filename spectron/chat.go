@@ -10,7 +10,7 @@ import (
 
 // Chat sends a message and returns the model's reply. For incremental
 // streaming output, use [Client.ChatStream] instead.
-func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+func (c *Client) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
 	// Wire format: include stream:true only when streaming. The non-stream
 	// path explicitly sends false to be unambiguous.
 	payload := chatWirePayload(req, false)
@@ -34,7 +34,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 //	    fmt.Print(chunk.Delta)
 //	    if chunk.Done { break }
 //	}
-func (c *Client) ChatStream(ctx context.Context, req ChatRequest) iter.Seq2[ChatChunk, error] {
+func (c *Client) ChatStream(ctx context.Context, req *ChatRequest) iter.Seq2[ChatChunk, error] {
 	return func(yield func(ChatChunk, error) bool) {
 		payload := chatWirePayload(req, true)
 		body, err := json.Marshal(payload)
@@ -54,7 +54,7 @@ func (c *Client) ChatStream(ctx context.Context, req ChatRequest) iter.Seq2[Chat
 
 // chatWirePayload mirrors Python's _drop_none on the chat body and forces
 // stream into the request when streaming.
-func chatWirePayload(req ChatRequest, stream bool) map[string]any {
+func chatWirePayload(req *ChatRequest, stream bool) map[string]any {
 	out := map[string]any{"message": req.Message}
 	if stream {
 		out["stream"] = true
