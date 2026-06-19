@@ -149,6 +149,20 @@ func ExampleLive() {
 	received := make(chan struct{})
 	done := make(chan bool)
 	go func() {
+		// Live query notifications are delivered asynchronously and are NOT
+		// guaranteed to arrive in operation order, so buffer them and emit in a
+		// canonical CREATE/UPDATE/DELETE order for deterministic example output.
+		type event struct {
+			action  connection.Action
+			record  string
+			message string
+		}
+		var events []event
+		actionRank := map[connection.Action]int{
+			connection.CreateAction: 0,
+			connection.UpdateAction: 1,
+			connection.DeleteAction: 2,
+		}
 		for notification := range notifications {
 			// KILLED is sent by the server when Kill() is called; the channel
 			// will be closed immediately after. Skip it — no result to process.
@@ -162,15 +176,26 @@ func ExampleLive() {
 				panic(fmt.Sprintf("Expected map[string]any, got %T", notification.Result))
 			}
 
-			fmt.Printf("Received notification - Action: %s, Result: %s\n", notification.Action, formatRecordResult(record))
-
+			var message string
 			switch notification.Action {
 			case connection.CreateAction:
-				fmt.Println("New user created")
+				message = "New user created"
 			case connection.UpdateAction:
-				fmt.Println("User updated")
+				message = "User updated"
 			case connection.DeleteAction:
-				fmt.Println("User deleted")
+				message = "User deleted"
+			}
+
+			events = append(events, event{notification.Action, formatRecordResult(record), message})
+
+			if len(events) >= 3 {
+				sort.SliceStable(events, func(a, b int) bool {
+					return actionRank[events[a].action] < actionRank[events[b].action]
+				})
+				for _, e := range events {
+					fmt.Printf("Received notification - Action: %s, Result: %s\n", e.action, e.record)
+					fmt.Println(e.message)
+				}
 				close(received)
 			}
 		}
@@ -415,7 +440,19 @@ func ExampleLive_withDiff() {
 	received := make(chan struct{})
 	done := make(chan bool)
 	go func() {
-		var i int
+		// Live query notifications are delivered asynchronously and are NOT
+		// guaranteed to arrive in operation order, so buffer them and emit in a
+		// canonical CREATE/UPDATE/DELETE order for deterministic example output.
+		type event struct {
+			action connection.Action
+			result string
+		}
+		var events []event
+		actionRank := map[connection.Action]int{
+			connection.CreateAction: 0,
+			connection.UpdateAction: 1,
+			connection.DeleteAction: 2,
+		}
 		for notification := range notifications {
 			var resultStr string
 
@@ -476,11 +513,15 @@ func ExampleLive_withDiff() {
 				panic(fmt.Sprintf("Unexpected result type %T for action %s", notification.Result, notification.Action))
 			}
 
-			i++
+			events = append(events, event{notification.Action, resultStr})
 
-			fmt.Printf("Action: %s, Result: %s\n", notification.Action, resultStr)
-
-			if i >= 3 {
+			if len(events) >= 3 {
+				sort.SliceStable(events, func(a, b int) bool {
+					return actionRank[events[a].action] < actionRank[events[b].action]
+				})
+				for _, e := range events {
+					fmt.Printf("Action: %s, Result: %s\n", e.action, e.result)
+				}
 				close(received)
 			}
 		}
