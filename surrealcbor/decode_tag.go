@@ -147,6 +147,8 @@ func (d *decoder) decodeDateTimeStringTag(v reflect.Value) error {
 	if err != nil {
 		return err
 	}
+	// Normalize to UTC to match the epoch decode path.
+	t = t.UTC()
 	if v.Type() == reflect.TypeOf(time.Time{}) {
 		v.Set(reflect.ValueOf(t))
 	} else if v.Type() == reflect.TypeOf(models.CustomDateTime{}) {
