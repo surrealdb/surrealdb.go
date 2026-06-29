@@ -330,30 +330,8 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 
 	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
 	// Explicitly define them after signing in as root to ensure they exist.
-	// We retry on transaction conflicts which can happen when multiple tests
-	// run in parallel and try to define namespaces/databases concurrently.
-	const maxRetries = 5
-	for i := 0; i < maxRetries; i++ {
-		_, err = surrealdb.Query[any](context.Background(), db,
-			"DEFINE NAMESPACE IF NOT EXISTS "+namespace, nil)
-		if err == nil {
-			break
-		}
-		if i == maxRetries-1 {
-			return nil, fmt.Errorf("failed to define namespace after %d retries: %w", maxRetries, err)
-		}
-		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
-	}
-	for i := 0; i < maxRetries; i++ {
-		_, err = surrealdb.Query[any](context.Background(), db,
-			"DEFINE DATABASE IF NOT EXISTS "+database, nil)
-		if err == nil {
-			break
-		}
-		if i == maxRetries-1 {
-			return nil, fmt.Errorf("failed to define database after %d retries: %w", maxRetries, err)
-		}
-		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	if defErr := DefineNamespaceAndDatabase(db, namespace, database); defErr != nil {
+		return nil, defErr
 	}
 
 	// If no tables specified, get all tables in the database
@@ -390,6 +368,47 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 	}
 
 	return db, nil
+}
+
+// DefineNamespaceAndDatabase ensures the namespace and database exist.
+//
+// Since SurrealDB 3.x (surrealdb/surrealdb#239) USE no longer implicitly
+// creates a namespace/database for a caller lacking DEFINE-level authorization
+// — in particular when USE is sent before SignIn, the session is still
+// anonymous and nothing is created. Callers that connect and then sign in as
+// root must therefore define the namespace/database explicitly before using
+// them.
+//
+// The caller must already be authenticated with sufficient privileges (e.g.
+// signed in as root). It retries on transaction conflicts, which can happen
+// when multiple tests run in parallel and define namespaces/databases
+// concurrently.
+func DefineNamespaceAndDatabase(db *surrealdb.DB, namespace, database string) error {
+	const maxRetries = 5
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE NAMESPACE IF NOT EXISTS "+namespace, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return fmt.Errorf("failed to define namespace after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	}
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](context.Background(), db,
+			"DEFINE DATABASE IF NOT EXISTS "+database, nil)
+		if err == nil {
+			break
+		}
+		if i == maxRetries-1 {
+			return fmt.Errorf("failed to define database after %d retries: %w", maxRetries, err)
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	}
+	return nil
 }
 
 // DefineSchemalessTables defines the specified tables in the database if they do not already exist.
