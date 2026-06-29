@@ -3,7 +3,7 @@ module github.com/surrealdb/surrealdb.go/contrib/surrealnote
 go 1.25.0
 
 require (
-	github.com/fxamacker/cbor/v2 v2.9.0
+	github.com/fxamacker/cbor/v2 v2.9.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.11.1
