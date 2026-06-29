@@ -536,6 +536,11 @@ func (s *SurrealDBTestSuite) TestVersion() {
 }
 
 func (s *SurrealDBTestSuite) TestLetUnset() {
+	// Session variables don't persist across stateless HTTP requests.
+	if strings.HasPrefix(getURL(), "http") {
+		s.T().Skip("Let/Unset variables do not persist across stateless HTTP requests")
+	}
+
 	s.Run("let sets variable readable via query", func() {
 		err := s.db.Let(context.Background(), "testvar", "hello")
 		s.Require().NoError(err)
