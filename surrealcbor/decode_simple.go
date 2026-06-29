@@ -41,7 +41,7 @@ func (d *decoder) decodeBool(v reflect.Value, val bool) error {
 
 func (d *decoder) decodeNil(v reflect.Value) error {
 	switch v.Kind() {
-	case reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map:
+	case reflect.Pointer, reflect.Interface, reflect.Slice, reflect.Map:
 		v.Set(reflect.Zero(v.Type()))
 	}
 	d.pos++

@@ -112,6 +112,13 @@ func Example_integration() {
 		panic(fmt.Sprintf("SignIn failed: %v", err))
 	}
 
+	// USE before SignIn leaves the namespace/database uncreated since
+	// SurrealDB 3.x (surrealdb/surrealdb#239), so define them explicitly now
+	// that we are signed in as root.
+	if err = testenv.DefineNamespaceAndDatabase(db, "testNS", "testDB"); err != nil {
+		panic(fmt.Sprintf("Failed to define namespace/database: %v", err))
+	}
+
 	_, err = surrealdb.Query[any](context.Background(), db, "REMOVE TABLE IF EXISTS product", nil)
 	if err != nil {
 		panic(fmt.Sprintf("Query failed: %v", err))
