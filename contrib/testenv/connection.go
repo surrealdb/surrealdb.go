@@ -44,6 +44,9 @@ const (
 	// EnvSurrealCBORImpl is the environment variable that specifies
 	// the SurrealDB CBOR implementation to use.
 	EnvSurrealCBORImpl = "SURREALDB_CBOR_IMPL"
+
+	defaultRootUser = "root"
+	defaultRootPass = "root"
 )
 
 // CBORImpl specifies which CBOR implementation to use
@@ -316,8 +319,8 @@ func Init(db *surrealdb.DB, namespace, database string, tables ...string) (*surr
 	}
 
 	authData := &surrealdb.Auth{
-		Username: "root",
-		Password: "root",
+		Username: defaultRootUser,
+		Password: defaultRootPass,
 	}
 	token, err := db.SignIn(context.Background(), authData)
 	if err != nil {

@@ -43,7 +43,7 @@ func SetupVersionTestWithHTTPURL(t *testing.T, version string, extraArgs ...stri
 		"--name", containerName,
 		"-p", "0:8000",
 		fmt.Sprintf("surrealdb/surrealdb:%s", version),
-		"start", "--user", "root", "--pass", "root",
+		"start", "--user", defaultRootUser, "--pass", defaultRootPass,
 	}
 	args = append(args, extraArgs...)
 
@@ -85,8 +85,8 @@ func SetupVersionTestWithHTTPURL(t *testing.T, version string, extraArgs ...stri
 	}
 
 	_, err = db.SignIn(ctx, surrealdb.Auth{
-		Username: "root",
-		Password: "root",
+		Username: defaultRootUser,
+		Password: defaultRootPass,
 	})
 	if err != nil {
 		containerCleanup()
