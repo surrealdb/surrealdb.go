@@ -189,6 +189,16 @@ func TestDecode_floatToInterfaceWithExistingValue(t *testing.T) {
 		assert.Contains(t, err.Error(), "cannot unmarshal CBOR float64 into Go value of type int64")
 	})
 
+	t.Run("decode float64 exact integer to int64", func(t *testing.T) {
+		enc, err := cbor.Marshal(float64(42))
+		require.NoError(t, err)
+
+		var i int64
+		err = Unmarshal(enc, &i)
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), i)
+	})
+
 	t.Run("decode float32 to string directly should error", func(t *testing.T) {
 		floatVal := float32(45.67)
 		enc, err := cbor.Marshal(floatVal)

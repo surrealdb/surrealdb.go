@@ -57,15 +57,11 @@ func (d *decoder) decodeFloat16(v reflect.Value) error {
 	bits := uint16(d.data[d.pos])<<8 | uint16(d.data[d.pos+1])
 	d.pos += 2
 	f := float16ToFloat32(bits)
-	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
-		v.SetFloat(float64(f))
-	} else if v.Kind() == reflect.Interface {
+	if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
-	} else if v.CanSet() {
-		// Return error for type mismatch instead of silently ignoring
-		return fmt.Errorf("cannot unmarshal CBOR float16 into Go value of type %v", v.Type())
+		return nil
 	}
-	return nil
+	return setFloatValue(v, float64(f), "float16")
 }
 
 func float16ToFloat32(bits uint16) float32 {
@@ -108,15 +104,11 @@ func (d *decoder) decodeFloat32(v reflect.Value) error {
 	bits := binary.BigEndian.Uint32(d.data[d.pos : d.pos+4])
 	d.pos += 4
 	f := math.Float32frombits(bits)
-	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
-		v.SetFloat(float64(f))
-	} else if v.Kind() == reflect.Interface {
+	if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
-	} else if v.CanSet() {
-		// Return error for type mismatch instead of silently ignoring
-		return fmt.Errorf("cannot unmarshal CBOR float32 into Go value of type %v", v.Type())
+		return nil
 	}
-	return nil
+	return setFloatValue(v, float64(f), "float32")
 }
 
 func (d *decoder) decodeFloat64(v reflect.Value) error {
@@ -127,14 +119,79 @@ func (d *decoder) decodeFloat64(v reflect.Value) error {
 	bits := binary.BigEndian.Uint64(d.data[d.pos : d.pos+8])
 	d.pos += 8
 	f := math.Float64frombits(bits)
-	if v.Kind() == reflect.Float32 || v.Kind() == reflect.Float64 {
-		v.SetFloat(f)
-	} else if v.Kind() == reflect.Interface {
+	if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(f))
-	} else if v.CanSet() {
-		// Return error for type mismatch instead of silently ignoring
-		return fmt.Errorf("cannot unmarshal CBOR float64 into Go value of type %v", v.Type())
+		return nil
 	}
+	return setFloatValue(v, f, "float64")
+}
+
+func setFloatValue(v reflect.Value, f float64, floatKind string) error {
+	switch v.Kind() {
+	case reflect.Float32, reflect.Float64:
+		v.SetFloat(f)
+		return nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return setFloatToInt(v, f, floatKind)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return setFloatToUint(v, f, floatKind)
+	default:
+		if v.CanSet() {
+			return fmt.Errorf("cannot unmarshal CBOR %s into Go value of type %v", floatKind, v.Type())
+		}
+		return nil
+	}
+}
+
+func setFloatToInt(v reflect.Value, f float64, floatKind string) error {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f != math.Trunc(f) {
+		return fmt.Errorf("cannot unmarshal CBOR %s into Go value of type %v", floatKind, v.Type())
+	}
+	i := int64(f)
+	if float64(i) != f {
+		return fmt.Errorf("cannot unmarshal CBOR %s into Go value of type %v", floatKind, v.Type())
+	}
+	switch v.Kind() {
+	case reflect.Int8:
+		if i < math.MinInt8 || i > math.MaxInt8 {
+			return fmt.Errorf("value %d overflows int8", i)
+		}
+	case reflect.Int16:
+		if i < math.MinInt16 || i > math.MaxInt16 {
+			return fmt.Errorf("value %d overflows int16", i)
+		}
+	case reflect.Int32:
+		if i < math.MinInt32 || i > math.MaxInt32 {
+			return fmt.Errorf("value %d overflows int32", i)
+		}
+	}
+	v.SetInt(i)
+	return nil
+}
+
+func setFloatToUint(v reflect.Value, f float64, floatKind string) error {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f != math.Trunc(f) || f < 0 {
+		return fmt.Errorf("cannot unmarshal CBOR %s into Go value of type %v", floatKind, v.Type())
+	}
+	u := uint64(f)
+	if float64(u) != f {
+		return fmt.Errorf("cannot unmarshal CBOR %s into Go value of type %v", floatKind, v.Type())
+	}
+	switch v.Kind() {
+	case reflect.Uint8:
+		if u > math.MaxUint8 {
+			return fmt.Errorf("value %d overflows uint8", u)
+		}
+	case reflect.Uint16:
+		if u > math.MaxUint16 {
+			return fmt.Errorf("value %d overflows uint16", u)
+		}
+	case reflect.Uint32:
+		if u > math.MaxUint32 {
+			return fmt.Errorf("value %d overflows uint32", u)
+		}
+	}
+	v.SetUint(u)
 	return nil
 }
 
