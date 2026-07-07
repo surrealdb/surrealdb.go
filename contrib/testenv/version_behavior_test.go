@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -25,107 +24,17 @@ import (
 //   SURREALDB_VERSION=v3.0.0-beta.2 go test -run "TestBehavior.*_v3" ./contrib/testenv/
 
 func setupVersionTest(t *testing.T, version string) (db *surrealdb.DB, cleanup func()) {
-	_, db, cleanup = setupVersionTestWithHTTPURL(t, version)
-	return db, cleanup
+	return SetupVersionTest(t, version)
 }
 
 func setupVersionTestWithArgs(t *testing.T, version string, extraArgs ...string) (db *surrealdb.DB, cleanup func()) {
-	_, db, cleanup = setupVersionTestWithHTTPURL(t, version, extraArgs...)
+	t.Helper()
+	_, db, cleanup = SetupVersionTestWithHTTPURL(t, version, extraArgs...)
 	return db, cleanup
 }
 
 func setupVersionTestWithHTTPURL(t *testing.T, version string, extraArgs ...string) (wsURL string, db *surrealdb.DB, cleanup func()) {
-	t.Helper()
-
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("Docker not available, skipping version behavior test")
-	}
-
-	ctx := context.Background()
-
-	if err := exec.CommandContext(ctx, "docker", "info").Run(); err != nil {
-		t.Skip("Docker daemon not running, skipping version behavior test")
-	}
-
-	containerName := fmt.Sprintf("surrealdb-behavior-test-%s-%d", version, time.Now().UnixNano())
-
-	// Cleanup any existing container
-	_ = exec.CommandContext(ctx, "docker", "rm", "-f", containerName).Run()
-
-	// Build command arguments
-	args := []string{
-		"run", "-d",
-		"--name", containerName,
-		"-p", "0:8000",
-		fmt.Sprintf("surrealdb/surrealdb:%s", version),
-		"start", "--user", "root", "--pass", "root",
-	}
-	args = append(args, extraArgs...)
-
-	// Start container with dynamic port allocation (port 0 lets Docker choose)
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "Failed to start container: %s", string(output))
-
-	containerCleanup := func() {
-		cleanupCtx := context.Background()
-		_ = exec.CommandContext(cleanupCtx, "docker", "rm", "-f", containerName).Run()
-	}
-
-	// Get the dynamically allocated port
-	portCmd := exec.CommandContext(ctx, "docker", "port", containerName, "8000")
-	portOutput, err := portCmd.CombinedOutput()
-	if err != nil {
-		containerCleanup()
-		t.Fatalf("Failed to get container port: %v, output: %s", err, string(portOutput))
-	}
-	// Output format: "0.0.0.0:12345\n" - extract port number
-	portStr := string(portOutput)
-	// Find the last colon and extract port
-	for i := len(portStr) - 1; i >= 0; i-- {
-		if portStr[i] == ':' {
-			portStr = portStr[i+1:]
-			break
-		}
-	}
-	portStr = portStr[:len(portStr)-1] // Remove trailing newline
-	wsURL = fmt.Sprintf("ws://localhost:%s/rpc", portStr)
-
-	// Wait for container to be ready
-	for i := 0; i < 30; i++ {
-		db, err = surrealdb.FromEndpointURLString(ctx, wsURL)
-		if err == nil {
-			break
-		}
-		time.Sleep(1 * time.Second)
-	}
-	if err != nil {
-		containerCleanup()
-		t.Fatalf("Failed to connect to SurrealDB: %v", err)
-	}
-
-	// Sign in as root
-	_, err = db.SignIn(ctx, surrealdb.Auth{
-		Username: "root",
-		Password: "root",
-	})
-	if err != nil {
-		containerCleanup()
-		t.Fatalf("Failed to sign in: %v", err)
-	}
-
-	// Use a test namespace/database
-	err = db.Use(ctx, "test_ns", "test_db")
-	if err != nil {
-		containerCleanup()
-		t.Fatalf("Failed to use database: %v", err)
-	}
-
-	cleanup = func() {
-		db.Close(ctx)
-		containerCleanup()
-	}
-	return wsURL, db, cleanup
+	return SetupVersionTestWithHTTPURL(t, version, extraArgs...)
 }
 
 // =============================================================================
