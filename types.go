@@ -23,7 +23,76 @@ type RPCError = connection.RPCError
 //	if errors.As(err, &se) {
 //	    fmt.Println(se.Kind, se.Details)
 //	}
+//
+// For ergonomic kind checking without extracting a *ServerError yourself,
+// use the Is* helpers below (e.g. [IsNotFound], [IsNotAllowed]) or compare
+// se.Kind directly against the Kind* constants (e.g. [KindNotFound]).
 type ServerError = connection.ServerError
+
+// Known values for ServerError.Kind. See [connection.KindNotFound] and its
+// siblings for the full list and provenance.
+const (
+	KindValidation    = connection.KindValidation
+	KindConfiguration = connection.KindConfiguration
+	KindThrown        = connection.KindThrown
+	KindQuery         = connection.KindQuery
+	KindSerialization = connection.KindSerialization
+	KindNotAllowed    = connection.KindNotAllowed
+	KindNotFound      = connection.KindNotFound
+	KindAlreadyExists = connection.KindAlreadyExists
+	KindConnection    = connection.KindConnection
+	KindInternal      = connection.KindInternal
+)
+
+// IsNotFound reports whether err is (or wraps) a *ServerError whose Kind is
+// "NotFound". See [connection.IsNotFound].
+var IsNotFound = connection.IsNotFound
+
+// IsNotAllowed reports whether err is (or wraps) a *ServerError whose Kind is
+// "NotAllowed". See [connection.IsNotAllowed].
+var IsNotAllowed = connection.IsNotAllowed
+
+// IsTransactionConflict reports whether err is a *ServerError representing a
+// Query/TransactionConflict failure, safe to retry. See
+// [connection.IsTransactionConflict].
+var IsTransactionConflict = connection.IsTransactionConflict
+
+// IsTimedOut reports whether err is a *ServerError representing a
+// Query/TimedOut failure. See [connection.IsTimedOut].
+var IsTimedOut = connection.IsTimedOut
+
+// IsNotExecuted reports whether err is a *ServerError representing a
+// Query/NotExecuted failure. See [connection.IsNotExecuted].
+var IsNotExecuted = connection.IsNotExecuted
+
+// IsCancelled reports whether err is a *ServerError representing a canceled
+// query. See [connection.IsCancelled].
+var IsCancelled = connection.IsCancelled
+
+// IsParseError reports whether err is a *ServerError representing a
+// Validation/Parse failure. See [connection.IsParseError].
+var IsParseError = connection.IsParseError
+
+// IsDeserialization reports whether err is a *ServerError representing a
+// Serialization/Deserialization failure. See [connection.IsDeserialization].
+var IsDeserialization = connection.IsDeserialization
+
+// IsLiveQueryNotSupported reports whether err is a *ServerError representing
+// a Configuration/LiveQueryNotSupported failure. See
+// [connection.IsLiveQueryNotSupported].
+var IsLiveQueryNotSupported = connection.IsLiveQueryNotSupported
+
+// IsScriptingBlocked reports whether err is a *ServerError representing a
+// NotAllowed/Scripting failure. See [connection.IsScriptingBlocked].
+var IsScriptingBlocked = connection.IsScriptingBlocked
+
+// IsTokenExpired reports whether err is a *ServerError representing a
+// NotAllowed/Auth/TokenExpired failure. See [connection.IsTokenExpired].
+var IsTokenExpired = connection.IsTokenExpired
+
+// IsInvalidAuth reports whether err is a *ServerError representing a
+// NotAllowed/Auth/InvalidAuth failure. See [connection.IsInvalidAuth].
+var IsInvalidAuth = connection.IsInvalidAuth
 
 // Patch represents a patch object set to MODIFY a record
 type PatchData struct {

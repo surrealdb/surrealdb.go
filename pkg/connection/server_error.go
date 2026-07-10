@@ -11,8 +11,9 @@ package connection
 //	}
 //
 // ServerError carries structured information including Kind, Details, and a cause chain.
-// Use the helper functions in the surrealdb package (IsNotAllowed, IsNotFound, etc.)
-// for ergonomic kind checking, or inspect Kind directly.
+// Use the Is* helper functions in this package (IsNotAllowed, IsNotFound, etc. -- also
+// re-exported from the top-level surrealdb package) for ergonomic kind checking, or
+// compare Kind directly against the Kind* constants (e.g. KindNotFound).
 type ServerError struct {
 	// Code is the JSON-RPC numeric error code.
 	Code int
@@ -21,6 +22,7 @@ type ServerError struct {
 	Message string
 
 	// Kind is the structured error kind (e.g. "NotFound", "NotAllowed").
+	// See the Kind* constants (e.g. KindNotFound) for the known values.
 	Kind string
 
 	// Details contains kind-specific structured error details.
