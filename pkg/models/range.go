@@ -91,7 +91,7 @@ func (r *Range[T, TBeg, TEnd]) String() string {
 		beginStr = convertToString(r.Begin)
 	}
 	if r.End != nil {
-		endStr = convertToString(r.Begin)
+		endStr = convertToString(r.End)
 	}
 
 	return fmt.Sprintf("%s%s%s", beginStr, joinStr, endStr)
@@ -142,13 +142,43 @@ func (rr *RecordRangeID[T, TBeg, TEnd]) String() string {
 		beginStr = convertToString(rr.Begin)
 	}
 	if rr.End != nil {
-		endStr = convertToString(rr.Begin)
+		endStr = convertToString(rr.End)
 	}
 
 	return fmt.Sprintf("%s:%s%s%s", rr.Table, beginStr, joinStr, endStr)
 }
 
+// convertToString renders the underlying value of a range bound (a
+// *BoundIncluded[T] or *BoundExcluded[T]) as a SurrealQL-compatible string.
+//
+// String values are escaped the same way RecordID.String escapes record IDs
+// (see record_id_string.go), wrapping them in angle brackets (⟨⟩) when they
+// contain characters that would otherwise be ambiguous or invalid in a bare
+// identifier. Other value types fall back to their default string
+// representation.
 func convertToString(v any) string {
-	// todo: implement
-	return ""
+	value := reflect.ValueOf(v)
+	for value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return ""
+		}
+		value = value.Elem()
+	}
+
+	// v is expected to be a *BoundIncluded[T] or *BoundExcluded[T], both of
+	// which have a single exported field named "Value" holding the bound.
+	field := value.FieldByName("Value")
+	if !field.IsValid() {
+		return fmt.Sprintf("%v", v)
+	}
+	inner := field.Interface()
+
+	if strVal, ok := inner.(string); ok {
+		if needsEscaping(strVal) {
+			return fmt.Sprintf("⟨%s⟩", escapeString(strVal, '⟩'))
+		}
+		return strVal
+	}
+
+	return fmt.Sprintf("%v", inner)
 }
