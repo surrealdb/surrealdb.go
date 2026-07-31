@@ -60,7 +60,7 @@ type SelectQuery struct {
 //		// Select a range of records
 //	Select(models.RecordID{
 //		Table: "users",
-//		ID:    RangeClosedEndExclusive("a", "z"),
+//		ID:    RangeBeginInclusiveEndExclusive("a", "z"),
 //	})
 //	// SELECT * FROM $from_id_1
 //

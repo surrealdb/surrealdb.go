@@ -41,22 +41,40 @@ func RangeOpenEndExclusive[T any](t T) models.Range[T, models.BoundIncluded[T], 
 	}
 }
 
-// RangeClosed returns a closed range with both ends inclusive (`a..=b`).
-// a and b may be different Go types. Pass nil for a bound value of NULL
-// (that is not the same as leaving a side open — use the RangeOpen* helpers
-// for open sides).
-func RangeClosed(a, b any) models.Range[any, models.BoundIncluded[any], models.BoundIncluded[any]] {
+// RangeBeginInclusiveEndInclusive returns a range with both ends inclusive
+// (`a..=b`). a and b may be different Go types. Pass nil for a bound value of
+// NULL (that is not the same as leaving a side open — use the RangeOpen*
+// helpers for open sides).
+func RangeBeginInclusiveEndInclusive(a, b any) models.Range[any, models.BoundIncluded[any], models.BoundIncluded[any]] {
 	return models.Range[any, models.BoundIncluded[any], models.BoundIncluded[any]]{
 		Begin: &models.BoundIncluded[any]{Value: a},
 		End:   &models.BoundIncluded[any]{Value: b},
 	}
 }
 
-// RangeClosedEndExclusive returns a range from a (inclusive) to b (exclusive)
-// (`a..b`). a and b may be different Go types.
-func RangeClosedEndExclusive(a, b any) models.Range[any, models.BoundIncluded[any], models.BoundExcluded[any]] {
+// RangeBeginInclusiveEndExclusive returns a range from a (inclusive) to b
+// (exclusive) (`a..b`). a and b may be different Go types.
+func RangeBeginInclusiveEndExclusive(a, b any) models.Range[any, models.BoundIncluded[any], models.BoundExcluded[any]] {
 	return models.Range[any, models.BoundIncluded[any], models.BoundExcluded[any]]{
 		Begin: &models.BoundIncluded[any]{Value: a},
+		End:   &models.BoundExcluded[any]{Value: b},
+	}
+}
+
+// RangeBeginExclusiveEndInclusive returns a range from a (exclusive) to b
+// (inclusive) (`a>..=b`). a and b may be different Go types.
+func RangeBeginExclusiveEndInclusive(a, b any) models.Range[any, models.BoundExcluded[any], models.BoundIncluded[any]] {
+	return models.Range[any, models.BoundExcluded[any], models.BoundIncluded[any]]{
+		Begin: &models.BoundExcluded[any]{Value: a},
+		End:   &models.BoundIncluded[any]{Value: b},
+	}
+}
+
+// RangeBeginExclusiveEndExclusive returns a range from a (exclusive) to b
+// (exclusive) (`a>..b`). a and b may be different Go types.
+func RangeBeginExclusiveEndExclusive(a, b any) models.Range[any, models.BoundExcluded[any], models.BoundExcluded[any]] {
+	return models.Range[any, models.BoundExcluded[any], models.BoundExcluded[any]]{
+		Begin: &models.BoundExcluded[any]{Value: a},
 		End:   &models.BoundExcluded[any]{Value: b},
 	}
 }

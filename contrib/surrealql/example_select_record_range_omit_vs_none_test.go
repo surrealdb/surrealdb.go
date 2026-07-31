@@ -69,7 +69,7 @@ func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any)
 // Dataset: person:1, person:2, person:10.
 //
 //   - RangeOpenBeginInclusive(1) → open end → returns 1, 2, and 10
-//   - RangeClosed(1, None) → SurrealDB rejects NONE as a scalar record-id bound
+//   - RangeBeginInclusiveEndInclusive(1, None) → SurrealDB rejects NONE as a scalar record-id bound
 //
 // Leave the end open when that side has no limit. models.None belongs inside
 // array-style ids (see the composite-ID Examples), not as a stand-in for
@@ -87,15 +87,15 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 	}
 	printPersonIDs("open end", (*res)[0].Result)
 
-	err = queryRangeBound(ctx, db, "person", surrealql.RangeClosed(1, models.None))
+	err = queryRangeBound(ctx, db, "person", surrealql.RangeBeginInclusiveEndInclusive(1, models.None))
 	if err != nil {
-		fmt.Printf("RangeClosed(1, None): rejected\n")
+		fmt.Printf("RangeBeginInclusiveEndInclusive(1, None): rejected\n")
 	} else {
-		fmt.Printf("RangeClosed(1, None): unexpected success\n")
+		fmt.Printf("RangeBeginInclusiveEndInclusive(1, None): unexpected success\n")
 	}
 	// Output:
 	// open end: 1 10 2
-	// RangeClosed(1, None): rejected
+	// RangeBeginInclusiveEndInclusive(1, None): rejected
 }
 
 // ExampleSelect_recordRange_omitVsNone_begin proves that an open begin bound
@@ -104,7 +104,7 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 // Dataset: person:1, person:2, person:10.
 //
 //   - RangeOpenEndInclusive(10) → open begin → returns 1, 2, and 10
-//   - RangeClosed(None, 10) → SurrealDB rejects NONE as a scalar record-id bound
+//   - RangeBeginInclusiveEndInclusive(None, 10) → SurrealDB rejects NONE as a scalar record-id bound
 //
 // On this numeric-only table, an accepted NONE-begin would still be a different
 // *kind* of range from an open begin. In practice SurrealDB rejects the NONE
@@ -123,13 +123,13 @@ func ExampleSelect_recordRange_omitVsNone_begin() {
 	}
 	printPersonIDs("open begin", (*res)[0].Result)
 
-	err = queryRangeBound(ctx, db, "person", surrealql.RangeClosed(models.None, 10))
+	err = queryRangeBound(ctx, db, "person", surrealql.RangeBeginInclusiveEndInclusive(models.None, 10))
 	if err != nil {
-		fmt.Printf("RangeClosed(None, 10): rejected\n")
+		fmt.Printf("RangeBeginInclusiveEndInclusive(None, 10): rejected\n")
 	} else {
-		fmt.Printf("RangeClosed(None, 10): unexpected success\n")
+		fmt.Printf("RangeBeginInclusiveEndInclusive(None, 10): unexpected success\n")
 	}
 	// Output:
 	// open begin: 1 10 2
-	// RangeClosed(None, 10): rejected
+	// RangeBeginInclusiveEndInclusive(None, 10): rejected
 }

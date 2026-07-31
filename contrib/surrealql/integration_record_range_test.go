@@ -51,7 +51,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 	t.Run("core Select with RecordID range", func(t *testing.T) {
 		rr := models.RecordID{
 			Table: "person",
-			ID:    surrealql.RangeClosed(1, 3),
+			ID:    surrealql.RangeBeginInclusiveEndInclusive(1, 3),
 		}
 		got, err := surrealdb.Select[[]Person](ctx, db, rr)
 		require.NoError(t, err)
@@ -78,7 +78,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 	t.Run("surrealql Select with RecordID range", func(t *testing.T) {
 		sql, vars := surrealql.Select(models.RecordID{
 			Table: "person",
-			ID:    surrealql.RangeClosed(2, 3),
+			ID:    surrealql.RangeBeginInclusiveEndInclusive(2, 3),
 		}).Build()
 
 		t.Logf("sql=%s vars=%v", sql, vars)
@@ -128,7 +128,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		rr := models.RecordID{
 			Table: "temp",
-			ID: surrealql.RangeClosed(
+			ID: surrealql.RangeBeginInclusiveEndInclusive(
 				[]any{"London", models.None},
 				[]any{"London", surrealql.RangeOpen()},
 			),
@@ -161,7 +161,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		cityWide := models.RecordID{
 			Table: "temp3",
-			ID: surrealql.RangeClosed(
+			ID: surrealql.RangeBeginInclusiveEndInclusive(
 				[]any{"London", models.None, models.None},
 				[]any{"London", surrealql.RangeOpen(), surrealql.RangeOpen()},
 			),
@@ -172,7 +172,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		westOnly := models.RecordID{
 			Table: "temp3",
-			ID: surrealql.RangeClosed(
+			ID: surrealql.RangeBeginInclusiveEndInclusive(
 				[]any{"London", "West", models.None},
 				[]any{"London", "West", surrealql.RangeOpen()},
 			),

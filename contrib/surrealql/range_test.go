@@ -16,9 +16,13 @@ func TestRangeOpen_Helpers(t *testing.T) {
 	assert.Equal(t, "1>..", RangeOpenBeginExclusive(1).String())
 	assert.Equal(t, "..=10", RangeOpenEndInclusive(10).String())
 	assert.Equal(t, "..10", RangeOpenEndExclusive(10).String())
+}
 
-	assert.Equal(t, "1..=10", RangeClosed(1, 10).String())
-	assert.Equal(t, "a..z", RangeClosedEndExclusive("a", "z").String())
+func TestRangeBeginEnd_Helpers(t *testing.T) {
+	assert.Equal(t, "1..=10", RangeBeginInclusiveEndInclusive(1, 10).String())
+	assert.Equal(t, "a..z", RangeBeginInclusiveEndExclusive("a", "z").String())
+	assert.Equal(t, "1>..=10", RangeBeginExclusiveEndInclusive(1, 10).String())
+	assert.Equal(t, "a>..z", RangeBeginExclusiveEndExclusive("a", "z").String())
 }
 
 func TestRangeOpen_TypedBounds(t *testing.T) {
@@ -33,8 +37,8 @@ func TestRangeOpen_TypedBounds(t *testing.T) {
 	assert.Nil(t, endExc.Begin)
 }
 
-func TestRangeClosed_MixedEnds(t *testing.T) {
-	r := RangeClosed(1, "z")
+func TestRangeBeginInclusiveEndInclusive_MixedEnds(t *testing.T) {
+	r := RangeBeginInclusiveEndInclusive(1, "z")
 	require.NotNil(t, r.Begin)
 	assert.Equal(t, 1, r.Begin.Value)
 	require.NotNil(t, r.End)
