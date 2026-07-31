@@ -8,26 +8,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tests for selecting a range of records (for example person:1..=1000).
+// Tests for selecting a range of records via RecordID + OpenRange.
 
-func TestRecordRange_String(t *testing.T) {
-	rr := NewRecordRange("person", Included(1), Included(1000))
-	assert.Equal(t, "person:1..=1000", rr.String())
-
-	rr2 := NewRecordRange("users", Included("a"), Excluded("z"))
-	assert.Equal(t, "users:a..z", rr2.String())
-
-	rr3 := NewRecordRange("logs", nil, Excluded("z"))
-	assert.Equal(t, "logs:..z", rr3.String())
-
-	rr4 := NewRecordRange("logs", Included("a"), nil)
-	assert.Equal(t, "logs:a..", rr4.String())
+func personRange(id any) RecordID {
+	return RecordID{Table: "person", ID: id}
 }
 
-func TestRecordRange_MarshalCBOR_Shape(t *testing.T) {
-	rr := NewRecordRange("person", Included(1), Included(1000))
+func TestRecordID_Range_String(t *testing.T) {
+	// String() on RangeValue is for debugging; do not treat it as SurrealQL.
+	assert.Equal(t, "1..=1000", OpenRange().BeginInclusive(1).EndInclusive(1000).String())
+	assert.Equal(t, "a..z", OpenRange().BeginInclusive("a").EndExclusive("z").String())
+	assert.Equal(t, "..z", OpenRange().EndExclusive("z").String())
+	assert.Equal(t, "a..", OpenRange().BeginInclusive("a").String())
+}
 
-	encoded, err := cbor.Marshal(rr)
+func TestRecordID_Range_MarshalCBOR_Shape(t *testing.T) {
+	rr := personRange(OpenRange().BeginInclusive(1).EndInclusive(1000))
+
+	encoded, err := cbor.Marshal(&rr)
 	require.NoError(t, err)
 
 	var tag cbor.Tag
@@ -58,34 +56,32 @@ func TestRecordRange_MarshalCBOR_Shape(t *testing.T) {
 	assert.EqualValues(t, 1000, endTag.Content)
 }
 
-func TestRecordRange_MarshalCBOR_MatchesRecordIDWithRangeID(t *testing.T) {
-	// A RecordID whose id is a Range should behave like RecordRange.
-	viaRecordRange := NewRecordRange("person", Included(1), Excluded(10))
-	viaRecordID := RecordID{
+func TestRecordID_Range_MarshalCBOR_MatchesTypedRange(t *testing.T) {
+	viaOpenRange := personRange(OpenRange().BeginInclusive(1).EndExclusive(10))
+	viaTypedRange := RecordID{
 		Table: "person",
 		ID: Range[int, BoundIncluded[int], BoundExcluded[int]]{
-			Begin: Included(1),
-			End:   Excluded(10),
+			Begin: &BoundIncluded[int]{Value: 1},
+			End:   &BoundExcluded[int]{Value: 10},
 		},
 	}
 
-	a, err := cbor.Marshal(viaRecordRange)
+	a, err := cbor.Marshal(&viaOpenRange)
 	require.NoError(t, err)
-	b, err := cbor.Marshal(viaRecordID)
+	b, err := cbor.Marshal(&viaTypedRange)
 	require.NoError(t, err)
-	assert.Equal(t, a, b, "RecordRange and RecordID{ID: Range} must encode the same way")
+	assert.Equal(t, a, b, "OpenRange builder and typed Range must encode the same way")
 }
 
-func TestRecordRange_ArrayStyleID(t *testing.T) {
-	// Equivalent to: SELECT * FROM temp:['London',NONE]..=['London',..]
-	rr := NewRecordRange("temp",
-		IncludedMany[any]("London", None),
-		IncludedMany[any]("London", OpenRange()),
-	)
+func TestRecordID_Range_ArrayStyleID(t *testing.T) {
+	rr := RecordID{
+		Table: "temp",
+		ID: OpenRange().
+			BeginInclusive(ID("London", None)).
+			EndInclusive(ID("London", OpenRange())),
+	}
 
-	assert.Contains(t, rr.String(), "temp:")
-
-	encoded, err := cbor.Marshal(rr)
+	encoded, err := cbor.Marshal(&rr)
 	require.NoError(t, err)
 
 	var tag cbor.Tag
@@ -120,17 +116,115 @@ func TestOpenRange_String(t *testing.T) {
 	assert.Equal(t, "..", OpenRange().String())
 }
 
-func TestIncludedExcluded_Helpers(t *testing.T) {
-	assert.Equal(t, 42, Included(42).Value)
-	assert.Equal(t, "x", Excluded("x").Value)
-	assert.Equal(t, []int{1, 2}, IncludedMany(1, 2).Value)
-	assert.Equal(t, []int{9}, ExcludedMany(9).Value)
-	assert.Equal(t, []any{"London", None}, IncludedMany[any]("London", None).Value)
-	// ID is another way to build an array-style id for Included(...).
-	assert.Equal(t, []any{"London", None}, Included(ID("London", None)).Value)
+func TestOpenRange_BothSidesOpen(t *testing.T) {
+	assert.Equal(t, "..", OpenRange().String())
+	assert.Nil(t, OpenRange().Begin)
+	assert.Nil(t, OpenRange().End)
+
+	viaOpenRange, err := cbor.Marshal(OpenRange())
+	require.NoError(t, err)
+	viaEmpty, err := cbor.Marshal(RangeValue{})
+	require.NoError(t, err)
+	assert.Equal(t, viaEmpty, viaOpenRange)
+}
+
+func TestOpenRange_Fluent_Immutable(t *testing.T) {
+	base := OpenRange()
+	withBegin := base.BeginInclusive(1)
+	assert.Nil(t, base.Begin, "OpenRange methods must not mutate the receiver")
+	assert.NotNil(t, withBegin.Begin)
+	assert.Nil(t, withBegin.End)
+
+	withBoth := withBegin.EndInclusive(10)
+	assert.Nil(t, withBegin.End)
+	assert.NotNil(t, withBoth.End)
+}
+
+func TestRecordID_Range_MarshalCBOR_OpenNoneNullNested(t *testing.T) {
+	t.Run("open end is null slot", func(t *testing.T) {
+		rr := personRange(OpenRange().BeginInclusive(1))
+		bounds := encodeRecordIDRangeBounds(t, rr)
+		assertBoundIncluded(t, bounds[0], int64(1))
+		assert.Nil(t, bounds[1], "open end must be a null slot")
+	})
+
+	t.Run("open begin is null slot", func(t *testing.T) {
+		rr := personRange(OpenRange().EndInclusive(10))
+		bounds := encodeRecordIDRangeBounds(t, rr)
+		assert.Nil(t, bounds[0], "open begin must be a null slot")
+		assertBoundIncluded(t, bounds[1], int64(10))
+	})
+
+	t.Run("EndInclusive(None) is TagBoundIncluded + TagNone", func(t *testing.T) {
+		rr := personRange(OpenRange().BeginInclusive(None).EndInclusive(10))
+		bounds := encodeRecordIDRangeBounds(t, rr)
+		begin := assertBoundIncludedTag(t, bounds[0])
+		noneTag, ok := begin.(cbor.Tag)
+		require.True(t, ok)
+		assert.Equal(t, TagNone, noneTag.Number)
+	})
+
+	t.Run("EndInclusive(nil) is TagBoundIncluded + null value", func(t *testing.T) {
+		rr := personRange(OpenRange().BeginInclusive(1).EndInclusive(nil))
+		bounds := encodeRecordIDRangeBounds(t, rr)
+		end := assertBoundIncludedTag(t, bounds[1])
+		assert.Nil(t, end, "NULL bound value must be CBOR null inside the included tag")
+	})
+
+	t.Run("EndInclusive(OpenRange) nests TagRange with both slots null", func(t *testing.T) {
+		rr := personRange(OpenRange().BeginInclusive(1).EndInclusive(OpenRange()))
+		bounds := encodeRecordIDRangeBounds(t, rr)
+		end := assertBoundIncludedTag(t, bounds[1])
+		openTag, ok := end.(cbor.Tag)
+		require.True(t, ok)
+		assert.Equal(t, TagRange, openTag.Number)
+		slots, ok := openTag.Content.([]any)
+		require.True(t, ok)
+		require.Len(t, slots, 2)
+		assert.Nil(t, slots[0])
+		assert.Nil(t, slots[1])
+	})
+}
+
+func encodeRecordIDRangeBounds(t *testing.T, rr RecordID) []any {
+	t.Helper()
+	encoded, err := cbor.Marshal(&rr)
+	require.NoError(t, err)
+
+	var tag cbor.Tag
+	require.NoError(t, cbor.Unmarshal(encoded, &tag))
+	require.Equal(t, TagRecordID, tag.Number)
+
+	content, ok := tag.Content.([]any)
+	require.True(t, ok)
+	require.Len(t, content, 2)
+
+	rangeTag, ok := content[1].(cbor.Tag)
+	require.True(t, ok)
+	assert.Equal(t, TagRange, rangeTag.Number)
+
+	bounds, ok := rangeTag.Content.([]any)
+	require.True(t, ok)
+	require.Len(t, bounds, 2)
+	return bounds
+}
+
+func assertBoundIncluded(t *testing.T, v any, want any) {
+	t.Helper()
+	content := assertBoundIncludedTag(t, v)
+	assert.EqualValues(t, want, content)
+}
+
+func assertBoundIncludedTag(t *testing.T, v any) any {
+	t.Helper()
+	tag, ok := v.(cbor.Tag)
+	require.True(t, ok)
+	assert.Equal(t, TagBoundIncluded, tag.Number)
+	return tag.Content
 }
 
 func TestID_Helper(t *testing.T) {
 	assert.Equal(t, []any{"London", None}, ID("London", None))
 	assert.Equal(t, []any{"a"}, ID("a"))
+	assert.Equal(t, []any{"London", OpenRange()}, ID("London", OpenRange()))
 }

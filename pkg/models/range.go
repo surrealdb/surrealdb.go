@@ -64,55 +64,6 @@ type Bound[T any] interface {
 	BoundIncluded[T] | BoundExcluded[T]
 }
 
-// Included marks the start or end of a range as inclusive.
-//
-//	Included(1)    // like 1 in person:1..=10
-//	Included("a")  // like a in users:a..=z
-//
-// For several parts (an array-style record id), use [IncludedMany].
-func Included[T any](v T) *BoundIncluded[T] {
-	return &BoundIncluded[T]{Value: v}
-}
-
-// IncludedMany marks an inclusive bound whose value is an array of parts.
-//
-//	IncludedMany(1, 2)                      // [1, 2]
-//	IncludedMany[any]("London", None)         // ['London', NONE]
-//	IncludedMany[any]("London", OpenRange())  // ['London', ..]
-func IncludedMany[T any](first T, rest ...T) *BoundIncluded[[]T] {
-	all := make([]T, 0, 1+len(rest))
-	all = append(all, first)
-	all = append(all, rest...)
-	return &BoundIncluded[[]T]{Value: all}
-}
-
-// Excluded marks the start or end of a range as exclusive.
-//
-// For several parts (an array-style record id), use [ExcludedMany].
-func Excluded[T any](v T) *BoundExcluded[T] {
-	return &BoundExcluded[T]{Value: v}
-}
-
-// ExcludedMany marks an exclusive bound whose value is an array of parts.
-//
-// See [IncludedMany] for examples.
-func ExcludedMany[T any](first T, rest ...T) *BoundExcluded[[]T] {
-	all := make([]T, 0, 1+len(rest))
-	all = append(all, first)
-	all = append(all, rest...)
-	return &BoundExcluded[[]T]{Value: all}
-}
-
-// ID joins parts into an array-style record id.
-//
-// Prefer [IncludedMany] / [ExcludedMany] for range bounds.
-// Use ID when you need the array itself, for example:
-//
-//	NewRecordID("temp", ID("London", 1))
-func ID(parts ...any) []any {
-	return parts
-}
-
 type Range[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Begin *TBeg
 	End   *TEnd
@@ -189,49 +140,79 @@ func (rr *RecordRangeID[T, TBeg, TEnd]) String() string {
 }
 
 func (rr RecordRangeID[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
-	return NewRecordRange(string(rr.Table), rr.Begin, rr.End).MarshalCBOR()
+	rid := RecordID{
+		Table: string(rr.Table),
+		ID:    RangeValue{Begin: rr.Begin, End: rr.End},
+	}
+	return rid.MarshalCBOR()
 }
 
-// RecordRange is a range of record ids in one table, such as person:1..=1000
-// or temp:['London', NONE]..=['London', ..].
+// ID joins parts into an array-style record id, such as ['London', NONE].
 //
-// Set Begin and End with [Included], [Excluded], or nil when that side has no limit.
+// Use ID as a bound value with [OpenRange], or as a plain record id:
 //
-// Pass a RecordRange to surrealdb.Select, Delete, Update, and similar methods,
-// or use it as a query variable. For everyday use prefer RecordRange over the
-// more typed [RecordRangeID].
-type RecordRange struct {
-	Table Table
-	Begin any
-	End   any
+//	models.RecordID{
+//		Table: "temp",
+//		ID: models.OpenRange().
+//			BeginInclusive(models.ID("London", models.None)).
+//			EndInclusive(models.ID("London", models.OpenRange())),
+//	}
+//
+//	models.NewRecordID("temp", models.ID("London", 1))
+func ID(parts ...any) []any {
+	return parts
 }
 
-// NewRecordRange creates a [RecordRange] for the given table and bounds.
+// OpenRange is an open-ended range (`..`). Both sides start open; chain
+// BeginInclusive / BeginExclusive / EndInclusive / EndExclusive to set bounds.
 //
-// This matches SurrealQL like:
+// Bare OpenRange() is the `..` value itself — useful inside array-style ids,
+// as in ['London', ..].
 //
-//	SELECT * FROM temp:['London', NONE]..=['London', ..]
+// For a range of record ids, put the result in a [RecordID]:
 //
-//	models.NewRecordRange("temp",
-//	    models.IncludedMany[any]("London", models.None),
-//	    models.IncludedMany[any]("London", models.OpenRange()),
-//	)
-func NewRecordRange(table string, begin, end any) RecordRange {
-	return RecordRange{Table: Table(table), Begin: begin, End: end}
-}
-
-// OpenRange is an open-ended range (`..`), often used as the upper part of an
-// array-style record id, as in ['London', ..].
+//	models.RecordID{
+//		Table: "person",
+//		ID:    models.OpenRange().BeginInclusive(1).EndInclusive(10),
+//	}
+//
+// Leave a side unset for an open bound (person:1.. or person:..=10). Do not
+// pass [None] as a scalar begin/end — SurrealDB rejects that. Use [None]
+// inside array-style ids via [ID].
 func OpenRange() RangeValue {
 	return RangeValue{}
 }
 
 // RangeValue is a plain range value, such as 1..=10 or an open `..`.
-// Use the typed [Range] when both ends share one Go type; use RangeValue
-// (or [OpenRange]) when the range sits inside a mixed value like an array id.
+// Prefer building it with [OpenRange] and the Begin*/End* methods.
+// Use the typed [Range] when both ends share one Go type.
 type RangeValue struct {
 	Begin any
 	End   any
+}
+
+// BeginInclusive sets an inclusive lower bound and returns the updated range.
+func (r RangeValue) BeginInclusive(v any) RangeValue {
+	r.Begin = &BoundIncluded[any]{Value: v}
+	return r
+}
+
+// BeginExclusive sets an exclusive lower bound and returns the updated range.
+func (r RangeValue) BeginExclusive(v any) RangeValue {
+	r.Begin = &BoundExcluded[any]{Value: v}
+	return r
+}
+
+// EndInclusive sets an inclusive upper bound and returns the updated range.
+func (r RangeValue) EndInclusive(v any) RangeValue {
+	r.End = &BoundIncluded[any]{Value: v}
+	return r
+}
+
+// EndExclusive sets an exclusive upper bound and returns the updated range.
+func (r RangeValue) EndExclusive(v any) RangeValue {
+	r.End = &BoundExcluded[any]{Value: v}
+	return r
 }
 
 func (r RangeValue) MarshalCBOR() ([]byte, error) {
@@ -243,28 +224,6 @@ func (r RangeValue) MarshalCBOR() ([]byte, error) {
 
 func (r RangeValue) String() string {
 	return fmt.Sprintf("%s%s%s", boundValueString(r.Begin), joinFromBounds(r.Begin, r.End), boundValueString(r.End))
-}
-
-func (rr RecordRange) MarshalCBOR() ([]byte, error) {
-	if rr.Table == "" {
-		return nil, fmt.Errorf("cannot marshal RecordRange with empty table")
-	}
-	return cbor.Marshal(cbor.Tag{
-		Number: TagRecordID,
-		Content: []any{
-			string(rr.Table),
-			RangeValue{Begin: rr.Begin, End: rr.End},
-		},
-	})
-}
-
-func (rr RecordRange) String() string {
-	return fmt.Sprintf("%s:%s%s%s",
-		rr.Table,
-		boundValueString(rr.Begin),
-		joinFromBounds(rr.Begin, rr.End),
-		boundValueString(rr.End),
-	)
 }
 
 // joinFromBounds returns the SurrealQL join between two bounds: .., ..=, >.., or >..=.

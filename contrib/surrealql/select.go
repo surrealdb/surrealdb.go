@@ -58,8 +58,11 @@ type SelectQuery struct {
 //	Select(models.NewRecordID("users", 123)) // SELECT * from $from_id_1
 //
 //	// Select a range of records
-//	Select(models.NewRecordRange("users", models.Included("a"), models.Excluded("z")))
-//	// SELECT * FROM $from_id_range_1
+//	Select(models.RecordID{
+//		Table: "users",
+//		ID:    models.OpenRange().BeginInclusive("a").EndExclusive("z"),
+//	})
+//	// SELECT * FROM $from_id_1
 //
 //	// Select from a table using models.Table for type safety
 //	Select(models.Table("users"))  // SELECT * FROM $table_1

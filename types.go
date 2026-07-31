@@ -176,5 +176,5 @@ type Result[T any] struct {
 }
 
 type TableOrRecord interface {
-	string | models.Table | models.RecordID | models.RecordRange | []models.Table | []models.RecordID
+	string | models.Table | models.RecordID | []models.Table | []models.RecordID
 }

@@ -43,7 +43,7 @@ func Expr[T exprLike](raw T, args ...any) *expr {
 // This should be used solely for type safety in
 // query targets and fields.
 type exprLike interface {
-	*expr | string | *SelectQuery | models.Table | *models.RecordID | models.RecordID | models.RecordRange | *models.RecordRange
+	*expr | string | *SelectQuery | models.Table | *models.RecordID | models.RecordID
 }
 
 // buildExprLike builds the SQL expression for a select field.
@@ -90,12 +90,6 @@ func buildExprLike(c *queryBuildContext, b *strings.Builder, ex any, args []any)
 		return nil
 	case models.RecordID:
 		writeParam(c, b, "id", v)
-		return nil
-	case models.RecordRange:
-		writeParam(c, b, "id_range", v)
-		return nil
-	case *models.RecordRange:
-		writeParam(c, b, "id_range", v)
 		return nil
 	default:
 		panic(fmt.Sprintf("unsupported select field type: %T", ex))
