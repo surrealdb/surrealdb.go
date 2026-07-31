@@ -24,6 +24,6 @@ func (c *CustomNil) UnMarshalCBOR(data []byte) error {
 // missing field. It is not NULL, which means a field exists but has no value.
 //
 // In array-style record ids, None is also the lowest part, as in ['London', NONE].
-// Use it inside []any{...}, not as a scalar begin/end of an [OpenRange] — SurrealDB
+// Use it inside []any{...}, not as a scalar begin/end of a [Range] — SurrealDB
 // rejects NONE as a scalar record id.
 var None = CustomNil{}

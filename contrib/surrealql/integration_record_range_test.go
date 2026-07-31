@@ -51,7 +51,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 	t.Run("core Select with RecordID range", func(t *testing.T) {
 		rr := models.RecordID{
 			Table: "person",
-			ID:    models.OpenRange().BeginInclusive(1).EndInclusive(3),
+			ID:    surrealql.RangeClosed(1, 3),
 		}
 		got, err := surrealdb.Select[[]Person](ctx, db, rr)
 		require.NoError(t, err)
@@ -78,7 +78,7 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 	t.Run("surrealql Select with RecordID range", func(t *testing.T) {
 		sql, vars := surrealql.Select(models.RecordID{
 			Table: "person",
-			ID:    models.OpenRange().BeginInclusive(2).EndInclusive(3),
+			ID:    surrealql.RangeClosed(2, 3),
 		}).Build()
 
 		t.Logf("sql=%s vars=%v", sql, vars)
@@ -128,9 +128,10 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		rr := models.RecordID{
 			Table: "temp",
-			ID: models.OpenRange().
-				BeginInclusive([]any{"London", models.None}).
-				EndInclusive([]any{"London", models.OpenRange()}),
+			ID: surrealql.RangeClosed(
+				[]any{"London", models.None},
+				[]any{"London", surrealql.RangeOpen()},
+			),
 		}
 
 		got, err := surrealdb.Select[[]Temp](ctx, db, rr)
@@ -160,9 +161,10 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		cityWide := models.RecordID{
 			Table: "temp3",
-			ID: models.OpenRange().
-				BeginInclusive([]any{"London", models.None, models.None}).
-				EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
+			ID: surrealql.RangeClosed(
+				[]any{"London", models.None, models.None},
+				[]any{"London", surrealql.RangeOpen(), surrealql.RangeOpen()},
+			),
 		}
 		got, err := surrealdb.Select[[]Temp3](ctx, db, cityWide)
 		require.NoError(t, err)
@@ -170,9 +172,10 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 
 		westOnly := models.RecordID{
 			Table: "temp3",
-			ID: models.OpenRange().
-				BeginInclusive([]any{"London", "West", models.None}).
-				EndInclusive([]any{"London", "West", models.OpenRange()}),
+			ID: surrealql.RangeClosed(
+				[]any{"London", "West", models.None},
+				[]any{"London", "West", surrealql.RangeOpen()},
+			),
 		}
 		got, err = surrealdb.Select[[]Temp3](ctx, db, westOnly)
 		require.NoError(t, err)

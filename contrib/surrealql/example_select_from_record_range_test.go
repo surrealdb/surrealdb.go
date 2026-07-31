@@ -12,33 +12,33 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-// formatBound describes a range begin/end as an OpenRange builder call.
-// Avoids RangeValue.String() / dumpVars %v, which look like SurrealQL but are
-// not guaranteed to be valid SurrealQL.
-func formatBound(v any) string {
+// formatBound describes a range begin/end for Example output.
+// It intentionally avoids Range.String() / dumpVars %v, which look like
+// SurrealQL but are not guaranteed to be valid SurrealQL.
+func formatBound(v any) (kind, inner string) {
 	if v == nil {
-		return ""
+		return "", ""
 	}
 	rv := reflect.ValueOf(v)
 	for rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
-			return ""
+			return "", ""
 		}
 		rv = rv.Elem()
 	}
 	name := rv.Type().Name()
 	field := rv.FieldByName("Value")
 	if !field.IsValid() {
-		return fmt.Sprintf("%T(%v)", v, v)
+		return "", fmt.Sprintf("%T(%v)", v, v)
 	}
-	inner := formatBoundValue(field.Interface())
+	inner = formatBoundValue(field.Interface())
 	switch {
 	case strings.HasPrefix(name, "BoundIncluded"):
-		return "Inclusive(" + inner + ")"
+		return "inclusive", inner
 	case strings.HasPrefix(name, "BoundExcluded"):
-		return "Exclusive(" + inner + ")"
+		return "exclusive", inner
 	default:
-		return fmt.Sprintf("%T(%v)", v, v)
+		return "", fmt.Sprintf("%T(%v)", v, v)
 	}
 }
 
@@ -49,17 +49,17 @@ func formatBoundValue(v any) string {
 	switch x := v.(type) {
 	case models.CustomNil:
 		return "None"
-	case models.RangeValue:
-		return formatRangeValue(x)
 	case models.RecordID:
-		id, ok := x.ID.(models.RangeValue)
-		if ok {
-			return fmt.Sprintf("RecordID{Table:%q, ID:%s}", x.Table, formatRangeValue(id))
+		if isModelsRange(x.ID) {
+			return fmt.Sprintf("RecordID{Table:%q, ID:%s}", x.Table, formatRange(x.ID))
 		}
 		return fmt.Sprintf("RecordID{Table:%q, ID:%s}", x.Table, formatBoundValue(x.ID))
 	case string:
 		return x
 	default:
+		if isModelsRange(v) {
+			return formatRange(v)
+		}
 		rv := reflect.ValueOf(v)
 		if rv.Kind() == reflect.Slice {
 			parts := make([]string, rv.Len())
@@ -72,27 +72,52 @@ func formatBoundValue(v any) string {
 	}
 }
 
-func formatRangeValue(r models.RangeValue) string {
-	s := "OpenRange()"
-	if r.Begin != nil {
-		b := formatBound(r.Begin)
-		switch {
-		case strings.HasPrefix(b, "Inclusive("):
-			s += ".BeginInclusive(" + strings.TrimSuffix(strings.TrimPrefix(b, "Inclusive("), ")") + ")"
-		case strings.HasPrefix(b, "Exclusive("):
-			s += ".BeginExclusive(" + strings.TrimSuffix(strings.TrimPrefix(b, "Exclusive("), ")") + ")"
-		}
+func isModelsRange(v any) bool {
+	if v == nil {
+		return false
 	}
-	if r.End != nil {
-		e := formatBound(r.End)
-		switch {
-		case strings.HasPrefix(e, "Inclusive("):
-			s += ".EndInclusive(" + strings.TrimSuffix(strings.TrimPrefix(e, "Inclusive("), ")") + ")"
-		case strings.HasPrefix(e, "Exclusive("):
-			s += ".EndExclusive(" + strings.TrimSuffix(strings.TrimPrefix(e, "Exclusive("), ")") + ")"
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return false
 		}
+		rv = rv.Elem()
 	}
-	return s
+	if rv.Kind() != reflect.Struct {
+		return false
+	}
+	name := rv.Type().Name()
+	return (name == "Range" || strings.HasPrefix(name, "Range[")) &&
+		rv.FieldByName("Begin").IsValid() && rv.FieldByName("End").IsValid()
+}
+
+func formatRange(v any) string {
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		rv = rv.Elem()
+	}
+	beginKind, beginInner := formatBound(rv.FieldByName("Begin").Interface())
+	endKind, endInner := formatBound(rv.FieldByName("End").Interface())
+
+	key := beginKind + "|" + endKind
+	switch key {
+	case "|":
+		return "RangeOpen()"
+	case "inclusive|":
+		return "RangeOpenBeginInclusive(" + beginInner + ")"
+	case "exclusive|":
+		return "RangeOpenBeginExclusive(" + beginInner + ")"
+	case "|inclusive":
+		return "RangeOpenEndInclusive(" + endInner + ")"
+	case "|exclusive":
+		return "RangeOpenEndExclusive(" + endInner + ")"
+	case "inclusive|inclusive":
+		return "RangeClosed(" + beginInner + ", " + endInner + ")"
+	case "inclusive|exclusive":
+		return "RangeClosedEndExclusive(" + beginInner + ", " + endInner + ")"
+	default:
+		return fmt.Sprintf("Range{Begin:%s(%s), End:%s(%s)}", beginKind, beginInner, endKind, endInner)
+	}
 }
 
 // printRecordRangeBuild shows the parameterized SurrealQL and the Go values
@@ -110,20 +135,21 @@ func printRecordRangeBuild(sql string, vars map[string]any) {
 func ExampleSelect_recordIDRange() {
 	rr := models.RecordID{
 		Table: "person",
-		ID:    models.OpenRange().BeginInclusive(1).EndInclusive(1000),
+		ID:    surrealql.RangeClosed(1, 1000),
 	}
 	sql, vars := surrealql.Select(rr).Build()
 
 	printRecordRangeBuild(sql, vars)
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().BeginInclusive(1).EndInclusive(1000)}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeClosed(1, 1000)}
 }
 
-// ExampleSelect_recordIDRange_open shows open-ended ranges by leaving a side unset.
+// ExampleSelect_recordIDRange_open shows open-ended ranges.
 //
-// Start from OpenRange() and chain Begin*/End* methods. The Build output is a
-// parameterized SELECT plus the Go bounds in vars — not a SurrealQL literal.
+// Use RangeOpenBegin* / RangeOpenEnd* when one side has no limit, or
+// RangeOpen() for both sides open. The Build output is a parameterized SELECT
+// plus the Go bounds in vars — not a SurrealQL literal.
 //
 // Do not pass models.None as a scalar begin/end — SurrealDB rejects NONE as a
 // scalar record id. Use None inside array-style ids
@@ -133,10 +159,10 @@ func ExampleSelect_recordIDRange() {
 // Select Examples in package surrealdb).
 func ExampleSelect_recordIDRange_open() {
 	cases := []models.RecordID{
-		{Table: "person", ID: models.OpenRange().BeginInclusive(1)},
-		{Table: "person", ID: models.OpenRange().EndInclusive(10)},
-		{Table: "person", ID: models.OpenRange().EndExclusive(10)},
-		{Table: "person", ID: models.OpenRange()},
+		{Table: "person", ID: surrealql.RangeOpenBeginInclusive(1)},
+		{Table: "person", ID: surrealql.RangeOpenEndInclusive(10)},
+		{Table: "person", ID: surrealql.RangeOpenEndExclusive(10)},
+		{Table: "person", ID: surrealql.RangeOpen()},
 	}
 	for _, rr := range cases {
 		sql, vars := surrealql.Select(rr).Build()
@@ -144,40 +170,40 @@ func ExampleSelect_recordIDRange_open() {
 	}
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().BeginInclusive(1)}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeOpenBeginInclusive(1)}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().EndInclusive(10)}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeOpenEndInclusive(10)}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().EndExclusive(10)}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeOpenEndExclusive(10)}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange()}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeOpen()}
 }
 
 // ExampleSelect_recordIDRange_nullBound shows NULL as a bound value.
 //
-// EndInclusive(nil) is NULL on that side — not an open delimiter. Leave End
-// unset when the side should have no limit.
+// RangeClosed(1, nil) stores NULL on the end side. That is not "leave the side
+// open" — use RangeOpenBeginInclusive when the end has no limit.
 func ExampleSelect_recordIDRange_nullBound() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "person",
-		ID:    models.OpenRange().BeginInclusive(1).EndInclusive(nil),
+		ID:    surrealql.RangeClosed(1, nil),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().BeginInclusive(1).EndInclusive(nil)}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeClosed(1, nil)}
 }
 
 // ExampleSelect_recordIDRange_nestedOpenRange shows open `..` as a bound value.
 func ExampleSelect_recordIDRange_nestedOpenRange() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "person",
-		ID:    models.OpenRange().BeginInclusive(1).EndInclusive(models.OpenRange()),
+		ID:    surrealql.RangeClosed(1, surrealql.RangeOpen()),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"person", ID:OpenRange().BeginInclusive(1).EndInclusive(OpenRange())}
+	// Var from_id_1: RecordID{Table:"person", ID:RangeClosed(1, RangeOpen())}
 }
 
 // ExampleSelect_recordIDRange_compositeID shows a range over array-style record ids.
@@ -189,32 +215,35 @@ func ExampleSelect_recordIDRange_nestedOpenRange() {
 func ExampleSelect_recordIDRange_compositeID() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "temp",
-		ID: models.OpenRange().
-			BeginInclusive([]any{"London", models.None}).
-			EndInclusive([]any{"London", models.OpenRange()}),
+		ID: surrealql.RangeClosed(
+			[]any{"London", models.None},
+			[]any{"London", surrealql.RangeOpen()},
+		),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 
 	sql, vars = surrealql.Select(models.RecordID{
 		Table: "temp",
-		ID: models.OpenRange().
-			BeginInclusive([]any{"London", models.None, models.None}).
-			EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
+		ID: surrealql.RangeClosed(
+			[]any{"London", models.None, models.None},
+			[]any{"London", surrealql.RangeOpen(), surrealql.RangeOpen()},
+		),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 
 	sql, vars = surrealql.Select(models.RecordID{
 		Table: "temp",
-		ID: models.OpenRange().
-			BeginInclusive([]any{"London", "West", models.None}).
-			EndInclusive([]any{"London", "West", models.OpenRange()}),
+		ID: surrealql.RangeClosed(
+			[]any{"London", "West", models.None},
+			[]any{"London", "West", surrealql.RangeOpen()},
+		),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, None}).EndInclusive([]any{London, OpenRange()})}
+	// Var from_id_1: RecordID{Table:"temp", ID:RangeClosed([]any{London, None}, []any{London, RangeOpen()})}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, None, None}).EndInclusive([]any{London, OpenRange(), OpenRange()})}
+	// Var from_id_1: RecordID{Table:"temp", ID:RangeClosed([]any{London, None, None}, []any{London, RangeOpen(), RangeOpen()})}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, West, None}).EndInclusive([]any{London, West, OpenRange()})}
+	// Var from_id_1: RecordID{Table:"temp", ID:RangeClosed([]any{London, West, None}, []any{London, West, RangeOpen()})}
 }

@@ -64,31 +64,33 @@ type Bound[T any] interface {
 	BoundIncluded[T] | BoundExcluded[T]
 }
 
+// Range is a SurrealQL range such as 1..=10 or an open `..`.
+//
+// A nil Begin or End means that side is open (no limit). Do not pass [None]
+// as a scalar begin/end — SurrealDB rejects that. Use [None] inside
+// array-style ids, for example []any{"London", None}.
+//
+// For convenient constructors (open and closed forms), use the helpers in
+// github.com/surrealdb/surrealdb.go/contrib/surrealql.
 type Range[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Begin *TBeg
 	End   *TEnd
 }
 
-func (r *Range[T, TBeg, TEnd]) GetJoinString() string {
+// GetJoinString returns the join between the bounds: "..", "..=", ">..", or ">..=".
+// Nil Begin/End are treated as open sides and do not panic.
+func (r Range[T, TBeg, TEnd]) GetJoinString() string {
 	return joinFromBounds(r.Begin, r.End)
 }
 
-func (r *Range[T, TBeg, TEnd]) String() string {
-	joinStr := r.GetJoinString()
-	beginStr := ""
-	endStr := ""
-
-	if r.Begin != nil {
-		beginStr = convertToString(r.Begin)
-	}
-	if r.End != nil {
-		endStr = convertToString(r.End)
-	}
-
-	return fmt.Sprintf("%s%s%s", beginStr, joinStr, endStr)
+// String returns a debug rendering of the range (for example "1..=10" or "..").
+// It is not guaranteed to be valid SurrealQL; do not send it as a query.
+// Open sides (nil Begin/End) render as empty, so both-open is "..".
+func (r Range[T, TBeg, TEnd]) String() string {
+	return fmt.Sprintf("%s%s%s", boundValueString(r.Begin), r.GetJoinString(), boundValueString(r.End))
 }
 
-func (r *Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
+func (r Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 	return cbor.Marshal(cbor.Tag{
 		Number:  TagRange,
 		Content: []interface{}{r.Begin, r.End},
@@ -124,90 +126,16 @@ type RecordRangeID[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Table Table
 }
 
-func (rr *RecordRangeID[T, TBeg, TEnd]) String() string {
-	joinStr := rr.GetJoinString()
-	beginStr := ""
-	endStr := ""
-
-	if rr.Begin != nil {
-		beginStr = convertToString(rr.Begin)
-	}
-	if rr.End != nil {
-		endStr = convertToString(rr.End)
-	}
-
-	return fmt.Sprintf("%s:%s%s%s", rr.Table, beginStr, joinStr, endStr)
+func (rr RecordRangeID[T, TBeg, TEnd]) String() string {
+	return fmt.Sprintf("%s:%s", rr.Table, rr.Range.String())
 }
 
 func (rr RecordRangeID[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 	rid := RecordID{
 		Table: string(rr.Table),
-		ID:    RangeValue{Begin: rr.Begin, End: rr.End},
+		ID:    rr.Range,
 	}
 	return rid.MarshalCBOR()
-}
-
-// OpenRange is an open-ended range (`..`). Both sides start open; chain
-// BeginInclusive / BeginExclusive / EndInclusive / EndExclusive to set bounds.
-//
-// Bare OpenRange() is the `..` value itself — useful inside array-style ids,
-// as in ['London', ..].
-//
-// For a range of record ids, put the result in a [RecordID]:
-//
-//	models.RecordID{
-//		Table: "person",
-//		ID:    models.OpenRange().BeginInclusive(1).EndInclusive(10),
-//	}
-//
-// Leave a side unset for an open bound (person:1.. or person:..=10). Do not
-// pass [None] as a scalar begin/end — SurrealDB rejects that. Use [None]
-// inside array-style ids, for example []any{"London", None}.
-func OpenRange() RangeValue {
-	return RangeValue{}
-}
-
-// RangeValue is a plain range value, such as 1..=10 or an open `..`.
-// Prefer building it with [OpenRange] and the Begin*/End* methods.
-// Use the typed [Range] when both ends share one Go type.
-type RangeValue struct {
-	Begin any
-	End   any
-}
-
-// BeginInclusive sets an inclusive lower bound and returns the updated range.
-func (r RangeValue) BeginInclusive(v any) RangeValue {
-	r.Begin = &BoundIncluded[any]{Value: v}
-	return r
-}
-
-// BeginExclusive sets an exclusive lower bound and returns the updated range.
-func (r RangeValue) BeginExclusive(v any) RangeValue {
-	r.Begin = &BoundExcluded[any]{Value: v}
-	return r
-}
-
-// EndInclusive sets an inclusive upper bound and returns the updated range.
-func (r RangeValue) EndInclusive(v any) RangeValue {
-	r.End = &BoundIncluded[any]{Value: v}
-	return r
-}
-
-// EndExclusive sets an exclusive upper bound and returns the updated range.
-func (r RangeValue) EndExclusive(v any) RangeValue {
-	r.End = &BoundExcluded[any]{Value: v}
-	return r
-}
-
-func (r RangeValue) MarshalCBOR() ([]byte, error) {
-	return cbor.Marshal(cbor.Tag{
-		Number:  TagRange,
-		Content: []any{r.Begin, r.End},
-	})
-}
-
-func (r RangeValue) String() string {
-	return fmt.Sprintf("%s%s%s", boundValueString(r.Begin), joinFromBounds(r.Begin, r.End), boundValueString(r.End))
 }
 
 // joinFromBounds returns the SurrealQL join between two bounds: .., ..=, >.., or >..=.

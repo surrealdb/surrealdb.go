@@ -44,10 +44,10 @@ func printPersonIDs(label string, rows []omitVsNonePerson) {
 
 // queryRangeBound runs SELECT via type::thing (v2) / type::record (v3) so a
 // rejected range bound returns a clear error instead of hanging the connection.
-func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r models.RangeValue) ([]omitVsNonePerson, error) {
+func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any) error {
 	ver, err := testenv.GetVersion(ctx, db)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	sql := fmt.Sprintf("SELECT * FROM %s($tb, $r)", ver.ThingOrRecordFn())
 	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, sql, map[string]any{
@@ -55,12 +55,12 @@ func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r mode
 		"r":  r,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if (*res)[0].Error != nil {
-		return nil, (*res)[0].Error
+		return (*res)[0].Error
 	}
-	return (*res)[0].Result, nil
+	return nil
 }
 
 // ExampleSelect_recordRange_omitVsNone_end proves that an open end bound is
@@ -68,10 +68,10 @@ func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r mode
 //
 // Dataset: person:1, person:2, person:10.
 //
-//   - OpenRange().BeginInclusive(1) → open end → returns 1, 2, and 10
-//   - EndInclusive(None) → SurrealDB rejects NONE as a scalar record-id bound
+//   - RangeOpenBeginInclusive(1) → open end → returns 1, 2, and 10
+//   - RangeClosed(1, None) → SurrealDB rejects NONE as a scalar record-id bound
 //
-// Leave End unset when that side has no limit. models.None belongs inside
+// Leave the end open when that side has no limit. models.None belongs inside
 // array-style ids (see the composite-ID Examples), not as a stand-in for
 // "leave this side open".
 func ExampleSelect_recordRange_omitVsNone_end() {
@@ -79,7 +79,7 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 	ctx := context.Background()
 	seedOmitVsNonePersons(ctx, db)
 
-	openEnd := models.RecordID{Table: "person", ID: models.OpenRange().BeginInclusive(1)}
+	openEnd := models.RecordID{Table: "person", ID: surrealql.RangeOpenBeginInclusive(1)}
 	sql, vars := surrealql.Select(openEnd).Build()
 	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, sql, vars)
 	if err != nil {
@@ -87,15 +87,15 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 	}
 	printPersonIDs("open end", (*res)[0].Result)
 
-	_, err = queryRangeBound(ctx, db, "person", models.OpenRange().BeginInclusive(1).EndInclusive(models.None))
+	err = queryRangeBound(ctx, db, "person", surrealql.RangeClosed(1, models.None))
 	if err != nil {
-		fmt.Printf("EndInclusive(None): rejected\n")
+		fmt.Printf("RangeClosed(1, None): rejected\n")
 	} else {
-		fmt.Printf("EndInclusive(None): unexpected success\n")
+		fmt.Printf("RangeClosed(1, None): unexpected success\n")
 	}
 	// Output:
 	// open end: 1 10 2
-	// EndInclusive(None): rejected
+	// RangeClosed(1, None): rejected
 }
 
 // ExampleSelect_recordRange_omitVsNone_begin proves that an open begin bound
@@ -103,19 +103,19 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 //
 // Dataset: person:1, person:2, person:10.
 //
-//   - OpenRange().EndInclusive(10) → open begin → returns 1, 2, and 10
-//   - BeginInclusive(None) → SurrealDB rejects NONE as a scalar record-id bound
+//   - RangeOpenEndInclusive(10) → open begin → returns 1, 2, and 10
+//   - RangeClosed(None, 10) → SurrealDB rejects NONE as a scalar record-id bound
 //
 // On this numeric-only table, an accepted NONE-begin would still be a different
 // *kind* of range from an open begin. In practice SurrealDB rejects the NONE
 // value here, so the live outcomes differ (rows vs rejection). Leave Begin
-// unset for open starts.
+// open for open starts.
 func ExampleSelect_recordRange_omitVsNone_begin() {
 	db := testenv.MustNew("surrealqlexamples", "rr_omit_vs_none_begin", "person")
 	ctx := context.Background()
 	seedOmitVsNonePersons(ctx, db)
 
-	openBegin := models.RecordID{Table: "person", ID: models.OpenRange().EndInclusive(10)}
+	openBegin := models.RecordID{Table: "person", ID: surrealql.RangeOpenEndInclusive(10)}
 	sql, vars := surrealql.Select(openBegin).Build()
 	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, sql, vars)
 	if err != nil {
@@ -123,13 +123,13 @@ func ExampleSelect_recordRange_omitVsNone_begin() {
 	}
 	printPersonIDs("open begin", (*res)[0].Result)
 
-	_, err = queryRangeBound(ctx, db, "person", models.OpenRange().BeginInclusive(models.None).EndInclusive(10))
+	err = queryRangeBound(ctx, db, "person", surrealql.RangeClosed(models.None, 10))
 	if err != nil {
-		fmt.Printf("BeginInclusive(None): rejected\n")
+		fmt.Printf("RangeClosed(None, 10): rejected\n")
 	} else {
-		fmt.Printf("BeginInclusive(None): unexpected success\n")
+		fmt.Printf("RangeClosed(None, 10): unexpected success\n")
 	}
 	// Output:
 	// open begin: 1 10 2
-	// BeginInclusive(None): rejected
+	// RangeClosed(None, 10): rejected
 }

@@ -57,10 +57,10 @@ type SelectQuery struct {
 //	// Select a record using models.RecordID
 //	Select(models.NewRecordID("users", 123)) // SELECT * from $from_id_1
 //
-//	// Select a range of records
+//		// Select a range of records
 //	Select(models.RecordID{
 //		Table: "users",
-//		ID:    models.OpenRange().BeginInclusive("a").EndExclusive("z"),
+//		ID:    RangeClosedEndExclusive("a", "z"),
 //	})
 //	// SELECT * FROM $from_id_1
 //
