@@ -121,24 +121,13 @@ func TestOpenRange_String(t *testing.T) {
 }
 
 func TestIncludedExcluded_Helpers(t *testing.T) {
-	var typed *BoundIncluded[int] = Included(42)
-	assert.Equal(t, 42, typed.Value)
-
-	var excl *BoundExcluded[string] = Excluded("x")
-	assert.Equal(t, "x", excl.Value)
-
-	var manyInts *BoundIncluded[[]int] = IncludedMany(1, 2)
-	assert.Equal(t, []int{1, 2}, manyInts.Value)
-
-	var manyOne *BoundExcluded[[]int] = ExcludedMany(9)
-	assert.Equal(t, []int{9}, manyOne.Value)
-
-	var composite *BoundIncluded[[]any] = IncludedMany[any]("London", None)
-	assert.Equal(t, []any{"London", None}, composite.Value)
-
+	assert.Equal(t, 42, Included(42).Value)
+	assert.Equal(t, "x", Excluded("x").Value)
+	assert.Equal(t, []int{1, 2}, IncludedMany(1, 2).Value)
+	assert.Equal(t, []int{9}, ExcludedMany(9).Value)
+	assert.Equal(t, []any{"London", None}, IncludedMany[any]("London", None).Value)
 	// ID is another way to build an array-style id for Included(...).
-	var viaID *BoundIncluded[[]any] = Included(ID("London", None))
-	assert.Equal(t, []any{"London", None}, viaID.Value)
+	assert.Equal(t, []any{"London", None}, Included(ID("London", None)).Value)
 }
 
 func TestID_Helper(t *testing.T) {
