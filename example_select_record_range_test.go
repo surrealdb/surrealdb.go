@@ -137,19 +137,6 @@ type omitVsNonePerson struct {
 	Name string          `json:"name"`
 }
 
-func seedOmitVsNonePersons(ctx context.Context, db *surrealdb.DB) {
-	_, err := surrealdb.Query[any](ctx, db, `
-		DEFINE TABLE OVERWRITE person;
-		DELETE person;
-		CREATE person:1 SET name = 'one';
-		CREATE person:2 SET name = 'two';
-		CREATE person:10 SET name = 'ten';
-	`, nil)
-	if err != nil {
-		panic(err)
-	}
-}
-
 func printOmitVsNoneIDs(label string, rows []omitVsNonePerson) {
 	ids := make([]string, 0, len(rows))
 	for _, r := range rows {
@@ -199,7 +186,22 @@ func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any)
 func ExampleSelect_recordRange_omitVsNone_end() {
 	db := testenv.MustNew("surrealdbexamples", "rr_omit_vs_none_end", "person")
 	ctx := context.Background()
-	seedOmitVsNonePersons(ctx, db)
+
+	// person:1, person:2, person:10
+	for _, p := range []struct {
+		id   any
+		name string
+	}{
+		{1, "one"},
+		{2, "two"},
+		{10, "ten"},
+	} {
+		if _, err := surrealdb.Create[omitVsNonePerson](ctx, db, models.NewRecordID("person", p.id), map[string]any{
+			"name": p.name,
+		}); err != nil {
+			panic(err)
+		}
+	}
 
 	openEnd := models.RecordID{Table: "person", ID: surrealql.RangeOpenBeginInclusive(1)}
 	got, err := surrealdb.Select[[]omitVsNonePerson](ctx, db, openEnd)
@@ -234,7 +236,22 @@ func ExampleSelect_recordRange_omitVsNone_end() {
 func ExampleSelect_recordRange_omitVsNone_begin() {
 	db := testenv.MustNew("surrealdbexamples", "rr_omit_vs_none_begin", "person")
 	ctx := context.Background()
-	seedOmitVsNonePersons(ctx, db)
+
+	// person:1, person:2, person:10
+	for _, p := range []struct {
+		id   any
+		name string
+	}{
+		{1, "one"},
+		{2, "two"},
+		{10, "ten"},
+	} {
+		if _, err := surrealdb.Create[omitVsNonePerson](ctx, db, models.NewRecordID("person", p.id), map[string]any{
+			"name": p.name,
+		}); err != nil {
+			panic(err)
+		}
+	}
 
 	openBegin := models.RecordID{Table: "person", ID: surrealql.RangeOpenEndInclusive(10)}
 	got, err := surrealdb.Select[[]omitVsNonePerson](ctx, db, openBegin)
