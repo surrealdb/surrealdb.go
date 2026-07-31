@@ -43,7 +43,7 @@ func Expr[T exprLike](raw T, args ...any) *expr {
 // This should be used solely for type safety in
 // query targets and fields.
 type exprLike interface {
-	*expr | string | *SelectQuery | models.Table | *models.RecordID | models.RecordID
+	*expr | string | *SelectQuery | models.Table | *models.RecordID | models.RecordID | models.RecordRange | *models.RecordRange
 }
 
 // buildExprLike builds the SQL expression for a select field.
@@ -94,6 +94,16 @@ func buildExprLike(c *queryBuildContext, b *strings.Builder, ex any, args []any)
 		return nil
 	case models.RecordID:
 		name := c.generateAndAddParam("id", v)
+		b.WriteString("$")
+		b.WriteString(name)
+		return nil
+	case models.RecordRange:
+		name := c.generateAndAddParam("id_range", v)
+		b.WriteString("$")
+		b.WriteString(name)
+		return nil
+	case *models.RecordRange:
+		name := c.generateAndAddParam("id_range", v)
 		b.WriteString("$")
 		b.WriteString(name)
 		return nil
