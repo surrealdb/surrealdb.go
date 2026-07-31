@@ -129,8 +129,8 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 		rr := models.RecordID{
 			Table: "temp",
 			ID: models.OpenRange().
-				BeginInclusive(models.ID("London", models.None)).
-				EndInclusive(models.ID("London", models.OpenRange())),
+				BeginInclusive([]any{"London", models.None}).
+				EndInclusive([]any{"London", models.OpenRange()}),
 		}
 
 		got, err := surrealdb.Select[[]Temp](ctx, db, rr)
@@ -161,8 +161,8 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 		cityWide := models.RecordID{
 			Table: "temp3",
 			ID: models.OpenRange().
-				BeginInclusive(models.ID("London", models.None, models.None)).
-				EndInclusive(models.ID("London", models.OpenRange(), models.OpenRange())),
+				BeginInclusive([]any{"London", models.None, models.None}).
+				EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
 		}
 		got, err := surrealdb.Select[[]Temp3](ctx, db, cityWide)
 		require.NoError(t, err)
@@ -171,8 +171,8 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 		westOnly := models.RecordID{
 			Table: "temp3",
 			ID: models.OpenRange().
-				BeginInclusive(models.ID("London", "West", models.None)).
-				EndInclusive(models.ID("London", "West", models.OpenRange())),
+				BeginInclusive([]any{"London", "West", models.None}).
+				EndInclusive([]any{"London", "West", models.OpenRange()}),
 		}
 		got, err = surrealdb.Select[[]Temp3](ctx, db, westOnly)
 		require.NoError(t, err)

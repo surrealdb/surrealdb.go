@@ -33,10 +33,10 @@ func ExampleSelect_recordRange_threePartArrayID() {
 		area string
 		n    int
 	}{
-		{models.NewRecordID("temp", models.ID("London", "West", 1)), "London", "West", 1},
-		{models.NewRecordID("temp", models.ID("London", "West", 2)), "London", "West", 2},
-		{models.NewRecordID("temp", models.ID("London", "East", 1)), "London", "East", 1},
-		{models.NewRecordID("temp", models.ID("Paris", "North", 1)), "Paris", "North", 1},
+		{models.NewRecordID("temp", []any{"London", "West", 1}), "London", "West", 1},
+		{models.NewRecordID("temp", []any{"London", "West", 2}), "London", "West", 2},
+		{models.NewRecordID("temp", []any{"London", "East", 1}), "London", "East", 1},
+		{models.NewRecordID("temp", []any{"Paris", "North", 1}), "Paris", "North", 1},
 	}
 	for _, s := range seeds {
 		if _, err := surrealdb.Create[Temp](ctx, db, s.id, map[string]any{
@@ -52,8 +52,8 @@ func ExampleSelect_recordRange_threePartArrayID() {
 	rr := models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", models.None, models.None)).
-			EndInclusive(models.ID("London", models.OpenRange(), models.OpenRange())),
+			BeginInclusive([]any{"London", models.None, models.None}).
+			EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
 	}
 
 	got, err := surrealdb.Select[[]Temp](ctx, db, rr)
@@ -92,10 +92,10 @@ func ExampleSelect_recordRange_threePartArrayID_fixedMiddle() {
 		area string
 		n    int
 	}{
-		{models.NewRecordID("temp", models.ID("London", "West", 1)), "London", "West", 1},
-		{models.NewRecordID("temp", models.ID("London", "West", 2)), "London", "West", 2},
-		{models.NewRecordID("temp", models.ID("London", "East", 1)), "London", "East", 1},
-		{models.NewRecordID("temp", models.ID("Paris", "North", 1)), "Paris", "North", 1},
+		{models.NewRecordID("temp", []any{"London", "West", 1}), "London", "West", 1},
+		{models.NewRecordID("temp", []any{"London", "West", 2}), "London", "West", 2},
+		{models.NewRecordID("temp", []any{"London", "East", 1}), "London", "East", 1},
+		{models.NewRecordID("temp", []any{"Paris", "North", 1}), "Paris", "North", 1},
 	}
 	for _, s := range seeds {
 		if _, err := surrealdb.Create[Temp](ctx, db, s.id, map[string]any{
@@ -110,8 +110,8 @@ func ExampleSelect_recordRange_threePartArrayID_fixedMiddle() {
 	rr := models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", "West", models.None)).
-			EndInclusive(models.ID("London", "West", models.OpenRange())),
+			BeginInclusive([]any{"London", "West", models.None}).
+			EndInclusive([]any{"London", "West", models.OpenRange()}),
 	}
 
 	got, err := surrealdb.Select[[]Temp](ctx, db, rr)

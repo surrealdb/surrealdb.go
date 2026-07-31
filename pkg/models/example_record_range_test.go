@@ -56,7 +56,7 @@ func formatBoundValue(v any) string {
 			for i := 0; i < rv.Len(); i++ {
 				parts[i] = formatBoundValue(rv.Index(i).Interface())
 			}
-			return "ID(" + strings.Join(parts, ", ") + ")"
+			return "[]any{" + strings.Join(parts, ", ") + "}"
 		}
 		return fmt.Sprintf("%#v", v)
 	}
@@ -147,39 +147,28 @@ func ExampleOpenRange_nested() {
 //
 // An array id always has a fixed number of parts, so you cannot leave a part
 // blank. Use models.None (low sentinel) and OpenRange() (high open end)
-// inside models.ID — not as a scalar outer bound.
+// inside []any{...} — not as a scalar outer bound.
 func ExampleOpenRange_arrayID() {
 	printRecordIDRange(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", models.None)).
-			EndInclusive(models.ID("London", models.OpenRange())),
+			BeginInclusive([]any{"London", models.None}).
+			EndInclusive([]any{"London", models.OpenRange()}),
 	})
 	printRecordIDRange(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", models.None, models.None)).
-			EndInclusive(models.ID("London", models.OpenRange(), models.OpenRange())),
+			BeginInclusive([]any{"London", models.None, models.None}).
+			EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
 	})
 	printRecordIDRange(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", "West", models.None)).
-			EndInclusive(models.ID("London", "West", models.OpenRange())),
+			BeginInclusive([]any{"London", "West", models.None}).
+			EndInclusive([]any{"London", "West", models.OpenRange()}),
 	})
 	// Output:
-	// table="temp" id=OpenRange().BeginInclusive(ID(London, None)).EndInclusive(ID(London, OpenRange()))
-	// table="temp" id=OpenRange().BeginInclusive(ID(London, None, None)).EndInclusive(ID(London, OpenRange(), OpenRange()))
-	// table="temp" id=OpenRange().BeginInclusive(ID(London, West, None)).EndInclusive(ID(London, West, OpenRange()))
-}
-
-// ExampleID shows building an array-style record id.
-func ExampleID() {
-	fmt.Printf("%s\n", formatBoundValue(models.ID(1, 2)))
-	fmt.Printf("%s\n", formatBoundValue(models.ID("London", models.None)))
-	fmt.Printf("%s\n", formatBoundValue(models.ID("London", models.OpenRange())))
-	// Output:
-	// ID(1, 2)
-	// ID(London, None)
-	// ID(London, OpenRange())
+	// table="temp" id=OpenRange().BeginInclusive([]any{London, None}).EndInclusive([]any{London, OpenRange()})
+	// table="temp" id=OpenRange().BeginInclusive([]any{London, None, None}).EndInclusive([]any{London, OpenRange(), OpenRange()})
+	// table="temp" id=OpenRange().BeginInclusive([]any{London, West, None}).EndInclusive([]any{London, West, OpenRange()})
 }

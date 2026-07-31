@@ -66,7 +66,7 @@ func formatBoundValue(v any) string {
 			for i := 0; i < rv.Len(); i++ {
 				parts[i] = formatBoundValue(rv.Index(i).Interface())
 			}
-			return "ID(" + strings.Join(parts, ", ") + ")"
+			return "[]any{" + strings.Join(parts, ", ") + "}"
 		}
 		return fmt.Sprintf("%#v", v)
 	}
@@ -183,38 +183,38 @@ func ExampleSelect_recordIDRange_nestedOpenRange() {
 // ExampleSelect_recordIDRange_compositeID shows a range over array-style record ids.
 //
 // Array ids cannot omit a part, so London ranges write NONE and `..` as values
-// inside models.ID. This is the supported place for models.None — not as a
+// inside []any{...}. This is the supported place for models.None — not as a
 // scalar outer bound like person:NONE..=10 (that form is rejected live; leave
 // the side unset instead).
 func ExampleSelect_recordIDRange_compositeID() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", models.None)).
-			EndInclusive(models.ID("London", models.OpenRange())),
+			BeginInclusive([]any{"London", models.None}).
+			EndInclusive([]any{"London", models.OpenRange()}),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 
 	sql, vars = surrealql.Select(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", models.None, models.None)).
-			EndInclusive(models.ID("London", models.OpenRange(), models.OpenRange())),
+			BeginInclusive([]any{"London", models.None, models.None}).
+			EndInclusive([]any{"London", models.OpenRange(), models.OpenRange()}),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 
 	sql, vars = surrealql.Select(models.RecordID{
 		Table: "temp",
 		ID: models.OpenRange().
-			BeginInclusive(models.ID("London", "West", models.None)).
-			EndInclusive(models.ID("London", "West", models.OpenRange())),
+			BeginInclusive([]any{"London", "West", models.None}).
+			EndInclusive([]any{"London", "West", models.OpenRange()}),
 	}).Build()
 	printRecordRangeBuild(sql, vars)
 	// Output:
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive(ID(London, None)).EndInclusive(ID(London, OpenRange()))}
+	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, None}).EndInclusive([]any{London, OpenRange()})}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive(ID(London, None, None)).EndInclusive(ID(London, OpenRange(), OpenRange()))}
+	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, None, None}).EndInclusive([]any{London, OpenRange(), OpenRange()})}
 	// SurrealQL: SELECT * FROM $from_id_1
-	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive(ID(London, West, None)).EndInclusive(ID(London, West, OpenRange()))}
+	// Var from_id_1: RecordID{Table:"temp", ID:OpenRange().BeginInclusive([]any{London, West, None}).EndInclusive([]any{London, West, OpenRange()})}
 }

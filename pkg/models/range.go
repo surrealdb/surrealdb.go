@@ -147,22 +147,6 @@ func (rr RecordRangeID[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 	return rid.MarshalCBOR()
 }
 
-// ID joins parts into an array-style record id, such as ['London', NONE].
-//
-// Use ID as a bound value with [OpenRange], or as a plain record id:
-//
-//	models.RecordID{
-//		Table: "temp",
-//		ID: models.OpenRange().
-//			BeginInclusive(models.ID("London", models.None)).
-//			EndInclusive(models.ID("London", models.OpenRange())),
-//	}
-//
-//	models.NewRecordID("temp", models.ID("London", 1))
-func ID(parts ...any) []any {
-	return parts
-}
-
 // OpenRange is an open-ended range (`..`). Both sides start open; chain
 // BeginInclusive / BeginExclusive / EndInclusive / EndExclusive to set bounds.
 //
@@ -178,7 +162,7 @@ func ID(parts ...any) []any {
 //
 // Leave a side unset for an open bound (person:1.. or person:..=10). Do not
 // pass [None] as a scalar begin/end — SurrealDB rejects that. Use [None]
-// inside array-style ids via [ID].
+// inside array-style ids, for example []any{"London", None}.
 func OpenRange() RangeValue {
 	return RangeValue{}
 }

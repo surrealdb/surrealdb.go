@@ -77,8 +77,8 @@ func TestRecordID_Range_ArrayStyleID(t *testing.T) {
 	rr := RecordID{
 		Table: "temp",
 		ID: OpenRange().
-			BeginInclusive(ID("London", None)).
-			EndInclusive(ID("London", OpenRange())),
+			BeginInclusive([]any{"London", None}).
+			EndInclusive([]any{"London", OpenRange()}),
 	}
 
 	encoded, err := cbor.Marshal(&rr)
@@ -221,10 +221,4 @@ func assertBoundIncludedTag(t *testing.T, v any) any {
 	require.True(t, ok)
 	assert.Equal(t, TagBoundIncluded, tag.Number)
 	return tag.Content
-}
-
-func TestID_Helper(t *testing.T) {
-	assert.Equal(t, []any{"London", None}, ID("London", None))
-	assert.Equal(t, []any{"a"}, ID("a"))
-	assert.Equal(t, []any{"London", OpenRange()}, ID("London", OpenRange()))
 }
