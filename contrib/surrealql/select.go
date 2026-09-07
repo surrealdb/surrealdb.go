@@ -57,6 +57,13 @@ type SelectQuery struct {
 //	// Select a record using models.RecordID
 //	Select(models.NewRecordID("users", 123)) // SELECT * from $from_id_1
 //
+//		// Select a range of records
+//	Select(models.RecordID{
+//		Table: "users",
+//		ID:    RangeBeginInclusiveEndExclusive("a", "z"),
+//	})
+//	// SELECT * FROM $from_id_1
+//
 //	// Select from a table using models.Table for type safety
 //	Select(models.Table("users"))  // SELECT * FROM $table_1
 //

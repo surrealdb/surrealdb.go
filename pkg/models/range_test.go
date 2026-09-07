@@ -48,6 +48,40 @@ func TestRange_String(t *testing.T) {
 		assert.Equal(t, "1>..10", r.String())
 	})
 
+	t.Run("both sides open", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{}
+		assert.Equal(t, "..", r.String())
+		assert.Equal(t, "..", r.GetJoinString())
+	})
+
+	t.Run("begin only inclusive", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{
+			Begin: &BoundIncluded[int]{1},
+		}
+		assert.Equal(t, "1..", r.String())
+	})
+
+	t.Run("begin only exclusive", func(t *testing.T) {
+		r := Range[int, BoundExcluded[int], BoundIncluded[int]]{
+			Begin: &BoundExcluded[int]{1},
+		}
+		assert.Equal(t, "1>..", r.String())
+	})
+
+	t.Run("end only inclusive", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundIncluded[int]]{
+			End: &BoundIncluded[int]{10},
+		}
+		assert.Equal(t, "..=10", r.String())
+	})
+
+	t.Run("end only exclusive", func(t *testing.T) {
+		r := Range[int, BoundIncluded[int], BoundExcluded[int]]{
+			End: &BoundExcluded[int]{10},
+		}
+		assert.Equal(t, "..10", r.String())
+	})
+
 	t.Run("begin and end differ, end must not echo begin", func(t *testing.T) {
 		// Regression test for the Begin/End field-name swap bug: the old
 		// code called convertToString(r.Begin) for both bounds, so the end
