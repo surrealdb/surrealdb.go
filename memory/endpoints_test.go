@@ -19,6 +19,24 @@ func mustQuery(t *testing.T, raw string) url.Values {
 	return v
 }
 
+// assertQuery checks that the raw query string carries exactly want, no more
+// and no less. Unknown query params are ignored by the service rather than
+// rejected, so an exact comparison is the only way a misspelled filter shows
+// up as a test failure instead of as silently unfiltered results.
+func assertQuery(t *testing.T, raw string, want map[string]string) {
+	t.Helper()
+	got := mustQuery(t, raw)
+	if len(got) != len(want) {
+		t.Errorf("query = %q, want exactly %v", raw, want)
+		return
+	}
+	for k, v := range want {
+		if got.Get(k) != v {
+			t.Errorf("query %q: %s = %q, want %q", raw, k, got.Get(k), v)
+		}
+	}
+}
+
 // captureServer records the method, path, raw query, and decoded JSON body of
 // the request it receives, then replies with the supplied JSON.
 type capture struct {
@@ -145,7 +163,7 @@ func TestRecallWireIsCamelCase(t *testing.T) {
 
 func TestDocumentsListQueryParams(t *testing.T) {
 	var cs capture
-	srv := captureServer(t, `{"documents":[{"id":"d1","status":"ready"}],"page":1,"pageSize":20,"total":1}`, &cs)
+	srv := captureServer(t, `{"documents":[{"id":"d1","status":"ready"}],"page":{"hasMore":false,"totalSize":1}}`, &cs)
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
@@ -161,13 +179,60 @@ func TestDocumentsListQueryParams(t *testing.T) {
 	if cs.method != http.MethodGet || cs.path != docsPath {
 		t.Errorf("method/path = %s %s", cs.method, cs.path)
 	}
-	q := mustQuery(t, cs.query)
-	if q.Get("status") != "ready" || q.Get("mime_type") != "application/pdf" || q.Get("page_size") != "20" {
-		t.Errorf("query = %q", cs.query)
-	}
+	// Assert the exact parameter set: the service ignores unknown query
+	// params rather than rejecting them, so a misspelled filter is silently
+	// dropped instead of erroring. Comparing the whole set catches both a
+	// wrong spelling and a stray extra param.
+	assertQuery(t, cs.query, map[string]string{
+		"status":   "ready",
+		"mimeType": "application/pdf",
+		"page":     "1",
+		"pageSize": "20",
+	})
 	if len(page.Documents) != 1 || page.Documents[0].Status != DocReady {
 		t.Errorf("page = %+v", page)
 	}
+}
+
+func TestDocumentsChunksQueryParams(t *testing.T) {
+	var cs capture
+	srv := captureServer(t, `{"chunks":[],"page":{"hasMore":false}}`, &cs)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	opts := ListChunksOptions{Page: 2, PageSize: 50}
+	if _, err := c.Documents().Chunks(context.Background(), "doc-1", opts); err != nil {
+		t.Fatalf("Chunks: %v", err)
+	}
+	if cs.path != docsPath+"/doc-1/chunks" {
+		t.Errorf("path = %s", cs.path)
+	}
+	assertQuery(t, cs.query, map[string]string{"page": "2", "pageSize": "50"})
+}
+
+func TestDocumentsListKeywordsQueryParams(t *testing.T) {
+	var cs capture
+	srv := captureServer(t, `{"keywords":[],"page":{"hasMore":false}}`, &cs)
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.Documents().ListKeywords(context.Background(), ListKeywordsOptions{
+		Q:                "acme",
+		MinDocumentCount: 3,
+		Sort:             "documentCount",
+		Page:             1,
+		PageSize:         10,
+	})
+	if err != nil {
+		t.Fatalf("ListKeywords: %v", err)
+	}
+	assertQuery(t, cs.query, map[string]string{
+		"q":                "acme",
+		"minDocumentCount": "3",
+		"sort":             "documentCount",
+		"page":             "1",
+		"pageSize":         "10",
+	})
 }
 
 func TestDocumentsQueryDecodesHit(t *testing.T) {
@@ -224,21 +289,29 @@ func TestSessionsCreateScopeWire(t *testing.T) {
 	}
 }
 
-func TestScopesListBareArray(t *testing.T) {
+func TestScopesListPageEnvelope(t *testing.T) {
+	// /scopes moved from a bare array to a page envelope; decoding the old
+	// shape against the current server fails outright.
 	var cs capture
-	srv := captureServer(t, `[{"path":"team/acme","createdAt":"now"}]`, &cs)
+	srv := captureServer(t,
+		`{"scopes":[{"path":"team/acme","createdAt":"now"}],"page":{"hasMore":true,"nextCursor":"c1"}}`, &cs)
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	nodes, err := c.Scopes().List(context.Background())
+	page, err := c.Scopes().List(context.Background(), CursorOptions{Limit: 50})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 	if cs.method != http.MethodGet || cs.path != "/api/v1/ctx-1/scopes" {
 		t.Errorf("method/path = %s %s", cs.method, cs.path)
 	}
-	if len(nodes) != 1 || nodes[0].Path != scopeAcme {
-		t.Errorf("nodes = %+v", nodes)
+	// /scopes takes no count parameter.
+	assertQuery(t, cs.query, map[string]string{"limit": "50"})
+	if len(page.Scopes) != 1 || page.Scopes[0].Path != scopeAcme {
+		t.Errorf("scopes = %+v", page.Scopes)
+	}
+	if !page.Page.HasMore || page.Page.NextCursor != "c1" {
+		t.Errorf("page meta = %+v", page.Page)
 	}
 }
 
@@ -302,7 +375,7 @@ func TestTracesStatsDecodesNested(t *testing.T) {
 	var cs capture
 	reply := `{"windowHours":24,"totalQueries":10,"avgLatencyMs":5.5,"cacheHits":3,"cacheHitRate":0.3,` +
 		`"responseTracesTotal":10,"responseTracesCached":3,` +
-		`"tierCounts":{"direct":1,"hybrid":2,"fullContext":3},` +
+		`"tierCounts":{"direct":1,"hybrid":2,"escalated":3},` +
 		`"sourceKindDistribution":[{"kind":"chunk","count":4}],` +
 		`"retrieval":{"traces":10,"avgCandidateSet":2.5,"maxCandidateSet":5},` +
 		`"supersession":{"supersessionEvents":1,"entitiesChurned":1,"churnPerEntity":1.0},` +
@@ -318,7 +391,9 @@ func TestTracesStatsDecodesNested(t *testing.T) {
 	if cs.path != "/api/v1/ctx-1/traces/stats" {
 		t.Errorf("path = %q", cs.path)
 	}
-	if stats.TierCounts.FullContext != 3 || len(stats.SourceKindDist) != 1 {
+	// The full-context tier is "escalated" on the wire now; the old spelling
+	// decoded silently to zero.
+	if stats.TierCounts.Escalated != 3 || len(stats.SourceKindDist) != 1 {
 		t.Errorf("stats = %+v", stats)
 	}
 }
@@ -345,4 +420,83 @@ func TestEnumJSONRoundTrip(t *testing.T) {
 	if out.Infer != InferTriples || out.Cat != MemoryIdentity {
 		t.Errorf("round-trip = %+v", out)
 	}
+}
+
+func TestDocumentReadsSendLens(t *testing.T) {
+	// A read lens narrows a document search to a scope region. It reaches the
+	// wire as a DNF selector, the same shape recall and context already use.
+	lens := ScopeSets{{"team/acme"}, {"team/eng", "tier/gold"}}
+
+	t.Run("query", func(t *testing.T) {
+		var cs capture
+		srv := captureServer(t, `{"queryMs":1,"results":[]}`, &cs)
+		defer srv.Close()
+		c := newTestClient(t, srv)
+		_, err := c.Documents().Query(context.Background(), &DocumentQueryRequest{Query: "q", Lens: lens})
+		if err != nil {
+			t.Fatalf("Query: %v", err)
+		}
+		assertLensWire(t, cs.body["lens"])
+	})
+
+	t.Run("keyword search", func(t *testing.T) {
+		var cs capture
+		srv := captureServer(t, `{"queryMs":1,"results":[]}`, &cs)
+		defer srv.Close()
+		c := newTestClient(t, srv)
+		_, err := c.Documents().SearchKeywords(context.Background(), KeywordSearchRequest{Query: "q", Lens: lens})
+		if err != nil {
+			t.Fatalf("SearchKeywords: %v", err)
+		}
+		assertLensWire(t, cs.body["lens"])
+	})
+}
+
+// assertLensWire checks a captured lens is the DNF selector
+// [["team/acme"],["team/eng","tier/gold"]].
+func assertLensWire(t *testing.T, wire any) {
+	t.Helper()
+	clauses, ok := wire.([]any)
+	if !ok || len(clauses) != 2 {
+		t.Fatalf("lens = %#v, want 2 clauses", wire)
+	}
+	first, _ := clauses[0].([]any)
+	second, _ := clauses[1].([]any)
+	if len(first) != 1 || first[0] != scopeAcme {
+		t.Errorf("clause 0 = %#v", clauses[0])
+	}
+	if len(second) != 2 || second[0] != "team/eng" || second[1] != "tier/gold" {
+		t.Errorf("clause 1 = %#v", clauses[1])
+	}
+}
+
+func TestDocumentsListOmitsLensWhenEmpty(t *testing.T) {
+	var cs capture
+	srv := captureServer(t, `{"queryMs":1,"results":[]}`, &cs)
+	defer srv.Close()
+	c := newTestClient(t, srv)
+	if _, err := c.Documents().Query(context.Background(), &DocumentQueryRequest{Query: "q"}); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if _, present := cs.body["lens"]; present {
+		t.Errorf("lens should be omitted when unset, body = %+v", cs.body)
+	}
+}
+
+func TestNilOptionsDoNotPanic(t *testing.T) {
+	// Both surfaces take a pointer, which invites a nil for "no options".
+	var cs capture
+	srv := captureServer(t, `{"rows":[],"page":{"hasMore":false}}`, &cs)
+	defer srv.Close()
+	c := newTestClient(t, srv)
+
+	if _, err := c.Audit(context.Background(), nil); err != nil {
+		t.Fatalf("Audit(nil): %v", err)
+	}
+	assertQuery(t, cs.query, map[string]string{})
+
+	if _, err := c.Inspect(context.Background(), nil); err != nil {
+		t.Fatalf("Inspect(nil): %v", err)
+	}
+	assertQuery(t, cs.query, map[string]string{})
 }

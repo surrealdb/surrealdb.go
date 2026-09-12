@@ -49,11 +49,28 @@ func (s ScopeSets) MarshalJSON() ([]byte, error) {
 // and target is set, the triple is a relation edge from entity to target
 // labeled by key. Consumed only when the write uses InferTriples.
 type Triple struct {
-	Entity         TripleEntity    `json:"entity"`
-	Key            string          `json:"key"`
+	Entity TripleEntity `json:"entity"`
+	// Key is the attribute key. Leave it empty on a relation-only or
+	// event-only triple.
+	Key            string          `json:"key,omitempty"`
 	Value          *string         `json:"value,omitempty"`
 	Target         *TripleEntity   `json:"target,omitempty"`
 	MemoryCategory *MemoryCategory `json:"memory_category,omitempty"`
+	// Verb and Object describe an event rather than an attribute.
+	Verb   *string `json:"verb,omitempty"`
+	Object *string `json:"object,omitempty"`
+	// Summary is a one-line rendering of the assertion.
+	Summary    *string  `json:"summary,omitempty"`
+	Confidence *float64 `json:"confidence,omitempty"`
+	// OccurredAt is event time, distinct from assertion validity.
+	OccurredAt *string `json:"occurred_at,omitempty"`
+	ValidFrom  *string `json:"valid_from,omitempty"`
+	ValidUntil *string `json:"valid_until,omitempty"`
+	// TemporalHint is free text the extractor could not resolve to an
+	// instant ("last spring"), kept so a later pass can.
+	TemporalHint *string `json:"temporal_hint,omitempty"`
+	// SourceClause is the span of the input this assertion came from.
+	SourceClause *string `json:"source_clause,omitempty"`
 }
 
 // TripleEntity names an entity on a [Triple] by type and surface form.
@@ -88,6 +105,17 @@ type ExtractionResult struct {
 	Instructions  []InstructionSummary `json:"instructions,omitempty"`
 	Uncertainties []UncertaintySummary `json:"uncertainties,omitempty"`
 	Corrections   []CorrectionSummary  `json:"corrections,omitempty"`
+	Actions       []ActionSummary      `json:"actions,omitempty"`
+}
+
+// ActionSummary is an event recorded by an extraction.
+type ActionSummary struct {
+	Actor          string         `json:"actor"`
+	Verb           string         `json:"verb"`
+	Object         string         `json:"object,omitempty"`
+	Summary        string         `json:"summary"`
+	MemoryCategory MemoryCategory `json:"memoryCategory"`
+	OccurredAt     string         `json:"occurredAt,omitempty"`
 }
 
 // EntitySummary is an entity touched by an extraction.
@@ -151,6 +179,53 @@ type AttributeDetail struct {
 	ValidUntil     string         `json:"validUntil,omitempty"`
 	Supersedes     string         `json:"supersedes,omitempty"`
 	SupersededBy   string         `json:"supersededBy,omitempty"`
+	Confidence     float64        `json:"confidence"`
+	Labels         []string       `json:"labels"`
+	Scope          ScopeSets      `json:"scope"`
+	Summary        string         `json:"summary,omitempty"`
+	Source         *SourceRef     `json:"source,omitempty"`
+}
+
+// SourceRef is the compact provenance carried on attribute, relation and
+// action rows.
+type SourceRef struct {
+	// Kind is the source kind: turn, document, upsert, reflect, elaboration
+	// or consolidation.
+	Kind string `json:"kind"`
+	// Ref is a navigable ref — turn:<id>, doc:<id> or trace:<id> — when the
+	// source carries one.
+	Ref string `json:"ref,omitempty"`
+	// SessionID is the session the source turn belongs to (turn kind only).
+	SessionID string `json:"sessionId,omitempty"`
+	// Title is the source document's title (document kind only).
+	Title string `json:"title,omitempty"`
+	// Trust is the source-level trust prior the row was written under.
+	Trust *float64 `json:"trust,omitempty"`
+}
+
+// ActionDetail is the full row for a recorded event: who did what, to what,
+// and when it happened.
+type ActionDetail struct {
+	ID string `json:"id"`
+	// Actor is the navigable ref of the acting entity, entity:<type>/<name>.
+	Actor string `json:"actor"`
+	Verb  string `json:"verb"`
+	// Object is the navigable ref of the acted-on entity, when it resolved to
+	// one. Otherwise see ObjectText.
+	Object string `json:"object,omitempty"`
+	// ObjectText is the acted-on thing's verbatim name, when it did not
+	// resolve to an entity.
+	ObjectText     string         `json:"objectText,omitempty"`
+	Summary        string         `json:"summary"`
+	MemoryCategory MemoryCategory `json:"memoryCategory"`
+	Confidence     float64        `json:"confidence"`
+	// OccurredAt is the event time, distinct from assertion validity and from
+	// learn time. Absent when the source did not carry one.
+	OccurredAt string     `json:"occurredAt,omitempty"`
+	ValidFrom  string     `json:"validFrom,omitempty"`
+	ValidUntil string     `json:"validUntil,omitempty"`
+	Source     *SourceRef `json:"source,omitempty"`
+	CreatedAt  string     `json:"createdAt"`
 }
 
 // EntityDetail is the full row for an entity.
@@ -174,6 +249,11 @@ type RelationDetail struct {
 	CreatedAt      string         `json:"createdAt"`
 	ValidFrom      string         `json:"validFrom,omitempty"`
 	ValidUntil     string         `json:"validUntil,omitempty"`
+	Confidence     float64        `json:"confidence"`
+	Labels         []string       `json:"labels"`
+	Scope          ScopeSets      `json:"scope"`
+	Summary        string         `json:"summary,omitempty"`
+	Source         *SourceRef     `json:"source,omitempty"`
 }
 
 // RememberRequest is the input to [Client.Remember]. It maps to the spec's
@@ -187,6 +267,12 @@ type RememberRequest struct {
 	MemoryCategory *MemoryCategory `json:"memory_category,omitempty"`
 	Labels         []string        `json:"labels,omitempty"`
 	Triples        []Triple        `json:"triples,omitempty"`
+	// Addressees names who the turn was directed at, so a fact stated to one
+	// person is not read back as stated to everyone.
+	Addressees []string `json:"addressees,omitempty"`
+	// ObservedAt dates the assertion, for backfilling facts that were true
+	// before they were recorded (RFC 3339).
+	ObservedAt string `json:"observed_at,omitempty"`
 }
 
 // RememberResponse is the result of [Client.Remember].
@@ -205,6 +291,8 @@ type BatchMessage struct {
 	Content string   `json:"content"`
 	// Timestamp is an optional RFC 3339 instant for the message.
 	Timestamp string `json:"ts,omitempty"`
+	// Addressees names who this message was directed at.
+	Addressees []string `json:"addressees,omitempty"`
 }
 
 // RememberManyRequest is the input to [Client.RememberMany]. It maps to the
@@ -242,6 +330,9 @@ type RecallRequest struct {
 	AtInstant  string          `json:"atInstant,omitempty"`
 	ValidFrom  string          `json:"validFrom,omitempty"`
 	ValidUntil string          `json:"validUntil,omitempty"`
+	// IncludeDuplicates keeps near-identical hits that would otherwise be
+	// collapsed. Nil leaves the server default.
+	IncludeDuplicates *bool `json:"includeDuplicates,omitempty"`
 }
 
 // RecallHit is a single match returned by [Client.Recall].
@@ -250,6 +341,44 @@ type RecallHit struct {
 	Score  float64    `json:"score"`
 	Source ResultKind `json:"source"`
 	Text   string     `json:"text"`
+	// Resource addresses the row this hit came from, so the caller can
+	// navigate to it rather than re-deriving it from Text.
+	Resource *ResourceRef `json:"resource,omitempty"`
+	// OccurredAt is the event time behind the hit, when it has one.
+	OccurredAt string `json:"occurredAt,omitempty"`
+	// DateNotes renders any temporal qualification the hit carries.
+	DateNotes string `json:"dateNotes,omitempty"`
+}
+
+// ResourceRef addresses the substrate row behind a recall hit. Branch on Kind;
+// each kind populates a different subset of the fields.
+//
+//	entity     EntityType, Name
+//	attribute  EntityType, Name, Key
+//	relation   SubjectType, SubjectName, Label, ObjectType, ObjectName
+//	action     ActorType, ActorName, ObjectType, ObjectName
+//	document   DocumentID, Position
+//	session    SessionID, TurnID, Position
+type ResourceRef struct {
+	Kind string `json:"kind"`
+
+	EntityType string `json:"entityType,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Key        string `json:"key,omitempty"`
+
+	SubjectType string `json:"subjectType,omitempty"`
+	SubjectName string `json:"subjectName,omitempty"`
+	Label       string `json:"label,omitempty"`
+	ObjectType  string `json:"objectType,omitempty"`
+	ObjectName  string `json:"objectName,omitempty"`
+
+	ActorType string `json:"actorType,omitempty"`
+	ActorName string `json:"actorName,omitempty"`
+
+	DocumentID string `json:"documentId,omitempty"`
+	SessionID  string `json:"sessionId,omitempty"`
+	TurnID     string `json:"turnId,omitempty"`
+	Position   *int64 `json:"position,omitempty"`
 }
 
 // QueryTrace is the short trace summary returned inline on a recall.
@@ -270,6 +399,22 @@ type RecallResponse struct {
 	SeedEntities       []string    `json:"seedEntities"`
 	Tier               Tier        `json:"tier"`
 	Trace              QueryTrace  `json:"trace"`
+	// ContextHits are supporting rows retrieved alongside Hits — context for
+	// the answer rather than answers themselves.
+	ContextHits []RecallHit `json:"contextHits,omitempty"`
+	// QueryWindow is the time range the query was understood to ask about,
+	// when it carried one.
+	QueryWindow *QueryWindow `json:"queryWindow,omitempty"`
+}
+
+// QueryWindow is the time range a query resolved to.
+type QueryWindow struct {
+	// Phrase is the wording the window came from ("last spring").
+	Phrase string `json:"phrase"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	// Precision says how tightly the phrase pinned the range.
+	Precision string `json:"precision"`
 }
 
 // ForgetResponse is the result of [Client.Forget].
@@ -286,6 +431,10 @@ type ChatRequest struct {
 	Model       string    `json:"model,omitempty"`
 	Labels      []string  `json:"labels,omitempty"`
 	BypassCache bool      `json:"bypassCache,omitempty"`
+	// SuppressMarkers asks the server to omit the inline [S1]-style citation
+	// markers from the reply text. The citations themselves are still
+	// returned on [ChatResponse.Citations].
+	SuppressMarkers bool `json:"suppressMarkers,omitempty"`
 }
 
 // ChatResponse is the (non-streaming) result of [Client.Chat].
@@ -294,6 +443,25 @@ type ChatResponse struct {
 	SessionID     string            `json:"sessionId"`
 	TraceID       string            `json:"traceId"`
 	MemoryUpdates *ExtractionResult `json:"memoryUpdates,omitempty"`
+	// Citations carries one entry per inline [S1]-style marker in Reply.
+	Citations []Citation `json:"citations,omitempty"`
+}
+
+// Citation is one source backing a chat reply, addressed by the inline marker
+// that appears in the reply text.
+type Citation struct {
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Marker string `json:"marker"`
+	// Snippet is the quoted span from the source.
+	Snippet string  `json:"snippet"`
+	Score   float64 `json:"score"`
+	// DocumentTitle is set when the source is a document passage.
+	DocumentTitle string `json:"documentTitle,omitempty"`
+	// PositionPercent locates the snippet within its document, 0-100.
+	PositionPercent *int   `json:"positionPercent,omitempty"`
+	OccurredAt      string `json:"occurredAt,omitempty"`
+	Role            string `json:"role,omitempty"`
 }
 
 // UploadResponse is the result of [Documents.Upload] and [Documents.Reprocess].
@@ -302,6 +470,9 @@ type UploadResponse struct {
 	Deduplicated bool           `json:"deduplicated"`
 	ID           string         `json:"id"`
 	Status       DocumentStatus `json:"status"`
+	// ObservedAt is the ingest-time assertion instant the document's facts
+	// are dated from.
+	ObservedAt string `json:"observedAt,omitempty"`
 }
 
 // rawObject is a free-form JSON object the spec leaves untyped. Kept as

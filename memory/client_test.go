@@ -107,7 +107,9 @@ func TestRememberSendsBearerAndIdempotencyKey(t *testing.T) {
 	assertSingleScopeClause(t, gotBody["scopes"], scopeAcme)
 }
 
-func TestRecallNoIdempotencyKey(t *testing.T) {
+func TestRecallSendsIdempotencyKey(t *testing.T) {
+	// Recall is a read behind a POST: replaying it is safe, so it carries a
+	// key and gets the retry budget.
 	var gotIdem string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotIdem = r.Header.Get("Idempotency-Key")
@@ -120,11 +122,30 @@ func TestRecallNoIdempotencyKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Recall: %v", err)
 	}
-	if gotIdem != "" {
-		t.Errorf("Recall should not send Idempotency-Key, got %q", gotIdem)
+	if gotIdem == "" {
+		t.Error("Recall should send an Idempotency-Key")
 	}
 	if len(resp.Hits) != 1 || resp.Hits[0].ID != "x" {
 		t.Errorf("hits = %+v", resp.Hits)
+	}
+}
+
+func TestForgetSendsNoIdempotencyKey(t *testing.T) {
+	// Forget mutates and is not safe to replay, so it gets neither a key
+	// nor the retry budget.
+	var gotIdem string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotIdem = r.Header.Get("Idempotency-Key")
+		_, _ = io.WriteString(w, `{"forgotten":0}`)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	if _, err := c.Forget(context.Background(), "q"); err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if gotIdem != "" {
+		t.Errorf("Forget should not send Idempotency-Key, got %q", gotIdem)
 	}
 }
 
