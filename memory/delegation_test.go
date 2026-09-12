@@ -51,7 +51,7 @@ func TestOnBehalfOfSetsHeader(t *testing.T) {
 
 func TestOnBehalfOfPropagatesToSubClients(t *testing.T) {
 	var gotHeader, gotPath string
-	srv := delegationProbe(t, `{"documents":[],"page":1,"pageSize":20,"total":0}`, &gotHeader, &gotPath)
+	srv := delegationProbe(t, `{"documents":[],"page":{"hasMore":false}}`, &gotHeader, &gotPath)
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
@@ -69,7 +69,7 @@ func TestOnBehalfOfPropagatesToSubClients(t *testing.T) {
 
 func TestWhoamiHitsMe(t *testing.T) {
 	var gotHeader, gotPath string
-	reply := `{"principalId":"user:bob","displayName":"Bob","kind":"user","enforce":true,` +
+	reply := `{"principalId":"user:bob","displayName":"Bob","kind":"user",` +
 		`"grants":{"memory:read":["team/acme"]},"effectiveGrants":{"memory:read":["team/acme"]},` +
 		`"delegatedPrincipalId":"svc:agent"}`
 	srv := delegationProbe(t, reply, &gotHeader, &gotPath)
@@ -86,7 +86,7 @@ func TestWhoamiHitsMe(t *testing.T) {
 	if gotHeader != principalBob {
 		t.Errorf("delegation header = %q", gotHeader)
 	}
-	if me.PrincipalID != principalBob || !me.Enforce || me.DelegatedPrincipalID != "svc:agent" {
+	if me.PrincipalID != principalBob || me.DelegatedPrincipalID != "svc:agent" {
 		t.Errorf("whoami = %+v", me)
 	}
 	if _, ok := me.Grants["memory:read"]; !ok {
@@ -126,16 +126,16 @@ func TestKeysCreateSendsBodyAndTTL(t *testing.T) {
 }
 
 func TestKeysListRotateDelete(t *testing.T) {
-	// List: bare array.
+	// List: page envelope.
 	var cs capture
-	srv := captureServer(t, `[{"id":"k1","name":"ci","createdAt":"now"}]`, &cs)
+	srv := captureServer(t, `{"keys":[{"id":"k1","name":"ci","createdAt":"now"}],"page":{"hasMore":false}}`, &cs)
 	c := newTestClient(t, srv)
-	keys, err := c.Keys().List(context.Background())
+	page, err := c.Keys().List(context.Background(), PageOptions{})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if cs.path != "/api/v1/ctx-1/keys" || len(keys) != 1 || keys[0].ID != "k1" {
-		t.Errorf("list path/result = %s %+v", cs.path, keys)
+	if cs.path != "/api/v1/ctx-1/keys" || len(page.Keys) != 1 || page.Keys[0].ID != "k1" {
+		t.Errorf("list path/result = %s %+v", cs.path, page)
 	}
 	srv.Close()
 

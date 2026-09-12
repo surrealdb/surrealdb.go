@@ -8,16 +8,35 @@ import (
 	"strings"
 )
 
+// The chat stream's SSE vocabulary.
+const (
+	doneSentinel = "[DONE]"
+	eventDone    = "done"
+	eventError   = "error"
+)
+
 // ChatChunk is a single Server-Sent Event frame from a streaming chat call.
 type ChatChunk struct {
+	// Event is the SSE event label, when the frame carried one. The chat
+	// stream uses "meta", "chunk", "done" and "error".
+	Event string
 	// Delta is the incremental text token. Empty on non-delta frames.
 	Delta string
 	// TraceID is the server-assigned trace id, if echoed by the frame.
 	TraceID string
 	// SessionID is the chat session id, if echoed by the frame.
 	SessionID string
-	// Done is true on the terminal frame (either an explicit `event: done`
-	// or a `data: [DONE]` sentinel).
+	// Reply is the complete, server-sanitised reply text. Only the terminal
+	// frame carries it.
+	Reply string
+	// MemoryUpdates describes what the turn wrote back to memory. Only the
+	// terminal frame carries it.
+	MemoryUpdates *ExtractionResult
+	// Citations carries one entry per inline marker in Reply. Only the
+	// terminal frame carries them.
+	Citations []Citation
+	// Done is true on the terminal frame (an explicit `event: done`, a
+	// `done: true` payload, or a `data: [DONE]` sentinel).
 	Done bool
 	// Raw is the parsed JSON payload for frames whose data was JSON.
 	Raw map[string]any
@@ -25,40 +44,77 @@ type ChatChunk struct {
 
 // frame converts a fully-buffered SSE event (its event name and joined data
 // payload) into a ChatChunk.
-func frame(eventName, payload string) ChatChunk {
-	if payload == "[DONE]" {
-		return ChatChunk{Done: true}
+//
+// A non-nil error means the server reported a failure inside the stream. The
+// stream opens with a 200, so a mid-flight failure can only arrive as a frame;
+// it has to surface where a request failure would, not as an ordinary chunk.
+//
+// The terminal fields (reply, memoryUpdates, citations) are read by shape
+// rather than gated on the event name, because the server is free to attach
+// them to whichever frame closes the stream.
+func frame(eventName, payload string) (ChatChunk, error) {
+	if payload == doneSentinel {
+		return ChatChunk{Event: eventName, Done: true}, nil
 	}
+
 	var data map[string]any
 	if err := json.Unmarshal([]byte(payload), &data); err != nil {
-		// Not JSON; treat the whole payload as a raw delta.
-		return ChatChunk{Delta: payload}
+		// Not JSON. An error event still has to fail the stream; anything
+		// else is treated as a raw delta.
+		if eventName == eventError {
+			return ChatChunk{}, streamError(payload, payload)
+		}
+		return ChatChunk{Event: eventName, Delta: payload}, nil
 	}
-	chunk := ChatChunk{Raw: data}
-	if v, ok := data["traceId"].(string); ok {
-		chunk.TraceID = v
-	} else if v, ok := data["trace_id"].(string); ok {
-		chunk.TraceID = v
+
+	if eventName == eventError {
+		return ChatChunk{}, streamError(stringField(data, "error", "message", "detail", "title"), data)
 	}
-	if v, ok := data["sessionId"].(string); ok {
-		chunk.SessionID = v
-	} else if v, ok := data["session_id"].(string); ok {
-		chunk.SessionID = v
+	if msg, ok := data["error"].(string); ok && msg != "" {
+		return ChatChunk{}, streamError(msg, data)
 	}
-	if eventName == "done" {
+
+	chunk := ChatChunk{Event: eventName, Raw: data}
+	chunk.TraceID = stringField(data, "traceId", "trace_id")
+	chunk.SessionID = stringField(data, "sessionId", "session_id")
+	// "text" is the chat stream's own token key; "delta" and "token" are the
+	// shapes the other streaming surfaces use.
+	chunk.Delta = stringField(data, "delta", "token", "text")
+	chunk.Reply = stringField(data, "reply")
+	decodeField(data, "memoryUpdates", &chunk.MemoryUpdates)
+	decodeField(data, "citations", &chunk.Citations)
+
+	if eventName == eventDone {
 		chunk.Done = true
-		return chunk
-	}
-	if d, ok := data["done"].(bool); ok && d {
+	} else if d, ok := data["done"].(bool); ok && d {
 		chunk.Done = true
-		return chunk
 	}
-	if v, ok := data["delta"].(string); ok {
-		chunk.Delta = v
-	} else if v, ok := data["token"].(string); ok {
-		chunk.Delta = v
+	return chunk, nil
+}
+
+// stringField returns the first of keys present in data as a non-empty string.
+func stringField(data map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := data[k].(string); ok && v != "" {
+			return v
+		}
 	}
-	return chunk
+	return ""
+}
+
+// decodeField re-marshals data[key] into dest. A missing, null, or
+// structurally unexpected value leaves dest untouched: a malformed side-field
+// must not fail a frame that is otherwise good.
+func decodeField(data map[string]any, key string, dest any) {
+	raw, ok := data[key]
+	if !ok || raw == nil {
+		return
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return
+	}
+	_ = json.Unmarshal(encoded, dest)
 }
 
 // iterateSSE consumes an SSE stream from r, yielding each frame as a
@@ -88,9 +144,13 @@ func iterateSSE(ctx context.Context, r io.Reader, yield func(ChatChunk, error) b
 			return true
 		}
 		payload := strings.Join(dataLines, "\n")
-		chunk := frame(eventName, payload)
+		chunk, err := frame(eventName, payload)
 		eventName = ""
 		dataLines = dataLines[:0]
+		if err != nil {
+			yield(ChatChunk{}, err)
+			return false
+		}
 		if !yield(chunk, nil) {
 			return false
 		}
