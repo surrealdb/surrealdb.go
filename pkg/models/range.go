@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 )
@@ -63,41 +64,33 @@ type Bound[T any] interface {
 	BoundIncluded[T] | BoundExcluded[T]
 }
 
+// Range is a SurrealQL range such as 1..=10 or an open `..`.
+//
+// A nil Begin or End means that side is open (no limit). Do not pass [None]
+// as a scalar begin/end — SurrealDB rejects that. Use [None] inside
+// array-style ids, for example []any{"London", None}.
+//
+// For convenient constructors (open and closed forms), use the helpers in
+// github.com/surrealdb/surrealdb.go/contrib/surrealql.
 type Range[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Begin *TBeg
 	End   *TEnd
 }
 
-func (r *Range[T, TBeg, TEnd]) GetJoinString() string {
-	joinStr := ""
-
-	if reflect.TypeOf(*r.Begin) == reflect.TypeOf(BoundExcluded[T]{}) {
-		joinStr += ">"
-	}
-	joinStr += ".."
-	if reflect.TypeOf(*r.End) == reflect.TypeOf(BoundIncluded[T]{}) {
-		joinStr += "="
-	}
-
-	return joinStr
+// GetJoinString returns the join between the bounds: "..", "..=", ">..", or ">..=".
+// Nil Begin/End are treated as open sides and do not panic.
+func (r Range[T, TBeg, TEnd]) GetJoinString() string {
+	return joinFromBounds(r.Begin, r.End)
 }
 
-func (r *Range[T, TBeg, TEnd]) String() string {
-	joinStr := r.GetJoinString()
-	beginStr := ""
-	endStr := ""
-
-	if r.Begin != nil {
-		beginStr = convertToString(r.Begin)
-	}
-	if r.End != nil {
-		endStr = convertToString(r.End)
-	}
-
-	return fmt.Sprintf("%s%s%s", beginStr, joinStr, endStr)
+// String returns a debug rendering of the range (for example "1..=10" or "..").
+// It is not guaranteed to be valid SurrealQL; do not send it as a query.
+// Open sides (nil Begin/End) render as empty, so both-open is "..".
+func (r Range[T, TBeg, TEnd]) String() string {
+	return fmt.Sprintf("%s%s%s", boundValueString(r.Begin), r.GetJoinString(), boundValueString(r.End))
 }
 
-func (r *Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
+func (r Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 	return cbor.Marshal(cbor.Tag{
 		Number:  TagRange,
 		Content: []interface{}{r.Begin, r.End},
@@ -133,19 +126,62 @@ type RecordRangeID[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Table Table
 }
 
-func (rr *RecordRangeID[T, TBeg, TEnd]) String() string {
-	joinStr := rr.GetJoinString()
-	beginStr := ""
-	endStr := ""
+func (rr RecordRangeID[T, TBeg, TEnd]) String() string {
+	return fmt.Sprintf("%s:%s", rr.Table, rr.Range.String())
+}
 
-	if rr.Begin != nil {
-		beginStr = convertToString(rr.Begin)
+func (rr RecordRangeID[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
+	rid := RecordID{
+		Table: string(rr.Table),
+		ID:    rr.Range,
 	}
-	if rr.End != nil {
-		endStr = convertToString(rr.End)
-	}
+	return rid.MarshalCBOR()
+}
 
-	return fmt.Sprintf("%s:%s%s%s", rr.Table, beginStr, joinStr, endStr)
+// joinFromBounds returns the SurrealQL join between two bounds: .., ..=, >.., or >..=.
+func joinFromBounds(begin, end any) string {
+	joinStr := ""
+	if begin != nil && !isNilBound(begin) && isExcludedBound(begin) {
+		joinStr += ">"
+	}
+	joinStr += ".."
+	if end != nil && !isNilBound(end) && isIncludedBound(end) {
+		joinStr += "="
+	}
+	return joinStr
+}
+
+func isNilBound(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	return (rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface) && rv.IsNil()
+}
+
+func isExcludedBound(v any) bool {
+	t := reflect.TypeOf(v)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	name := t.Name()
+	return name == "BoundExcluded" || strings.HasPrefix(name, "BoundExcluded[")
+}
+
+func isIncludedBound(v any) bool {
+	t := reflect.TypeOf(v)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	name := t.Name()
+	return name == "BoundIncluded" || strings.HasPrefix(name, "BoundIncluded[")
+}
+
+func boundValueString(v any) string {
+	if isNilBound(v) {
+		return ""
+	}
+	return convertToString(v)
 }
 
 // convertToString renders the underlying value of a range bound (a
