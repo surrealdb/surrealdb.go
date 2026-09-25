@@ -21,11 +21,15 @@ type Documents struct {
 type UploadOption func(*uploadOptions)
 
 type uploadOptions struct {
-	filename    string
-	contentType string
-	scopes      ScopeSets
-	labels      []string
-	title       string
+	filename         string
+	contentType      string
+	scopes           ScopeSets
+	labels           []string
+	title            string
+	source           string
+	metaMimeType     string
+	observedAt       string
+	observedAtHeader string
 }
 
 // WithFilename sets the filename advertised in the multipart Content-
@@ -55,6 +59,31 @@ func WithLabels(labels []string) UploadOption {
 
 // WithTitle sets the document title sent in the "metadata" JSON part of the
 // multipart payload.
+// WithSource records where the document came from, for provenance.
+func WithSource(source string) UploadOption {
+	return func(o *uploadOptions) { o.source = source }
+}
+
+// WithObservedAt dates the document's facts (RFC 3339), for backfilling
+// material that was true before it was uploaded. Without it the facts are
+// dated from ingest.
+func WithObservedAt(instant string) UploadOption {
+	return func(o *uploadOptions) { o.observedAt = instant }
+}
+
+// WithObservedAtHeader names a header inside the document to read the
+// observation instant from, for formats that carry their own date.
+func WithObservedAtHeader(header string) UploadOption {
+	return func(o *uploadOptions) { o.observedAtHeader = header }
+}
+
+// WithMetadataMimeType overrides the media type recorded in the metadata part.
+// It is independent of [WithContentType], which sets the multipart file part's
+// own type.
+func WithMetadataMimeType(mimeType string) UploadOption {
+	return func(o *uploadOptions) { o.metaMimeType = mimeType }
+}
+
 func WithTitle(title string) UploadOption {
 	return func(o *uploadOptions) { o.title = title }
 }
@@ -129,18 +158,38 @@ func (d *Documents) upload(ctx context.Context, method, path string, body io.Rea
 // "metadata" JSON part (scopes/labels/title) written before the "file" part, in
 // the order the server parses them. It returns the body buffer and the
 // content type to send.
+// uploadMetadata is the "metadata" JSON part of DocumentUploadForm.
+type uploadMetadata struct {
+	Scopes           ScopeSets `json:"scopes,omitempty"`
+	Labels           []string  `json:"labels,omitempty"`
+	Title            string    `json:"title,omitempty"`
+	Source           string    `json:"source,omitempty"`
+	MimeType         string    `json:"mimeType,omitempty"`
+	ObservedAt       string    `json:"observedAt,omitempty"`
+	ObservedAtHeader string    `json:"observedAtHeader,omitempty"`
+}
+
+func (o *uploadOptions) hasMetadata() bool {
+	return len(o.scopes) > 0 || len(o.labels) > 0 || o.title != "" ||
+		o.source != "" || o.metaMimeType != "" || o.observedAt != "" || o.observedAtHeader != ""
+}
+
 func buildUploadBody(o *uploadOptions, fileBytes []byte) (*bytes.Buffer, string, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 
-	// Metadata part first so the server can read scopes/labels/title before it
-	// streams the bytes (matching UploadMetadataJson's camelCase shape).
-	if len(o.scopes) > 0 || len(o.labels) > 0 || o.title != "" {
-		meta := struct {
-			Scopes ScopeSets `json:"scopes,omitempty"`
-			Labels []string  `json:"labels,omitempty"`
-			Title  string    `json:"title,omitempty"`
-		}{Scopes: o.scopes, Labels: o.labels, Title: o.title}
+	// Metadata part first so the server can read it before it streams the
+	// bytes (matching UploadMetadataJson's camelCase shape).
+	if o.hasMetadata() {
+		meta := uploadMetadata{
+			Scopes:           o.scopes,
+			Labels:           o.labels,
+			Title:            o.title,
+			Source:           o.source,
+			MimeType:         o.metaMimeType,
+			ObservedAt:       o.observedAt,
+			ObservedAtHeader: o.observedAtHeader,
+		}
 		metaJSON, marshalErr := json.Marshal(meta)
 		if marshalErr != nil {
 			return nil, "", &APIError{Message: fmt.Sprintf("marshal metadata: %v", marshalErr)}

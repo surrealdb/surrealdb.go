@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"iter"
 	"net/http"
 	"net/url"
 )
@@ -18,13 +19,38 @@ type ScopeNode struct {
 	TombstonedAt string `json:"tombstonedAt,omitempty"`
 }
 
-// List returns the registered scope nodes for the context.
-func (s *Scopes) List(ctx context.Context) ([]ScopeNode, error) {
-	var out []ScopeNode
-	if err := s.client.getJSON(ctx, s.client.base+"/scopes", nil, &out); err != nil {
+// ScopePage is a page of scope nodes from [Scopes.List].
+type ScopePage struct {
+	Scopes []ScopeNode `json:"scopes"`
+	Page   PageMeta    `json:"page"`
+}
+
+// List returns one page of the registered scope nodes for the context.
+//
+// The listing is bounded in the database and then filtered for the caller's
+// visibility, so a page can come back shorter than Limit while further pages
+// remain. Follow [PageMeta.NextCursor], or use [Scopes.All].
+func (s *Scopes) List(ctx context.Context, opts CursorOptions) (*ScopePage, error) {
+	q := url.Values{}
+	opts.apply(q)
+	var out ScopePage
+	if err := s.client.getJSON(ctx, s.client.base+"/scopes", q, &out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return &out, nil
+}
+
+// All walks every page of the scope listing. opts.Cursor seeds the walk and
+// opts.Limit sets the page size.
+func (s *Scopes) All(ctx context.Context, opts CursorOptions) iter.Seq2[ScopeNode, error] {
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]ScopeNode, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := s.List(ctx, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Scopes, page.Page, nil
+	})
 }
 
 // RegisterScopeRequest is the input to [Scopes.Register].

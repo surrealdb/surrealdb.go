@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"iter"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -65,13 +66,38 @@ func (k *Keys) Create(ctx context.Context, req CreateKeyRequest) (*MintedKey, er
 	return &out, nil
 }
 
-// List returns the keys registered for the context.
-func (k *Keys) List(ctx context.Context) ([]KeyDetail, error) {
-	var out []KeyDetail
-	if err := k.client.getJSON(ctx, k.client.base+"/keys", nil, &out); err != nil {
+// KeyPage is a page of keys from [Keys.List].
+type KeyPage struct {
+	Keys []KeyDetail `json:"keys"`
+	Page PageMeta    `json:"page"`
+}
+
+// List returns one page of the keys registered for the context.
+//
+// Like [Scopes.List], this listing is filtered for visibility after it is
+// bounded, so a short page does not mean the last page. Follow
+// [PageMeta.NextCursor], or use [Keys.All].
+func (k *Keys) List(ctx context.Context, opts PageOptions) (*KeyPage, error) {
+	q := url.Values{}
+	opts.apply(q)
+	var out KeyPage
+	if err := k.client.getJSON(ctx, k.client.base+"/keys", q, &out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return &out, nil
+}
+
+// All walks every page of the key listing.
+func (k *Keys) All(ctx context.Context, opts PageOptions) iter.Seq2[KeyDetail, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]KeyDetail, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := k.List(ctx, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Keys, page.Page, nil
+	})
 }
 
 // Delete revokes a key by name.

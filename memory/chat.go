@@ -74,5 +74,8 @@ func chatWirePayload(req *ChatRequest, stream bool) map[string]any {
 	if req.BypassCache {
 		out["bypassCache"] = true
 	}
+	if req.SuppressMarkers {
+		out["suppressMarkers"] = true
+	}
 	return out
 }

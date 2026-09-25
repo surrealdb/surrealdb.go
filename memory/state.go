@@ -2,9 +2,9 @@ package memory
 
 import (
 	"context"
+	"iter"
 	"net/http"
 	"net/url"
-	"strconv"
 )
 
 // CategoryState is the resolved attributes, entities, and relations for one
@@ -13,6 +13,7 @@ type CategoryState struct {
 	Attributes []AttributeDetail `json:"attributes"`
 	Entities   []EntityDetail    `json:"entities"`
 	Relations  []RelationDetail  `json:"relations"`
+	Actions    []ActionDetail    `json:"actions"`
 }
 
 // StateResponse is the result of [Client.State]: the context's memory grouped
@@ -23,6 +24,22 @@ type StateResponse struct {
 	Context      CategoryState        `json:"context"`
 	Instructions []InstructionSummary `json:"instructions"`
 	Unknowns     []UncertaintySummary `json:"unknowns"`
+	// Truncated says which underlying tables were bounded short. A true flag
+	// means the complete set must be read through that table's own
+	// collection endpoint — except Instructions, which has none, so raise
+	// Limit instead.
+	Truncated StateTruncation `json:"truncated"`
+}
+
+// StateTruncation reports which of the state read's underlying tables were
+// bounded short.
+type StateTruncation struct {
+	Entities     bool `json:"entities"`
+	Attributes   bool `json:"attributes"`
+	Relations    bool `json:"relations"`
+	Actions      bool `json:"actions"`
+	Instructions bool `json:"instructions"`
+	Unknowns     bool `json:"unknowns"`
 }
 
 // State returns the full resolved memory state for the context.
@@ -38,6 +55,9 @@ func (c *Client) State(ctx context.Context) (*StateResponse, error) {
 type ProfileEntry struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+	// Entity is the navigable ref of the subject, when the entry has one.
+	Entity     string `json:"entity,omitempty"`
+	EntityType string `json:"entityType,omitempty"`
 }
 
 // ProfileResponse is the result of [Client.Profile]: the caller-facing profile
@@ -47,6 +67,9 @@ type ProfileResponse struct {
 	Dynamic      []ProfileEntry       `json:"dynamic"`
 	Preferences  []ProfileEntry       `json:"preferences"`
 	Instructions []InstructionSummary `json:"instructions"`
+	// SelfFacts are the entries about the context's own principal, kept
+	// separate from what it knows about everyone else.
+	SelfFacts []ProfileEntry `json:"selfFacts"`
 }
 
 // Profile returns the assembled profile for the context.
@@ -66,12 +89,18 @@ type AuditOptions struct {
 	// Since and Until bound the createdAt window (RFC 3339 instants).
 	Since string
 	Until string
-	// Limit caps the number of rows returned.
-	Limit int
+
+	// Limit and Cursor page the listing; see [CursorOptions], whose fields
+	// these mirror. The audit listing offers no total, so there is no Count.
+	Limit  int
+	Cursor string
 }
 
 func (o *AuditOptions) values() url.Values {
 	q := url.Values{}
+	if o == nil {
+		return q
+	}
 	if o.Principal != "" {
 		q.Set("principal", o.Principal)
 	}
@@ -87,9 +116,7 @@ func (o *AuditOptions) values() url.Values {
 	if o.Until != "" {
 		q.Set("until", o.Until)
 	}
-	if o.Limit > 0 {
-		q.Set("limit", strconv.Itoa(o.Limit))
-	}
+	CursorOptions{Limit: o.Limit, Cursor: o.Cursor}.apply(q)
 	return q
 }
 
@@ -105,18 +132,36 @@ type AuditRow struct {
 	CreatedAt   string    `json:"createdAt"`
 }
 
-// AuditResponse is the result of [Client.Audit].
+// AuditResponse is a page of audited operations from [Client.Audit].
 type AuditResponse struct {
 	Rows []AuditRow `json:"rows"`
+	Page PageMeta   `json:"page"`
 }
 
-// Audit lists audited operations for the context, newest first.
+// Audit returns one page of audited operations for the context, newest first.
+// A nil opts applies no filters and lets the server pick the page size.
 func (c *Client) Audit(ctx context.Context, opts *AuditOptions) (*AuditResponse, error) {
 	var out AuditResponse
 	if err := c.getJSON(ctx, c.base+"/audit", opts.values(), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// AllAudit walks every page of the audit listing, newest first.
+func (c *Client) AllAudit(ctx context.Context, opts *AuditOptions) iter.Seq2[AuditRow, error] {
+	local := AuditOptions{}
+	if opts != nil {
+		local = *opts
+	}
+	return walkPages(ctx, local.Cursor, func(ctx context.Context, cursor string) ([]AuditRow, PageMeta, error) {
+		local.Cursor = cursor
+		page, err := c.Audit(ctx, &local)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Rows, page.Page, nil
+	})
 }
 
 // LifecycleResponse reports how many rows a lifecycle pass affected.
