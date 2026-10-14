@@ -596,10 +596,10 @@ func ExampleQuery_null_none_customdatetime_roundtrip_legacy_fxamackercbor() {
 	_, err = surrealdb.Query[[]T](
 		context.Background(),
 		db,
-		`CREATE $id CONTENT $value`,
+		`CREATE $id CONTENT $content`,
 		map[string]any{
 			"id": models.NewRecordID("t", 1),
-			"value": T{
+			"content": T{
 				// NullableZero:  models.CustomDateTime{Time: time.Time{}},
 				NullableNil:         nil,
 				OptionZero:          models.CustomDateTime{Time: time.Time{}},
@@ -803,10 +803,10 @@ func ExampleQuery_null_none_customdatetime_roundtrip_surrealcbor() {
 	_, err = surrealdb.Query[[]T](
 		context.Background(),
 		db,
-		`CREATE $id CONTENT $value`,
+		`CREATE $id CONTENT $content`,
 		map[string]any{
 			"id": models.NewRecordID("t", 1),
-			"value": T{
+			"content": T{
 				// NullableZero:  models.CustomDateTime{Time: time.Time{}},
 				NullableNil:         nil,
 				OptionZero:          models.CustomDateTime{Time: time.Time{}},
