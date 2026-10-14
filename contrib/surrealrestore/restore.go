@@ -437,7 +437,7 @@ func sanitizeIdentifier(id string) string {
 	// Escape backslashes first, then backticks
 	escaped := strings.ReplaceAll(id, "\\", "\\\\")
 	escaped = strings.ReplaceAll(escaped, "`", "\\`")
-	return fmt.Sprintf("`%s`", escaped)
+	return "`" + escaped + "`"
 }
 
 func (r *Restorer) applyChange(ctx context.Context, _ string, change surrealdump.Change) error {
