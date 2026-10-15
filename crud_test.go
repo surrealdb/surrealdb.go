@@ -152,7 +152,7 @@ func TestCRUD_compilesToQuery(t *testing.T) {
 
 func TestCRUD_server(t *testing.T) {
 	ctx := context.Background()
-	db := testenv.MustNew("crud", "crud", "person")
+	db := testenv.MustNew("crud", "crud", "person", "thrower")
 	defer db.Close(ctx)
 
 	tobie := models.NewRecordID("person", "tobie")
@@ -200,6 +200,31 @@ func TestCRUD_server(t *testing.T) {
 		var se *surrealdb.ServerError
 		require.True(t, errors.As(err, &se))
 		assert.Equal(t, rpcErr.Message, se.Message)
+	})
+
+	t.Run("a failed statement keeps the code of its RPC method", func(t *testing.T) {
+		_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE thrower SCHEMALESS; DEFINE FIELD x ON thrower VALUE { THROW "boom" };`, nil)
+		require.NoError(t, err)
+
+		// The deprecated create RPC: SurrealDB v3 assigns a THROW -32006.
+		//nolint:staticcheck // RPCError is what the create RPC returned
+		var want *surrealdb.RPCError
+		require.True(t, errors.As(surrealdb.Send[any](ctx, db, &connection.RPCResponse[any]{}, "create",
+			models.NewRecordID("thrower", 1), map[string]any{"x": 1}), &want))
+
+		_, err = surrealdb.Create[map[string]any](ctx, db, models.NewRecordID("thrower", 2), map[string]any{"x": 1})
+		//nolint:staticcheck // RPCError is what the create RPC returned
+		var rpcErr *surrealdb.RPCError
+		require.True(t, errors.As(err, &rpcErr))
+		assert.Equal(t, want.Code, rpcErr.Code)
+
+		var se *surrealdb.ServerError
+		require.True(t, errors.As(err, &se))
+		assert.Equal(t, want.Code, se.Code)
+		if se.Kind != "" { // SurrealDB v3
+			assert.Equal(t, surrealdb.KindThrown, se.Kind)
+			assert.Equal(t, -32006, rpcErr.Code)
+		}
 	})
 
 	t.Run("delete returns the record as it was", func(t *testing.T) {
