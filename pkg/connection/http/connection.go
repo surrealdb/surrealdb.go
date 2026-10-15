@@ -109,8 +109,8 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 
 	// Methods which only change the state of the session are answered here,
 	// as a stateless HTTP request could not keep what they change.
-	if res, handled := c.callLocally(request); handled {
-		return res, nil
+	if res, handled, err := c.callLocally(request); handled {
+		return res, err
 	}
 
 	// Set request ID if not already set
@@ -155,7 +155,8 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 }
 
 // callLocally answers the methods which only change the state of the session.
-func (c *Connection) callLocally(request *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], bool) {
+// It refuses parameters a WebSocket server would refuse, rather than keep them.
+func (c *Connection) callLocally(request *connection.RPCRequest) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
 	switch request.Method {
 	case "use":
 		ns, _ := paramString(request.Params, 0)
@@ -163,25 +164,31 @@ func (c *Connection) callLocally(request *connection.RPCRequest) (*connection.RP
 		c.setNamespaceAndDatabase(ns, db)
 	case "let", "set":
 		key, ok := paramString(request.Params, 0)
-		if !ok {
-			return nil, false
+		if !ok || len(request.Params) != 2 {
+			return nil, true, invalidParams(request.Method, "a variable name and a value")
 		}
-		var value any
-		if len(request.Params) > 1 {
-			value = request.Params[1]
-		}
-		c.setVariable(key, value)
+		c.setVariable(key, request.Params[1])
 	case "unset":
 		key, ok := paramString(request.Params, 0)
-		if !ok {
-			return nil, false
+		if !ok || len(request.Params) != 1 {
+			return nil, true, invalidParams(request.Method, "a variable name")
 		}
 		c.unsetVariable(key)
 	default:
-		return nil, false
+		return nil, false, nil
 	}
 
-	return &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}, true
+	return &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}, true, nil
+}
+
+// invalidParams is the error a SurrealDB server gives for a method called
+// with the wrong parameters.
+func invalidParams(method, want string) error {
+	return &connection.ServerError{
+		Code:    -32602,
+		Kind:    connection.KindValidation,
+		Message: fmt.Sprintf("Invalid params: %s takes %s", method, want),
+	}
 }
 
 func paramString(params []any, i int) (string, bool) {

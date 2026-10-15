@@ -173,6 +173,26 @@ func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
 	assert.EqualValues(t, 3, vars["z"])
 	assert.Equal(t, "ns2", header.Get("Surreal-NS"))
 
+	// let, set and unset with missing parameters fail, as they do over a
+	// WebSocket, and change nothing.
+	for _, params := range [][]any{{}, {"w"}, {1, 2}, {"w", 1, 2}} {
+		for _, method := range []string{"let", "set"} {
+			_, err = con.Send(ctx, method, params...)
+			var serverErr *connection.ServerError
+			require.ErrorAs(t, err, &serverErr, "%s %v", method, params)
+			assert.Equal(t, -32602, serverErr.Code)
+		}
+	}
+	for _, params := range [][]any{{}, {1}, {"z", "extra"}} {
+		_, err = con.Send(ctx, "unset", params...)
+		require.Error(t, err, "unset %v", params)
+	}
+	_, err = con.Send(ctx, "query", "RETURN $w")
+	require.NoError(t, err)
+	vars, _ = sent.Params[1].(map[string]any)
+	assert.NotContains(t, vars, "w")
+	assert.EqualValues(t, 3, vars["z"])
+
 	// invalidate forgets the token.
 	_, err = con.Send(ctx, "invalidate")
 	require.NoError(t, err)
