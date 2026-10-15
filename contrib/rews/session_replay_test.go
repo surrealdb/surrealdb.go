@@ -34,7 +34,7 @@ type recordingConnection struct {
 	release     chan struct{}
 }
 
-func (c *recordingConnection) record(call string) {
+func (c *recordingConnection) record(ctx context.Context, call string) error {
 	c.mu.Lock()
 	c.calls = append(c.calls, call)
 	block := !c.blocked && c.blockMethod != "" && strings.HasPrefix(call, c.blockMethod)
@@ -43,9 +43,17 @@ func (c *recordingConnection) record(call string) {
 	}
 	c.mu.Unlock()
 
-	if block {
-		close(c.entered)
-		<-c.release
+	if !block {
+		return nil
+	}
+	close(c.entered)
+	// Like a socket waiting for a response that will never come, give up only
+	// when the context is done.
+	select {
+	case <-c.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -67,40 +75,43 @@ func (c *recordingConnection) IsClosed() bool {
 	defer c.mu.Unlock()
 	return c.closed
 }
-func (c *recordingConnection) Use(_ context.Context, ns, db string) error {
-	c.record(fmt.Sprintf("use %s %s", ns, db))
-	return nil
+func (c *recordingConnection) Use(ctx context.Context, ns, db string) error {
+	return c.record(ctx, fmt.Sprintf("use %s %s", ns, db))
 }
-func (c *recordingConnection) Authenticate(_ context.Context, token string) error {
-	c.record("authenticate " + token)
-	return nil
+func (c *recordingConnection) Authenticate(ctx context.Context, token string) error {
+	return c.record(ctx, "authenticate "+token)
 }
-func (c *recordingConnection) Invalidate(context.Context) error {
-	c.record("invalidate")
-	return nil
+func (c *recordingConnection) Invalidate(ctx context.Context) error {
+	return c.record(ctx, "invalidate")
 }
-func (c *recordingConnection) Let(_ context.Context, key string, value any) error {
-	c.record(fmt.Sprintf("let %s %v", key, value))
-	return nil
+func (c *recordingConnection) Let(ctx context.Context, key string, value any) error {
+	return c.record(ctx, fmt.Sprintf("let %s %v", key, value))
 }
-func (c *recordingConnection) Unset(_ context.Context, key string) error {
-	c.record("unset " + key)
-	return nil
+func (c *recordingConnection) Unset(ctx context.Context, key string) error {
+	return c.record(ctx, "unset "+key)
 }
-func (c *recordingConnection) SignIn(context.Context, any) (string, error) {
-	c.record("signin")
+func (c *recordingConnection) SignIn(ctx context.Context, _ any) (string, error) {
+	if err := c.record(ctx, "signin"); err != nil {
+		return "", err
+	}
 	return "token", nil
 }
-func (c *recordingConnection) SignUp(context.Context, any) (string, error) {
-	c.record("signup")
+func (c *recordingConnection) SignUp(ctx context.Context, _ any) (string, error) {
+	if err := c.record(ctx, "signup"); err != nil {
+		return "", err
+	}
 	return "token", nil
 }
-func (c *recordingConnection) SignInWithRefresh(context.Context, any) (*connection.Tokens, error) {
-	c.record("signin")
+func (c *recordingConnection) SignInWithRefresh(ctx context.Context, _ any) (*connection.Tokens, error) {
+	if err := c.record(ctx, "signin"); err != nil {
+		return nil, err
+	}
 	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
 }
-func (c *recordingConnection) SignUpWithRefresh(context.Context, any) (*connection.Tokens, error) {
-	c.record("signup")
+func (c *recordingConnection) SignUpWithRefresh(ctx context.Context, _ any) (*connection.Tokens, error) {
+	if err := c.record(ctx, "signup"); err != nil {
+		return nil, err
+	}
 	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
 }
 
@@ -241,5 +252,67 @@ func TestSessionChange_honorsContextWhileWaiting(t *testing.T) {
 				t.Fatal("the session change kept waiting after its context was done")
 			}
 		})
+	}
+}
+
+// TestReconnect_doesNotWaitForAbandonedRPCs checks that a session RPC sent
+// with a context that never ends on a socket that then drops, whose response
+// will never come, is given up, so that the reconnection replay waiting for
+// the session state can run.
+func TestReconnect_doesNotWaitForAbandonedRPCs(t *testing.T) {
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	next := &recordingConnection{}
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 10*time.Millisecond, surrealcbor.New(), log)
+
+	old := &recordingConnection{blockMethod: "use", entered: make(chan struct{}), release: make(chan struct{})}
+	conn.WebSocketConnection = old
+	conn.state = StateConnected
+	t.Cleanup(func() { close(old.release) })
+
+	used := make(chan error, 1)
+	go func() { used <- conn.Use(context.Background(), "ns", "db") }()
+	<-old.entered
+	require.NoError(t, old.Close(context.Background()))
+
+	reconnected := make(chan error, 1)
+	go func() { reconnected <- conn.reconnect(context.Background()) }()
+	select {
+	case err := <-reconnected:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the replay is still waiting for a session RPC abandoned by the dropped socket")
+	}
+
+	err := <-used
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "the socket the request was sent on closed")
+}
+
+// TestReconnect_givesUpReplayWhenSocketDrops checks that a replay whose new
+// socket drops before answering gives up, releasing the session state, rather
+// than wait for ever.
+func TestReconnect_givesUpReplayWhenSocketDrops(t *testing.T) {
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+	next := &recordingConnection{blockMethod: "use", entered: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() { close(next.release) })
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 10*time.Millisecond, surrealcbor.New(), log)
+	conn.WebSocketConnection = &recordingConnection{}
+	conn.state = StateConnected
+	require.NoError(t, conn.Use(context.Background(), "ns", "db"))
+
+	reconnected := make(chan error, 1)
+	go func() { reconnected <- conn.reconnect(context.Background()) }()
+	<-next.entered
+	require.NoError(t, next.Close(context.Background()))
+
+	select {
+	case err := <-reconnected:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("the replay kept waiting on a socket that dropped")
 	}
 }
