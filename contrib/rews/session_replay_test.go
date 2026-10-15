@@ -1,0 +1,165 @@
+package rews
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
+)
+
+// recordingConnection is a socket that records the session RPCs it is sent,
+// and can hold one of them until it is released.
+type recordingConnection struct {
+	connection.WebSocketConnection
+
+	mu     sync.Mutex
+	calls  []string
+	closed bool
+
+	// blockMethod names the RPC that waits for release before returning;
+	// entered is closed once it has been called.
+	blockMethod string
+	entered     chan struct{}
+	release     chan struct{}
+}
+
+func (c *recordingConnection) record(call string) {
+	c.mu.Lock()
+	c.calls = append(c.calls, call)
+	c.mu.Unlock()
+
+	if c.blockMethod != "" && len(call) >= len(c.blockMethod) && call[:len(c.blockMethod)] == c.blockMethod {
+		close(c.entered)
+		<-c.release
+	}
+}
+
+func (c *recordingConnection) Calls() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.calls...)
+}
+
+func (c *recordingConnection) Connect(context.Context) error { return nil }
+func (c *recordingConnection) Close(context.Context) error {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	return nil
+}
+func (c *recordingConnection) IsClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+func (c *recordingConnection) Use(_ context.Context, ns, db string) error {
+	c.record(fmt.Sprintf("use %s %s", ns, db))
+	return nil
+}
+func (c *recordingConnection) Authenticate(_ context.Context, token string) error {
+	c.record("authenticate " + token)
+	return nil
+}
+func (c *recordingConnection) Invalidate(context.Context) error {
+	c.record("invalidate")
+	return nil
+}
+func (c *recordingConnection) Let(_ context.Context, key string, value any) error {
+	c.record(fmt.Sprintf("let %s %v", key, value))
+	return nil
+}
+func (c *recordingConnection) Unset(_ context.Context, key string) error {
+	c.record("unset " + key)
+	return nil
+}
+
+// TestReconnect_serialisesReplayWithSessionChanges checks that a session change
+// which completes while a reconnection is replaying the session is not undone
+// by the replay applying the state from before the change.
+func TestReconnect_serialisesReplayWithSessionChanges(t *testing.T) {
+	tests := []struct {
+		name string
+		// block is the RPC on the old socket that is still in flight when the
+		// reconnection starts.
+		block  string
+		change func(ctx context.Context, c *Connection[*recordingConnection]) error
+		// want is what the replay must send to the new socket.
+		want []string
+	}{
+		{
+			name:   "Invalidate",
+			block:  "invalidate",
+			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Invalidate(ctx) },
+			want:   []string{"use ns db", "let k v1"},
+		},
+		{
+			name:   "Use",
+			block:  "use",
+			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Use(ctx, "ns2", "db2") },
+			want:   []string{"use ns2 db2", "authenticate token", "let k v1"},
+		},
+		{
+			name:   "Let",
+			block:  "let",
+			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Let(ctx, "k", "v2") },
+			want:   []string{"use ns db", "authenticate token", "let k v2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+			next := &recordingConnection{}
+			conn := New(func(context.Context) (*recordingConnection, error) {
+				return next, nil
+			}, 0, surrealcbor.New(), log)
+
+			old := &recordingConnection{}
+			conn.WebSocketConnection = old
+			conn.state = StateConnected
+
+			require.NoError(t, conn.Use(ctx, "ns", "db"))
+			require.NoError(t, conn.Authenticate(ctx, "token"))
+			require.NoError(t, conn.Let(ctx, "k", "v1"))
+
+			// Hold the session change in flight on the old socket.
+			old.blockMethod = tt.block
+			old.entered = make(chan struct{})
+			old.release = make(chan struct{})
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(old.release) }) }
+			t.Cleanup(release)
+			changed := make(chan error, 1)
+			go func() { changed <- tt.change(ctx, conn) }()
+			<-old.entered
+
+			// Reconnect while it is in flight. The replay must wait for it
+			// rather than replay the state from before it.
+			reconnected := make(chan error, 1)
+			go func() { reconnected <- conn.reconnect(ctx) }()
+			select {
+			case err := <-reconnected:
+				require.NoError(t, err)
+				t.Fatalf("the replay finished while a session change was in flight, sending %q", next.Calls())
+			case <-time.After(200 * time.Millisecond):
+			}
+
+			release()
+			require.NoError(t, <-changed)
+			require.NoError(t, <-reconnected)
+
+			require.Equal(t, tt.want, next.Calls())
+		})
+	}
+}
