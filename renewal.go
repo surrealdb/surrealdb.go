@@ -32,16 +32,50 @@ type renewer struct {
 	refresh func(ctx context.Context, tokens Tokens) (*Tokens, error)
 	log     logger.Logger
 
+	// auth is held while the session's authentication changes: by a renewal
+	// for the whole of its refresh request, and by each method which signs
+	// the session in or out. A renewal's answer, which the connection may act
+	// on, then never lands after a newer sign-in.
+	auth chan struct{}
+
 	mu     sync.Mutex
 	tokens *Tokens
 	timer  *time.Timer
 	// cycle is bumped whenever the tokens change, so that a renewal started
 	// for older tokens does not overwrite newer ones.
 	cycle uint64
+	// stopped is set when the client closes, after which nothing is renewed.
+	stopped bool
 }
 
 func newRenewer(margin time.Duration, refresh func(context.Context, Tokens) (*Tokens, error)) *renewer {
-	return &renewer{margin: margin, refresh: refresh, log: logger.New(slog.Default().Handler())}
+	return &renewer{
+		margin:  margin,
+		refresh: refresh,
+		log:     logger.New(slog.Default().Handler()),
+		auth:    make(chan struct{}, 1),
+	}
+}
+
+// lockAuth waits until no renewal or other authentication change is under way,
+// or until ctx is done, and then holds off others until unlockAuth.
+func (r *renewer) lockAuth(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	select {
+	case r.auth <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *renewer) unlockAuth() {
+	if r == nil {
+		return
+	}
+	<-r.auth
 }
 
 // current returns the token pair the session holds, if it holds one.
@@ -70,7 +104,7 @@ func (r *renewer) set(tokens *Tokens) {
 
 func (r *renewer) setLocked(tokens *Tokens) {
 	r.stopLocked()
-	if tokens == nil || tokens.Refresh == "" {
+	if r.stopped || tokens == nil || tokens.Refresh == "" {
 		return
 	}
 	t := *tokens
@@ -96,6 +130,17 @@ func (r *renewer) clear() {
 	r.stopLocked()
 }
 
+// stop forgets the token pair for good, for when the client closes.
+func (r *renewer) stop() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = true
+	r.stopLocked()
+}
+
 func (r *renewer) stopLocked() {
 	r.cycle++
 	r.tokens = nil
@@ -106,6 +151,9 @@ func (r *renewer) stopLocked() {
 }
 
 func (r *renewer) renew(cycle uint64, attempt int) {
+	r.auth <- struct{}{}
+	defer func() { <-r.auth }()
+
 	r.mu.Lock()
 	if cycle != r.cycle || r.tokens == nil {
 		r.mu.Unlock()
@@ -131,13 +179,20 @@ func (r *renewer) renew(cycle uint64, attempt int) {
 
 	exp, ok := tokenExpiry(tokens.Access)
 	remaining := time.Until(exp)
-	backoff := min(time.Second<<attempt, renewalMaxBackoff)
+	backoff := retryBackoff(attempt)
 	if !ok || backoff >= remaining {
 		r.log.Error("giving up renewing the access token", "error", err)
 		return
 	}
 	r.log.Warn("renewing the access token failed; retrying", "error", err, "in", backoff)
 	r.timer = time.AfterFunc(backoff, func() { r.renew(cycle, attempt+1) })
+}
+
+// retryBackoff is how long to wait before retrying a renewal which failed
+// attempt+1 times: a second, doubling up to renewalMaxBackoff.
+func retryBackoff(attempt int) time.Duration {
+	// 1<<5 seconds is past the maximum already; a larger shift would overflow.
+	return min(time.Second<<min(max(attempt, 0), 5), renewalMaxBackoff)
 }
 
 // renewalDelay is how long to wait before renewing a token with the given time
