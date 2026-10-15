@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"reflect"
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
@@ -774,20 +776,21 @@ func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relations
 // and execute it using the query RPC method.
 // S can be *DB, *Session, or *Transaction.
 //
+// Each QueryStmt must hold exactly one statement, so that the i-th result can be
+// given to the i-th QueryStmt. If the server answers with a different number of
+// results, as it does when a QueryStmt holds several statements or none, QueryRaw
+// returns an error and leaves the results unset. The variables of all the
+// statements are sent together, so two statements must not give one name different values.
+//
 // You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
 func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
-	preparedQuery := ""
-	parameters := map[string]any{}
-	for i := 0; i < len(*queries); i++ {
-		// append query
-		preparedQuery += fmt.Sprintf("%s;", (*queries)[i].SQL)
-		for k, v := range (*queries)[i].Vars {
-			parameters[k] = v
-		}
+	if queries == nil || len(*queries) == 0 {
+		return fmt.Errorf("no query to run")
 	}
 
-	if preparedQuery == "" {
-		return fmt.Errorf("no query to run")
+	preparedQuery, parameters, err := composeRawQuery(*queries)
+	if err != nil {
+		return err
 	}
 
 	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", preparedQuery, parameters)
@@ -795,25 +798,60 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 		return err
 	}
 
-	// Get the unmarshaler based on the sender type
-	var unmarshaler interface {
-		Unmarshal(data []byte, v any) error
-	}
-	switch v := any(s).(type) {
-	case *DB:
-		unmarshaler = v.con.GetUnmarshaler()
-	case *Session:
-		unmarshaler = v.db.con.GetUnmarshaler()
-	case *Transaction:
-		unmarshaler = v.db.con.GetUnmarshaler()
+	if res == nil || len(*res) != len(*queries) {
+		got := 0
+		if res != nil {
+			got = len(*res)
+		}
+		return fmt.Errorf("QueryRaw: %d statements were given but the server returned %d results; "+
+			"each QueryStmt must hold exactly one statement", len(*queries), got)
 	}
 
-	for i := 0; i < len(*queries); i++ {
+	unmarshaler := unmarshalerOf(s)
+	for i := range *queries {
 		// assign results
 		(*queries)[i].Result = (*res)[i]
 		(*queries)[i].unmarshaler = unmarshaler
 	}
 
+	return nil
+}
+
+// composeRawQuery joins the statements of QueryRaw into one query, and their
+// variables into one map.
+func composeRawQuery(queries []QueryStmt) (sql string, vars map[string]any, err error) {
+	var preparedQuery strings.Builder
+	parameters := map[string]any{}
+	for i := range queries {
+		stmt := strings.TrimRight(strings.TrimSpace(queries[i].SQL), "; \t\r\n")
+		if stmt == "" {
+			return "", nil, fmt.Errorf("QueryRaw: statement %d is empty", i)
+		}
+		preparedQuery.WriteString(stmt)
+		// The newline ends a trailing line comment, which would otherwise swallow the semicolon.
+		preparedQuery.WriteString("\n;\n")
+
+		for k, v := range queries[i].Vars {
+			if prev, ok := parameters[k]; ok && !reflect.DeepEqual(prev, v) {
+				return "", nil, fmt.Errorf("QueryRaw: variable $%s is given different values by different statements", k)
+			}
+			parameters[k] = v
+		}
+	}
+
+	return preparedQuery.String(), parameters, nil
+}
+
+// unmarshalerOf returns the unmarshaler of the connection s sends on.
+func unmarshalerOf[S sendable](s S) codec.Unmarshaler {
+	switch v := any(s).(type) {
+	case *DB:
+		return v.con.GetUnmarshaler()
+	case *Session:
+		return v.db.con.GetUnmarshaler()
+	case *Transaction:
+		return v.db.con.GetUnmarshaler()
+	}
 	return nil
 }
 
