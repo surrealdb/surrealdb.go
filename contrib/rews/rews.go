@@ -617,12 +617,14 @@ func structLevelAccess(sv reflect.Value, access map[string]any, seen, names map[
 }
 
 // fieldName returns the name a struct field's tag gives it for encoding, or
-// "" if it gives none.
+// "" if it gives none. As the CBOR encoders do, it reads the cbor tag, and the
+// json tag only when there is no cbor tag.
 func fieldName(tag reflect.StructTag) string {
-	if name := strings.Split(tag.Get("json"), ",")[0]; name != "" {
-		return name
+	t := tag.Get("cbor")
+	if t == "" {
+		t = tag.Get("json")
 	}
-	return strings.Split(tag.Get("cbor"), ",")[0]
+	return strings.Split(t, ",")[0]
 }
 
 // embeddedStruct returns the struct an embedded field holds, through any

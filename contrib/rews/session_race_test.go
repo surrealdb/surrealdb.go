@@ -135,3 +135,19 @@ func TestAccessOf_embeddedStructs(t *testing.T) {
 	// An embedded struct with a tag name is encoded as a field, not promoted.
 	require.Empty(t, accessOf(named{auth: creds}))
 }
+
+// TestAccessOf_cborTagsFirst checks that a field's cbor tag names it, as it
+// does for the encoder, even when it also has a json tag.
+func TestAccessOf_cborTagsFirst(t *testing.T) {
+	type auth struct {
+		Namespace string `cbor:"NS" json:"ignored"`
+		Database  string `cbor:"DB,omitempty" json:"database_json"`
+		Access    string `cbor:",omitempty" json:"AC"`
+		Username  string `json:"user"`
+	}
+
+	// Access has a cbor tag without a name, so the encoder sends it as Access,
+	// not AC, and that is the name kept to send again.
+	require.Equal(t, map[string]any{"NS": "n", "DB": "d", "Access": "a"},
+		accessOf(auth{Namespace: "n", Database: "d", Access: "a", Username: "u"}))
+}
