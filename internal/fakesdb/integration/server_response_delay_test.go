@@ -25,7 +25,7 @@ func TestServerFailureResponseDelay(t *testing.T) {
 	// Count requests to introduce delays
 	requestCount := 0
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher: fakesdb.MatchMethodWithParams("select", func(params []any) bool {
+		Matcher: fakesdb.MatchMethodWithParams("query", func(params []any) bool {
 			requestCount++
 			t.Logf("Select request #%d", requestCount)
 			// Delay every 3rd request
@@ -45,7 +45,7 @@ func TestServerFailureResponseDelay(t *testing.T) {
 	})
 
 	// Normal response
-	server.AddStubResponse(fakesdb.SimpleStubResponse("select", map[string]any{
+	server.AddStubResponse(fakesdb.QueryStubResponse(map[string]any{
 		"id": cbor.Tag{Number: 8, Content: []any{"test", "1"}},
 	}))
 
