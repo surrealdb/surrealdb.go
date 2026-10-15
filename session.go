@@ -28,6 +28,8 @@ type Session struct {
 	// renew keeps the token pair of this session fresh. It is nil when token
 	// renewal is turned off.
 	renew *renewer
+	// state is what this session holds, for Fork.
+	state sessionState
 }
 
 // Attach creates a new session on the WebSocket connection.
@@ -82,17 +84,7 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 		return nil, err
 	}
 
-	s := &Session{
-		db: db,
-		id: &sessionID,
-	}
-	if db.opts.tokenRenewal {
-		s.renew = newRenewer(db.opts.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
-			return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
-		})
-		db.trackSessionRenewer(s.renew)
-	}
-	return s, nil
+	return db.newSession(sessionID), nil
 }
 
 // sessionCall sends an RPC request in this session.
@@ -128,7 +120,7 @@ func (s *Session) Detach(ctx context.Context) error {
 	// The renewer is stopped once the session is unlocked, as stopping it
 	// waits for a renewal under way, whose request checks the session.
 	s.renew.stop()
-	s.db.forgetSessionRenewer(s.renew)
+	s.db.forgetSession(*s.id)
 	return nil
 }
 
@@ -198,6 +190,7 @@ func (s *Session) SignUp(ctx context.Context, authData any) (string, error) {
 	if token == nil {
 		return "", nil
 	}
+	s.state.setToken(*token)
 	return *token, nil
 }
 
@@ -213,6 +206,7 @@ func (s *Session) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens,
 		return nil, err
 	}
 	s.renew.set(tokens)
+	s.state.setTokens(tokens)
 	return tokens, nil
 }
 
@@ -231,6 +225,7 @@ func (s *Session) SignIn(ctx context.Context, authData any) (string, error) {
 	if token == nil {
 		return "", nil
 	}
+	s.state.setToken(*token)
 	return *token, nil
 }
 
@@ -246,6 +241,7 @@ func (s *Session) SignInWithRefresh(ctx context.Context, authData any) (*Tokens,
 		return nil, err
 	}
 	s.renew.set(tokens)
+	s.state.setTokens(tokens)
 	return tokens, nil
 }
 
@@ -262,6 +258,7 @@ func (s *Session) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
 		return nil, err
 	}
 	s.renew.set(next)
+	s.state.setTokens(next)
 	return next, nil
 }
 
@@ -297,6 +294,7 @@ func (s *Session) Authenticate(ctx context.Context, token string) error {
 		return err
 	}
 	s.renew.clear()
+	s.state.setToken(token)
 	return nil
 }
 
@@ -311,6 +309,7 @@ func (s *Session) Invalidate(ctx context.Context) error {
 		return err
 	}
 	s.renew.clear()
+	s.state.setToken("")
 	return nil
 }
 
@@ -327,75 +326,34 @@ func (s *Session) Reset(ctx context.Context) error {
 		return err
 	}
 	s.renew.clear()
+	s.state.reset()
 	return nil
 }
 
 // Use selects the namespace and database for this session.
 func (s *Session) Use(ctx context.Context, ns, database string) error {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.Use),
-		Params:  []any{ns, database},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[any]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	if _, err := sessionCall[any](ctx, s, connection.Use, ns, database); err != nil {
 		return err
 	}
-
+	s.state.use(ns, database)
 	return nil
 }
 
 // Let sets a variable in this session.
 func (s *Session) Let(ctx context.Context, key string, val any) error {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.Let),
-		Params:  []any{key, val},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[any]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	if _, err := sessionCall[any](ctx, s, connection.Let, key, val); err != nil {
 		return err
 	}
-
+	s.state.let(key, val)
 	return nil
 }
 
 // Unset removes a variable from this session.
 func (s *Session) Unset(ctx context.Context, key string) error {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.Unset),
-		Params:  []any{key},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[any]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	if _, err := sessionCall[any](ctx, s, connection.Unset, key); err != nil {
 		return err
 	}
-
+	s.state.unset(key)
 	return nil
 }
 
