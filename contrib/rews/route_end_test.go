@@ -2,16 +2,20 @@ package rews
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
+	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
@@ -233,4 +237,127 @@ func TestReliableLQ_killedIsNotRestored(t *testing.T) {
 	rlq.liveQueriesMu.RLock()
 	assert.Empty(t, rlq.liveQueries)
 	rlq.liveQueriesMu.RUnlock()
+}
+
+// TestRoute_reconnectWhileConsumerBehindLosesNothing switches the route to a
+// new source while the caller is more than a channel's worth behind. The
+// notifications still on the old, closed source, and the one being routed,
+// used to be dropped.
+func TestRoute_reconnectWhileConsumerBehindLosesNothing(t *testing.T) {
+	r := newRoute("internal")
+	const before, after = 150, 5
+
+	lost := make(chan connection.Notification, before)
+	r.setExternal("external-1", lost, nil)
+	for i := 0; i < before; i++ {
+		lost <- notification(connection.CreateAction, i)
+	}
+	// The caller's channel fills up and the routing goroutine waits on it.
+	require.Eventually(t, func() bool { return len(r.internalCh) == cap(r.internalCh) }, time.Second, time.Millisecond)
+	// The connection is lost: its channel is closed with notifications left.
+	close(lost)
+
+	restored := make(chan connection.Notification, after)
+	r.setExternal("external-2", restored, nil)
+	for i := before; i < before+after; i++ {
+		restored <- notification(connection.CreateAction, i)
+	}
+
+	for i := 0; i < before+after; i++ {
+		n, ok := receiveNotification(t, r.internalCh)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result, "notifications arrive in order, none lost")
+	}
+	r.stop()
+}
+
+// TestRoute_repeatedReconnectsWhileConsumerBehind switches source twice before
+// the caller reads anything, so the second switch happens while the first
+// backlog is still being forwarded.
+func TestRoute_repeatedReconnectsWhileConsumerBehind(t *testing.T) {
+	r := newRoute("internal")
+	const per = 120
+	next := 0
+	for c := 0; c < 3; c++ {
+		src := make(chan connection.Notification, per)
+		r.setExternal(fmt.Sprintf("external-%d", c), src, nil)
+		for i := 0; i < per; i++ {
+			src <- notification(connection.CreateAction, next)
+			next++
+		}
+		if c < 2 {
+			close(src)
+		}
+	}
+
+	for i := 0; i < next; i++ {
+		n, ok := receiveNotification(t, r.internalCh)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result)
+	}
+	assert.NotPanics(t, r.stop)
+}
+
+// restoreSender answers a restored live query with a new id, running during
+// to simulate what happens while the request is in flight, and records every
+// request.
+type restoreSender struct {
+	newID   string
+	during  func()
+	methods []string
+	params  [][]any
+}
+
+func (s *restoreSender) Send(_ context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	s.methods = append(s.methods, method)
+	s.params = append(s.params, params)
+	var result cbor.RawMessage
+	if method == methodLive {
+		if s.during != nil {
+			s.during()
+		}
+		id, err := uuid.FromString(s.newID)
+		if err != nil {
+			return nil, err
+		}
+		result, err = surrealcbor.New().Marshal(models.UUID{UUID: id})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &connection.RPCResponse[cbor.RawMessage]{Result: &result}, nil
+}
+
+// TestReliableLQ_endedDuringRestoreIsKilled ends a live query while it is
+// being restored. The restored server query used to be left running, with no
+// route and no way to kill it.
+func TestReliableLQ_endedDuringRestoreIsKilled(t *testing.T) {
+	cases := map[string]func(rlq *reliableLQ){
+		"killed": func(rlq *reliableLQ) { rlq.liveQueryEnded("lq") },
+		"notifications closed": func(rlq *reliableLQ) {
+			require.NoError(t, rlq.closeLiveNotifications(&recordingCloser{}, "lq"))
+		},
+	}
+	for name, during := range cases {
+		t.Run(name, func(t *testing.T) {
+			log := quietLogger()
+			rlq := newReliableLQ(log, surrealcbor.New())
+			rlq.recordLiveQuery("lq", methodLive, []any{"users", false}, log)
+			provider := newMockNotificationProvider()
+
+			newID := uuid.Must(uuid.NewV4()).String()
+			sender := &restoreSender{newID: newID, during: func() { during(rlq) }}
+			require.NoError(t, rlq.restoreLiveQueries(context.Background(), sender, provider, log))
+
+			require.Equal(t, []string{methodLive, "kill"}, sender.methods)
+			assert.Equal(t, []any{newID}, sender.params[1])
+			provider.mu.Lock()
+			_, subscribed := provider.channels[newID]
+			provider.mu.Unlock()
+			assert.False(t, subscribed, "nothing subscribes to the killed query's notifications")
+			rlq.router.routesMu.RLock()
+			assert.Empty(t, rlq.router.routes)
+			rlq.router.routesMu.RUnlock()
+		})
+	}
 }
