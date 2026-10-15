@@ -122,6 +122,17 @@ func (s *Session) ID() *models.UUID {
 // Detach deletes the session from the server.
 // After calling Detach, the session cannot be used anymore.
 func (s *Session) Detach(ctx context.Context) error {
+	if err := s.detach(ctx); err != nil {
+		return err
+	}
+	// The renewer is stopped once the session is unlocked, as stopping it
+	// waits for a renewal under way, whose request checks the session.
+	s.renew.stop()
+	s.db.forgetSessionRenewer(s.renew)
+	return nil
+}
+
+func (s *Session) detach(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -141,8 +152,6 @@ func (s *Session) Detach(ctx context.Context) error {
 	}
 
 	s.closed = true
-	s.renew.stop()
-	s.db.forgetSessionRenewer(s.renew)
 	return nil
 }
 

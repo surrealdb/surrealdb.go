@@ -520,6 +520,41 @@ func TestRefreshAndReset_changeConnectionState(t *testing.T) {
 	assert.Len(t, sent.Params, 1, "no variables are sent")
 }
 
+// The answer to a refresh canceled while it arrived is not applied, so that a
+// renewal stopped by Close does not change the token.
+func TestCall_canceledRefreshChangesNoToken(t *testing.T) {
+	c := surrealcbor.New()
+	pair, err := c.Marshal(map[string]any{"id": "abc", "result": map[string]any{"access": "new-access", "refresh": "new-refresh"}})
+	require.NoError(t, err)
+	ok, err := c.Marshal(map[string]any{"id": "abc", "result": []any{}})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var header http.Header
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header = req.Header
+		var sent connection.RPCRequest
+		body, _ := io.ReadAll(req.Body)
+		_ = c.Unmarshal(body, &sent)
+		res := ok
+		if sent.Method == "refresh" {
+			cancel()
+			res = pair
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(res)), Header: http.Header{}}
+	}))
+
+	require.NoError(t, con.Authenticate(context.Background(), "old-access"))
+	_, err = con.Send(ctx, "refresh", connection.Tokens{Access: "old-access", Refresh: "old-refresh"})
+	require.ErrorIs(t, err, context.Canceled)
+
+	_, err = con.Send(context.Background(), "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer old-access", header.Get("Authorization"))
+}
+
 func newStaticResponseConnection(status int, contentType, body string) *Connection {
 	c := surrealcbor.New()
 	con := New(&connection.Config{

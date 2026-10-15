@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // jwtExpiringIn returns an unsigned JWT whose exp claim is d from now.
@@ -182,4 +184,85 @@ func TestDB_closeStopsEveryRenewal(t *testing.T) {
 	assert.Nil(t, session.current())
 	session.set(pair)
 	assert.Nil(t, session.current(), "a closed client renews nothing")
+}
+
+// blockingRefresh is a refresh which blocks until its context is done, and
+// then answers with a new pair anyway, as a server might have.
+type blockingRefresh struct {
+	started chan struct{}
+	exited  atomic.Bool
+}
+
+func newBlockingRefresh() *blockingRefresh {
+	return &blockingRefresh{started: make(chan struct{}, 1)}
+}
+
+func (b *blockingRefresh) refresh(ctx context.Context) (*Tokens, error) {
+	defer b.exited.Store(true)
+	b.started <- struct{}{}
+	<-ctx.Done()
+	return &Tokens{Access: jwtExpiringIn(time.Hour), Refresh: "late"}, nil
+}
+
+func (b *blockingRefresh) waitStarted(t *testing.T) {
+	t.Helper()
+	select {
+	case <-b.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the renewal did not start")
+	}
+}
+
+// Closing the client cancels a renewal under way, and waits for it, so that
+// its answer is not applied once Close has returned.
+func TestDB_closeCancelsAnInflightRenewal(t *testing.T) {
+	b := newBlockingRefresh()
+	r := newRenewer(time.Minute, func(ctx context.Context, _ Tokens) (*Tokens, error) { return b.refresh(ctx) })
+	db := &DB{con: closeOnlyConnection{}, renew: r}
+
+	r.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
+	b.waitStarted(t)
+
+	require.NoError(t, db.Close(context.Background()))
+	assert.True(t, b.exited.Load(), "Close returned while the renewal was under way")
+	assert.Nil(t, r.current())
+}
+
+// detachConnection answers detach, and blocks refresh until it is canceled.
+type detachConnection struct {
+	connection.Connection
+	refresh *blockingRefresh
+}
+
+func (c detachConnection) Call(ctx context.Context, req *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], error) {
+	if req.Method == string(connection.Refresh) {
+		_, _ = c.refresh.refresh(ctx)
+		return nil, ctx.Err()
+	}
+	return &connection.RPCResponse[cbor.RawMessage]{}, nil
+}
+
+// Detaching a session cancels its renewal under way, and waits for it.
+func TestSession_detachCancelsAnInflightRenewal(t *testing.T) {
+	b := newBlockingRefresh()
+	db := &DB{con: detachConnection{refresh: b}}
+	s := &Session{db: db, id: &models.UUID{}}
+	s.renew = newRenewer(time.Minute, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
+		return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
+	})
+	db.trackSessionRenewer(s.renew)
+
+	s.renew.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
+	b.waitStarted(t)
+
+	done := make(chan error, 1)
+	go func() { done <- s.Detach(context.Background()) }()
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Detach did not return")
+	}
+	assert.True(t, b.exited.Load(), "Detach returned while the renewal was under way")
+	assert.Nil(t, s.renew.current())
 }
