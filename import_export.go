@@ -146,7 +146,7 @@ func (db *DB) Export(ctx context.Context, w io.Writer, options *ExportOptions) e
 		return err
 	}
 
-	res, err := db.httpRequest(ctx, "/export", strings.NewReader(string(cfg)), "application/json", "plain/text")
+	res, err := db.httpRequest(ctx, "/export", strings.NewReader(string(cfg)), "application/json", "text/plain")
 	if err != nil {
 		return err
 	}
@@ -174,6 +174,9 @@ func (db *DB) httpRequest(ctx context.Context, path string, body io.Reader, cont
 		return nil, errNoHTTPEndpoint
 	}
 	baseURL, client := endpoint.HTTPEndpoint()
+	if baseURL == "" {
+		return nil, errNoHTTPEndpoint
+	}
 	base, err := connection.HTTPBaseURL(baseURL)
 	if err != nil {
 		return nil, err

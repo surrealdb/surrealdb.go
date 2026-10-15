@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 type Connection struct {
@@ -159,6 +161,11 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, res.Error
 	}
 
+	// A request canceled while its answer arrived changes no state, so that
+	// the answer to a canceled refresh, for one, is not applied.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.trackAuth(request, res.Result)
 
 	return &res, nil
@@ -180,49 +187,69 @@ const (
 func (c *Connection) callLocally(
 	ctx context.Context, request *connection.RPCRequest,
 ) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
-	switch request.Method {
-	case methodUse, methodLet, methodSet, methodUnset, methodReset:
-		if err := ctx.Err(); err != nil {
-			return nil, true, err
-		}
-	default:
-		return nil, false, nil
-	}
-
+	var apply func(method string, params []any) error
 	switch request.Method {
 	case methodUse:
-		ns, nsOK := optionalString(request.Params, 0)
-		db, dbOK := optionalString(request.Params, 1)
-		if !nsOK || !dbOK || len(request.Params) != 2 {
-			return nil, true, invalidParams(request.Method, "a namespace and a database")
-		}
-		c.setNamespaceAndDatabase(ns, db)
+		apply = c.localUse
 	case methodLet, methodSet:
-		key, ok := paramString(request.Params, 0)
-		if !ok || len(request.Params) != 2 {
-			return nil, true, invalidParams(request.Method, "a variable name and a value")
-		}
-		// The value is kept encoded, as a WebSocket server would receive it,
-		// so later changes to it do not leak into queries, and a value which
-		// cannot be encoded fails here rather than in every later query.
-		value, err := c.Marshaler.Marshal(request.Params[1])
-		if err != nil {
-			return nil, true, fmt.Errorf("%s $%s: %w", request.Method, key, err)
-		}
-		c.setVariable(key, cbor.RawMessage(value))
+		apply = c.localLet
 	case methodUnset:
-		key, ok := paramString(request.Params, 0)
-		if !ok || len(request.Params) != 1 {
-			return nil, true, invalidParams(request.Method, "a variable name")
-		}
-		c.unsetVariable(key)
+		apply = c.localUnset
 	case methodReset:
-		c.reset()
+		apply = c.localReset
 	default:
 		return nil, false, nil
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, true, err
+	}
+	if err := apply(request.Method, request.Params); err != nil {
+		return nil, true, err
+	}
 	return &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}, true, nil
+}
+
+func (c *Connection) localUse(method string, params []any) error {
+	ns, nsOK := scopeParam(params, 0)
+	db, dbOK := scopeParam(params, 1)
+	if !nsOK || !dbOK || len(params) != 2 {
+		return invalidParams(method, "a namespace and a database")
+	}
+	c.setNamespaceAndDatabase(ns, db)
+	return nil
+}
+
+func (c *Connection) localLet(method string, params []any) error {
+	key, ok := paramString(params, 0)
+	if !ok || len(params) != 2 {
+		return invalidParams(method, "a variable name and a value")
+	}
+	// The value is kept encoded, as a WebSocket server would receive it,
+	// so later changes to it do not leak into queries, and a value which
+	// cannot be encoded fails here rather than in every later query.
+	value, err := c.encodeParam(params[1])
+	if err != nil {
+		return fmt.Errorf("%s $%s: %w", method, key, err)
+	}
+	c.setVariable(key, value)
+	return nil
+}
+
+func (c *Connection) localUnset(method string, params []any) error {
+	key, ok := paramString(params, 0)
+	if !ok || len(params) != 1 {
+		return invalidParams(method, "a variable name")
+	}
+	c.unsetVariable(key)
+	return nil
+}
+
+// localReset ignores any parameters, as SurrealDB servers do: 2.x and 3.x
+// reset a WebSocket session given reset with parameters.
+func (c *Connection) localReset(_ string, _ []any) error {
+	c.reset()
+	return nil
 }
 
 // invalidParams is the error a SurrealDB server gives for a method called
@@ -244,20 +271,102 @@ func invalidParams(method, want string) error {
 	return rpcErr
 }
 
-// optionalString returns the string parameter at i, or "" for nil.
-func optionalString(params []any, i int) (string, bool) {
-	if i < len(params) && params[i] == nil {
-		return "", true
+// encodeParam encodes a parameter as it is encoded within a request: as an
+// element of the request's parameters rather than on its own, as the
+// deprecated models.CborMarshaler changes, and can fail on, the top-level
+// value it is given.
+func (c *Connection) encodeParam(v any) (cbor.RawMessage, error) {
+	data, err := c.Marshaler.Marshal([]any{v})
+	if err != nil {
+		return nil, err
 	}
-	return paramString(params, i)
+	// The value follows the header of an array of one element.
+	const arrayOfOne = 0x81
+	if len(data) < 2 || data[0] != arrayOfOne {
+		return nil, fmt.Errorf("encoding a parameter gave unexpected CBOR %x", data)
+	}
+	return cbor.RawMessage(data[1:]), nil
+}
+
+// scopeChange is a namespace or database given to use.
+type scopeChange struct {
+	name string
+	// keep is set for NONE, which leaves the current one as it is.
+	keep bool
+}
+
+// scopeParam returns the namespace or database parameter of use at i: a
+// string, nil (none), or NONE (the current one, unchanged).
+func scopeParam(params []any, i int) (scopeChange, bool) {
+	if i >= len(params) {
+		return scopeChange{}, false
+	}
+	switch p := params[i].(type) {
+	case nil:
+		return scopeChange{}, true
+	case models.CustomNil, *models.CustomNil:
+		return scopeChange{keep: true}, true
+	default:
+		if v := reflect.ValueOf(p); v.Kind() == reflect.Pointer && v.IsNil() {
+			// Encoded as null, as nil is.
+			return scopeChange{}, true
+		}
+		name, ok := stringValue(p)
+		return scopeChange{name: name}, ok
+	}
 }
 
 func paramString(params []any, i int) (string, bool) {
 	if i >= len(params) {
 		return "", false
 	}
-	s, ok := params[i].(string)
-	return s, ok
+	return stringValue(params[i])
+}
+
+// stringValue returns v as the string it is encoded as: a string, a value of
+// a defined string type such as type Token string, or a pointer to either.
+// A type with a CBOR encoding of its own is not taken for a string.
+func stringValue(v any) (string, bool) {
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	if _, custom := v.(cbor.Marshaler); custom {
+		return "", false
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		rv = rv.Elem()
+		if rv.CanInterface() {
+			if _, custom := rv.Interface().(cbor.Marshaler); custom {
+				return "", false
+			}
+		}
+	}
+	if rv.Kind() != reflect.String {
+		return "", false
+	}
+	return rv.String(), true
+}
+
+// stringKeyedMap returns the entries of v when it is a map with string keys,
+// such as a map[string]string or a defined map type, which is encoded as an
+// object as a map[string]any is.
+func stringKeyedMap(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	if _, custom := v.(cbor.Marshaler); custom {
+		return nil, false
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+		return nil, false
+	}
+	m := make(map[string]any, rv.Len())
+	for iter := rv.MapRange(); iter.Next(); {
+		m[iter.Key().String()] = iter.Value().Interface()
+	}
+	return m, true
 }
 
 // withVariables returns a copy of a query request whose variables include
@@ -276,7 +385,7 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	}
 
 	if len(request.Params) > 1 && request.Params[1] != nil {
-		given, ok := request.Params[1].(map[string]any)
+		given, ok := stringKeyedMap(request.Params[1])
 		if !ok {
 			// Variables of another type are sent as they are.
 			return request
@@ -324,11 +433,15 @@ func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawM
 	}
 }
 
-func (c *Connection) setNamespaceAndDatabase(namespace, database string) {
+func (c *Connection) setNamespaceAndDatabase(namespace, database scopeChange) {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
-	c.namespace = namespace
-	c.database = database
+	if !namespace.keep {
+		c.namespace = namespace.name
+	}
+	if !database.keep {
+		c.database = database.name
+	}
 }
 
 // reset forgets everything the session holds, as the reset RPC does on a

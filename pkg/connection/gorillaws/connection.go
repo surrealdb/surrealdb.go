@@ -397,6 +397,12 @@ func httpClientFor(d *gorilla.Dialer, timeout time.Duration) *http.Client {
 	// The dialer's TLS configuration, or none, replaces any the default
 	// transport was given, which the WebSocket does not use either.
 	t.TLSClientConfig = d.TLSClientConfig.Clone()
+	// So do its dial hooks: without any, it dials with a plain net.Dialer,
+	// not with hooks an application gave the default transport.
+	t.DialContext = nil
+	t.DialTLSContext = nil
+	t.Dial = nil    //nolint:staticcheck // a deprecated hook is still used if set
+	t.DialTLS = nil //nolint:staticcheck // a deprecated hook is still used if set
 	switch {
 	case d.NetDialContext != nil:
 		t.DialContext = d.NetDialContext
