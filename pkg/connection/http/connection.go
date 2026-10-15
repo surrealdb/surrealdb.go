@@ -210,6 +210,8 @@ func (c *Connection) callLocally(
 			return nil, true, invalidParams(request.Method, "a variable name")
 		}
 		c.unsetVariable(key)
+	case "reset":
+		c.reset()
 	default:
 		return nil, false, nil
 	}
@@ -288,11 +290,11 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	return &copied
 }
 
-// trackAuth keeps the token of a successful signin, signup or authenticate
-// request, however it was sent, and forgets it on invalidate.
+// trackAuth keeps the token of a successful signin, signup, refresh or
+// authenticate request, however it was sent, and forgets it on invalidate.
 func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawMessage) {
 	switch request.Method {
-	case "signin", "signup":
+	case "signin", "signup", "refresh":
 		if result == nil {
 			return
 		}
@@ -321,6 +323,17 @@ func (c *Connection) setNamespaceAndDatabase(namespace, database string) {
 	defer c.stateMu.Unlock()
 	c.namespace = namespace
 	c.database = database
+}
+
+// reset forgets everything the session holds, as the reset RPC does on a
+// WebSocket connection.
+func (c *Connection) reset() {
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	c.namespace = ""
+	c.database = ""
+	c.token = ""
+	c.vars = nil
 }
 
 func (c *Connection) setToken(token string) {
