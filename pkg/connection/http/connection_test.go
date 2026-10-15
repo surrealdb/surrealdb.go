@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -75,4 +79,79 @@ func (s *HTTPTestSuite) TestMockClientEngine_MakeRequest() {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://test.surreal/rpc", http.NoBody)
 	_, err := httpEngine.MakeRequest(req)
 	s.Require().Error(err, "should return error for status code 400")
+}
+
+func newStaticResponseConnection(status int, contentType, body string) *Connection {
+	c := surrealcbor.New()
+	con := New(&connection.Config{
+		BaseURL:     "http://test.surreal",
+		Marshaler:   c,
+		Unmarshaler: c,
+	})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header := http.Header{}
+		if contentType != "" {
+			header.Set("Content-Type", contentType)
+		}
+		return &http.Response{
+			StatusCode: status,
+			Status:     fmt.Sprintf("%d %s", status, http.StatusText(status)),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     header,
+		}
+	}))
+	return con
+}
+
+// TestMakeRequest_nonCBORErrorBody checks that a non-2xx response whose body is
+// not CBOR, such as an HTML page from a proxy, is returned as an error rather
+// than panicking.
+func TestMakeRequest_nonCBORErrorBody(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{"html from a proxy", "text/html; charset=utf-8", "<html><body>Bad Gateway</body></html>"},
+		{"plain text", "text/plain", "There was a problem with the database"},
+		{"claims cbor but is not", "application/cbor", "not cbor at all"},
+		{"no content type", "", "Bad Gateway"},
+		{"empty body", "application/cbor", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			con := newStaticResponseConnection(http.StatusBadGateway, tt.contentType, tt.body)
+			require.NoError(t, con.Use(context.Background(), "ns", "db"))
+
+			var err error
+			require.NotPanics(t, func() {
+				_, err = con.Send(context.Background(), "version")
+			})
+
+			var statusErr *StatusError
+			require.ErrorAs(t, err, &statusErr)
+			assert.Equal(t, http.StatusBadGateway, statusErr.StatusCode)
+			assert.Equal(t, tt.body, statusErr.Body)
+			assert.Contains(t, err.Error(), "502 Bad Gateway")
+		})
+	}
+}
+
+func TestMakeRequest_cborErrorBody(t *testing.T) {
+	c := surrealcbor.New()
+	body, err := c.Marshal(map[string]any{
+		"id":    "abc",
+		"error": map[string]any{"code": -32000, "message": "There was a problem with authentication"},
+	})
+	require.NoError(t, err)
+
+	con := newStaticResponseConnection(http.StatusUnauthorized, "application/cbor", string(body))
+	require.NoError(t, con.Use(context.Background(), "ns", "db"))
+
+	_, err = con.Send(context.Background(), "version")
+
+	var serverErr *connection.ServerError
+	require.ErrorAs(t, err, &serverErr)
+	assert.Equal(t, "There was a problem with authentication", serverErr.Message)
 }
