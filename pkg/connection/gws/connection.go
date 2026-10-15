@@ -107,12 +107,7 @@ func (c *Connection) handleResponse(data []byte) {
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Handle RPC response
-		responseChan, ok := c.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
-		if !ok {
-			return
-		}
-		defer close(responseChan)
-		responseChan <- rpcRes
+		c.DeliverResponse(fmt.Sprintf("%v", rpcRes.ID), rpcRes)
 	} else if rpcRes.Result == nil && rpcRes.Error != nil {
 		// Some error cases result in the lack of an ID field in the response,
 		// so we handle the error here,
