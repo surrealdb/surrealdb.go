@@ -25,6 +25,9 @@ type Session struct {
 	id     *models.UUID
 	closed bool
 	mu     sync.RWMutex
+	// renew keeps the token pair of this session fresh. It is nil when token
+	// renewal is turned off.
+	renew *renewer
 }
 
 // Attach creates a new session on the WebSocket connection.
@@ -79,10 +82,35 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 		return nil, err
 	}
 
-	return &Session{
+	s := &Session{
 		db: db,
 		id: &sessionID,
-	}, nil
+	}
+	if db.opts.tokenRenewal {
+		s.renew = newRenewer(db.opts.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
+			return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
+		})
+	}
+	return s, nil
+}
+
+// sessionCall sends an RPC request in this session.
+func sessionCall[T any](ctx context.Context, s *Session, method connection.RPCFunction, params ...any) (*T, error) {
+	if s.isClosed() {
+		return nil, constants.ErrSessionClosed
+	}
+
+	req := &connection.RPCRequest{
+		Method:  string(method),
+		Params:  params,
+		Session: s.id,
+	}
+
+	var res connection.RPCResponse[T]
+	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+		return nil, err
+	}
+	return res.Result, nil
 }
 
 // ID returns the session's UUID.
@@ -112,6 +140,7 @@ func (s *Session) Detach(ctx context.Context) error {
 	}
 
 	s.closed = true
+	s.renew.clear()
 	return nil
 }
 
@@ -145,144 +174,103 @@ func (s *Session) Begin(ctx context.Context) (*Transaction, error) {
 
 // SignUp signs up a new user in this session.
 func (s *Session) SignUp(ctx context.Context, authData any) (string, error) {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return "", constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.SignUp),
-		Params:  []any{authData},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[string]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	token, err := sessionCall[string](ctx, s, connection.SignUp, authData)
+	if err != nil {
 		return "", err
 	}
-
-	if res.Result == nil {
+	s.renew.clear()
+	if token == nil {
 		return "", nil
 	}
-	return *res.Result, nil
+	return *token, nil
 }
 
 // SignUpWithRefresh signs up a new user using a TYPE RECORD access method with WITH REFRESH enabled.
 func (s *Session) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return nil, constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.SignUp),
-		Params:  []any{authData},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[Tokens]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	tokens, err := sessionCall[Tokens](ctx, s, connection.SignUp, authData)
+	if err != nil {
 		return nil, err
 	}
-
-	return res.Result, nil
+	s.renew.set(tokens)
+	return tokens, nil
 }
 
 // SignIn signs in an existing user in this session.
 func (s *Session) SignIn(ctx context.Context, authData any) (string, error) {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return "", constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.SignIn),
-		Params:  []any{authData},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[string]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	token, err := sessionCall[string](ctx, s, connection.SignIn, authData)
+	if err != nil {
 		return "", err
 	}
-
-	if res.Result == nil {
+	s.renew.clear()
+	if token == nil {
 		return "", nil
 	}
-	return *res.Result, nil
+	return *token, nil
 }
 
 // SignInWithRefresh signs in using a TYPE RECORD access method with WITH REFRESH enabled.
 func (s *Session) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return nil, constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.SignIn),
-		Params:  []any{authData},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[Tokens]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	tokens, err := sessionCall[Tokens](ctx, s, connection.SignIn, authData)
+	if err != nil {
 		return nil, err
 	}
+	s.renew.set(tokens)
+	return tokens, nil
+}
 
-	return res.Result, nil
+// Refresh exchanges a token pair for a new one and authenticates this session
+// with it. See [DB.Refresh].
+func (s *Session) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
+	next, err := sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
+	if err != nil {
+		return nil, err
+	}
+	s.renew.set(next)
+	return next, nil
+}
+
+// Revoke revokes the refresh token of a token pair. See [DB.Revoke].
+func (s *Session) Revoke(ctx context.Context, tokens Tokens) error {
+	if _, err := sessionCall[any](ctx, s, connection.Revoke, tokens); err != nil {
+		return err
+	}
+	if current := s.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		s.renew.clear()
+	}
+	return nil
+}
+
+// Tokens returns the token pair this session holds. See [DB.Tokens].
+func (s *Session) Tokens() *Tokens {
+	return s.renew.current()
 }
 
 // Authenticate authenticates the session with the provided token.
 func (s *Session) Authenticate(ctx context.Context, token string) error {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.Authenticate),
-		Params:  []any{token},
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[any]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	if _, err := sessionCall[any](ctx, s, connection.Authenticate, token); err != nil {
 		return err
 	}
-
+	s.renew.clear()
 	return nil
 }
 
 // Invalidate invalidates the authentication for this session.
 func (s *Session) Invalidate(ctx context.Context) error {
-	s.mu.RLock()
-	if s.closed {
-		s.mu.RUnlock()
-		return constants.ErrSessionClosed
-	}
-	s.mu.RUnlock()
-
-	req := &connection.RPCRequest{
-		Method:  string(connection.Invalidate),
-		Session: s.id,
-	}
-
-	var res connection.RPCResponse[any]
-	if err := connection.Call(s.db.con, ctx, &res, req); err != nil {
+	if _, err := sessionCall[any](ctx, s, connection.Invalidate); err != nil {
 		return err
 	}
+	s.renew.clear()
+	return nil
+}
 
+// Reset returns this session to the state it was in when it was attached:
+// signed out, with no namespace, database or variables, and with its live
+// queries killed.
+func (s *Session) Reset(ctx context.Context) error {
+	if _, err := sessionCall[any](ctx, s, connection.Reset); err != nil {
+		return err
+	}
+	s.renew.clear()
 	return nil
 }
 
