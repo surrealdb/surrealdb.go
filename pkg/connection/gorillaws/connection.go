@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -82,7 +81,16 @@ type Connection struct {
 	//
 	// This field is accessed using atomic operations to prevent data races.
 	closed atomic.Bool
+
+	// done is closed with the connection, unlike connCloseCh which exists
+	// only once connected.
+	done chan struct{}
 }
+
+var (
+	_ connection.CloseNotifier = (*Connection)(nil)
+	_ connection.Redialer      = (*Connection)(nil)
+)
 
 func New(p *connection.Config) *Connection {
 	return &Connection{
@@ -97,7 +105,48 @@ func New(p *connection.Config) *Connection {
 		},
 		Timeout: constants.DefaultWSTimeout,
 		logger:  logger.New(slog.NewJSONHandler(os.Stdout, nil)),
+		done:    make(chan struct{}),
 	}
+}
+
+// Redial returns a new connection to the same server, with the same
+// configuration, for reconnecting after this one is lost.
+func (c *Connection) Redial() connection.Connection {
+	return &Connection{
+		Toolkit: connection.Toolkit{
+			BaseURL:     c.BaseURL,
+			Marshaler:   c.Marshaler,
+			Unmarshaler: c.Unmarshaler,
+			Logger:      c.Toolkit.Logger,
+
+			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
+			NotificationChannels: make(map[string]chan connection.Notification),
+		},
+		Timeout: c.Timeout,
+		Option:  c.Option,
+		logger:  c.logger,
+		done:    make(chan struct{}),
+	}
+}
+
+// Closed returns a channel which is closed when the connection closes.
+func (c *Connection) Closed() <-chan struct{} {
+	return c.done
+}
+
+// CloseError returns why the connection closed: nil after Close.
+func (c *Connection) CloseError() error {
+	c.closeMutex.RLock()
+	defer c.closeMutex.RUnlock()
+	return c.connCloseError
+}
+
+// closedError is the error for a request on a closed connection.
+func (c *Connection) closedError() error {
+	if err := c.CloseError(); err != nil {
+		return fmt.Errorf("%w: %w", connection.ErrConnectionClosed, err)
+	}
+	return connection.ErrConnectionClosed
 }
 
 // IsClosed checks if the WebSocket connection is disconnected.
@@ -416,11 +465,8 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	}
 
 	select {
-	case <-c.connCloseCh:
-		c.closeMutex.RLock()
-		err := c.connCloseError
-		c.closeMutex.RUnlock()
-		return nil, err
+	case <-c.done:
+		return nil, c.closedError()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
@@ -446,6 +492,8 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-c.done:
+		return nil, c.closedError()
 	case res, open := <-responseChan:
 		if !open {
 			return nil, errors.New("response channel closed")
@@ -499,7 +547,12 @@ func (c *Connection) closeWithError(err error) bool {
 
 	// At this point, we know we're the only goroutine that will close the channel
 	// because we successfully set closed from 0 to 1
-	close(c.connCloseCh)
+	if c.connCloseCh != nil {
+		close(c.connCloseCh)
+	}
+	if c.done != nil {
+		close(c.done)
+	}
 
 	// The connection was lost: no more notifications will come, but those
 	// already received are still delivered before each live query's channel
@@ -540,12 +593,10 @@ func (c *Connection) readLoop(conn *gorilla.Conn) {
 }
 
 // handleError returns true if the error indicates that the connection is closed
-// and the readLoop should exit, false otherwise.
+// and the readLoop should exit, false otherwise. The readLoop then closes the
+// connection with the error, unless Close did so first.
 func (c *Connection) handleError(err error) bool {
 	if errors.Is(err, net.ErrClosed) {
-		c.closeMutex.Lock()
-		c.connCloseError = net.ErrClosed
-		c.closeMutex.Unlock()
 		return true
 	}
 	if gorilla.IsUnexpectedCloseError(err) {
@@ -553,9 +604,6 @@ func (c *Connection) handleError(err error) bool {
 		// frame. Return at once, so that readLoop marks the connection closed:
 		// waiting for Close here left IsClosed false, so it was never
 		// reconnected, and live queries never learned the connection had gone.
-		c.closeMutex.Lock()
-		c.connCloseError = io.ErrClosedPipe
-		c.closeMutex.Unlock()
 		return true
 	}
 
@@ -563,9 +611,6 @@ func (c *Connection) handleError(err error) bool {
 	// retrying on a dead connection, which can cause panics.
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		c.closeMutex.Lock()
-		c.connCloseError = err
-		c.closeMutex.Unlock()
 		return true
 	}
 
