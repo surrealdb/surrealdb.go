@@ -147,6 +147,9 @@ func (s *Session) detach(ctx context.Context) error {
 	}
 
 	s.closed = true
+	if s.db.rc != nil {
+		s.db.rc.lives.forgetSession(*s.id)
+	}
 	return nil
 }
 
