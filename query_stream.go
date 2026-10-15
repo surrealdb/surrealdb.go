@@ -123,8 +123,10 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 				return
 			}
 
-			frames, last, err := r.read(res.Result)
-			if last {
+			// Only the server's end frame ends the query; after an error found
+			// here, the deferred abandon cancels it on the server.
+			frames, end, err := r.read(res.Result)
+			if end {
 				ended = true
 			}
 			for _, f := range frames {
@@ -136,7 +138,7 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 				yield(StreamFrame[T]{}, err)
 				return
 			}
-			if last {
+			if end {
 				return
 			}
 		}
@@ -232,30 +234,32 @@ type streamReader[T any] struct {
 }
 
 // read reads one frame. It returns the frames to yield, whether it was the
-// last, and an error which ends the stream.
-func (r *streamReader[T]) read(raw *cbor.RawMessage) (frames []StreamFrame[T], last bool, err error) {
+// server's end frame, and an error which ends the stream: the server's, or a
+// break of the protocol found here, after which the query is still running.
+func (r *streamReader[T]) read(raw *cbor.RawMessage) (frames []StreamFrame[T], end bool, err error) {
 	if raw == nil {
-		return nil, true, fmt.Errorf("%w: an empty response", ErrStreamProtocol)
+		return nil, false, fmt.Errorf("%w: an empty response", ErrStreamProtocol)
 	}
 	var f wireFrame
 	if err := r.unmarshal(*raw, &f); err != nil {
-		return nil, true, fmt.Errorf("%w: %w", ErrStreamProtocol, err)
+		return nil, false, fmt.Errorf("%w: %w", ErrStreamProtocol, err)
 	}
 	if f.Stream == "" {
-		return nil, true, fmt.Errorf("%w: a response which is not a frame", ErrStreamProtocol)
+		return nil, false, fmt.Errorf("%w: a response which is not a frame", ErrStreamProtocol)
 	}
 	r.framed = true
 
 	switch f.Stream {
 	case "begin":
 		if f.Version != nil && *f.Version > QueryStreamVersion {
-			return nil, true, fmt.Errorf("%w: the server speaks revision %d, this SDK reads revision %d",
+			return nil, false, fmt.Errorf("%w: the server speaks revision %d, this SDK reads revision %d",
 				ErrStreamProtocol, *f.Version, QueryStreamVersion)
 		}
 		return nil, false, nil
 
 	case "rows", "value", "finished":
-		return r.readStatement(&f)
+		frames, err := r.readStatement(&f)
+		return frames, false, err
 
 	case "end":
 		if f.Error != nil {
@@ -273,13 +277,13 @@ func (r *streamReader[T]) read(raw *cbor.RawMessage) (frames []StreamFrame[T], l
 }
 
 // readStatement reads a frame which belongs to one statement.
-func (r *streamReader[T]) readStatement(f *wireFrame) (frames []StreamFrame[T], last bool, err error) {
+func (r *streamReader[T]) readStatement(f *wireFrame) ([]StreamFrame[T], error) {
 	if f.Index == nil || *f.Index < 0 {
-		return nil, true, fmt.Errorf("%w: a %s frame without a statement index", ErrStreamProtocol, f.Stream)
+		return nil, fmt.Errorf("%w: a %s frame without a statement index", ErrStreamProtocol, f.Stream)
 	}
 	if r.finished[*f.Index] {
 		// Nothing follows a statement's finished frame.
-		return nil, false, nil
+		return nil, nil
 	}
 
 	switch f.Stream {
@@ -287,19 +291,19 @@ func (r *streamReader[T]) readStatement(f *wireFrame) (frames []StreamFrame[T], 
 		var rows []T
 		if len(f.Values) > 0 {
 			if err := r.unmarshal(f.Values, &rows); err != nil {
-				return nil, true, fmt.Errorf("failed to unmarshal rows: %w", err)
+				return nil, fmt.Errorf("failed to unmarshal rows: %w", err)
 			}
 		}
-		return []StreamFrame[T]{{Statement: *f.Index, Rows: rows}}, false, nil
+		return []StreamFrame[T]{{Statement: *f.Index, Rows: rows}}, nil
 	case "value":
 		r.singles[*f.Index] = f.Value
-		return nil, false, nil
+		return nil, nil
 	default:
 		return r.finish(f)
 	}
 }
 
-func (r *streamReader[T]) finish(f *wireFrame) (frames []StreamFrame[T], last bool, err error) {
+func (r *streamReader[T]) finish(f *wireFrame) ([]StreamFrame[T], error) {
 	index := *f.Index
 	value, sentValue := r.singles[index]
 	delete(r.singles, index)
@@ -309,14 +313,14 @@ func (r *streamReader[T]) finish(f *wireFrame) (frames []StreamFrame[T], last bo
 
 	if f.Error != nil {
 		done.Err = &QueryError{Message: f.Error.Message}
-		return []StreamFrame[T]{done}, false, nil
+		return []StreamFrame[T]{done}, nil
 	}
 	if f.Single && !sentValue {
-		return nil, true, fmt.Errorf("%w: statement %d finished as a single value, but no value was sent",
+		return nil, fmt.Errorf("%w: statement %d finished as a single value, but no value was sent",
 			ErrStreamProtocol, index)
 	}
 	if !f.Single && sentValue {
-		return nil, true, fmt.Errorf("%w: statement %d sent a single value, but finished as a list of rows",
+		return nil, fmt.Errorf("%w: statement %d sent a single value, but finished as a list of rows",
 			ErrStreamProtocol, index)
 	}
 
@@ -324,11 +328,11 @@ func (r *streamReader[T]) finish(f *wireFrame) (frames []StreamFrame[T], last bo
 		done.Single = true
 		if len(value) > 0 {
 			if err := r.unmarshal(value, &done.Value); err != nil {
-				return nil, true, fmt.Errorf("failed to unmarshal value: %w", err)
+				return nil, fmt.Errorf("failed to unmarshal value: %w", err)
 			}
 		}
 	}
-	return []StreamFrame[T]{done}, false, nil
+	return []StreamFrame[T]{done}, nil
 }
 
 // bufferedFrames runs the query with the query method and yields its results

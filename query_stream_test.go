@@ -215,3 +215,16 @@ func TestQueryStream_http(t *testing.T) {
 	require.Len(t, errs, 1)
 	assert.True(t, strings.Contains(errs[0], "nope"), errs[0])
 }
+
+func TestQueryStream_afterClose(t *testing.T) {
+	ctx := context.Background()
+	// Closing an HTTP client leaves nothing to fail: each request opens its own.
+	db := mustNewWS("query_stream", "closed", "person")
+	require.NoError(t, db.Close(ctx))
+
+	var got error
+	for _, err := range surrealdb.QueryStream[any](ctx, db, "RETURN 1", nil) {
+		got = err
+	}
+	require.Error(t, got, "a closed client yields an error rather than panicking")
+}

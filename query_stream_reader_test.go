@@ -134,8 +134,10 @@ func TestStreamReader(t *testing.T) {
 	} {
 		t.Run("fails on "+name, func(t *testing.T) {
 			_, ended, err := readFrames[int](t, frames...)
-			assert.True(t, ended)
 			assert.ErrorIs(t, err, ErrStreamProtocol)
+			// Only the server's end frame means the query stopped; after any
+			// other failure it must still be canceled.
+			assert.Equal(t, name == "a statement count which disagrees", ended)
 		})
 	}
 }

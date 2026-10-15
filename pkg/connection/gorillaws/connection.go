@@ -409,10 +409,12 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 	return stream, nil
 }
 
+// closeErr is the error for a request on the closed connection: never nil,
+// even after a clean Close.
 func (c *Connection) closeErr() error {
 	c.closeMutex.RLock()
 	defer c.closeMutex.RUnlock()
-	return c.connCloseError
+	return connection.ClosedError(c.connCloseError)
 }
 
 func (c *Connection) write(v any) error {

@@ -33,6 +33,8 @@ type ResponseStream struct {
 	queue    []RPCResponse[cbor.RawMessage]
 	released bool
 	wake     chan struct{}
+	// closed is closed by Close, to wake a Next waiting for a response.
+	closed chan struct{}
 
 	// connClosed is closed with the connection, and connErr says why.
 	connClosed <-chan struct{}
@@ -48,6 +50,7 @@ func NewResponseStream(id string, connClosed <-chan struct{}, connErr func() err
 	return &ResponseStream{
 		ID:         id,
 		wake:       make(chan struct{}, 1),
+		closed:     make(chan struct{}),
 		connClosed: connClosed,
 		connErr:    connErr,
 		release:    release,
@@ -91,6 +94,7 @@ func (s *ResponseStream) Next(ctx context.Context) (RPCResponse[cbor.RawMessage]
 
 		select {
 		case <-s.wake:
+		case <-s.closed:
 		case <-ctx.Done():
 			return RPCResponse[cbor.RawMessage]{}, ctx.Err()
 		case <-s.connClosed:
@@ -101,11 +105,7 @@ func (s *ResponseStream) Next(ctx context.Context) (RPCResponse[cbor.RawMessage]
 			if pending {
 				continue
 			}
-			err := s.connErr()
-			if err == nil {
-				err = errors.New("connection closed")
-			}
-			return RPCResponse[cbor.RawMessage]{}, err
+			return RPCResponse[cbor.RawMessage]{}, ClosedError(s.connErr())
 		}
 	}
 }
@@ -119,6 +119,7 @@ func (s *ResponseStream) Close() {
 	}
 	s.released = true
 	s.queue = nil
+	close(s.closed)
 	s.mu.Unlock()
 	s.release()
 }

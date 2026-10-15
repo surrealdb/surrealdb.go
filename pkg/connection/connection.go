@@ -102,6 +102,11 @@ func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMe
 	if _, ok := bc.ResponseChannels[id]; ok {
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
 	}
+	// Responses for an ID go to its stream first, so it cannot also have a
+	// one-shot channel.
+	if _, ok := bc.responseStreams[id]; ok {
+		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
+	}
 
 	// The channel holds the one response it will ever carry, so delivering it
 	// never blocks the read loop, even when the caller has already given up.

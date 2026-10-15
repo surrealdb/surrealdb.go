@@ -370,9 +370,13 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 // CallStream sends a request answered by many responses, such as
 // query_stream, and returns the stream they arrive on.
 func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	c.connLock.Lock()
+	closeCh := c.closeCh
+	c.connLock.Unlock()
+
 	select {
-	case <-c.closeCh:
-		return nil, c.closeError
+	case <-closeCh:
+		return nil, c.closeErr()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
@@ -382,7 +386,7 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 		req.ID = rand.NewRequestID(constants.RequestIDLength)
 	}
 
-	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), c.closeCh, func() error { return c.closeError })
+	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), closeCh, c.closeErr)
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +395,14 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 		return nil, err
 	}
 	return stream, nil
+}
+
+// closeErr is the error for a request on the closed connection: never nil,
+// even after a clean Close.
+func (c *Connection) closeErr() error {
+	c.connLock.Lock()
+	defer c.connLock.Unlock()
+	return connection.ClosedError(c.closeError)
 }
 
 // Unset implements connection.Connection.
