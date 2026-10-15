@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,9 +26,10 @@ type recordingConnection struct {
 	calls  []string
 	closed bool
 
-	// blockMethod names the RPC that waits for release before returning;
-	// entered is closed once it has been called.
+	// blockMethod names the RPC whose first call waits for release before
+	// returning; entered is closed once it has been called.
 	blockMethod string
+	blocked     bool
 	entered     chan struct{}
 	release     chan struct{}
 }
@@ -35,9 +37,13 @@ type recordingConnection struct {
 func (c *recordingConnection) record(call string) {
 	c.mu.Lock()
 	c.calls = append(c.calls, call)
+	block := !c.blocked && c.blockMethod != "" && strings.HasPrefix(call, c.blockMethod)
+	if block {
+		c.blocked = true
+	}
 	c.mu.Unlock()
 
-	if c.blockMethod != "" && len(call) >= len(c.blockMethod) && call[:len(c.blockMethod)] == c.blockMethod {
+	if block {
 		close(c.entered)
 		<-c.release
 	}
@@ -80,6 +86,22 @@ func (c *recordingConnection) Let(_ context.Context, key string, value any) erro
 func (c *recordingConnection) Unset(_ context.Context, key string) error {
 	c.record("unset " + key)
 	return nil
+}
+func (c *recordingConnection) SignIn(context.Context, any) (string, error) {
+	c.record("signin")
+	return "token", nil
+}
+func (c *recordingConnection) SignUp(context.Context, any) (string, error) {
+	c.record("signup")
+	return "token", nil
+}
+func (c *recordingConnection) SignInWithRefresh(context.Context, any) (*connection.Tokens, error) {
+	c.record("signin")
+	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
+}
+func (c *recordingConnection) SignUpWithRefresh(context.Context, any) (*connection.Tokens, error) {
+	c.record("signup")
+	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
 }
 
 // TestReconnect_serialisesReplayWithSessionChanges checks that a session change
@@ -160,6 +182,64 @@ func TestReconnect_serialisesReplayWithSessionChanges(t *testing.T) {
 			require.NoError(t, <-reconnected)
 
 			require.Equal(t, tt.want, next.Calls())
+		})
+	}
+}
+
+// TestSessionChange_honorsContextWhileWaiting checks that a session change
+// waiting for another one to finish gives up when its context is done, rather
+// than waiting for as long as the other one takes.
+func TestSessionChange_honorsContextWhileWaiting(t *testing.T) {
+	changes := map[string]func(ctx context.Context, c *Connection[*recordingConnection]) error{
+		"Use":          func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Use(ctx, "ns2", "db2") },
+		"Let":          func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Let(ctx, "k", "v") },
+		"Unset":        func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Unset(ctx, "k") },
+		"Authenticate": func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Authenticate(ctx, "t") },
+		"Invalidate":   func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Invalidate(ctx) },
+		"SignIn": func(ctx context.Context, c *Connection[*recordingConnection]) error {
+			_, err := c.SignIn(ctx, map[string]any{})
+			return err
+		},
+		"SignUp": func(ctx context.Context, c *Connection[*recordingConnection]) error {
+			_, err := c.SignUp(ctx, map[string]any{})
+			return err
+		},
+		"SignInWithRefresh": func(ctx context.Context, c *Connection[*recordingConnection]) error {
+			_, err := c.SignInWithRefresh(ctx, map[string]any{})
+			return err
+		},
+		"SignUpWithRefresh": func(ctx context.Context, c *Connection[*recordingConnection]) error {
+			_, err := c.SignUpWithRefresh(ctx, map[string]any{})
+			return err
+		},
+	}
+
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+			conn := New(func(context.Context) (*recordingConnection, error) {
+				return &recordingConnection{}, nil
+			}, 0, surrealcbor.New(), log)
+
+			// Hold the session state with a Use that does not return.
+			old := &recordingConnection{blockMethod: "use", entered: make(chan struct{}), release: make(chan struct{})}
+			conn.WebSocketConnection = old
+			conn.state = StateConnected
+			t.Cleanup(func() { close(old.release) })
+			go func() { _ = conn.Use(context.Background(), "ns", "db") }()
+			<-old.entered
+
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- change(ctx, conn) }()
+
+			select {
+			case err := <-done:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(2 * time.Second):
+				t.Fatal("the session change kept waiting after its context was done")
+			}
 		})
 	}
 }

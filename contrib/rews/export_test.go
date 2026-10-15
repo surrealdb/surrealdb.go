@@ -22,8 +22,10 @@ func (arws *Connection[C]) IsConnected() bool {
 
 // SessionToken returns the access token kept for reconnection.
 func (arws *Connection[C]) SessionToken() string {
-	arws.sessionMu.Lock()
-	defer arws.sessionMu.Unlock()
+	if err := arws.lockSession(context.Background()); err != nil {
+		panic(err)
+	}
+	defer arws.unlockSession()
 	return arws.sessionToken
 }
 
