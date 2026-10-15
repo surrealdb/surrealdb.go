@@ -76,3 +76,25 @@ func (r *wireError) As(err any) bool {
 	}
 	return false
 }
+
+// NewStatementError returns the error of a failed statement in the result of
+// the query RPC method, given the message, kind and details SurrealDB reports
+// for it (SurrealDB v2 reports only the message). It is the *RPCError an RPC
+// method returns, with code -32000, so it can also be extracted as a
+// *ServerError.
+//
+// The CRUD functions of the surrealdb package, which compile to queries,
+// return it so that their errors stay those of the RPC methods they replace.
+func NewStatementError(message, kind string, details any) error {
+	const code = -32000
+	return &RPCError{
+		Code:    code,
+		Message: message,
+		wire: &wireError{
+			Code:    code,
+			Message: message,
+			Kind:    kind,
+			Details: details,
+		},
+	}
+}
