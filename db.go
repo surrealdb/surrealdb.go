@@ -40,6 +40,8 @@ type VersionData struct {
 type DB struct {
 	con  connection.Connection
 	opts options
+	// rc is con when the client reconnects, and nil otherwise.
+	rc *reconnector
 	// renew keeps the token pair of the default session fresh. It is nil when
 	// token renewal is turned off.
 	renew *renewer
@@ -74,15 +76,20 @@ func FromConnection(ctx context.Context, conn connection.Connection, opts ...Opt
 	}
 
 	db := &DB{con: conn, opts: o}
+	if o.reconnect && canReconnect(conn) {
+		db.rc = newReconnector(conn, &o)
+		db.rc.restore = db.restore
+		db.con = db.rc
+	}
 	if o.tokenRenewal {
 		db.renew = newRenewer(o.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
-			return rpc.Refresh(conn, ctx, tokens)
+			return rpc.Refresh(db.con, ctx, tokens)
 		})
 	}
 
 	if o.versionCheck {
 		if err := db.checkVersion(ctx); err != nil {
-			_ = conn.Close(ctx)
+			_ = db.con.Close(ctx)
 			return nil, err
 		}
 	}
@@ -662,8 +669,16 @@ func (db *DB) CloseLiveNotifications(liveQueryID string) error {
 // Kill terminates a live query and closes the notification channel.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
 func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
-	// First kill the live query on the server
-	_, err := send[any](ctx, s, "kill", id)
+	// First kill the live query on the server, by the ID the server knows it
+	// by since the client last reconnected.
+	serverID := id
+	switch v := any(s).(type) {
+	case *DB:
+		serverID = v.liveServerID(id)
+	case *Session:
+		serverID = v.db.liveServerID(id)
+	}
+	_, err := send[any](ctx, s, "kill", serverID)
 	if err != nil {
 		return err
 	}
@@ -680,8 +695,60 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 
 // Live starts a live query on a table.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
+//
+// When the client reconnects, the live query is started again on the new
+// connection, and keeps the ID returned here.
 func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
-	return send[models.UUID](ctx, s, "live", table, diff)
+	id, err := send[models.UUID](ctx, s, "live", table, diff)
+	if err != nil || id == nil {
+		return id, err
+	}
+	switch v := any(s).(type) {
+	case *DB:
+		if v.rc != nil {
+			v.rc.lives.track(*id, nil, table, diff)
+		}
+	case *Session:
+		if v.db.rc != nil {
+			v.db.rc.lives.track(*id, v.id, table, diff)
+		}
+	}
+	return id, nil
+}
+
+// liveServerID returns the ID the server knows a live query by, which changes
+// when the client reconnects.
+func (db *DB) liveServerID(id string) string {
+	if db.rc == nil {
+		return id
+	}
+	return db.rc.lives.serverID(id)
+}
+
+// Status returns the status of the client's connection. A client which does not
+// reconnect is [StatusConnected] until it is closed.
+func (db *DB) Status() ConnectionStatus {
+	if db.rc != nil {
+		return db.rc.Status()
+	}
+	if ws, ok := db.con.(connection.WebSocketConnection); ok && ws.IsClosed() {
+		return StatusClosed
+	}
+	return StatusConnected
+}
+
+// OnStatus calls fn with each change of the status of the client's connection,
+// until the returned function is called: when the connection is lost, at each
+// attempt to reconnect and its outcome, and when the client closes. Only
+// clients which reconnect report changes; see [WithReconnect].
+//
+// fn is called on the goroutine which reconnects, so it should return quickly,
+// and must not wait for requests on the client.
+func (db *DB) OnStatus(fn func(StatusEvent)) (stop func()) {
+	if db.rc == nil {
+		return func() {}
+	}
+	return db.rc.onStatus(fn)
 }
 
 // Query executes a query against the SurrealDB database.

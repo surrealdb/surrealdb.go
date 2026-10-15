@@ -135,6 +135,9 @@ func (s *Session) Detach(ctx context.Context) error {
 	s.closed = true
 	s.renew.stop()
 	s.db.forgetSession(*s.id)
+	if s.db.rc != nil {
+		s.db.rc.lives.forgetSession(*s.id)
+	}
 	return nil
 }
 
