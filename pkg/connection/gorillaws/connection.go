@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -307,8 +308,34 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 }
 
 // Health asks the server whether it is healthy, with GET /health over HTTP.
+// The request reaches the server as the WebSocket does, through the proxy,
+// TLS configuration and dialers of [DefaultDialer].
 func (c *Connection) Health(ctx context.Context) error {
-	return connection.CheckHealth(ctx, nil, c.BaseURL)
+	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer), c.BaseURL)
+}
+
+// httpClientFor returns an HTTP client which connects as a WebSocket dialer
+// does. It keeps no idle connections, as it is made for one request.
+func httpClientFor(d *gorilla.Dialer) *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DisableKeepAlives = true
+	t.Proxy = d.Proxy
+	if d.TLSClientConfig != nil {
+		t.TLSClientConfig = d.TLSClientConfig.Clone()
+	}
+	switch {
+	case d.NetDialContext != nil:
+		t.DialContext = d.NetDialContext
+	case d.NetDial != nil:
+		netDial := d.NetDial
+		t.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+			return netDial(network, addr)
+		}
+	}
+	if d.NetDialTLSContext != nil {
+		t.DialTLSContext = d.NetDialTLSContext
+	}
+	return &http.Client{Transport: t, Timeout: connection.DefaultHealthClient.Timeout}
 }
 
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
