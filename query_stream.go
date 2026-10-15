@@ -92,11 +92,7 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 			return
 		}
 
-		r := &streamReader[T]{
-			unmarshal: con.GetUnmarshaler().Unmarshal,
-			singles:   map[int]cbor.RawMessage{},
-			finished:  map[int]bool{},
-		}
+		r := newStreamReader[T](con.GetUnmarshaler().Unmarshal)
 		ended := false
 		defer func() {
 			if ended {
@@ -229,8 +225,20 @@ type streamReader[T any] struct {
 	framed    bool
 	// singles holds the value of each statement which sent one, until its
 	// finished frame says it is single.
-	singles  map[int]cbor.RawMessage
+	singles map[int]cbor.RawMessage
+	// rowsSent holds the statements which sent rows, which can then send no
+	// single value.
+	rowsSent map[int]bool
 	finished map[int]bool
+}
+
+func newStreamReader[T any](unmarshal func([]byte, any) error) *streamReader[T] {
+	return &streamReader[T]{
+		unmarshal: unmarshal,
+		singles:   map[int]cbor.RawMessage{},
+		rowsSent:  map[int]bool{},
+		finished:  map[int]bool{},
+	}
 }
 
 // read reads one frame. It returns the frames to yield, whether it was the
@@ -288,6 +296,10 @@ func (r *streamReader[T]) readStatement(f *wireFrame) ([]StreamFrame[T], error) 
 
 	switch f.Stream {
 	case "rows":
+		if _, ok := r.singles[*f.Index]; ok {
+			return nil, fmt.Errorf("%w: statement %d sent rows after a single value", ErrStreamProtocol, *f.Index)
+		}
+		r.rowsSent[*f.Index] = true
 		var rows []T
 		if len(f.Values) > 0 {
 			if err := r.unmarshal(f.Values, &rows); err != nil {
@@ -296,6 +308,9 @@ func (r *streamReader[T]) readStatement(f *wireFrame) ([]StreamFrame[T], error) 
 		}
 		return []StreamFrame[T]{{Statement: *f.Index, Rows: rows}}, nil
 	case "value":
+		if r.rowsSent[*f.Index] {
+			return nil, fmt.Errorf("%w: statement %d sent a single value after rows", ErrStreamProtocol, *f.Index)
+		}
 		r.singles[*f.Index] = f.Value
 		return nil, nil
 	default:
@@ -307,6 +322,7 @@ func (r *streamReader[T]) finish(f *wireFrame) ([]StreamFrame[T], error) {
 	index := *f.Index
 	value, sentValue := r.singles[index]
 	delete(r.singles, index)
+	delete(r.rowsSent, index)
 	r.finished[index] = true
 
 	done := StreamFrame[T]{Statement: index, Done: true, Time: f.Time}

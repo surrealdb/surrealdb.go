@@ -17,11 +17,7 @@ import (
 func readFrames[T any](t *testing.T, frames ...map[string]any) (out []StreamFrame[T], ended bool, err error) {
 	t.Helper()
 	codec := surrealcbor.New()
-	r := &streamReader[T]{
-		unmarshal: codec.Unmarshal,
-		singles:   map[int]cbor.RawMessage{},
-		finished:  map[int]bool{},
-	}
+	r := newStreamReader[T](codec.Unmarshal)
 	for _, f := range frames {
 		b, merr := codec.Marshal(f)
 		require.NoError(t, merr)
@@ -118,6 +114,18 @@ func TestStreamReader(t *testing.T) {
 			begin,
 			{"stream": "value", "index": 0, "value": 1},
 			{"stream": "finished", "index": 0, "single": false},
+		},
+		"rows then a single value": {
+			begin,
+			{"stream": "rows", "index": 0, "values": []int{1}},
+			{"stream": "value", "index": 0, "value": 1},
+			{"stream": "finished", "index": 0, "single": true},
+		},
+		"a single value then rows": {
+			begin,
+			{"stream": "value", "index": 0, "value": 1},
+			{"stream": "rows", "index": 0, "values": []int{1}},
+			{"stream": "finished", "index": 0, "single": true},
 		},
 		"a statement count which disagrees": {
 			begin,

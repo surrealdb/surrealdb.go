@@ -75,9 +75,13 @@ func (s *ResponseStream) push(res RPCResponse[cbor.RawMessage]) bool {
 }
 
 // Next returns the next response, waiting for it until ctx is done or the
-// connection closes.
+// connection closes. Once ctx is done it returns its error, even while
+// responses are queued.
 func (s *ResponseStream) Next(ctx context.Context) (RPCResponse[cbor.RawMessage], error) {
 	for {
+		if err := ctx.Err(); err != nil {
+			return RPCResponse[cbor.RawMessage]{}, err
+		}
 		s.mu.Lock()
 		if s.released {
 			s.mu.Unlock()

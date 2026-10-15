@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -43,6 +44,26 @@ func TestResponseStream_connectionClosedCleanly(t *testing.T) {
 	close(closed)
 	_, err = s.Next(context.Background())
 	assert.ErrorIs(t, err, ErrConnectionClosed, "a clean close is still an error for the reader")
+}
+
+// A canceled reader stops at once, even with responses still queued, so the
+// query can be canceled on the server rather than read to its end.
+func TestResponseStream_cancelBeatsQueuedResponses(t *testing.T) {
+	tk := newTestToolkit()
+	s, err := tk.OpenResponseStream("abc", make(chan struct{}), func() error { return nil })
+	require.NoError(t, err)
+	defer s.Close()
+
+	for range 3 {
+		require.True(t, s.push(RPCResponse[cbor.RawMessage]{ID: "abc"}))
+	}
+	_, err = s.Next(context.Background())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = s.Next(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestResponseStream_idsAreExclusive(t *testing.T) {
