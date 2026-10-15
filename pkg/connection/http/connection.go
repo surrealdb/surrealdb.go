@@ -156,6 +156,11 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, res.Error
 	}
 
+	// A request canceled while its answer arrived changes no state, so that
+	// the answer to a canceled refresh, for one, is not applied.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.trackAuth(request, res.Result)
 
 	return &res, nil
@@ -395,11 +400,11 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	return &copied
 }
 
-// trackAuth keeps the token of a successful signin, signup or authenticate
-// request, however it was sent, and forgets it on invalidate.
+// trackAuth keeps the token of a successful signin, signup, refresh or
+// authenticate request, however it was sent, and forgets it on invalidate.
 func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawMessage) {
 	switch request.Method {
-	case "signin", "signup":
+	case "signin", "signup", "refresh":
 		if result == nil {
 			return
 		}
