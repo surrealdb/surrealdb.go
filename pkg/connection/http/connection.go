@@ -117,20 +117,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
-	// The namespace and database are optional: a root or namespace user signs in,
-	// asks for the version, or runs a query naming its own namespace without them.
-	// Methods that do need them are refused by the server with its own error.
-	if namespace, ok := c.variables.Load("namespace"); ok && namespace.(string) != "" {
-		req.Header.Set("Surreal-NS", namespace.(string))
-	}
-
-	if database, ok := c.variables.Load("database"); ok && database.(string) != "" {
-		req.Header.Set("Surreal-DB", database.(string))
-	}
-
-	if token, ok := c.variables.Load(constants.AuthTokenKey); ok {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
-	}
+	c.setSessionHeaders(req)
 
 	respData, err := c.MakeRequest(req)
 	if err != nil {
@@ -146,6 +133,25 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	}
 
 	return &res, nil
+}
+
+// setSessionHeaders sets the namespace, database and authorization headers
+// from the state of this connection.
+func (c *Connection) setSessionHeaders(req *http.Request) {
+	// The namespace and database are optional: a root or namespace user signs in,
+	// asks for the version, or runs a query naming its own namespace without them.
+	// Methods that do need them are refused by the server with its own error.
+	if namespace, ok := c.variables.Load("namespace"); ok && namespace.(string) != "" {
+		req.Header.Set("Surreal-NS", namespace.(string))
+	}
+
+	if database, ok := c.variables.Load("database"); ok && database.(string) != "" {
+		req.Header.Set("Surreal-DB", database.(string))
+	}
+
+	if token, ok := c.variables.Load(constants.AuthTokenKey); ok {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
+	}
 }
 
 func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
