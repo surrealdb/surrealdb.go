@@ -384,3 +384,63 @@ func TestLet_deprecatedMarshaler(t *testing.T) {
 	assert.Equal(t, map[string]any{"a": "b"}, vars["m"])
 	assert.Equal(t, "text", vars["s"])
 }
+
+type namedVars map[string]any
+
+// Variables bound with Let are merged into a query's variables of any map
+// type with string keys, which is encoded as an object as a map[string]any is.
+func TestWithVariables_otherStringKeyedMaps(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "x", 1))
+
+	for _, given := range []any{map[string]string{"y": "2"}, namedVars{"y": "2"}} {
+		_, err := con.Send(ctx, "query", "RETURN [$x, $y]", given)
+		require.NoError(t, err)
+		require.Len(t, sent.Params, 2)
+		vars, isMap := sent.Params[1].(map[string]any)
+		require.True(t, isMap, "%T", sent.Params[1])
+		assert.EqualValues(t, 1, vars["x"], "%T", given)
+		assert.Equal(t, "2", vars["y"], "%T", given)
+	}
+}
+
+type namedString string
+
+// Values of a defined string type, encoded as strings, are taken as strings:
+// the token given to authenticate, the names given to let and unset, and the
+// namespace and database given to use.
+func TestNamedStrings(t *testing.T) {
+	con, sent, header := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	_, err := con.Send(ctx, "authenticate", namedString("the-token"))
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "let", namedString("x"), 1)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "let", namedString("y"), 2)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "unset", namedString("y"))
+	require.NoError(t, err)
+	db := "db"
+	_, err = con.Send(ctx, "use", namedString("ns"), &db)
+	require.NoError(t, err)
+
+	_, err = con.Send(ctx, "query", "RETURN $x")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer the-token", header.Get("Authorization"))
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+	assert.Equal(t, "db", header.Get("Surreal-DB"))
+	vars, _ := sent.Params[1].(map[string]any)
+	assert.EqualValues(t, 1, vars["x"])
+	assert.NotContains(t, vars, "y")
+
+	var none *string
+	_, err = con.Send(ctx, "use", models.None, none)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+	assert.Empty(t, header.Get("Surreal-DB"), "a nil pointer is null")
+}
