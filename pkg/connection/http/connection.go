@@ -166,6 +166,7 @@ const (
 	methodLet   = "let"
 	methodSet   = "set"
 	methodUnset = "unset"
+	methodReset = "reset"
 )
 
 // callLocally answers the methods which only change the state of the session.
@@ -175,7 +176,7 @@ func (c *Connection) callLocally(
 	ctx context.Context, request *connection.RPCRequest,
 ) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
 	switch request.Method {
-	case methodUse, methodLet, methodSet, methodUnset:
+	case methodUse, methodLet, methodSet, methodUnset, methodReset:
 		if err := ctx.Err(); err != nil {
 			return nil, true, err
 		}
@@ -210,7 +211,7 @@ func (c *Connection) callLocally(
 			return nil, true, invalidParams(request.Method, "a variable name")
 		}
 		c.unsetVariable(key)
-	case "reset":
+	case methodReset:
 		c.reset()
 	default:
 		return nil, false, nil
