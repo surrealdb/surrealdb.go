@@ -653,6 +653,22 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 		s.Nil(queries[1].Result.Result, "no result is assigned to the wrong statement")
 	})
 
+	s.Run("two statements in one and none in another", func() {
+		// The server returns as many results as there are QueryStmts,
+		// but the second result belongs to the first QueryStmt.
+		for _, empty := range []string{"/* nothing */", "-- nothing"} {
+			queries := []surrealdb.QueryStmt{
+				{SQL: "RETURN 1; RETURN 2"},
+				{SQL: empty},
+			}
+			err := surrealdb.QueryRaw(ctx, s.db, &queries)
+			s.Require().Error(err, empty)
+			s.Contains(err.Error(), "statement 0 did not yield exactly one result")
+			s.Nil(queries[0].Result.Result, "no result is assigned")
+			s.Nil(queries[1].Result.Result, "no result is assigned to the wrong statement")
+		}
+	})
+
 	s.Run("an empty statement", func() {
 		queries := []surrealdb.QueryStmt{{SQL: "RETURN 1"}, {SQL: " ; "}}
 		s.Require().Error(surrealdb.QueryRaw(ctx, s.db, &queries))

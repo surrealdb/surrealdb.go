@@ -2,6 +2,8 @@ package surrealdb
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -777,10 +779,12 @@ func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relations
 // S can be *DB, *Session, or *Transaction.
 //
 // Each QueryStmt must hold exactly one statement, so that the i-th result can be
-// given to the i-th QueryStmt. If the server answers with a different number of
-// results, as it does when a QueryStmt holds several statements or none, QueryRaw
-// returns an error and leaves the results unset. The variables of all the
-// statements are sent together, so two statements must not give one name different values.
+// given to the i-th QueryStmt. QueryRaw follows each statement with a marker, a
+// statement returning a random string, so that the results show where the results
+// of each QueryStmt end. If a QueryStmt yields several results or none, as it does
+// when it holds several statements or only a comment, QueryRaw returns an error and
+// leaves the results unset. The variables of all the statements are sent together,
+// so two statements must not give one name different values.
 //
 // You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
 func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
@@ -788,7 +792,12 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 		return fmt.Errorf("no query to run")
 	}
 
-	preparedQuery, parameters, err := composeRawQuery(*queries)
+	marker, err := newRawQueryMarker()
+	if err != nil {
+		return err
+	}
+
+	preparedQuery, parameters, err := composeRawQuery(*queries, marker)
 	if err != nil {
 		return err
 	}
@@ -798,28 +807,34 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 		return err
 	}
 
-	if res == nil || len(*res) != len(*queries) {
-		got := 0
-		if res != nil {
-			got = len(*res)
-		}
-		return fmt.Errorf("QueryRaw: %d statements were given but the server returned %d results; "+
-			"each QueryStmt must hold exactly one statement", len(*queries), got)
+	unmarshaler := unmarshalerOf(s)
+	results, err := splitRawResults(res, len(*queries), marker, unmarshaler)
+	if err != nil {
+		return err
 	}
 
-	unmarshaler := unmarshalerOf(s)
 	for i := range *queries {
 		// assign results
-		(*queries)[i].Result = (*res)[i]
+		(*queries)[i].Result = results[i]
 		(*queries)[i].unmarshaler = unmarshaler
 	}
 
 	return nil
 }
 
-// composeRawQuery joins the statements of QueryRaw into one query, and their
-// variables into one map.
-func composeRawQuery(queries []QueryStmt) (sql string, vars map[string]any, err error) {
+// newRawQueryMarker returns a random string, which no statement of QueryRaw can be
+// expected to return, to mark the end of the results of each statement.
+func newRawQueryMarker() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("QueryRaw: cannot make a marker: %w", err)
+	}
+	return "QueryRaw-" + hex.EncodeToString(b), nil
+}
+
+// composeRawQuery joins the statements of QueryRaw into one query, following each
+// with a statement which returns the marker, and their variables into one map.
+func composeRawQuery(queries []QueryStmt, marker string) (sql string, vars map[string]any, err error) {
 	var preparedQuery strings.Builder
 	parameters := map[string]any{}
 	for i := range queries {
@@ -829,7 +844,7 @@ func composeRawQuery(queries []QueryStmt) (sql string, vars map[string]any, err 
 		}
 		preparedQuery.WriteString(stmt)
 		// The newline ends a trailing line comment, which would otherwise swallow the semicolon.
-		preparedQuery.WriteString("\n;\n")
+		preparedQuery.WriteString("\n;\n'" + marker + "';\n")
 
 		for k, v := range queries[i].Vars {
 			if prev, ok := parameters[k]; ok && !reflect.DeepEqual(prev, v) {
@@ -840,6 +855,45 @@ func composeRawQuery(queries []QueryStmt) (sql string, vars map[string]any, err 
 	}
 
 	return preparedQuery.String(), parameters, nil
+}
+
+// splitRawResults returns the result of each of the n statements of a query
+// composed by composeRawQuery. Each statement must have yielded exactly one result,
+// followed by the marker after it; otherwise it is unknown which result belongs to
+// which statement, and splitRawResults returns an error.
+func splitRawResults(
+	res *[]QueryResult[cbor.RawMessage], n int, marker string, unmarshaler codec.Unmarshaler,
+) ([]QueryResult[cbor.RawMessage], error) {
+	isMarker := func(r QueryResult[cbor.RawMessage]) bool {
+		var s string
+		return r.Status == "OK" && unmarshaler.Unmarshal(r.Result, &s) == nil && s == marker
+	}
+
+	var rest []QueryResult[cbor.RawMessage]
+	if res != nil {
+		rest = *res
+	}
+	results := make([]QueryResult[cbor.RawMessage], n)
+	for i := range results {
+		if len(rest) < 2 || isMarker(rest[0]) || !isMarker(rest[1]) {
+			err := fmt.Errorf("QueryRaw: statement %d did not yield exactly one result; "+
+				"each QueryStmt must hold exactly one statement", i)
+			if len(rest) >= 2 && rest[1].Status != "OK" {
+				// A failed transaction fails the markers in it too.
+				var msg string
+				_ = unmarshaler.Unmarshal(rest[1].Result, &msg)
+				err = fmt.Errorf("%w, and the result after it is the error %q", err, msg)
+			}
+			return nil, err
+		}
+		results[i] = rest[0]
+		rest = rest[2:]
+	}
+	if len(rest) != 0 {
+		return nil, fmt.Errorf("QueryRaw: the server returned %d results more than expected", len(rest))
+	}
+
+	return results, nil
 }
 
 // unmarshalerOf returns the unmarshaler of the connection s sends on.
