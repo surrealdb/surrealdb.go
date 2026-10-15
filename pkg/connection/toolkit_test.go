@@ -53,7 +53,34 @@ func TestDeliverResponse_deliversOnce(t *testing.T) {
 	assert.Equal(t, "abc", res.ID)
 
 	_, ok := tk.GetResponseChannel("abc")
-	assert.False(t, ok, "a delivered response channel is removed")
+	assert.True(t, ok, "a delivered response channel stays until its call removes it")
+	tk.RemoveResponseChannel("abc")
+	_, ok = tk.GetResponseChannel("abc")
+	assert.False(t, ok)
+}
+
+// A call which reuses another call's request ID is refused until that call has
+// cleaned up, so the first call's cleanup cannot remove the second's channel.
+func TestDeliverResponse_idStaysTakenUntilCleanup(t *testing.T) {
+	tk := newTestToolkit()
+
+	first, err := tk.CreateResponseChannel("abc")
+	require.NoError(t, err)
+	require.True(t, tk.DeliverResponse("abc", RPCResponse[cbor.RawMessage]{ID: "abc"}))
+	<-first
+
+	_, err = tk.CreateResponseChannel("abc")
+	require.Error(t, err, "the id is taken until the first call removes its channel")
+
+	tk.RemoveResponseChannel("abc")
+	second, err := tk.CreateResponseChannel("abc")
+	require.NoError(t, err)
+	require.True(t, tk.DeliverResponse("abc", RPCResponse[cbor.RawMessage]{ID: "abc", Result: nil}))
+	select {
+	case <-second:
+	default:
+		t.Fatal("the second call's response was lost")
+	}
 }
 
 func TestDeliverResponse_unknownID(t *testing.T) {

@@ -83,6 +83,9 @@ type Toolkit struct {
 
 	ResponseChannels     map[string]chan RPCResponse[cbor.RawMessage]
 	ResponseChannelsLock sync.RWMutex
+	// delivered holds the IDs of the response channels which have had their
+	// response, under ResponseChannelsLock.
+	delivered map[string]struct{}
 
 	// NotificationChannels maps the id of each live query with a subscription to
 	// the channel its notifications are delivered on.
@@ -108,15 +111,20 @@ func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMe
 	return ch, nil
 }
 
+// RemoveResponseChannel releases the response channel for id, which the call
+// that created it does once it is done with it. Until then the id stays taken,
+// even after its response is delivered, so another call cannot register it and
+// then lose its channel to this one's cleanup.
 func (bc *Toolkit) RemoveResponseChannel(id string) {
 	bc.ResponseChannelsLock.Lock()
 	defer bc.ResponseChannelsLock.Unlock()
 	delete(bc.ResponseChannels, id)
+	delete(bc.delivered, id)
 }
 
 // DeliverResponse hands res to the caller waiting on the response channel for id.
 //
-// The channel is removed from the map in the same critical section that finds it,
+// The channel is marked delivered in the same critical section that finds it,
 // so a response is delivered at most once, and the send cannot block: the channel
 // is buffered for exactly one response. A caller that timed out and stopped
 // listening therefore never stalls the goroutine delivering responses.
@@ -126,7 +134,14 @@ func (bc *Toolkit) DeliverResponse(id string, res RPCResponse[cbor.RawMessage]) 
 	bc.ResponseChannelsLock.Lock()
 	ch, ok := bc.ResponseChannels[id]
 	if ok {
-		delete(bc.ResponseChannels, id)
+		if _, done := bc.delivered[id]; done {
+			ok = false
+		} else {
+			if bc.delivered == nil {
+				bc.delivered = make(map[string]struct{})
+			}
+			bc.delivered[id] = struct{}{}
+		}
 	}
 	bc.ResponseChannelsLock.Unlock()
 
