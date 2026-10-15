@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -81,4 +83,49 @@ func TestVersionCheck_realServer(t *testing.T) {
 
 func endpoints() map[string]string {
 	return map[string]string{"ws": testenv.GetSurrealDBWSURL(), "http": httpEndpoint()}
+}
+
+// A version answered as null, or without a result, fails the version check
+// and Version rather than panicking.
+func TestVersionCheck_noVersion(t *testing.T) {
+	ctx := context.Background()
+
+	server := fakesdb.NewServer("127.0.0.1:0")
+	server.AddStubResponse(fakesdb.SimpleStubResponse("version", nil))
+	require.NoError(t, server.Start())
+	t.Cleanup(func() { _ = server.Stop() })
+
+	u, err := url.ParseRequestURI("ws://" + server.Address())
+	require.NoError(t, err)
+
+	connections := map[string]func() connection.Connection{
+		"null": func() connection.Connection { return gorillaws.New(connection.NewConfig(u)) },
+		"missing": func() connection.Connection {
+			return &withoutVersionResult{gorillaws.New(connection.NewConfig(u))}
+		},
+	}
+	for name, newConnection := range connections {
+		t.Run(name, func(t *testing.T) {
+			_, err := surrealdb.FromConnection(ctx, newConnection())
+			require.Error(t, err)
+
+			db, err := surrealdb.FromConnection(ctx, newConnection(), surrealdb.WithVersionCheck(false))
+			require.NoError(t, err)
+			defer db.Close(ctx)
+			_, err = db.Version(ctx)
+			require.Error(t, err)
+		})
+	}
+}
+
+// withoutVersionResult answers version successfully, but without a result.
+type withoutVersionResult struct {
+	*gorillaws.Connection
+}
+
+func (c *withoutVersionResult) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	if method == "version" {
+		return &connection.RPCResponse[cbor.RawMessage]{ID: "version"}, nil
+	}
+	return c.Connection.Send(ctx, method, params...)
 }

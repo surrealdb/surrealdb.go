@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
@@ -280,6 +281,168 @@ func TestTrackAuth_tokenPairWithACustomMapType(t *testing.T) {
 	_, err = con.Send(ctx, "query", "RETURN 1")
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer the-access", header.Get("Authorization"))
+}
+
+// recordingConnection returns a connection to a fake server which answers
+// every request with an empty result, and the last request and headers it got.
+func recordingConnection(t *testing.T, marshaler codec.Marshaler) (*Connection, *connection.RPCRequest, *http.Header) {
+	t.Helper()
+	c := surrealcbor.New()
+	ok, err := c.Marshal(map[string]any{"id": "abc", "result": []any{}})
+	require.NoError(t, err)
+
+	sent := &connection.RPCRequest{}
+	header := &http.Header{}
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: marshaler, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		*header = req.Header
+		body, _ := io.ReadAll(req.Body)
+		*sent = connection.RPCRequest{}
+		_ = c.Unmarshal(body, sent)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(ok)), Header: http.Header{}}
+	}))
+	return con, sent, header
+}
+
+// A raw reset forgets the namespace, database, token and variables the
+// connection keeps, without a request.
+func TestReset_clearsConnectionState(t *testing.T) {
+	for _, params := range [][]any{nil, {"ignored"}} {
+		con, sent, header := recordingConnection(t, surrealcbor.New())
+
+		ctx := context.Background()
+		require.NoError(t, con.Use(ctx, "ns", "db"))
+		require.NoError(t, con.Let(ctx, "x", 1))
+		require.NoError(t, con.Authenticate(ctx, "the-token"))
+
+		*sent = connection.RPCRequest{}
+		_, err := con.Send(ctx, "reset", params...)
+		require.NoError(t, err)
+		assert.Empty(t, sent.Method, "reset needs no request")
+
+		_, err = con.Send(ctx, "query", "RETURN $x")
+		require.NoError(t, err)
+		assert.Empty(t, header.Get("Authorization"))
+		assert.Empty(t, header.Get("Surreal-NS"))
+		assert.Empty(t, header.Get("Surreal-DB"))
+		assert.Len(t, sent.Params, 1, "no variables are sent")
+	}
+}
+
+// use takes, for the namespace and for the database, a string, nil to unset
+// it, or NONE to leave it as it is.
+func TestUse_noneLeavesScopeUnchanged(t *testing.T) {
+	con, _, header := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	scope := func() (string, string) {
+		t.Helper()
+		_, err := con.Send(ctx, "query", "RETURN 1")
+		require.NoError(t, err)
+		return header.Get("Surreal-NS"), header.Get("Surreal-DB")
+	}
+
+	require.NoError(t, con.Use(ctx, "ns", "db"))
+
+	_, err := con.Send(ctx, "use", models.None, "db2")
+	require.NoError(t, err)
+	ns, db := scope()
+	assert.Equal(t, "ns", ns)
+	assert.Equal(t, "db2", db)
+
+	_, err = con.Send(ctx, "use", "ns2", &models.None)
+	require.NoError(t, err)
+	ns, db = scope()
+	assert.Equal(t, "ns2", ns)
+	assert.Equal(t, "db2", db)
+
+	_, err = con.Send(ctx, "use", models.None, nil)
+	require.NoError(t, err)
+	ns, db = scope()
+	assert.Equal(t, "ns2", ns)
+	assert.Empty(t, db)
+}
+
+// Let keeps a value the deprecated fxamacker marshaler encodes within a
+// request, though it fails to, or panics on, the same value on its own.
+func TestLet_deprecatedMarshaler(t *testing.T) {
+	con, sent, _ := recordingConnection(t, &models.CborMarshaler{}) //nolint:staticcheck // the deprecated marshaler is still supported
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "n", nil))
+	require.NoError(t, con.Let(ctx, "m", map[string]string{"a": "b"}))
+	_, err := con.Send(ctx, "set", "s", "text")
+	require.NoError(t, err)
+
+	_, err = con.Send(ctx, "query", "RETURN [$n, $m, $s]")
+	require.NoError(t, err)
+	require.Len(t, sent.Params, 2)
+	vars, isMap := sent.Params[1].(map[string]any)
+	require.True(t, isMap, "%T", sent.Params[1])
+	assert.Contains(t, vars, "n")
+	assert.Nil(t, vars["n"])
+	assert.Equal(t, map[string]any{"a": "b"}, vars["m"])
+	assert.Equal(t, "text", vars["s"])
+}
+
+type namedVars map[string]any
+
+// Variables bound with Let are merged into a query's variables of any map
+// type with string keys, which is encoded as an object as a map[string]any is.
+func TestWithVariables_otherStringKeyedMaps(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "x", 1))
+
+	for _, given := range []any{map[string]string{"y": "2"}, namedVars{"y": "2"}} {
+		_, err := con.Send(ctx, "query", "RETURN [$x, $y]", given)
+		require.NoError(t, err)
+		require.Len(t, sent.Params, 2)
+		vars, isMap := sent.Params[1].(map[string]any)
+		require.True(t, isMap, "%T", sent.Params[1])
+		assert.EqualValues(t, 1, vars["x"], "%T", given)
+		assert.Equal(t, "2", vars["y"], "%T", given)
+	}
+}
+
+type namedString string
+
+// Values of a defined string type, encoded as strings, are taken as strings:
+// the token given to authenticate, the names given to let and unset, and the
+// namespace and database given to use.
+func TestNamedStrings(t *testing.T) {
+	con, sent, header := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	_, err := con.Send(ctx, "authenticate", namedString("the-token"))
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "let", namedString("x"), 1)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "let", namedString("y"), 2)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "unset", namedString("y"))
+	require.NoError(t, err)
+	db := "db"
+	_, err = con.Send(ctx, "use", namedString("ns"), &db)
+	require.NoError(t, err)
+
+	_, err = con.Send(ctx, "query", "RETURN $x")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer the-token", header.Get("Authorization"))
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+	assert.Equal(t, "db", header.Get("Surreal-DB"))
+	vars, _ := sent.Params[1].(map[string]any)
+	assert.EqualValues(t, 1, vars["x"])
+	assert.NotContains(t, vars, "y")
+
+	var none *string
+	_, err = con.Send(ctx, "use", models.None, none)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+	assert.Empty(t, header.Get("Surreal-DB"), "a nil pointer is null")
 }
 
 // TestRefreshAndReset_changeConnectionState checks that the token of a
