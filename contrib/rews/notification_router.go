@@ -47,15 +47,18 @@ func (nr *NotificationRouter) SetupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
 ) (chan connection.Notification, error) {
-	ch, _, err := nr.setupRouting(internalID, externalID, provider)
+	ch, _, err := nr.setupRouting(internalID, externalID, provider, false)
 	return ch, err
 }
 
 // setupRouting is SetupRouting, also reporting whether the live query had
-// already ended with KILLED, in which case nothing was set up.
+// already ended with KILLED, in which case nothing was set up. previousLost
+// says that the connection of the source being replaced was lost: what it
+// received is routed before anything from the new source.
 func (nr *NotificationRouter) setupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
+	previousLost bool,
 ) (ch chan connection.Notification, ended bool, err error) {
 	nr.routesMu.Lock()
 	defer nr.routesMu.Unlock()
@@ -74,7 +77,7 @@ func (nr *NotificationRouter) setupRouting(
 	// holds: a live query which ended with KILLED, even one still to be
 	// routed, gets no more notifications, from this connection or any other.
 	previousID, previousCh := r.externalID, r.externalCh
-	if r.detach(nr.logger) {
+	if r.detach(nr.logger, previousLost) {
 		nr.logger.Debug("Not routing an ended live query",
 			"internal_id", internalID,
 			"external_id", externalID)

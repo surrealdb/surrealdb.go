@@ -180,6 +180,11 @@ func (c *Connection) SetCompression(compress bool) *Connection {
 // which enables us to clean up everything including the internal goroutine that used to
 // try writing to the WebSocket connection, when this function exists.
 func (c *Connection) Close(ctx context.Context) error {
+	// No more notifications will come: end every live query's notifications
+	// and stop their goroutines, including those still delivering what was
+	// received before the connection was lost.
+	defer c.CloseAllLiveNotifications()
+
 	if c.IsClosed() {
 		return nil
 	}
@@ -424,9 +429,12 @@ func (c *Connection) closeWithError(err error) {
 	// because we successfully set closed from 0 to 1
 	close(c.connCloseCh)
 
-	// No more notifications will come, whether the connection was closed or
-	// lost: end every live query's notifications and stop their goroutines.
-	c.CloseAllLiveNotifications()
+	// The connection was lost: no more notifications will come, but those
+	// already received are still delivered before each live query's channel
+	// is closed. Close stops that. (A nil err means Close is closing it.)
+	if err != nil {
+		c.DrainAllLiveNotifications()
+	}
 }
 
 func (c *Connection) readLoop(conn *gorilla.Conn) {

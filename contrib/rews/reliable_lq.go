@@ -318,7 +318,8 @@ func (rlq *reliableLQ) restored(
 			"new_external", newExternalID)
 
 		var err error
-		_, ended, err = rlq.router.setupRouting(internalID, newExternalID, provider)
+		// Restoring follows a lost connection: route what it received first.
+		_, ended, err = rlq.router.setupRouting(internalID, newExternalID, provider, true)
 		if err != nil {
 			log.Error("Failed to setup notification routing for restored query",
 				"internal_id", internalID,

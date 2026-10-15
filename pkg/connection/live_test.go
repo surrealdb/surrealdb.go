@@ -241,3 +241,61 @@ func TestLive_closeAllEndsEverySubscription(t *testing.T) {
 	// Closing again, as both a lost connection and Close may do, is harmless.
 	tk.CloseAllLiveNotifications()
 }
+
+// TestLive_drainAllDeliversQueued checks that losing the connection delivers
+// what each live query has queued before closing its channel, and that
+// closing afterwards stops whatever is still being delivered.
+func TestLive_drainAllDeliversQueued(t *testing.T) {
+	tk := newTestToolkit()
+	read, err := tk.CreateNotificationChannel("read")
+	require.NoError(t, err)
+	abandoned, err := tk.CreateNotificationChannel("abandoned")
+	require.NoError(t, err)
+	const queued = 100
+	for i := 0; i < queued; i++ {
+		require.True(t, tk.SendNotification("read", note(CreateAction, i)))
+		require.True(t, tk.SendNotification("abandoned", note(CreateAction, i)))
+	}
+
+	done := make(chan struct{})
+	go func() {
+		tk.DrainAllLiveNotifications()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("DrainAllLiveNotifications blocked")
+	}
+
+	assert.False(t, tk.SendNotification("read", note(CreateAction, queued)))
+	_, err = tk.CreateNotificationChannel("new")
+	assert.ErrorIs(t, err, ErrLiveNotificationsClosed)
+
+	for i := 0; i < queued; i++ {
+		n, ok := receive(t, read)
+		require.True(t, ok, "notification %d was dropped", i)
+		require.Equal(t, i, n.Result)
+	}
+	_, ok := receive(t, read)
+	assert.False(t, ok, "the channel is closed once its queue is delivered")
+	require.Eventually(t, func() bool {
+		_, exists := tk.GetNotificationChannel("read")
+		return !exists
+	}, time.Second, time.Millisecond)
+	assert.NoError(t, tk.CloseLiveNotifications("read"))
+
+	// Closing the connection stops the delivery nobody is reading.
+	tk.NotificationChannelsLock.RLock()
+	s := tk.live.subs["abandoned"]
+	tk.NotificationChannelsLock.RUnlock()
+	require.NotNil(t, s)
+	tk.CloseAllLiveNotifications()
+	select {
+	case <-s.done:
+	default:
+		t.Fatal("the abandoned subscription's goroutine is still running")
+	}
+	for range abandoned {
+	}
+}

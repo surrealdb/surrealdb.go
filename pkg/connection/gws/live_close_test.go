@@ -98,3 +98,52 @@ func TestLiveNotifications_endWithConnection(t *testing.T) {
 		})
 	}
 }
+
+// TestLiveNotifications_lostConnectionDeliversQueued loses the connection
+// while a live query's consumer is far behind. What was received before the
+// loss is still delivered, then the channel is closed; it used to be dropped
+// past the channel's buffer. Close stops the delivery at once.
+func TestLiveNotifications_lostConnectionDeliversQueued(t *testing.T) {
+	const queued = 200
+	for _, closeAfter := range []bool{false, true} {
+		name := "lost"
+		if closeAfter {
+			name = "lost then closed"
+		}
+		t.Run(name, func(t *testing.T) {
+			u, drop := newDroppingServer(t, false)
+			c := New(connection.NewConfig(u))
+			require.NoError(t, c.Connect(context.Background()))
+			t.Cleanup(func() {
+				drop()
+				_ = c.Close(context.Background())
+			})
+
+			ch, err := c.LiveNotifications("lq")
+			require.NoError(t, err)
+			for i := 0; i < queued; i++ {
+				require.True(t, c.SendNotification("lq", connection.Notification{Action: connection.CreateAction, Result: i}))
+			}
+
+			drop()
+			require.Eventually(t, c.IsClosed, 5*time.Second, 10*time.Millisecond)
+
+			if closeAfter {
+				require.NoError(t, c.Close(context.Background()))
+				for range ch {
+				}
+				return
+			}
+			for i := 0; i < queued; i++ {
+				select {
+				case n, ok := <-ch:
+					require.True(t, ok, "notification %d was dropped", i)
+					require.Equal(t, i, n.Result)
+				case <-time.After(5 * time.Second):
+					t.Fatalf("timed out waiting for notification %d", i)
+				}
+			}
+			requireClosed(t, ch)
+		})
+	}
+}

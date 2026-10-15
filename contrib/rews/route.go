@@ -3,6 +3,7 @@ package rews
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -21,6 +22,11 @@ func panicIfNilNotificationCh(value chan connection.Notification, message string
 		panic(message)
 	}
 }
+
+// lostSourceDrainTimeout bounds how long a route waits, when it switches
+// source after its connection was lost, for the old source to deliver what that
+// connection received. connection.Toolkit delivers it at once, then closes it.
+const lostSourceDrainTimeout = 5 * time.Second
 
 // route represents a single notification routing path
 type route struct {
@@ -100,7 +106,7 @@ func (r *route) setExternal(externalID string, externalCh chan connection.Notifi
 	panicIfEmpty(externalID, "BUG: externalID is mandatory")
 	panicIfNilNotificationCh(externalCh, "BUG: externalCh is mandatory")
 
-	if r.detach(nil) {
+	if r.detach(nil, false) {
 		return true
 	}
 	r.attach(externalID, externalCh, nil)
@@ -114,7 +120,11 @@ func (r *route) setExternal(externalID string, externalCh chan connection.Notifi
 //
 // Everything the previous source holds is taken now, so that a KILLED
 // notification among it is known before a new source is attached.
-func (r *route) detach(l logger.Logger) bool {
+//
+// If previousLost, the previous source's connection has been lost, and the
+// source goes on delivering what that connection received before closing:
+// all of it is taken. Otherwise only what the previous source already holds is.
+func (r *route) detach(l logger.Logger, previousLost bool) bool {
 	previous := r.externalCh
 	if r.stopCh != nil {
 		if l != nil {
@@ -136,21 +146,8 @@ func (r *route) detach(l logger.Logger) bool {
 	}
 
 	// What remains on the previous source was received before the switch.
-	// When its connection was closed or lost, it is closed with its last
-	// notifications still buffered; one still open gives what it holds.
 	if previous != nil {
-	drain:
-		for {
-			select {
-			case n, ok := <-previous:
-				if !ok {
-					break drain
-				}
-				r.backlog = append(r.backlog, n)
-			default:
-				break drain
-			}
-		}
+		r.takeRemaining(previous, previousLost, l)
 	}
 
 	for i, n := range r.backlog {
@@ -164,6 +161,44 @@ func (r *route) detach(l logger.Logger) bool {
 		}
 	}
 	return false
+}
+
+// takeRemaining appends what remains on a previous source to the backlog.
+// With lost, it waits for the source to close, for at most
+// lostSourceDrainTimeout; otherwise it takes only what the source holds.
+func (r *route) takeRemaining(previous chan connection.Notification, lost bool, l logger.Logger) {
+	if !lost {
+		for {
+			select {
+			case n, ok := <-previous:
+				if !ok {
+					return
+				}
+				r.backlog = append(r.backlog, n)
+			default:
+				return
+			}
+		}
+	}
+
+	timeout := time.NewTimer(lostSourceDrainTimeout)
+	defer timeout.Stop()
+	for {
+		select {
+		case n, ok := <-previous:
+			if !ok {
+				return
+			}
+			r.backlog = append(r.backlog, n)
+		case <-timeout.C:
+			if l != nil {
+				l.Warn("Gave up waiting for the notifications of a lost connection",
+					"internal_id", r.internalID,
+					"external_id", r.externalID)
+			}
+			return
+		}
+	}
 }
 
 // attach starts routing the backlog, then externalCh. With a nil externalCh,

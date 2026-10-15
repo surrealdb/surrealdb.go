@@ -48,9 +48,10 @@ func (h *websocketHandler) OnOpen(socket *gws.Conn) {
 // Received a close frame from the other end of the network connection, or disconnected voluntarily due to an error in the IO process
 // In the former case, err can be asserted as *gws.CloseError.
 func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
-	// No more notifications will come, whether the connection was closed or
-	// lost: end every live query's notifications and stop their goroutines.
-	defer h.conn.CloseAllLiveNotifications()
+	// No more notifications will come, but those already received are still
+	// delivered before each live query's channel is closed. When Close is
+	// closing the connection, it has already stopped them all.
+	defer h.conn.DrainAllLiveNotifications()
 
 	h.conn.connLock.Lock()
 	defer h.conn.connLock.Unlock()
@@ -185,7 +186,8 @@ func (c *Connection) SetTimeout(timeout time.Duration) *Connection {
 // Close implements connection.Connection.
 func (c *Connection) Close(ctx context.Context) error {
 	// End every live query's notifications and stop their goroutines, as no
-	// more will come. OnClose does this too, but may not have run yet.
+	// more will come, including those still delivering what was received
+	// before the connection was lost.
 	defer c.CloseAllLiveNotifications()
 
 	c.connLock.Lock()

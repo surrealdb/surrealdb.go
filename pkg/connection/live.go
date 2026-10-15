@@ -42,7 +42,7 @@ type subscription struct {
 
 	mu     sync.Mutex
 	queue  []Notification
-	ending bool // a KILLED notification is queued: close once it is delivered
+	ending bool // nothing more will be queued: close once the queue is delivered
 
 	wake chan struct{} // signals that the queue grew
 	stop chan struct{} // closed to end delivery at once
@@ -88,9 +88,23 @@ func (s *subscription) push(n Notification) bool {
 	return true
 }
 
+// finish ends the subscription once what is already queued has been
+// delivered, as no more notifications will come. It never blocks.
+func (s *subscription) finish() {
+	s.mu.Lock()
+	s.ending = true
+	s.mu.Unlock()
+
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
 // run delivers queued notifications until the live query is killed and its
-// KILLED notification delivered, or until stop is closed. onEnd is called when
-// delivery ends because the live query was killed.
+// KILLED notification delivered, until the subscription is finished and its
+// queue delivered, or until stop is closed. onEnd is called when delivery ends
+// on its own rather than because stop was closed.
 func (s *subscription) run(onEnd func(*subscription)) {
 	defer close(s.done)
 	defer close(s.out)
@@ -273,16 +287,17 @@ func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 }
 
 // CloseAllLiveNotifications ends the notifications of every live query, for a
-// connection which has been closed or lost: no more notifications will come.
-// Each subscription's channel is closed, without a KILLED notification, and its
+// connection which has been closed: no more notifications will come. Each
+// subscription's channel is closed, without a KILLED notification, and its
 // goroutine has stopped by the time this returns. Notifications still queued are
-// discarded; those already in a channel's buffer can still be read.
+// discarded; those already in a channel's buffer can still be read. This
+// includes subscriptions still delivering after DrainAllLiveNotifications.
 //
 // Afterwards, notifications are dropped and subscribing fails with
 // ErrLiveNotificationsClosed. Closing the notifications of a live query which
 // was ended this way is not an error.
 //
-// WebSocket connections call it when they close or lose their connection.
+// WebSocket connections call it when they are closed.
 func (bc *Toolkit) CloseAllLiveNotifications() {
 	bc.NotificationChannelsLock.Lock()
 	bc.liveInit()
@@ -311,6 +326,40 @@ func (bc *Toolkit) CloseAllLiveNotifications() {
 	for _, s := range subs {
 		<-s.done
 	}
+}
+
+// DrainAllLiveNotifications ends the notifications of every live query, for a
+// connection which has been lost: no more notifications will come, but those
+// already received are not lost. Each subscription delivers what it has
+// queued, then its channel is closed, without a KILLED notification. It does
+// not wait for that: a subscription whose consumer is behind goes on
+// delivering until its consumer catches up, CloseLiveNotifications closes it,
+// or CloseAllLiveNotifications closes them all.
+//
+// Afterwards, as after CloseAllLiveNotifications, notifications are dropped and
+// subscribing fails with ErrLiveNotificationsClosed.
+//
+// WebSocket connections call it when they lose their connection.
+func (bc *Toolkit) DrainAllLiveNotifications() {
+	bc.NotificationChannelsLock.Lock()
+	defer bc.NotificationChannelsLock.Unlock()
+	bc.liveInit()
+
+	bc.live.closed = true
+	for _, s := range bc.live.subs {
+		s.finish()
+	}
+	for id, ch := range bc.NotificationChannels {
+		if _, ok := bc.live.subs[id]; ok {
+			continue
+		}
+		// A channel put in NotificationChannels directly. SendNotification
+		// only sends on it with the lock held, so it is safe to close here.
+		close(ch)
+		delete(bc.NotificationChannels, id)
+	}
+	bc.live.pending = make(map[string]*pendingNotifications)
+	bc.live.pendingLen = 0
 }
 
 // SendNotification routes a notification to the subscription for its live

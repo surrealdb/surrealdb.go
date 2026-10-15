@@ -450,3 +450,46 @@ func TestRoute_endedBacklogSurvivesAnotherSwap(t *testing.T) {
 	assert.False(t, ok)
 	assert.NotPanics(t, r.stop)
 }
+
+func newToolkit() *connection.Toolkit {
+	return &connection.Toolkit{
+		ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
+		NotificationChannels: make(map[string]chan connection.Notification),
+	}
+}
+
+// TestReliableLQ_restoreAfterLossLosesNothing restores a live query after its
+// connection was lost while the consumer was far behind. What the old
+// connection had received is delivered before anything from the new one; it
+// used to be dropped beyond what the channels between them held.
+func TestReliableLQ_restoreAfterLossLosesNothing(t *testing.T) {
+	log := quietLogger()
+	rlq := newReliableLQ(log, surrealcbor.New())
+	rlq.recordLiveQuery("lq", methodLive, []any{"users", false}, log)
+
+	old := newToolkit()
+	ch, err := rlq.liveNotifications("lq", old)
+	require.NoError(t, err)
+	const before, after = 300, 3
+	for i := 0; i < before; i++ {
+		require.True(t, old.SendNotification("lq", notification(connection.CreateAction, i)))
+	}
+	require.Eventually(t, func() bool { return len(ch) == cap(ch) }, time.Second, time.Millisecond)
+	loseConnection(old)
+
+	restored := newToolkit()
+	newID := uuid.Must(uuid.NewV4()).String()
+	sender := &restoreSender{newID: newID}
+	require.NoError(t, rlq.restoreLiveQueries(context.Background(), sender, restored, log))
+	require.Equal(t, []string{methodLive}, sender.methods)
+	for i := before; i < before+after; i++ {
+		require.True(t, restored.SendNotification(newID, notification(connection.CreateAction, i)))
+	}
+
+	for i := 0; i < before+after; i++ {
+		n, ok := receiveNotification(t, ch)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result, "notifications arrive in order, none lost")
+	}
+	require.NoError(t, rlq.closeLiveNotifications(restored, "lq"))
+}
