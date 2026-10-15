@@ -423,6 +423,10 @@ func (c *Connection) closeWithError(err error) {
 	// At this point, we know we're the only goroutine that will close the channel
 	// because we successfully set closed from 0 to 1
 	close(c.connCloseCh)
+
+	// No more notifications will come, whether the connection was closed or
+	// lost: end every live query's notifications and stop their goroutines.
+	c.CloseAllLiveNotifications()
 }
 
 func (c *Connection) readLoop(conn *gorilla.Conn) {
@@ -436,6 +440,9 @@ func (c *Connection) readLoop(conn *gorilla.Conn) {
 				shouldExit := c.handleError(err)
 				if shouldExit {
 					c.closeWithError(err)
+					// Close returns at once for a connection already marked
+					// closed, so release the network connection here.
+					_ = conn.Close()
 					return
 				}
 				continue
@@ -458,10 +465,13 @@ func (c *Connection) handleError(err error) bool {
 		return true
 	}
 	if gorilla.IsUnexpectedCloseError(err) {
+		// The server closed the connection, or it was lost without a close
+		// frame. Return at once, so that readLoop marks the connection closed:
+		// waiting for Close here left IsClosed false, so it was never
+		// reconnected, and live queries never learned the connection had gone.
 		c.closeMutex.Lock()
 		c.connCloseError = io.ErrClosedPipe
 		c.closeMutex.Unlock()
-		<-c.connCloseCh
 		return true
 	}
 

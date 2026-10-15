@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -27,6 +28,10 @@ const (
 	// that their stragglers are dropped rather than kept as pending.
 	maxEnded = 1024
 )
+
+// ErrLiveNotificationsClosed is returned when subscribing to the notifications
+// of a live query on a connection which has been closed or lost.
+var ErrLiveNotificationsClosed = errors.New("live notifications closed: the connection is closed")
 
 // subscription delivers the notifications of one live query in order, without
 // ever blocking the goroutine reading from the connection: notifications queue
@@ -132,6 +137,10 @@ type liveState struct {
 	pendingLen int
 	ended      map[string]struct{}
 	endedOrder []string
+
+	// closed is set once the connection is closed or lost: no live query
+	// can deliver notifications any more.
+	closed bool
 }
 
 func (bc *Toolkit) liveInit() {
@@ -157,6 +166,9 @@ func (bc *Toolkit) CreateNotificationChannel(liveQueryID string) (chan Notificat
 	defer bc.NotificationChannelsLock.Unlock()
 	bc.liveInit()
 
+	if bc.live.closed {
+		return nil, fmt.Errorf("%w: %v", ErrLiveNotificationsClosed, liveQueryID)
+	}
 	if _, ok := bc.live.subs[liveQueryID]; ok {
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, liveQueryID)
 	}
@@ -225,7 +237,7 @@ func (bc *Toolkit) LiveNotifications(liveQueryID string) (chan Notification, err
 // in the channel's buffer can still be read.
 //
 // It is not an error to close the notifications of a live query which ended
-// with a KILLED notification.
+// with a KILLED notification, or which ended because the connection closed.
 func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 	bc.NotificationChannelsLock.Lock()
 	bc.liveInit()
@@ -234,6 +246,7 @@ func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 	if !ok {
 		ch, legacy := bc.NotificationChannels[liveQueryID]
 		_, ended := bc.live.ended[liveQueryID]
+		closed := bc.live.closed
 		delete(bc.NotificationChannels, liveQueryID)
 		bc.NotificationChannelsLock.Unlock()
 
@@ -242,7 +255,7 @@ func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 			// A channel put in NotificationChannels directly.
 			close(ch)
 			return nil
-		case ended:
+		case ended, closed:
 			return nil
 		default:
 			return fmt.Errorf("notification channel not found for live query ID: %s", liveQueryID)
@@ -259,6 +272,47 @@ func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
 	return nil
 }
 
+// CloseAllLiveNotifications ends the notifications of every live query, for a
+// connection which has been closed or lost: no more notifications will come.
+// Each subscription's channel is closed, without a KILLED notification, and its
+// goroutine has stopped by the time this returns. Notifications still queued are
+// discarded; those already in a channel's buffer can still be read.
+//
+// Afterwards, notifications are dropped and subscribing fails with
+// ErrLiveNotificationsClosed. Closing the notifications of a live query which
+// was ended this way is not an error.
+//
+// WebSocket connections call it when they close or lose their connection.
+func (bc *Toolkit) CloseAllLiveNotifications() {
+	bc.NotificationChannelsLock.Lock()
+	bc.liveInit()
+
+	bc.live.closed = true
+	subs := make([]*subscription, 0, len(bc.live.subs))
+	for id, s := range bc.live.subs {
+		subs = append(subs, s)
+		delete(bc.live.subs, id)
+		delete(bc.NotificationChannels, id)
+	}
+	for id, ch := range bc.NotificationChannels {
+		// A channel put in NotificationChannels directly. SendNotification
+		// only sends on it with the lock held, so it is safe to close here.
+		close(ch)
+		delete(bc.NotificationChannels, id)
+	}
+	bc.live.pending = make(map[string]*pendingNotifications)
+	bc.live.pendingLen = 0
+	bc.NotificationChannelsLock.Unlock()
+
+	// Without the lock: a subscription ending on its own takes it.
+	for _, s := range subs {
+		close(s.stop)
+	}
+	for _, s := range subs {
+		<-s.done
+	}
+}
+
 // SendNotification routes a notification to the subscription for its live
 // query. It never blocks and never drops a notification for a slow consumer.
 //
@@ -271,6 +325,9 @@ func (bc *Toolkit) SendNotification(id string, notification Notification) bool {
 	defer bc.NotificationChannelsLock.Unlock()
 	bc.liveInit()
 
+	if bc.live.closed {
+		return false
+	}
 	if s, ok := bc.live.subs[id]; ok {
 		return s.push(notification)
 	}

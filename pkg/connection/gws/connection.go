@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -27,7 +28,9 @@ type Connection struct {
 
 	closeCh    chan struct{}
 	closeError error
-	closed     bool
+	// closed is read by IsClosed without connLock, e.g. by contrib/rews
+	// checking whether to reconnect, so it is atomic.
+	closed atomic.Bool
 
 	handler *websocketHandler
 }
@@ -45,6 +48,10 @@ func (h *websocketHandler) OnOpen(socket *gws.Conn) {
 // Received a close frame from the other end of the network connection, or disconnected voluntarily due to an error in the IO process
 // In the former case, err can be asserted as *gws.CloseError.
 func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
+	// No more notifications will come, whether the connection was closed or
+	// lost: end every live query's notifications and stop their goroutines.
+	defer h.conn.CloseAllLiveNotifications()
+
 	h.conn.connLock.Lock()
 	defer h.conn.connLock.Unlock()
 
@@ -58,7 +65,7 @@ func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
 		}
 	}
 
-	h.conn.closed = true
+	h.conn.closed.Store(true)
 }
 
 func (h *websocketHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
@@ -172,6 +179,10 @@ func (c *Connection) SetTimeout(timeout time.Duration) *Connection {
 
 // Close implements connection.Connection.
 func (c *Connection) Close(ctx context.Context) error {
+	// End every live query's notifications and stop their goroutines, as no
+	// more will come. OnClose does this too, but may not have run yet.
+	defer c.CloseAllLiveNotifications()
+
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
@@ -203,7 +214,7 @@ func (c *Connection) Close(ctx context.Context) error {
 }
 
 func (c *Connection) IsClosed() bool {
-	return c.closed
+	return c.closed.Load()
 }
 
 // Connect tries to establish a WebSocket connection to SurrealDB.

@@ -140,3 +140,21 @@ func TestLive_killEndsSubscription(t *testing.T) {
 
 	require.NoError(t, db.CloseLiveNotifications(id))
 }
+
+// TestLive_closeEndsSubscription closes the connection while a live query's
+// channel is open. The channel must be closed, rather than left open for ever
+// with a goroutine waiting on it.
+func TestLive_closeEndsSubscription(t *testing.T) {
+	db := newLiveTestDB(t, "closing")
+
+	id := startLive(t, db, "closing")
+	ch, err := db.LiveNotifications(id)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Close(context.Background()))
+
+	_, ok := nextNotification(t, ch)
+	require.False(t, ok, "the channel is closed with the connection")
+	// Kill's own CloseLiveNotifications must not fail afterwards.
+	require.NoError(t, db.CloseLiveNotifications(id))
+}

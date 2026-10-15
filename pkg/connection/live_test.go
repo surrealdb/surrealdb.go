@@ -161,3 +161,83 @@ func TestLive_duplicateSubscription(t *testing.T) {
 	require.Error(t, err)
 	require.NoError(t, tk.CloseLiveNotifications("lq"))
 }
+
+// TestLive_closeAllEndsEverySubscription checks that closing or losing the
+// connection ends every live query's notifications: each channel is closed and
+// each subscription's goroutine has stopped, even for a consumer that stopped
+// reading. They used to stay blocked for ever.
+func TestLive_closeAllEndsEverySubscription(t *testing.T) {
+	tk := newTestToolkit()
+
+	unread, err := tk.CreateNotificationChannel("unread")
+	require.NoError(t, err)
+	for i := 0; i < 100; i++ {
+		require.True(t, tk.SendNotification("unread", note(CreateAction, i)))
+	}
+	idle, err := tk.CreateNotificationChannel("idle")
+	require.NoError(t, err)
+	legacy := make(chan Notification, 1)
+	tk.NotificationChannelsLock.Lock()
+	tk.NotificationChannels["legacy"] = legacy
+	tk.NotificationChannelsLock.Unlock()
+	// Kept for a subscription that will now never come.
+	require.True(t, tk.SendNotification("pending", note(CreateAction, 0)))
+
+	tk.NotificationChannelsLock.RLock()
+	subs := make([]*subscription, 0, len(tk.live.subs))
+	for _, s := range tk.live.subs {
+		subs = append(subs, s)
+	}
+	tk.NotificationChannelsLock.RUnlock()
+	require.Len(t, subs, 2)
+
+	done := make(chan struct{})
+	go func() {
+		tk.CloseAllLiveNotifications()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("CloseAllLiveNotifications blocked")
+	}
+
+	// Each subscription's goroutine has stopped by the time it returns.
+	for _, s := range subs {
+		select {
+		case <-s.done:
+		default:
+			t.Fatalf("the goroutine of %s is still running", s.id)
+		}
+	}
+
+	// The buffered notifications may still be read, then the channels are closed.
+	for range unread {
+	}
+	_, ok := <-idle
+	assert.False(t, ok)
+	_, ok = <-legacy
+	assert.False(t, ok)
+
+	tk.NotificationChannelsLock.RLock()
+	assert.Empty(t, tk.live.subs)
+	assert.Empty(t, tk.live.pending)
+	assert.Empty(t, tk.NotificationChannels)
+	tk.NotificationChannelsLock.RUnlock()
+
+	// Nothing more is delivered or kept, and nobody can subscribe.
+	assert.False(t, tk.SendNotification("idle", note(CreateAction, 0)))
+	assert.False(t, tk.SendNotification("new", note(CreateAction, 0)))
+	_, err = tk.CreateNotificationChannel("new")
+	assert.ErrorIs(t, err, ErrLiveNotificationsClosed)
+	_, err = tk.CreateNotificationChannel("pending")
+	assert.ErrorIs(t, err, ErrLiveNotificationsClosed)
+
+	// Kill closes the notifications of a live query; that must not fail
+	// because the connection closed first.
+	assert.NoError(t, tk.CloseLiveNotifications("idle"))
+	assert.NoError(t, tk.CloseLiveNotifications("unread"))
+
+	// Closing again, as both a lost connection and Close may do, is harmless.
+	tk.CloseAllLiveNotifications()
+}
