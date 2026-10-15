@@ -30,7 +30,9 @@ func newLiveTestDB(t *testing.T, table string) *surrealdb.DB {
 
 func startLive(t *testing.T, db *surrealdb.DB, table string) string {
 	t.Helper()
-	res, err := surrealdb.Query[models.UUID](context.Background(), db, "LIVE SELECT * FROM type::table($tb)", map[string]any{"tb": table})
+	// The table is one of this file's constants. type::table() can't be used:
+	// SurrealDB 2.x does not accept it in LIVE SELECT.
+	res, err := surrealdb.Query[models.UUID](context.Background(), db, "LIVE SELECT * FROM "+table, nil)
 	require.NoError(t, err)
 	return (*res)[0].Result.String()
 }
