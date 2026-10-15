@@ -59,7 +59,7 @@ func TestRoute_killedClosesInternalChannel(t *testing.T) {
 	r.onEnd = func(*route) { ended.Add(1) }
 
 	source := make(chan connection.Notification, 2)
-	r.setExternal("external", source, nil)
+	r.setExternal("external", source)
 	source <- notification(connection.CreateAction, 1)
 	source <- notification(connection.KilledAction, 2)
 	// The source closes after KILLED, as connection.Toolkit does.
@@ -75,7 +75,7 @@ func TestRoute_killedClosesInternalChannel(t *testing.T) {
 
 	// An ended route is not restarted with a new source, and stopping it does
 	// not close its channel twice.
-	r.setExternal("restored", make(chan connection.Notification), nil)
+	r.setExternal("restored", make(chan connection.Notification))
 	assert.Nil(t, r.stopCh, "no routing goroutine runs for an ended route")
 	assert.NotPanics(t, r.stop)
 }
@@ -88,7 +88,7 @@ func TestRoute_sourceClosedWithoutKilledKeepsRouting(t *testing.T) {
 	r.onEnd = func(*route) { t.Error("the live query did not end") }
 
 	lost := make(chan connection.Notification, 1)
-	r.setExternal("external-1", lost, nil)
+	r.setExternal("external-1", lost)
 	lost <- notification(connection.CreateAction, 1)
 	n, ok := receiveNotification(t, r.internalCh)
 	require.True(t, ok)
@@ -99,7 +99,7 @@ func TestRoute_sourceClosedWithoutKilledKeepsRouting(t *testing.T) {
 	assert.False(t, r.isEnded())
 
 	restored := make(chan connection.Notification, 1)
-	r.setExternal("external-2", restored, nil)
+	r.setExternal("external-2", restored)
 	restored <- notification(connection.UpdateAction, 2)
 	n, ok = receiveNotification(t, r.internalCh)
 	require.True(t, ok)
@@ -116,7 +116,7 @@ func TestRoute_slowConsumerLosesNothing(t *testing.T) {
 	r := newRoute("internal")
 	const count = 500
 	source := make(chan connection.Notification, count)
-	r.setExternal("external", source, nil)
+	r.setExternal("external", source)
 	for i := 0; i < count; i++ {
 		source <- notification(connection.CreateAction, i)
 	}
@@ -135,7 +135,7 @@ func TestRoute_slowConsumerLosesNothing(t *testing.T) {
 func TestRoute_stopWhileConsumerNotReading(t *testing.T) {
 	r := newRoute("internal")
 	source := make(chan connection.Notification, 200)
-	r.setExternal("external", source, nil)
+	r.setExternal("external", source)
 	for i := 0; i < 200; i++ {
 		source <- notification(connection.CreateAction, i)
 	}
@@ -248,7 +248,7 @@ func TestRoute_reconnectWhileConsumerBehindLosesNothing(t *testing.T) {
 	const before, after = 150, 5
 
 	lost := make(chan connection.Notification, before)
-	r.setExternal("external-1", lost, nil)
+	r.setExternal("external-1", lost)
 	for i := 0; i < before; i++ {
 		lost <- notification(connection.CreateAction, i)
 	}
@@ -258,7 +258,7 @@ func TestRoute_reconnectWhileConsumerBehindLosesNothing(t *testing.T) {
 	close(lost)
 
 	restored := make(chan connection.Notification, after)
-	r.setExternal("external-2", restored, nil)
+	r.setExternal("external-2", restored)
 	for i := before; i < before+after; i++ {
 		restored <- notification(connection.CreateAction, i)
 	}
@@ -280,7 +280,7 @@ func TestRoute_repeatedReconnectsWhileConsumerBehind(t *testing.T) {
 	next := 0
 	for c := 0; c < 3; c++ {
 		src := make(chan connection.Notification, per)
-		r.setExternal(fmt.Sprintf("external-%d", c), src, nil)
+		r.setExternal(fmt.Sprintf("external-%d", c), src)
 		for i := 0; i < per; i++ {
 			src <- notification(connection.CreateAction, next)
 			next++
@@ -360,4 +360,93 @@ func TestReliableLQ_endedDuringRestoreIsKilled(t *testing.T) {
 			rlq.router.routesMu.RUnlock()
 		})
 	}
+}
+
+// TestReliableLQ_killedInBacklogDuringRestoreIsKilled restores a live query
+// whose old, closed source still holds its KILLED notification, behind a
+// consumer which has fallen behind. The restore used to be told the query was
+// active, leaving the new server query running with nothing routing it.
+func TestReliableLQ_killedInBacklogDuringRestoreIsKilled(t *testing.T) {
+	log := quietLogger()
+	rlq := newReliableLQ(log, surrealcbor.New())
+	rlq.recordLiveQuery("lq", methodLive, []any{"users", false}, log)
+	provider := newMockNotificationProvider()
+	const before = 120
+	lost := make(chan connection.Notification, before+1)
+	provider.channels["lq"] = lost
+
+	ch, err := rlq.liveNotifications("lq", provider)
+	require.NoError(t, err)
+	for i := 0; i < before; i++ {
+		lost <- notification(connection.CreateAction, i)
+	}
+	lost <- notification(connection.KilledAction, before)
+	// The consumer has fallen behind, and the connection is lost.
+	require.Eventually(t, func() bool { return len(ch) == cap(ch) }, time.Second, time.Millisecond)
+	close(lost)
+
+	newID := uuid.Must(uuid.NewV4()).String()
+	sender := &restoreSender{newID: newID}
+	restoredCh := make(chan error, 1)
+	go func() { restoredCh <- rlq.restoreLiveQueries(context.Background(), sender, provider, log) }()
+	select {
+	case err := <-restoredCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("restoring blocked")
+	}
+
+	require.Equal(t, []string{methodLive, "kill"}, sender.methods, "the new server query is killed")
+	assert.Equal(t, []any{newID}, sender.params[1])
+	provider.mu.Lock()
+	_, subscribed := provider.channels[newID]
+	provider.mu.Unlock()
+	assert.False(t, subscribed, "nothing subscribes to the killed query's notifications")
+
+	// Everything up to KILLED is still delivered, then the channel is closed.
+	for i := 0; i < before; i++ {
+		n, ok := receiveNotification(t, ch)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result)
+	}
+	n, ok := receiveNotification(t, ch)
+	require.True(t, ok)
+	assert.Equal(t, connection.KilledAction, n.Action)
+	_, ok = receiveNotification(t, ch)
+	assert.False(t, ok)
+	require.Eventually(t, func() bool {
+		rlq.liveQueriesMu.RLock()
+		defer rlq.liveQueriesMu.RUnlock()
+		return rlq.liveQueries["lq"].ended
+	}, time.Second, time.Millisecond)
+}
+
+// TestRoute_endedBacklogSurvivesAnotherSwap swaps the source again while a
+// KILLED notification found in the backlog is still waiting to be routed.
+func TestRoute_endedBacklogSurvivesAnotherSwap(t *testing.T) {
+	r := newRoute("internal")
+	const before = 120
+	lost := make(chan connection.Notification, before+1)
+	r.setExternal("external-1", lost)
+	for i := 0; i < before; i++ {
+		lost <- notification(connection.CreateAction, i)
+	}
+	lost <- notification(connection.KilledAction, before)
+	require.Eventually(t, func() bool { return len(r.internalCh) == cap(r.internalCh) }, time.Second, time.Millisecond)
+	close(lost)
+
+	assert.True(t, r.setExternal("external-2", make(chan connection.Notification)), "the swap reports the end")
+	assert.True(t, r.setExternal("external-3", make(chan connection.Notification)), "and so does the next one")
+
+	for i := 0; i < before; i++ {
+		n, ok := receiveNotification(t, r.internalCh)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result)
+	}
+	n, ok := receiveNotification(t, r.internalCh)
+	require.True(t, ok)
+	assert.Equal(t, connection.KilledAction, n.Action)
+	_, ok = receiveNotification(t, r.internalCh)
+	assert.False(t, ok)
+	assert.NotPanics(t, r.stop)
 }

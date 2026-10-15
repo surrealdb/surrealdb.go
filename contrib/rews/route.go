@@ -32,8 +32,10 @@ type route struct {
 	// ends with a KILLED notification, or when the route is stopped.
 	closeInternal sync.Once
 
-	// ended is set once the live query has ended with a KILLED notification
-	// and internalCh has been closed. An ended route routes nothing more.
+	// ended is set once the live query has ended with a KILLED notification:
+	// when the KILLED notification is known, whether still to be routed or
+	// already routed. internalCh is closed once it has been routed. An ended
+	// route takes no new source.
 	ended atomic.Bool
 
 	// onEnd, if set, is called once the live query has ended with a KILLED
@@ -48,18 +50,11 @@ type route struct {
 	stopCh     chan struct{}                // Signal to stop routing goroutine
 	stoppedCh  chan struct{}                // Closed by goroutine when it finishes
 
-	// backlog holds what a stopped routing goroutine had not yet routed, for
-	// the next one to route first. It is written by the goroutine before it
+	// backlog holds notifications received from earlier sources but not yet
+	// routed, oldest first, for the next routing goroutine to route before
+	// reading its source. It is written by a routing goroutine before it
 	// closes stoppedCh, and otherwise only touched with no goroutine running.
-	backlog backlog
-}
-
-// backlog is what is still to be routed from earlier sources when the route
-// switches to a new one: notifications already taken from them, then whatever
-// remains on the sources themselves, oldest first.
-type backlog struct {
-	pending []connection.Notification
-	sources []chan connection.Notification
+	backlog []connection.Notification
 }
 
 // newRoute creates a new route with the given internal ID.
@@ -82,15 +77,14 @@ func (r *route) stop() {
 		r.stopRoutingGoroutine()
 	}
 
-	r.backlog = backlog{}
+	r.backlog = nil
 
 	// Now it's safe to close the internal channel since no goroutine is running.
 	// It is already closed if the live query ended with KILLED.
 	r.closeInternal.Do(func() { close(r.internalCh) })
 }
 
-// isEnded reports whether the live query ended with a KILLED notification,
-// which closed the internal channel.
+// isEnded reports whether the live query ended with a KILLED notification.
 func (r *route) isEnded() bool {
 	return r.ended.Load()
 }
@@ -99,43 +93,84 @@ func (r *route) isEnded() bool {
 // It stops any routing goroutine already running, then starts a new one reading from externalCh.
 // This method should NOT be called concurrently - it's designed for sequential reconnection scenarios.
 //
-// It does nothing for a route whose live query has ended.
-func (r *route) setExternal(externalID string, externalCh chan connection.Notification, l logger.Logger) {
+// It returns true, and does not use externalCh, if the live query has ended.
+// NotificationRouter uses detach and attach directly, to subscribe in between.
+func (r *route) setExternal(externalID string, externalCh chan connection.Notification) bool {
 	// both externalID and externalCh must be provided together
 	panicIfEmpty(externalID, "BUG: externalID is mandatory")
 	panicIfNilNotificationCh(externalCh, "BUG: externalCh is mandatory")
 
-	// Stop old routing if it exists. Two goroutines reading the same or
-	// different external channels would reorder notifications.
+	if r.detach(nil) {
+		return true
+	}
+	r.attach(externalID, externalCh, nil)
+	return false
+}
+
+// detach stops routing from the current source, keeping what was received
+// from it but not yet routed in the backlog. It returns true if the live query
+// has ended, in which case routing carries on until the KILLED notification
+// has been routed, and the route takes no new source.
+//
+// Everything the previous source holds is taken now, so that a KILLED
+// notification among it is known before a new source is attached.
+func (r *route) detach(l logger.Logger) bool {
 	previous := r.externalCh
 	if r.stopCh != nil {
 		if l != nil {
 			l.Debug("Stopping old routing",
 				"internal_id", r.internalID,
-				"old_external_id", r.externalID,
-				"new_external_id", externalID)
+				"old_external_id", r.externalID)
 		}
 		r.stopRoutingGoroutine()
 	}
 
-	// Checked once no goroutine is running, as the one just stopped may have
-	// routed a KILLED notification before it stopped.
+	// The goroutine just stopped may have routed a KILLED notification, or
+	// been stopped before routing one already taken into the backlog: then
+	// it carries on routing that.
 	if r.isEnded() {
-		return
+		if len(r.backlog) > 0 {
+			r.attach("", nil, l)
+		}
+		return true
 	}
 
-	// What remains on the previous source was received before the switch, and
-	// is routed before anything from the new one. When its connection was
-	// closed or lost, it is closed with its last notifications still buffered.
-	if previous != nil && previous != externalCh {
-		r.backlog.sources = append(r.backlog.sources, previous)
+	// What remains on the previous source was received before the switch.
+	// When its connection was closed or lost, it is closed with its last
+	// notifications still buffered; one still open gives what it holds.
+	if previous != nil {
+	drain:
+		for {
+			select {
+			case n, ok := <-previous:
+				if !ok {
+					break drain
+				}
+				r.backlog = append(r.backlog, n)
+			default:
+				break drain
+			}
+		}
 	}
 
-	// Update route
+	for i, n := range r.backlog {
+		if n.Action == connection.KilledAction {
+			// Nothing after KILLED is routed. Route what comes before it,
+			// then end.
+			r.backlog = r.backlog[:i+1]
+			r.ended.Store(true)
+			r.attach("", nil, l)
+			return true
+		}
+	}
+	return false
+}
+
+// attach starts routing the backlog, then externalCh. With a nil externalCh,
+// only the backlog is routed, then routing waits to be stopped.
+func (r *route) attach(externalID string, externalCh chan connection.Notification, l logger.Logger) {
 	r.externalID = externalID
 	r.externalCh = externalCh
-
-	// Start the routing goroutine with the logger
 	r.startRoutingGoroutine(l)
 }
 
@@ -172,16 +207,15 @@ func (r *route) startRoutingGoroutine(l logger.Logger) {
 	r.stoppedCh = make(chan struct{})
 
 	// Create copies of all the fields we need to avoid races
-	externalID := r.externalID
+	g := routing{r: r, externalID: r.externalID, stopCh: r.stopCh, l: l}
 	externalCh := r.externalCh
-	stopCh := r.stopCh
 	stoppedCh := r.stoppedCh
 	earlier := r.backlog
-	r.backlog = backlog{}
+	r.backlog = nil
 
 	go func() {
-		ended, left := r.route(earlier, externalID, externalCh, stopCh, l)
-		// Read by setExternal once stoppedCh is closed.
+		ended, left := g.route(earlier, externalCh)
+		// Read once stoppedCh is closed.
 		r.backlog = left
 		// Signal completion before calling onEnd, which may take locks held
 		// by someone waiting for this goroutine to stop.
@@ -192,37 +226,63 @@ func (r *route) startRoutingGoroutine(l logger.Logger) {
 	}()
 }
 
-// route routes the backlog of earlier sources, then notifications from
-// externalCh, to the internal channel until externalCh is closed or stopCh is
-// closed. It returns true if the live query ended with a KILLED notification,
-// having closed the internal channel. Otherwise it returns what it was stopped
-// before routing, for the next routing goroutine.
-func (r *route) route(
-	earlier backlog,
-	externalID string,
-	externalCh chan connection.Notification,
-	stopCh chan struct{},
-	l logger.Logger,
-) (bool, backlog) {
-	if l != nil {
-		l.Debug("Starting notification routing",
-			"internal_id", r.internalID,
-			"external_id", externalID)
-	}
-
-	g := routing{r: r, externalID: externalID, stopCh: stopCh, l: l}
-	if ended, left, ok := g.routeBacklog(earlier); !ok {
-		return ended, left
-	}
-	return g.routeSource(externalCh)
-}
-
 // routing is one routing goroutine's view of its route.
 type routing struct {
 	r          *route
 	externalID string
 	stopCh     chan struct{}
 	l          logger.Logger
+}
+
+// route routes the backlog, then notifications from externalCh, to the
+// internal channel until externalCh is closed or stopCh is closed. It returns
+// true if the live query ended with a KILLED notification, having closed the
+// internal channel. Otherwise it returns what it was stopped before routing.
+func (g *routing) route(backlog []connection.Notification, externalCh chan connection.Notification) (bool, []connection.Notification) {
+	if g.l != nil {
+		g.l.Debug("Starting notification routing",
+			"internal_id", g.r.internalID,
+			"external_id", g.externalID)
+	}
+
+	for len(backlog) > 0 {
+		n := backlog[0]
+		if !g.forward(n) {
+			return false, backlog
+		}
+		backlog = backlog[1:]
+		if n.Action == connection.KilledAction {
+			return g.end(), nil
+		}
+	}
+
+	for {
+		select {
+		case n, ok := <-externalCh:
+			if !ok {
+				if g.l != nil {
+					g.l.Debug("External channel closed, waiting for the live query to be restored",
+						"internal_id", g.r.internalID,
+						"external_id", g.externalID)
+				}
+				return false, nil
+			}
+			if !g.forward(n) {
+				return false, []connection.Notification{n}
+			}
+			if n.Action == connection.KilledAction {
+				return g.end(), nil
+			}
+
+		case <-g.stopCh:
+			if g.l != nil {
+				g.l.Debug("Notification routing stopped",
+					"internal_id", g.r.internalID,
+					"external_id", g.externalID)
+			}
+			return false, nil
+		}
+	}
 }
 
 // forward routes n, waiting for the consumer rather than dropping it. It
@@ -237,7 +297,7 @@ func (g *routing) forward(n connection.Notification) bool {
 }
 
 // end ends the route after its KILLED notification has been routed.
-func (g *routing) end() (bool, backlog) {
+func (g *routing) end() bool {
 	if g.l != nil {
 		g.l.Debug("Live query killed, closing its channel",
 			"internal_id", g.r.internalID,
@@ -245,79 +305,5 @@ func (g *routing) end() (bool, backlog) {
 	}
 	g.r.ended.Store(true)
 	g.r.closeInternal.Do(func() { close(g.r.internalCh) })
-	return true, backlog{}
-}
-
-// routeBacklog routes what earlier sources left. It returns ok if all of it
-// was routed; otherwise routing is over, with the results of route.
-func (g *routing) routeBacklog(earlier backlog) (ended bool, left backlog, ok bool) {
-	pending := earlier.pending
-	for len(pending) > 0 {
-		n := pending[0]
-		if !g.forward(n) {
-			return false, backlog{pending: pending, sources: earlier.sources}, false
-		}
-		pending = pending[1:]
-		if n.Action == connection.KilledAction {
-			ended, left = g.end()
-			return ended, left, false
-		}
-	}
-
-	// Earlier sources are drained without waiting: a closed one up to its
-	// end, one still open up to what it already holds.
-	sources := earlier.sources
-	for len(sources) > 0 {
-		select {
-		case n, open := <-sources[0]:
-			if !open {
-				sources = sources[1:]
-				continue
-			}
-			if !g.forward(n) {
-				return false, backlog{pending: []connection.Notification{n}, sources: sources}, false
-			}
-			if n.Action == connection.KilledAction {
-				ended, left = g.end()
-				return ended, left, false
-			}
-		case <-g.stopCh:
-			return false, backlog{sources: sources}, false
-		default:
-			sources = sources[1:]
-		}
-	}
-	return false, backlog{}, true
-}
-
-// routeSource routes notifications from externalCh until it is closed, the
-// live query is killed, or routing is stopped.
-func (g *routing) routeSource(externalCh chan connection.Notification) (bool, backlog) {
-	for {
-		select {
-		case n, ok := <-externalCh:
-			if !ok {
-				if g.l != nil {
-					g.l.Debug("External channel closed, waiting for the live query to be restored",
-						"internal_id", g.r.internalID,
-						"external_id", g.externalID)
-				}
-				return false, backlog{}
-			}
-			if !g.forward(n) {
-				return false, backlog{pending: []connection.Notification{n}}
-			}
-			if n.Action == connection.KilledAction {
-				return g.end()
-			}
-
-		case <-g.stopCh:
-			if g.l != nil {
-				g.l.Debug("Notification routing stopped",
-					"internal_id", g.r.internalID,
-					"external_id", g.externalID)
-			}
-			return false, backlog{}
-		}
-	}
+	return true
 }
