@@ -674,6 +674,29 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 		s.Require().Error(surrealdb.QueryRaw(ctx, s.db, &queries))
 	})
 
+	s.Run("a failed transaction", func() {
+		// SurrealDB 2.x yields no result for BEGIN, so it cannot be a QueryStmt of its own.
+		if !getVersion(s.T()).IsV3OrLater() {
+			s.T().Skip("BEGIN yields a result only on SurrealDB 3.x and later")
+		}
+		// Once THROW fails the transaction, the server runs neither the statements
+		// nor the markers after it, and returns an error in place of each.
+		queries := []surrealdb.QueryStmt{
+			{SQL: "BEGIN"},
+			{SQL: "CREATE users:queryraw_tx"},
+			{SQL: "THROW 'boom'"},
+			{SQL: "RETURN 5"},
+		}
+		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
+		s.Equal("OK", queries[0].Result.Status)
+		for _, q := range queries[1:] {
+			s.Equal("ERR", q.Result.Status, q.SQL)
+		}
+		var msg string
+		s.Require().NoError(queries[2].GetResult(&msg))
+		s.Contains(msg, "boom")
+	})
+
 	s.Run("conflicting variables", func() {
 		queries := []surrealdb.QueryStmt{
 			{SQL: "RETURN $x", Vars: map[string]any{"x": 1}},

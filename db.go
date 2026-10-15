@@ -783,8 +783,11 @@ func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relations
 // statement returning a random string, so that the results show where the results
 // of each QueryStmt end. If a QueryStmt yields several results or none, as it does
 // when it holds several statements or only a comment, QueryRaw returns an error and
-// leaves the results unset. The variables of all the statements are sent together,
-// so two statements must not give one name different values.
+// leaves the results unset. Once a transaction has failed, the server runs neither
+// the statements nor the markers in it, and returns an error in place of each;
+// QueryRaw gives each QueryStmt in it the error returned in its place, but cannot
+// check there that each QueryStmt holds one statement. The variables of all the
+// statements are sent together, so two statements must not give one name different values.
 //
 // You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
 func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
@@ -857,16 +860,30 @@ func composeRawQuery(queries []QueryStmt, marker string) (sql string, vars map[s
 	return preparedQuery.String(), parameters, nil
 }
 
+// The errors SurrealDB returns in place of the result of a statement which it did not
+// run because the transaction it is in had failed.
+const (
+	errFailedTransaction    = "The query was not executed due to a failed transaction"
+	errCancelledTransaction = "The query was not executed due to a cancelled transaction" //nolint:misspell // the server's spelling
+)
+
 // splitRawResults returns the result of each of the n statements of a query
 // composed by composeRawQuery. Each statement must have yielded exactly one result,
-// followed by the marker after it; otherwise it is unknown which result belongs to
-// which statement, and splitRawResults returns an error.
+// followed by the marker after it, or by the error the server returns in place of a
+// marker it did not run because its transaction had failed; otherwise it is unknown
+// which result belongs to which statement, and splitRawResults returns an error.
 func splitRawResults(
 	res *[]QueryResult[cbor.RawMessage], n int, marker string, unmarshaler codec.Unmarshaler,
 ) ([]QueryResult[cbor.RawMessage], error) {
 	isMarker := func(r QueryResult[cbor.RawMessage]) bool {
 		var s string
 		return r.Status == "OK" && unmarshaler.Unmarshal(r.Result, &s) == nil && s == marker
+	}
+	// isEnd reports whether r is the marker after a statement, or the error in its place.
+	isEnd := func(r QueryResult[cbor.RawMessage]) bool {
+		var s string
+		return isMarker(r) || r.Status == "ERR" && unmarshaler.Unmarshal(r.Result, &s) == nil &&
+			(s == errFailedTransaction || s == errCancelledTransaction)
 	}
 
 	var rest []QueryResult[cbor.RawMessage]
@@ -875,16 +892,9 @@ func splitRawResults(
 	}
 	results := make([]QueryResult[cbor.RawMessage], n)
 	for i := range results {
-		if len(rest) < 2 || isMarker(rest[0]) || !isMarker(rest[1]) {
-			err := fmt.Errorf("QueryRaw: statement %d did not yield exactly one result; "+
+		if len(rest) < 2 || isMarker(rest[0]) || !isEnd(rest[1]) {
+			return nil, fmt.Errorf("QueryRaw: statement %d did not yield exactly one result; "+
 				"each QueryStmt must hold exactly one statement", i)
-			if len(rest) >= 2 && rest[1].Status != "OK" {
-				// A failed transaction fails the markers in it too.
-				var msg string
-				_ = unmarshaler.Unmarshal(rest[1].Result, &msg)
-				err = fmt.Errorf("%w, and the result after it is the error %q", err, msg)
-			}
-			return nil, err
 		}
 		results[i] = rest[0]
 		rest = rest[2:]
