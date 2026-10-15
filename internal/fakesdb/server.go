@@ -179,6 +179,10 @@ type Server struct {
 	// This is used to verify that the SignIn operation works correctly.
 	TokenSignIn string
 
+	// Version is the version answered to the version method, without the
+	// "surrealdb-" prefix. DefaultVersion when empty.
+	Version string
+
 	// sessionIdCounter is used to generate unique session IDs
 	sessionIdCounter int
 }
@@ -261,6 +265,16 @@ func (s *Server) SetGlobalFailures(failures []FailureConfig) {
 
 // Start starts the server and begins accepting WebSocket connections.
 // Returns an error if the server cannot bind to the specified address.
+// DefaultVersion is the version a Server reports when Version is empty.
+const DefaultVersion = "3.0.0"
+
+func (s *Server) versionString() string {
+	if s.Version == "" {
+		return DefaultVersion
+	}
+	return s.Version
+}
+
 func (s *Server) Start() error {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", s.addr)
@@ -359,6 +373,13 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 
 	// Handle authentication-related methods with default behavior
 	switch req.Method {
+	case "version":
+		// Like the real server, version needs no authentication. Clients ask for
+		// it on connecting, to check that they support the server.
+		if matchedStub == nil {
+			h.sendResponse(socket, req.ID, "surrealdb-"+h.server.versionString())
+			return
+		}
 	case "use":
 		h.handleUse(socket, &req)
 		return
