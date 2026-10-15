@@ -609,11 +609,26 @@ func structLevelAccess(sv reflect.Value, access map[string]any, seen, names map[
 		if seen[name] || kept || !accessKeys[strings.ToUpper(name)] {
 			continue
 		}
-		if fv.Kind() == reflect.String && fv.String() != "" {
-			access[name] = fv.String()
+		if sv, ok := stringValue(fv); ok && sv != "" {
+			access[name] = sv
 		}
 	}
 	return embedded
+}
+
+// stringValue returns the string a field holds, through any pointers and
+// interfaces, as the encoder sends it, and whether it holds one.
+func stringValue(fv reflect.Value) (string, bool) {
+	for fv.Kind() == reflect.Pointer || fv.Kind() == reflect.Interface {
+		if fv.IsNil() {
+			return "", false
+		}
+		fv = fv.Elem()
+	}
+	if fv.Kind() != reflect.String {
+		return "", false
+	}
+	return fv.String(), true
 }
 
 // fieldName returns the name a struct field's tag gives it for encoding, or

@@ -151,3 +151,22 @@ func TestAccessOf_cborTagsFirst(t *testing.T) {
 	require.Equal(t, map[string]any{"NS": "n", "DB": "d", "Access": "a"},
 		accessOf(auth{Namespace: "n", Database: "d", Access: "a", Username: "u"}))
 }
+
+// TestAccessOf_pointerFields checks that access fields held through pointers
+// or interfaces, which the encoder dereferences, are kept.
+func TestAccessOf_pointerFields(t *testing.T) {
+	type name string
+	type auth struct {
+		Namespace *string `json:"NS,omitempty"`
+		Database  any     `json:"DB,omitempty"`
+		Access    *name   `json:"AC,omitempty"`
+		Username  *string `json:"user,omitempty"`
+	}
+
+	ns, ac, user := "n", name("a"), "u"
+	var db any = &ns
+	require.Equal(t, map[string]any{"NS": "n", "DB": "n", "AC": "a"},
+		accessOf(auth{Namespace: &ns, Database: db, Access: &ac, Username: &user}))
+	require.Equal(t, map[string]any{"DB": "d"}, accessOf(&auth{Database: "d"}))
+	require.Empty(t, accessOf(auth{Database: 1}))
+}
