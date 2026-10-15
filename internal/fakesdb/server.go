@@ -628,6 +628,15 @@ func SimpleStubResponse(method string, response any) StubResponse {
 	}
 }
 
+// QueryStubResponse creates a stub response for the query RPC method that
+// returns the result of a single successful statement. The SDK's CRUD
+// functions, such as Select, compile to a query.
+func QueryStubResponse(result any) StubResponse {
+	return SimpleStubResponse("query", []any{
+		map[string]any{"status": "OK", "time": "0s", "result": result},
+	})
+}
+
 // ErrorStubResponse creates a stub response that returns an RPC error
 func ErrorStubResponse(method string, code int, message string) StubResponse {
 	return StubResponse{
