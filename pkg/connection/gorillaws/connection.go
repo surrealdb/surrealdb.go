@@ -413,12 +413,14 @@ func (c *Connection) write(v any) error {
 	return err
 }
 
-func (c *Connection) closeWithError(err error) {
+// closeWithError marks the connection closed with err, and reports whether
+// this call was the one which did.
+func (c *Connection) closeWithError(err error) bool {
 	// Use CompareAndSwap to atomically check and set closed flag
 	// This ensures only one goroutine can proceed to close the channel
 	if !c.closed.CompareAndSwap(false, true) {
 		// Already closed by another goroutine
-		return
+		return false
 	}
 
 	c.closeMutex.Lock()
@@ -435,6 +437,7 @@ func (c *Connection) closeWithError(err error) {
 	if err != nil {
 		c.DrainAllLiveNotifications()
 	}
+	return true
 }
 
 func (c *Connection) readLoop(conn *gorilla.Conn) {
@@ -447,10 +450,13 @@ func (c *Connection) readLoop(conn *gorilla.Conn) {
 			if err != nil {
 				shouldExit := c.handleError(err)
 				if shouldExit {
-					c.closeWithError(err)
 					// Close returns at once for a connection already marked
-					// closed, so release the network connection here.
-					_ = conn.Close()
+					// closed, so release the network connection here, unless
+					// Close marked it and closes it itself: closing it here too
+					// would make Close fail with net.ErrClosed.
+					if c.closeWithError(err) {
+						_ = conn.Close()
+					}
 					return
 				}
 				continue

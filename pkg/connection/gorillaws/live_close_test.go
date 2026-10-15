@@ -147,3 +147,24 @@ func TestLiveNotifications_lostConnectionDeliversQueued(t *testing.T) {
 		})
 	}
 }
+
+// TestClose_readLoopLeavesTheSocketToClose checks that once Close has marked
+// the connection closed, the read loop leaves the socket for Close to close,
+// even when a close frame arrives meanwhile. It used to close the socket under
+// Close, which then failed with "use of closed network connection".
+func TestClose_readLoopLeavesTheSocketToClose(t *testing.T) {
+	u, drop := newDroppingServer(t, true)
+	c := New(connection.NewConfig(u))
+	require.NoError(t, c.Connect(context.Background()))
+	conn := c.Conn
+	// Let the read loop wait for a message, as it does on a live connection.
+	time.Sleep(100 * time.Millisecond)
+
+	// What Close does first, then the server's close frame arrives before
+	// Close closes the socket.
+	require.True(t, c.closeWithError(nil))
+	drop()
+	time.Sleep(200 * time.Millisecond)
+
+	assert.NoError(t, conn.Close(), "the read loop closed the socket Close was about to close")
+}
