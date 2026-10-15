@@ -505,29 +505,38 @@ var accessKeys = map[string]bool{
 
 // accessOf extracts the namespace, database and access method from the
 // authentication data of a signin or signup, which a refresh signin must repeat.
+//
+// authData may be any map with string keys, including named map types such as
+// `type Credentials map[string]any`, or a struct (or pointer to one) whose
+// fields are tagged NS, DB and AC, such as surrealdb.Auth.
 func accessOf(authData any) map[string]any {
 	access := map[string]any{}
-	switch a := authData.(type) {
-	case map[string]any:
-		for k, v := range a {
-			if accessKeys[strings.ToUpper(k)] {
-				access[k] = v
-			}
-		}
-	case map[string]string:
-		for k, v := range a {
-			if accessKeys[strings.ToUpper(k)] {
-				access[k] = v
-			}
-		}
-	default:
-		// Structs such as surrealdb.Auth: read the fields tagged NS, DB and AC.
-		v := reflect.Indirect(reflect.ValueOf(authData))
-		if v.Kind() != reflect.Struct {
+	v := reflect.ValueOf(authData)
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
 			return access
 		}
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Map:
+		if v.Type().Key().Kind() != reflect.String {
+			return access
+		}
+		iter := v.MapRange()
+		for iter.Next() {
+			k := iter.Key().String()
+			if accessKeys[strings.ToUpper(k)] {
+				access[k] = iter.Value().Interface()
+			}
+		}
+	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
 			f := v.Type().Field(i)
+			if !f.IsExported() {
+				continue
+			}
 			name := strings.Split(f.Tag.Get("json"), ",")[0]
 			if name == "" {
 				name = strings.Split(f.Tag.Get("cbor"), ",")[0]
@@ -535,8 +544,8 @@ func accessOf(authData any) map[string]any {
 			if !accessKeys[strings.ToUpper(name)] {
 				continue
 			}
-			if s, ok := v.Field(i).Interface().(string); ok && s != "" {
-				access[name] = s
+			if fv := v.Field(i); fv.Kind() == reflect.String && fv.String() != "" {
+				access[name] = fv.String()
 			}
 		}
 	}

@@ -72,4 +72,22 @@ func TestAccessOf(t *testing.T) {
 	require.Equal(t, want, accessOf(&auth{Namespace: "n", Database: "d", Access: "a"}))
 	require.Equal(t, map[string]any{"namespace": "n"}, accessOf(map[string]any{"namespace": "n", "refresh": "r"}))
 	require.Empty(t, accessOf("nonsense"))
+	require.Empty(t, accessOf(nil))
+	require.Empty(t, accessOf((*auth)(nil)))
+	require.Empty(t, accessOf(map[int]any{1: "n"}))
+}
+
+// TestAccessOf_namedMapTypes checks that maps of a named type, which a type
+// switch on map[string]any does not match, still yield the access fields.
+func TestAccessOf_namedMapTypes(t *testing.T) {
+	type credentials map[string]any
+	type stringCredentials map[string]string
+	type key string
+	type keyedCredentials map[key]any
+
+	want := map[string]any{"NS": "n", "DB": "d", "AC": "a"}
+	require.Equal(t, want, accessOf(credentials{"NS": "n", "DB": "d", "AC": "a", "user": "u", "pass": "p"}))
+	require.Equal(t, want, accessOf(&credentials{"NS": "n", "DB": "d", "AC": "a"}))
+	require.Equal(t, want, accessOf(stringCredentials{"NS": "n", "DB": "d", "AC": "a", "pass": "p"}))
+	require.Equal(t, want, accessOf(keyedCredentials{"NS": "n", "DB": "d", "AC": "a", "pass": "p"}))
 }
