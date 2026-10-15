@@ -611,3 +611,107 @@ func (s *SurrealDBTestSuite) TestRPCError() {
 		s.Require().Error(err)
 	})
 }
+
+func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
+	ctx := context.Background()
+
+	s.Run("trailing semicolons and line comments", func() {
+		queries := []surrealdb.QueryStmt{
+			{SQL: "RETURN 1;"},
+			{SQL: "RETURN 2 -- the second"},
+			{SQL: "RETURN $x;  ", Vars: map[string]any{"x": 3}},
+		}
+		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
+		for i, want := range []int{1, 2, 3} {
+			var got int
+			s.Require().NoError(queries[i].GetResult(&got))
+			s.Equal(want, got)
+		}
+	})
+
+	s.Run("a statement which yields no result", func() {
+		queries := []surrealdb.QueryStmt{
+			{SQL: "RETURN 1"},
+			{SQL: "/* nothing */"},
+		}
+		var err error
+		s.Require().NotPanics(func() {
+			err = surrealdb.QueryRaw(ctx, s.db, &queries)
+		})
+		s.Require().Error(err)
+		s.Contains(err.Error(), "exactly one statement")
+	})
+
+	s.Run("a statement holding two statements", func() {
+		queries := []surrealdb.QueryStmt{
+			{SQL: "RETURN 1; RETURN 2"},
+			{SQL: "RETURN 3"},
+		}
+		err := surrealdb.QueryRaw(ctx, s.db, &queries)
+		s.Require().Error(err)
+		s.Contains(err.Error(), "exactly one statement")
+		s.Nil(queries[1].Result.Result, "no result is assigned to the wrong statement")
+	})
+
+	s.Run("two statements in one and none in another", func() {
+		// The server returns as many results as there are QueryStmts,
+		// but the second result belongs to the first QueryStmt.
+		for _, empty := range []string{"/* nothing */", "-- nothing"} {
+			queries := []surrealdb.QueryStmt{
+				{SQL: "RETURN 1; RETURN 2"},
+				{SQL: empty},
+			}
+			err := surrealdb.QueryRaw(ctx, s.db, &queries)
+			s.Require().Error(err, empty)
+			s.Contains(err.Error(), "statement 0 did not yield exactly one result")
+			s.Nil(queries[0].Result.Result, "no result is assigned")
+			s.Nil(queries[1].Result.Result, "no result is assigned to the wrong statement")
+		}
+	})
+
+	s.Run("an empty statement", func() {
+		queries := []surrealdb.QueryStmt{{SQL: "RETURN 1"}, {SQL: " ; "}}
+		s.Require().Error(surrealdb.QueryRaw(ctx, s.db, &queries))
+	})
+
+	s.Run("a failed transaction", func() {
+		// SurrealDB 2.x yields no result for BEGIN, so it cannot be a QueryStmt of its own.
+		if !getVersion(s.T()).IsV3OrLater() {
+			s.T().Skip("BEGIN yields a result only on SurrealDB 3.x and later")
+		}
+		// Once THROW fails the transaction, the server runs neither the statements
+		// nor the markers after it, and returns an error in place of each.
+		queries := []surrealdb.QueryStmt{
+			{SQL: "BEGIN"},
+			{SQL: "CREATE users:queryraw_tx"},
+			{SQL: "THROW 'boom'"},
+			{SQL: "RETURN 5"},
+		}
+		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
+		s.Equal("OK", queries[0].Result.Status)
+		for _, q := range queries[1:] {
+			s.Equal("ERR", q.Result.Status, q.SQL)
+		}
+		var msg string
+		s.Require().NoError(queries[2].GetResult(&msg))
+		s.Contains(msg, "boom")
+	})
+
+	s.Run("conflicting variables", func() {
+		queries := []surrealdb.QueryStmt{
+			{SQL: "RETURN $x", Vars: map[string]any{"x": 1}},
+			{SQL: "RETURN $x", Vars: map[string]any{"x": 2}},
+		}
+		err := surrealdb.QueryRaw(ctx, s.db, &queries)
+		s.Require().Error(err)
+		s.Contains(err.Error(), "$x")
+	})
+
+	s.Run("shared variables with equal values", func() {
+		queries := []surrealdb.QueryStmt{
+			{SQL: "RETURN $x", Vars: map[string]any{"x": 1}},
+			{SQL: "RETURN $x + 1", Vars: map[string]any{"x": 1}},
+		}
+		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
+	})
+}
