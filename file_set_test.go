@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,5 +79,26 @@ func TestFileAndSet_server(t *testing.T) {
 		kind, err := surrealdb.Query[string](ctx, db, "RETURN type::of($f)", map[string]any{"f": f})
 		require.NoError(t, err)
 		assert.Equal(t, "file", (*kind)[0].Result)
+	})
+
+	t.Run("file string", func(t *testing.T) {
+		for _, f := range []models.File{
+			models.NewFile("bucket", "/a/b.txt"),
+			models.NewFile("buck et", `/a"b\c:d`),
+		} {
+			res, err := surrealdb.Query[string](ctx, db, "RETURN <string>$f", map[string]any{"f": f})
+			require.NoError(t, err)
+			assert.Equal(t, (*res)[0].Result, f.String(), "String matches the server's own formatting")
+		}
+	})
+
+	t.Run("file literal", func(t *testing.T) {
+		f := models.NewFile("my_bucket-1.x", "/dir/sub-dir/file_name.v2.tar.gz")
+		res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
+		if err != nil && strings.Contains(err.Error(), "experimental files feature") {
+			t.Skip("parsing a file literal needs --allow-experimental files")
+		}
+		require.NoError(t, err)
+		assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
 	})
 }

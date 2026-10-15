@@ -48,8 +48,24 @@ func TestFile_cbor(t *testing.T) {
 }
 
 func TestFile_string(t *testing.T) {
-	assert.Equal(t, `f"bucket:/a/b.txt"`, models.NewFile("bucket", "/a/b.txt").String())
-	assert.Equal(t, `f"b:/\"q\"\\"`, models.NewFile("b", `"q"\`).String())
+	for _, tt := range []struct {
+		file models.File
+		want string
+	}{
+		// A valid SurrealQL literal: only letters, digits, '_', '-', '.' and,
+		// in the key, '/'.
+		{models.NewFile("bucket", "/a/b.txt"), `f"bucket:/a/b.txt"`},
+		{models.NewFile("my_bucket-1.x", "dir/file_name.v2.tar.gz"), `f"my_bucket-1.x:/dir/file_name.v2.tar.gz"`},
+		{models.NewFile("", "/"), `f":/"`},
+		// Display only, as SurrealDB 3.3.4 formats them with <string>: the
+		// parser accepts none of these characters, escaped or not.
+		{models.NewFile("b", `"q"\`), `f"b:/\"q\"\\"`},
+		{models.NewFile("buck et", `/a"b`), `f"buck\ et:/a\"b"`},
+		{models.NewFile("bucket", "a:b"), `f"bucket:/a\:b"`},
+		{models.NewFile("b/c", "/é d"), `f"b\/c:/\é\ d"`},
+	} {
+		assert.Equal(t, tt.want, tt.file.String())
+	}
 }
 
 func TestSet_cbor(t *testing.T) {
