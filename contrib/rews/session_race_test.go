@@ -91,3 +91,47 @@ func TestAccessOf_namedMapTypes(t *testing.T) {
 	require.Equal(t, want, accessOf(stringCredentials{"NS": "n", "DB": "d", "AC": "a", "pass": "p"}))
 	require.Equal(t, want, accessOf(keyedCredentials{"NS": "n", "DB": "d", "AC": "a", "pass": "p"}))
 }
+
+// TestAccessOf_embeddedStructs checks that access fields promoted from an
+// embedded struct, as the encoder promotes them, are found.
+func TestAccessOf_embeddedStructs(t *testing.T) {
+	type auth struct {
+		Namespace string `json:"NS,omitempty"`
+		Database  string `json:"DB,omitempty"`
+		Access    string `json:"AC,omitempty"`
+		Username  string `json:"user,omitempty"`
+		Password  string `json:"pass,omitempty"`
+	}
+	type embedded struct {
+		auth
+		Extra string `json:"extra"`
+	}
+	type embeddedPointer struct {
+		*auth
+	}
+	type twoLevels struct {
+		embedded
+	}
+	type shadowed struct {
+		auth
+		Namespace string `json:"NS"`
+	}
+	type named struct {
+		auth `json:"creds"`
+	}
+
+	creds := auth{Namespace: "n", Database: "d", Access: "a", Username: "u", Password: "p"}
+	want := map[string]any{"NS": "n", "DB": "d", "AC": "a"}
+
+	require.Equal(t, want, accessOf(embedded{auth: creds, Extra: "x"}))
+	require.Equal(t, want, accessOf(&embedded{auth: creds}))
+	require.Equal(t, want, accessOf(embeddedPointer{auth: &creds}))
+	require.Equal(t, want, accessOf(twoLevels{embedded{auth: creds}}))
+	require.Empty(t, accessOf(embeddedPointer{}))
+
+	// A field of the outer struct hides one of the same name it embeds.
+	require.Equal(t, map[string]any{"NS": "outer", "DB": "d", "AC": "a"},
+		accessOf(shadowed{auth: creds, Namespace: "outer"}))
+	// An embedded struct with a tag name is encoded as a field, not promoted.
+	require.Empty(t, accessOf(named{auth: creds}))
+}

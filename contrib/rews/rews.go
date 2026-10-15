@@ -531,7 +531,8 @@ var accessKeys = map[string]bool{
 //
 // authData may be any map with string keys, including named map types such as
 // `type Credentials map[string]any`, or a struct (or pointer to one) whose
-// fields are tagged NS, DB and AC, such as surrealdb.Auth.
+// fields are tagged NS, DB and AC, such as surrealdb.Auth, including fields
+// promoted from embedded structs.
 func accessOf(authData any) map[string]any {
 	access := map[string]any{}
 	v := reflect.ValueOf(authData)
@@ -555,24 +556,85 @@ func accessOf(authData any) map[string]any {
 			}
 		}
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			f := v.Type().Field(i)
-			if !f.IsExported() {
-				continue
-			}
-			name := strings.Split(f.Tag.Get("json"), ",")[0]
-			if name == "" {
-				name = strings.Split(f.Tag.Get("cbor"), ",")[0]
-			}
-			if !accessKeys[strings.ToUpper(name)] {
-				continue
-			}
-			if fv := v.Field(i); fv.Kind() == reflect.String && fv.String() != "" {
-				access[name] = fv.String()
-			}
-		}
+		structAccess(v, access)
 	}
 	return access
+}
+
+// structAccess adds the access fields of the struct v to access. Fields of
+// embedded structs without a tag name are promoted as encoding/json promotes
+// them: level by level, with a field hiding any of the same name deeper down.
+func structAccess(v reflect.Value, access map[string]any) {
+	seen := map[string]bool{}
+	visited := map[reflect.Type]bool{}
+	for level := []reflect.Value{v}; len(level) > 0; {
+		var next []reflect.Value
+		names := map[string]bool{}
+		for _, sv := range level {
+			if visited[sv.Type()] {
+				continue
+			}
+			visited[sv.Type()] = true
+			next = append(next, structLevelAccess(sv, access, seen, names)...)
+		}
+		for name := range names {
+			seen[name] = true
+		}
+		level = next
+	}
+}
+
+// structLevelAccess adds the access fields of the struct sv to access, unless
+// a shallower level had a field of the same name, records the names of its
+// fields in names, and returns the structs it embeds for the next level.
+func structLevelAccess(sv reflect.Value, access map[string]any, seen, names map[string]bool) []reflect.Value {
+	var embedded []reflect.Value
+	for i := 0; i < sv.NumField(); i++ {
+		f, fv := sv.Type().Field(i), sv.Field(i)
+		name := fieldName(f.Tag)
+		if f.Anonymous && name == "" {
+			if ev, ok := embeddedStruct(fv); ok {
+				embedded = append(embedded, ev)
+				continue
+			}
+		}
+		if !f.IsExported() || name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		names[name] = true
+		_, kept := access[name]
+		if seen[name] || kept || !accessKeys[strings.ToUpper(name)] {
+			continue
+		}
+		if fv.Kind() == reflect.String && fv.String() != "" {
+			access[name] = fv.String()
+		}
+	}
+	return embedded
+}
+
+// fieldName returns the name a struct field's tag gives it for encoding, or
+// "" if it gives none.
+func fieldName(tag reflect.StructTag) string {
+	if name := strings.Split(tag.Get("json"), ",")[0]; name != "" {
+		return name
+	}
+	return strings.Split(tag.Get("cbor"), ",")[0]
+}
+
+// embeddedStruct returns the struct an embedded field holds, through any
+// pointers, and whether there is one.
+func embeddedStruct(fv reflect.Value) (reflect.Value, bool) {
+	for fv.Kind() == reflect.Pointer {
+		if fv.IsNil() {
+			return fv, false
+		}
+		fv = fv.Elem()
+	}
+	return fv, fv.Kind() == reflect.Struct
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
