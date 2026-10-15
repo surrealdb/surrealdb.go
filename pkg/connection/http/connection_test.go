@@ -4,15 +4,19 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
+	"reflect"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
@@ -193,10 +197,68 @@ func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
 	assert.NotContains(t, vars, "w")
 	assert.EqualValues(t, 3, vars["z"])
 
+	// use with missing or non-string parameters fails and changes nothing.
+	for _, params := range [][]any{{}, {"ns3"}, {1, 2}, {"ns3", 2}, {"ns3", "db3", "x"}} {
+		_, err = con.Send(ctx, "use", params...)
+		require.Error(t, err, "use %v", params)
+	}
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "ns2", header.Get("Surreal-NS"))
+
+	// A value is kept as it was when it was bound, and one which cannot be
+	// encoded is refused rather than breaking every later query.
+	m := map[string]any{"a": 1}
+	require.NoError(t, con.Let(ctx, "m", m))
+	m["a"] = 2
+	require.Error(t, con.Let(ctx, "bad", unencodable{}))
+	_, err = con.Send(ctx, "query", "RETURN $m")
+	require.NoError(t, err)
+	vars, _ = sent.Params[1].(map[string]any)
+	assert.EqualValues(t, map[string]any{"a": uint64(1)}, vars["m"])
+	assert.NotContains(t, vars, "bad")
+
 	// invalidate forgets the token.
 	_, err = con.Send(ctx, "invalidate")
 	require.NoError(t, err)
 	_, err = con.Send(ctx, "query", "RETURN 1")
 	require.NoError(t, err)
 	assert.Empty(t, header.Get("Authorization"))
+}
+
+type unencodable struct{}
+
+func (unencodable) MarshalCBOR() ([]byte, error) { return nil, errors.New("cannot be encoded") }
+
+// The token of a sign-in which returns a token pair is kept whatever map type
+// the unmarshaler decodes objects to.
+func TestTrackAuth_tokenPairWithACustomMapType(t *testing.T) {
+	c := surrealcbor.New()
+	pair, err := c.Marshal(map[string]any{"id": "abc", "result": map[string]any{"access": "the-access", "refresh": "the-refresh"}})
+	require.NoError(t, err)
+	ok, err := c.Marshal(map[string]any{"id": "abc", "result": []any{}})
+	require.NoError(t, err)
+
+	var header http.Header
+	//nolint:staticcheck // the case reported is the deprecated fxamacker unmarshaler with a custom map type
+	unmarshaler := &models.CborUnmarshaler{DecOptions: cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[string]string(nil))}}
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: unmarshaler})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header = req.Header
+		var sent connection.RPCRequest
+		body, _ := io.ReadAll(req.Body)
+		_ = c.Unmarshal(body, &sent)
+		res := ok
+		if sent.Method == "signin" {
+			res = pair
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(res)), Header: http.Header{}}
+	}))
+
+	ctx := context.Background()
+	_, err = con.Send(ctx, "signin", map[string]any{"user": "u", "pass": "p"})
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer the-access", header.Get("Authorization"))
 }

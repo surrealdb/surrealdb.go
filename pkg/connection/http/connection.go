@@ -159,15 +159,25 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 func (c *Connection) callLocally(request *connection.RPCRequest) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
 	switch request.Method {
 	case "use":
-		ns, _ := paramString(request.Params, 0)
-		db, _ := paramString(request.Params, 1)
+		ns, nsOK := optionalString(request.Params, 0)
+		db, dbOK := optionalString(request.Params, 1)
+		if !nsOK || !dbOK || len(request.Params) != 2 {
+			return nil, true, invalidParams(request.Method, "a namespace and a database")
+		}
 		c.setNamespaceAndDatabase(ns, db)
 	case "let", "set":
 		key, ok := paramString(request.Params, 0)
 		if !ok || len(request.Params) != 2 {
 			return nil, true, invalidParams(request.Method, "a variable name and a value")
 		}
-		c.setVariable(key, request.Params[1])
+		// The value is kept encoded, as a WebSocket server would receive it,
+		// so later changes to it do not leak into queries, and a value which
+		// cannot be encoded fails here rather than in every later query.
+		value, err := c.Marshaler.Marshal(request.Params[1])
+		if err != nil {
+			return nil, true, fmt.Errorf("%s $%s: %w", request.Method, key, err)
+		}
+		c.setVariable(key, cbor.RawMessage(value))
 	case "unset":
 		key, ok := paramString(request.Params, 0)
 		if !ok || len(request.Params) != 1 {
@@ -189,6 +199,14 @@ func invalidParams(method, want string) error {
 		Kind:    connection.KindValidation,
 		Message: fmt.Sprintf("Invalid params: %s takes %s", method, want),
 	}
+}
+
+// optionalString returns the string parameter at i, or "" for nil.
+func optionalString(params []any, i int) (string, bool) {
+	if i < len(params) && params[i] == nil {
+		return "", true
+	}
+	return paramString(params, i)
 }
 
 func paramString(params []any, i int) (string, bool) {
@@ -243,21 +261,16 @@ func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawM
 		if result == nil {
 			return
 		}
-		var token any
-		if err := c.Unmarshaler.Unmarshal(*result, &token); err != nil {
+		// The result is a token, or a token pair when the access method
+		// gives refresh tokens.
+		var token string
+		if err := c.Unmarshaler.Unmarshal(*result, &token); err == nil {
+			c.setToken(token)
 			return
 		}
-		switch t := token.(type) {
-		case string:
-			c.setToken(t)
-		case map[string]any:
-			if access, ok := t["access"].(string); ok {
-				c.setToken(access)
-			}
-		case map[any]any:
-			if access, ok := t["access"].(string); ok {
-				c.setToken(access)
-			}
+		var tokens connection.Tokens
+		if err := c.Unmarshaler.Unmarshal(*result, &tokens); err == nil && tokens.Access != "" {
+			c.setToken(tokens.Access)
 		}
 	case "authenticate":
 		if token, ok := paramString(request.Params, 0); ok {
@@ -356,8 +369,8 @@ func (c *Connection) Use(ctx context.Context, namespace, database string) error 
 // As HTTP is stateless, the variable is kept by the connection and sent along with
 // each query, where the variables passed to the query take precedence over it.
 func (c *Connection) Let(ctx context.Context, key string, value any) error {
-	c.setVariable(key, value)
-	return nil
+	_, _, err := c.callLocally(&connection.RPCRequest{Method: "let", Params: []any{key, value}})
+	return err
 }
 
 // Unset removes a variable defined with Let.
