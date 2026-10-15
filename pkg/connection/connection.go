@@ -87,6 +87,10 @@ type Toolkit struct {
 	// response, under ResponseChannelsLock.
 	delivered map[string]struct{}
 
+	// responseStreams are the requests answered by many responses, such as
+	// query_stream, by ID. ResponseChannelsLock guards it too.
+	responseStreams map[string]*ResponseStream
+
 	NotificationChannels     map[string]chan Notification
 	NotificationChannelsLock sync.RWMutex
 }
@@ -147,8 +151,15 @@ func (bc *Toolkit) RemoveResponseChannel(id string) {
 // is buffered for exactly one response. A caller that timed out and stopped
 // listening therefore never stalls the goroutine delivering responses.
 //
+// A response to a request answered by many, registered with
+// OpenResponseStream, is added to its stream instead.
+//
 // It returns false if no caller is waiting for id.
 func (bc *Toolkit) DeliverResponse(id string, res RPCResponse[cbor.RawMessage]) bool {
+	if bc.deliverToStream(id, res) {
+		return true
+	}
+
 	bc.ResponseChannelsLock.Lock()
 	ch, ok := bc.ResponseChannels[id]
 	if ok {

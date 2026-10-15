@@ -367,6 +367,32 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	}
 }
 
+// CallStream sends a request answered by many responses, such as
+// query_stream, and returns the stream they arrive on.
+func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	select {
+	case <-c.closeCh:
+		return nil, c.closeError
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if req.ID == nil || req.ID == "" {
+		req.ID = rand.NewRequestID(constants.RequestIDLength)
+	}
+
+	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), c.closeCh, func() error { return c.closeError })
+	if err != nil {
+		return nil, err
+	}
+	if err := c.write(req); err != nil {
+		stream.Close()
+		return nil, err
+	}
+	return stream, nil
+}
+
 // Unset implements connection.Connection.
 func (c *Connection) Unset(ctx context.Context, key string) error {
 	return connection.Send[any](c, ctx, nil, "unset", key)

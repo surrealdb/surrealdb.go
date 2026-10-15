@@ -63,7 +63,7 @@ type Connection struct {
 
 	// connCloseCh signals that the connection is being closed.
 	// It is used to stop the readLoop goroutine and prevent Send from writing to a closed (i.e. nil) connection.
-	connCloseCh chan int
+	connCloseCh chan struct{}
 
 	// connCloseError stores the error that caused the connection to close.
 	// Protected by closeMutex for thread-safe access.
@@ -129,7 +129,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 		}
 	}
 
-	c.connCloseCh = make(chan int)
+	c.connCloseCh = make(chan struct{})
 
 	// Start a goroutine to read messages from the WebSocket connection.
 	// This will run in the background and handle incoming messages,
@@ -381,6 +381,38 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 		}
 		return &res, nil
 	}
+}
+
+// CallStream sends a request answered by many responses, such as
+// query_stream, and returns the stream they arrive on.
+func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	select {
+	case <-c.connCloseCh:
+		return nil, c.closeErr()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if req.ID == nil || req.ID == "" {
+		req.ID = rand.NewRequestID(constants.RequestIDLength)
+	}
+
+	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), c.connCloseCh, c.closeErr)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.write(req); err != nil {
+		stream.Close()
+		return nil, err
+	}
+	return stream, nil
+}
+
+func (c *Connection) closeErr() error {
+	c.closeMutex.RLock()
+	defer c.closeMutex.RUnlock()
+	return c.connCloseError
 }
 
 func (c *Connection) write(v any) error {
