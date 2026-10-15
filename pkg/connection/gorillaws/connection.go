@@ -557,10 +557,14 @@ func (c *Connection) handleResponse(res []byte) {
 		}
 
 		if !c.SendNotification(channelID.String(), notification) {
-			c.logger.Error(
-				fmt.Sprintf("dropped notification for ended live query %+v", channelID.String()),
-				"result", fmt.Sprint(rpcRes.Result),
-			)
+			msg := fmt.Sprintf("dropped notification for ended live query %+v", channelID.String())
+			if notification.Action == connection.KilledAction {
+				// Expected: Kill closes the notifications as soon as the
+				// server answers, which can be before KILLED arrives.
+				c.logger.Debug(msg)
+			} else {
+				c.logger.Error(msg, "result", fmt.Sprint(rpcRes.Result))
+			}
 		}
 	}
 }

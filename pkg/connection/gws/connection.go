@@ -149,9 +149,14 @@ func (c *Connection) handleResponse(data []byte) {
 		}
 
 		if !c.SendNotification(notification.ID.String(), notification) {
-			c.logError(
-				fmt.Sprintf("dropped notification for ended live query %+v", notification.ID.String()),
-			)
+			msg := fmt.Sprintf("dropped notification for ended live query %+v", notification.ID.String())
+			if notification.Action == connection.KilledAction {
+				// Expected: Kill closes the notifications as soon as the
+				// server answers, which can be before KILLED arrives.
+				c.logDebug(msg)
+			} else {
+				c.logError(msg)
+			}
 		}
 	}
 }
