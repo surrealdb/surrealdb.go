@@ -83,6 +83,9 @@ type Toolkit struct {
 
 	ResponseChannels     map[string]chan RPCResponse[cbor.RawMessage]
 	ResponseChannelsLock sync.RWMutex
+	// delivered holds the IDs of the response channels which have had their
+	// response, under ResponseChannelsLock.
+	delivered map[string]struct{}
 
 	NotificationChannels     map[string]chan Notification
 	NotificationChannelsLock sync.RWMutex
@@ -96,7 +99,9 @@ func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMe
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
 	}
 
-	ch := make(chan RPCResponse[cbor.RawMessage]) // Buffered channel to avoid blocking on send
+	// The channel holds the one response it will ever carry, so delivering it
+	// never blocks the read loop, even when the caller has already given up.
+	ch := make(chan RPCResponse[cbor.RawMessage], 1)
 	bc.ResponseChannels[id] = ch
 
 	return ch, nil
@@ -124,10 +129,51 @@ func (bc *Toolkit) GetNotificationChannel(id string) (chan Notification, bool) {
 	return ch, ok
 }
 
+// RemoveResponseChannel releases the response channel for id, which the call
+// that created it does once it is done with it. Until then the id stays taken,
+// even after its response is delivered, so another call cannot register it and
+// then lose its channel to this one's cleanup.
 func (bc *Toolkit) RemoveResponseChannel(id string) {
 	bc.ResponseChannelsLock.Lock()
 	defer bc.ResponseChannelsLock.Unlock()
 	delete(bc.ResponseChannels, id)
+	delete(bc.delivered, id)
+}
+
+// DeliverResponse hands res to the caller waiting on the response channel for id.
+//
+// The channel is marked delivered in the same critical section that finds it,
+// so a response is delivered at most once, and the send cannot block: the channel
+// is buffered for exactly one response. A caller that timed out and stopped
+// listening therefore never stalls the goroutine delivering responses.
+//
+// It returns false if no caller is waiting for id.
+func (bc *Toolkit) DeliverResponse(id string, res RPCResponse[cbor.RawMessage]) bool {
+	bc.ResponseChannelsLock.Lock()
+	ch, ok := bc.ResponseChannels[id]
+	if ok {
+		if _, done := bc.delivered[id]; done {
+			ok = false
+		} else {
+			if bc.delivered == nil {
+				bc.delivered = make(map[string]struct{})
+			}
+			bc.delivered[id] = struct{}{}
+		}
+	}
+	bc.ResponseChannelsLock.Unlock()
+
+	if !ok {
+		return false
+	}
+
+	select {
+	case ch <- res:
+	default:
+		// Unreachable while every response channel comes from CreateResponseChannel,
+		// but a full channel must never block the caller.
+	}
+	return true
 }
 
 func (bc *Toolkit) GetResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], bool) {
