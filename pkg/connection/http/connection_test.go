@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -109,4 +111,72 @@ func TestCall_withoutUse(t *testing.T) {
 	if len(gotNS) != 1 || gotNS[0] != "ns" || len(gotDB) != 1 || gotDB[0] != "db" {
 		t.Fatalf("expected namespace and database headers, got %v %v", gotNS, gotDB)
 	}
+}
+
+func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
+	c := surrealcbor.New()
+	ok, err := c.Marshal(map[string]any{"id": "abc", "result": []any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sent connection.RPCRequest
+	var header http.Header
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header = req.Header
+		body, _ := io.ReadAll(req.Body)
+		sent = connection.RPCRequest{}
+		_ = c.Unmarshal(body, &sent)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(ok)), Header: http.Header{}}
+	}))
+
+	ctx := context.Background()
+	require.NoError(t, con.Use(ctx, "ns", "db"))
+	require.NoError(t, con.Authenticate(ctx, "the-token"))
+	require.NoError(t, con.Let(ctx, "namespace", "elsewhere"))
+	require.NoError(t, con.Let(ctx, "auth_token", "nope"))
+	require.NoError(t, con.Let(ctx, "x", 1))
+
+	_, err = con.Send(ctx, "query", "RETURN $x", map[string]any{"y": 2})
+	require.NoError(t, err)
+
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+	assert.Equal(t, "db", header.Get("Surreal-DB"))
+	assert.Equal(t, "Bearer the-token", header.Get("Authorization"))
+	require.Len(t, sent.Params, 2)
+	vars, isMap := sent.Params[1].(map[string]any)
+	require.True(t, isMap, "%T", sent.Params[1])
+	assert.Equal(t, "elsewhere", vars["namespace"])
+	assert.Equal(t, "nope", vars["auth_token"])
+	assert.EqualValues(t, 1, vars["x"])
+	assert.EqualValues(t, 2, vars["y"])
+
+	require.NoError(t, con.Unset(ctx, "x"))
+	_, err = con.Send(ctx, "query", "RETURN $x")
+	require.NoError(t, err)
+	vars, _ = sent.Params[1].(map[string]any)
+	assert.NotContains(t, vars, "x")
+	assert.Equal(t, "ns", header.Get("Surreal-NS"))
+
+	// let, set, unset and use sent as raw RPCs change the same state, without a request.
+	sent = connection.RPCRequest{}
+	_, err = con.Send(ctx, "let", "z", 3)
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "use", "ns2", "db2")
+	require.NoError(t, err)
+	assert.Empty(t, sent.Method, "no request is made for let or use")
+
+	_, err = con.Send(ctx, "query", "RETURN $z")
+	require.NoError(t, err)
+	vars, _ = sent.Params[1].(map[string]any)
+	assert.EqualValues(t, 3, vars["z"])
+	assert.Equal(t, "ns2", header.Get("Surreal-NS"))
+
+	// invalidate forgets the token.
+	_, err = con.Send(ctx, "invalidate")
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Empty(t, header.Get("Authorization"))
 }
