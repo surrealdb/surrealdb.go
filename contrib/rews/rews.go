@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/internal/rand"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
@@ -610,24 +612,31 @@ var accessKeys = map[string]bool{
 // authentication data of a signin or signup, which a refresh signin must
 // repeat.
 //
-// It reads them from authData as m encodes it, decoded with u, so that it
+// It reads them from the request the signin sent, the method RPC with
+// authData as its only param, as m encodes it, decoded with u, so that it
 // finds what the signin sent however authData is shaped: a map of any type,
 // a struct with fields tagged, promoted from embedded structs or behind
 // pointers, or a type that encodes itself. Only string values are kept, as
 // those are all a namespace, database or access method can be.
-func accessFields(m codec.Marshaler, u codec.Unmarshaler, authData any) map[string]any {
+func accessFields(m codec.Marshaler, u codec.Unmarshaler, method string, authData any) map[string]any {
 	access := map[string]any{}
-	// Encode it as an RPC request's params, which is how the signin sent it:
-	// some marshalers treat the top-level value they are given specially.
-	data, err := m.Marshal([]any{authData})
+	// Encode the whole request, as the socket writes it, rather than the
+	// params alone: a marshaler may encode a request differently.
+	data, err := m.Marshal(&connection.RPCRequest{
+		ID:     rand.NewRequestID(constants.RequestIDLength),
+		Method: method,
+		Params: []any{authData},
+	})
 	if err != nil {
 		return access
 	}
-	var params []map[string]any
-	if err := u.Unmarshal(data, &params); err != nil || len(params) != 1 {
+	var req struct {
+		Params []map[string]any `json:"params"`
+	}
+	if err := u.Unmarshal(data, &req); err != nil || len(req.Params) != 1 {
 		return access
 	}
-	for k, v := range params[0] {
+	for k, v := range req.Params[0] {
 		if s, ok := v.(string); ok && s != "" && accessKeys[strings.ToUpper(k)] {
 			access[k] = s
 		}
@@ -635,9 +644,9 @@ func accessFields(m codec.Marshaler, u codec.Unmarshaler, authData any) map[stri
 	return access
 }
 
-// refreshAccess returns the access fields of authData as a signin on conn
+// refreshAccess returns the access fields of authData as a method RPC on conn
 // sends them: see accessFields.
-func (arws *Connection[C]) refreshAccess(conn connection.WebSocketConnection, authData any) map[string]any {
+func (arws *Connection[C]) refreshAccess(conn connection.WebSocketConnection, method string, authData any) map[string]any {
 	var m codec.Marshaler
 	if mc, ok := conn.(interface{ GetMarshaler() codec.Marshaler }); ok {
 		m = mc.GetMarshaler()
@@ -655,7 +664,7 @@ func (arws *Connection[C]) refreshAccess(conn connection.WebSocketConnection, au
 			u = c
 		}
 	}
-	return accessFields(m, u, authData)
+	return accessFields(m, u, method, authData)
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
@@ -753,19 +762,20 @@ func (arws *Connection[C]) SignIn(ctx context.Context, authData any) (string, er
 // keeps both tokens, so that a reconnection can re-authenticate, refreshing the
 // access token if it has expired by then.
 func (arws *Connection[C]) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
-	return arws.signWithRefresh(ctx, authData, "sign in", connection.WebSocketConnection.SignInWithRefresh)
+	return arws.signWithRefresh(ctx, authData, "signin", "sign in", connection.WebSocketConnection.SignInWithRefresh)
 }
 
 // SignUpWithRefresh signs up with a TYPE RECORD access method WITH REFRESH and
 // keeps both tokens, as SignInWithRefresh does.
 func (arws *Connection[C]) SignUpWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
-	return arws.signWithRefresh(ctx, authData, "sign up", connection.WebSocketConnection.SignUpWithRefresh)
+	return arws.signWithRefresh(ctx, authData, "signup", "sign up", connection.WebSocketConnection.SignUpWithRefresh)
 }
 
-// signWithRefresh runs a signin or signup that returns a token pair and keeps
-// the pair, with the access fields of authData a refresh signin must repeat.
+// signWithRefresh runs a signin or signup, the RPC method, that returns a token
+// pair and keeps the pair, with the access fields of authData a refresh signin
+// must repeat.
 func (arws *Connection[C]) signWithRefresh(
-	ctx context.Context, authData any, verb string,
+	ctx context.Context, authData any, method, verb string,
 	rpc func(connection.WebSocketConnection, context.Context, any) (*connection.Tokens, error),
 ) (*connection.Tokens, error) {
 	ctx, conn, release, err := arws.lockSessionSocket(ctx)
@@ -779,7 +789,7 @@ func (arws *Connection[C]) signWithRefresh(
 		return nil, fmt.Errorf("rews.Connection failed to %s: %w", verb, socketErr(ctx, err))
 	}
 
-	arws.setToken(tokens.Access, tokens.Refresh, arws.refreshAccess(conn, authData))
+	arws.setToken(tokens.Access, tokens.Refresh, arws.refreshAccess(conn, method, authData))
 	return tokens, nil
 }
 

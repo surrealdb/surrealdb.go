@@ -65,9 +65,9 @@ func TestSessionState_concurrentReplay(t *testing.T) {
 // offers encodes it, which must agree.
 func accessOf(authData any) map[string]any {
 	sc := surrealcbor.New()
-	got := accessFields(sc, sc, authData)
+	got := accessFields(sc, sc, "signin", authData)
 	//nolint:staticcheck // The deprecated fxamacker codec is still offered.
-	fx := accessFields(&models.CborMarshaler{}, &models.CborUnmarshaler{}, authData)
+	fx := accessFields(&models.CborMarshaler{}, &models.CborUnmarshaler{}, "signin", authData)
 	if !reflect.DeepEqual(got, fx) {
 		panic(fmt.Sprintf("the codecs disagree on %#v: surrealcbor %v, fxamacker %v", authData, got, fx))
 	}
@@ -300,12 +300,12 @@ func TestAccessOf_customEncoding(t *testing.T) {
 	require.Equal(t, map[string]any{"NS": "n", "DB": "d", "AC": "a"}, accessOf(opaqueCredentials("u")))
 }
 
-// renamingMarshaler encodes every value as signin params naming the
+// renamingMarshaler encodes every value as a signin request naming the
 // namespace "from-socket".
 type renamingMarshaler struct{}
 
 func (renamingMarshaler) Marshal(any) ([]byte, error) {
-	return cbor.Marshal([]any{map[string]any{"NS": "from-socket"}})
+	return cbor.Marshal(map[string]any{"method": "signin", "params": []any{map[string]any{"NS": "from-socket"}}})
 }
 
 // socketWithMarshaler is a socket that reports the marshaler it encodes with.
@@ -323,7 +323,76 @@ func TestRefreshAccess_usesTheSocketsMarshaler(t *testing.T) {
 	}, 0, surrealcbor.New(), nil)
 	authData := map[string]any{"NS": "n"}
 
-	require.Equal(t, map[string]any{"NS": "from-socket"}, conn.refreshAccess(&socketWithMarshaler{}, authData))
+	require.Equal(t, map[string]any{"NS": "from-socket"}, conn.refreshAccess(&socketWithMarshaler{}, "signin", authData))
 	// A socket that does not say falls back to the codec rews was given.
-	require.Equal(t, map[string]any{"NS": "n"}, conn.refreshAccess(&recordingConnection{}, authData))
+	require.Equal(t, map[string]any{"NS": "n"}, conn.refreshAccess(&recordingConnection{}, "signin", authData))
+}
+
+// requestRewritingMarshaler encodes as surrealcbor does, except that it
+// rewrites the namespace in the params of an RPC request, which it treats
+// differently from a bare slice of params.
+type requestRewritingMarshaler struct{ codec.Marshaler }
+
+func (m requestRewritingMarshaler) Marshal(v any) ([]byte, error) {
+	if req, ok := v.(*connection.RPCRequest); ok {
+		params := make([]any, len(req.Params))
+		for i, p := range req.Params {
+			if ad, ok := p.(map[string]any); ok {
+				rewritten := copyMap(ad)
+				rewritten["NS"] = req.Method + ":" + fmt.Sprint(ad["NS"])
+				p = rewritten
+			}
+			params[i] = p
+		}
+		r := *req
+		r.Params = params
+		v = &r
+	}
+	return m.Marshaler.Marshal(v)
+}
+
+// TestAccessFields_readsTheRequestEnvelope checks that the access fields are
+// those of the signin request the socket writes, not of its params encoded
+// alone, for a marshaler that encodes the two differently.
+func TestAccessFields_readsTheRequestEnvelope(t *testing.T) {
+	sc := surrealcbor.New()
+	m := requestRewritingMarshaler{sc}
+	authData := map[string]any{"NS": "n", "DB": "d", "AC": "a", "user": "u"}
+
+	// The signin request, as the socket writes it.
+	data, err := m.Marshal(&connection.RPCRequest{ID: "1", Method: "signin", Params: []any{authData}})
+	require.NoError(t, err)
+	var sent struct {
+		Params []map[string]any `json:"params"`
+	}
+	require.NoError(t, sc.Unmarshal(data, &sent))
+	require.Len(t, sent.Params, 1)
+	require.Equal(t, "signin:n", sent.Params[0]["NS"])
+
+	// Encoding the params alone, as accessFields used to, misses the rewrite.
+	data, err = m.Marshal([]any{authData})
+	require.NoError(t, err)
+	var bare []map[string]any
+	require.NoError(t, sc.Unmarshal(data, &bare))
+	require.Len(t, bare, 1)
+	require.Equal(t, "n", bare[0]["NS"])
+
+	want := map[string]any{"NS": "signin:n", "DB": "d", "AC": "a"}
+	require.Equal(t, want, accessFields(m, sc, "signin", authData))
+	require.Equal(t, map[string]any{"NS": "signup:n", "DB": "d", "AC": "a"}, accessFields(m, sc, "signup", authData))
+
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return &recordingConnection{}, nil
+	}, 0, sc, nil)
+	require.Equal(t, want, conn.refreshAccess(&socketWithRewritingMarshaler{}, "signin", authData))
+}
+
+// socketWithRewritingMarshaler is a socket that encodes with
+// requestRewritingMarshaler.
+type socketWithRewritingMarshaler struct {
+	recordingConnection
+}
+
+func (*socketWithRewritingMarshaler) GetMarshaler() codec.Marshaler {
+	return requestRewritingMarshaler{surrealcbor.New()}
 }
