@@ -3,6 +3,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -121,6 +122,20 @@ func isRecord(what any) bool {
 	return false
 }
 
+// isNil reports whether v is nil, or holds a nil map, slice, pointer,
+// interface, channel or function, which the RPC methods took as no data.
+func isNil(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch rv := reflect.ValueOf(v); rv.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
 func only(single bool) string {
 	if single {
 		return "ONLY "
@@ -128,9 +143,10 @@ func only(single bool) string {
 	return ""
 }
 
-// withData appends a data clause, such as CONTENT $data, unless data is nil.
+// withData appends a data clause, such as CONTENT $data, unless data is nil,
+// or a nil map, slice or pointer.
 func withData(sql, clause string, data any, vars map[string]any) string {
-	if data == nil {
+	if isNil(data) {
 		return sql
 	}
 	vars["data"] = data

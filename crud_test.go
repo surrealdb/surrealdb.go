@@ -78,6 +78,30 @@ func TestCRUD_compilesToQuery(t *testing.T) {
 			"CREATE ONLY type::table($what) CONTENT $data RETURN AFTER", "person"},
 		{"create table", func(db *surrealdb.DB) error { _, err := surrealdb.Create[any](ctx, db, table, nil); return err },
 			"CREATE $what RETURN AFTER", table},
+		{"create with a nil pointer", func(db *surrealdb.DB) error {
+			var p *struct{ Name string }
+			_, err := surrealdb.Create[any](ctx, db, rec, p)
+			return err
+		}, "CREATE ONLY $what RETURN AFTER", rec},
+		{"update with a nil map", func(db *surrealdb.DB) error {
+			var m map[string]any
+			_, err := surrealdb.Update[any](ctx, db, rec, m)
+			return err
+		}, "UPDATE ONLY $what RETURN AFTER", rec},
+		{"upsert with a nil map", func(db *surrealdb.DB) error {
+			var m map[string]any
+			_, err := surrealdb.Upsert[any](ctx, db, rec, m)
+			return err
+		}, "UPSERT ONLY $what RETURN AFTER", rec},
+		{"merge with a nil map", func(db *surrealdb.DB) error {
+			var m map[string]any
+			_, err := surrealdb.Merge[any](ctx, db, rec, m)
+			return err
+		}, "UPDATE ONLY $what RETURN AFTER", rec},
+		{"update with an empty map", func(db *surrealdb.DB) error {
+			_, err := surrealdb.Update[any](ctx, db, rec, map[string]any{})
+			return err
+		}, "UPDATE ONLY $what CONTENT $data RETURN AFTER", rec},
 		{"update", func(db *surrealdb.DB) error { _, err := surrealdb.Update[any](ctx, db, rec, data); return err },
 			"UPDATE ONLY $what CONTENT $data RETURN AFTER", rec},
 		{"upsert", func(db *surrealdb.DB) error { _, err := surrealdb.Upsert[any](ctx, db, table, data); return err },
