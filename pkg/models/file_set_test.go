@@ -106,6 +106,24 @@ func TestSet_cbor(t *testing.T) {
 	}
 }
 
+func TestSet_cborEmpty(t *testing.T) {
+	for name, c := range codecs() {
+		t.Run(name, func(t *testing.T) {
+			// 56([]): an empty set is still a set.
+			for _, s := range []models.Set{models.NewSet(), {}} {
+				data, err := c.Marshal(s)
+				require.NoError(t, err)
+				assert.Equal(t, "d83880", hex.EncodeToString(data))
+			}
+
+			// A nil Set is a nil slice and encodes as null.
+			data, err := c.Marshal(models.Set(nil))
+			require.NoError(t, err)
+			assert.Equal(t, "f6", hex.EncodeToString(data))
+		})
+	}
+}
+
 type modelsCodec struct {
 	models.CborMarshaler
 	models.CborUnmarshaler

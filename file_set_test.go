@@ -50,6 +50,14 @@ func TestFileAndSet_server(t *testing.T) {
 		got := (*res)[0].Result
 		assert.EqualValues(t, 2, got["len"], "the server deduplicates a set")
 		assert.Equal(t, true, got["is_set"])
+
+		res, err = surrealdb.Query[map[string]any](ctx, db,
+			"RETURN { len: array::len(<array>$s), is_set: $s.is_set() }",
+			map[string]any{"s": models.NewSet()})
+		require.NoError(t, err)
+		got = (*res)[0].Result
+		assert.EqualValues(t, 0, got["len"])
+		assert.Equal(t, true, got["is_set"], "NewSet() is an empty set, not null")
 	})
 
 	t.Run("set in a record", func(t *testing.T) {
