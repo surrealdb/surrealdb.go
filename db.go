@@ -561,6 +561,10 @@ func (db *DB) Reset(ctx context.Context) error {
 	}
 	db.renew.clear()
 	db.state.reset()
+	// The server killed the session's live queries: stop restarting them.
+	if db.rc != nil {
+		db.rc.lives.forgetSession(nil, db.rc.current())
+	}
 	return nil
 }
 
@@ -724,15 +728,25 @@ func (db *DB) CloseLiveNotifications(liveQueryID string) error {
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
 func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 	// First kill the live query on the server, by the ID the server knows it
-	// by since the client last reconnected.
-	serverID := id
+	// by on the connection the request is sent on. Reconnecting starts the
+	// query again under a new ID before it hands over the new connection, so
+	// the ID is looked up only once the connection is in hand.
+	var db *DB
 	switch v := any(s).(type) {
 	case *DB:
-		serverID = v.liveServerID(id)
+		db = v
 	case *Session:
-		serverID = v.db.liveServerID(id)
+		db = v.db
 	}
-	_, err := send[any](ctx, s, "kill", serverID)
+	var err error
+	if db != nil && db.rc != nil {
+		var con connection.Connection
+		if con, err = db.rc.conn(ctx); err == nil {
+			_, err = sendOn[any](ctx, s, con, "kill", db.rc.lives.serverID(id))
+		}
+	} else {
+		_, err = send[any](ctx, s, "kill", id)
+	}
 	if err != nil {
 		return err
 	}
@@ -770,15 +784,6 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 	return id, nil
 }
 
-// liveServerID returns the ID the server knows a live query by, which changes
-// when the client reconnects.
-func (db *DB) liveServerID(id string) string {
-	if db.rc == nil {
-		return id
-	}
-	return db.rc.lives.serverID(id)
-}
-
 // Status returns the status of the client's connection. A client which does not
 // reconnect is [StatusConnected] until it is closed.
 func (db *DB) Status() ConnectionStatus {
@@ -796,8 +801,9 @@ func (db *DB) Status() ConnectionStatus {
 // attempt to reconnect and its outcome, and when the client closes. Only
 // clients which reconnect report changes; see [WithReconnect].
 //
-// fn is called on the goroutine which reconnects, so it should return quickly,
-// and must not wait for requests on the client.
+// Events are passed to fn one at a time, in the order they happened, on a
+// goroutine other than the one which reconnects: fn may make requests on the
+// client, or close it, though while it runs, the events after it wait.
 func (db *DB) OnStatus(fn func(StatusEvent)) (stop func()) {
 	if db.rc == nil {
 		return func() {}
@@ -1405,28 +1411,42 @@ func unmarshalerOf[S sendable](s S) codec.Unmarshaler {
 //   - *Session: uses connection.Call with session UUID
 //   - *Transaction: uses connection.Call with session and txn UUIDs
 func send[TResult any, S sendable](ctx context.Context, s S, method string, params ...any) (*TResult, error) {
+	return sendOn[TResult](ctx, s, nil, method, params...)
+}
+
+// sendOn is send on a given connection, or on the client's when con is nil.
+func sendOn[TResult any, S sendable](ctx context.Context, s S, con connection.Connection, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 
 	switch v := any(s).(type) {
 	case *DB:
-		if err := connection.Send(v.con, ctx, &res, method, params...); err != nil {
+		if con == nil {
+			con = v.con
+		}
+		if err := connection.Send(con, ctx, &res, method, params...); err != nil {
 			return nil, err
 		}
 	case *Session:
 		if v.isClosed() {
 			return nil, constants.ErrSessionClosed
 		}
+		if con == nil {
+			con = v.db.con
+		}
 		req := &connection.RPCRequest{
 			Method:  method,
 			Params:  params,
 			Session: v.id,
 		}
-		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+		if err := connection.Call(con, ctx, &res, req); err != nil {
 			return nil, err
 		}
 	case *Transaction:
 		if v.IsClosed() {
 			return nil, constants.ErrTransactionClosed
+		}
+		if con == nil {
+			con = v.db.con
 		}
 		req := &connection.RPCRequest{
 			Method:  method,
@@ -1434,7 +1454,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 			Session: v.sessionID,
 			Txn:     v.id,
 		}
-		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+		if err := connection.Call(con, ctx, &res, req); err != nil {
 			return nil, err
 		}
 	}
