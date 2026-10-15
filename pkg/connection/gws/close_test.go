@@ -19,7 +19,11 @@ func connect(t *testing.T, srv *wstest.Server) *gws.Connection {
 	u, err := url.ParseRequestURI(srv.WSURL())
 	require.NoError(t, err)
 	c := gws.New(connection.NewConfig(u))
+	accepted := srv.Accepted()
 	require.NoError(t, c.Connect(context.Background()))
+	// GoAway closes only the connections the server has recorded, which it
+	// may not have done yet when Connect returns.
+	srv.WaitAccepted(t, accepted+1)
 	return c
 }
 
@@ -34,7 +38,7 @@ func TestServerClose_failsCallsInFlight(t *testing.T) {
 		_, err := c.Send(context.Background(), "query", "SLEEP 1h")
 		errc <- err
 	}()
-	<-srv.Requests
+	wstest.Recv(t, srv.Requests, "the request")
 	srv.GoAway()
 
 	select {
@@ -61,7 +65,7 @@ func TestClose_failsLaterCalls(t *testing.T) {
 	c := connect(t, srv)
 	require.NoError(t, c.Close(context.Background()))
 
-	<-c.Closed()
+	wstest.Recv(t, c.Closed(), "the connection to close")
 	assert.NoError(t, c.CloseError(), "Close is not an error")
 	_, err := c.Send(context.Background(), "ping")
 	assert.ErrorIs(t, err, connection.ErrConnectionClosed)
@@ -72,7 +76,7 @@ func TestRedial(t *testing.T) {
 	c := connect(t, srv)
 	c.Timeout = 3 * time.Second
 	srv.GoAway()
-	<-c.Closed()
+	wstest.Recv(t, c.Closed(), "the connection to close")
 
 	next, ok := c.Redial().(*gws.Connection)
 	require.True(t, ok)
