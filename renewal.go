@@ -46,6 +46,15 @@ type renewer struct {
 	cycle uint64
 	// stopped is set when the client closes, after which nothing is renewed.
 	stopped bool
+	// inflight is the renewal whose refresh request is under way, if any.
+	inflight *inflightRenewal
+}
+
+// inflightRenewal is a refresh request under way, which stop cancels and
+// waits for.
+type inflightRenewal struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func newRenewer(margin time.Duration, refresh func(context.Context, Tokens) (*Tokens, error)) *renewer {
@@ -130,15 +139,25 @@ func (r *renewer) clear() {
 	r.stopLocked()
 }
 
-// stop forgets the token pair for good, for when the client closes.
+// stop forgets the token pair for good, for when the client closes. It
+// cancels a refresh request under way and waits for it to return, so that
+// nothing is renewed once stop has returned.
+//
+// The caller must not hold a lock the refresh function takes.
 func (r *renewer) stop() {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.stopped = true
 	r.stopLocked()
+	inflight := r.inflight
+	r.mu.Unlock()
+
+	if inflight != nil {
+		inflight.cancel()
+		<-inflight.done
+	}
 }
 
 func (r *renewer) stopLocked() {
@@ -160,14 +179,22 @@ func (r *renewer) renew(cycle uint64, attempt int) {
 		return
 	}
 	tokens := *r.tokens
+	ctx, cancel := context.WithTimeout(context.Background(), renewalTimeout)
+	inflight := &inflightRenewal{cancel: cancel, done: make(chan struct{})}
+	r.inflight = inflight
 	r.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), renewalTimeout)
 	next, err := r.refresh(ctx, tokens)
 	cancel()
+	close(inflight.done)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.inflight == inflight {
+		r.inflight = nil
+	}
+	// A renewal stopped, or overtaken by newer tokens, while its request was
+	// under way changes nothing.
 	if cycle != r.cycle {
 		return
 	}

@@ -171,11 +171,17 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close(ctx context.Context) error {
 	db.renew.stop()
+	// The renewers are stopped outside the lock, as stopping one waits for
+	// a renewal under way.
 	db.sessionsMu.Lock()
+	sessions := make([]*Session, 0, len(db.sessions))
 	for _, s := range db.sessions {
-		s.renew.stop()
+		sessions = append(sessions, s)
 	}
 	db.sessionsMu.Unlock()
+	for _, s := range sessions {
+		s.renew.stop()
+	}
 	return db.con.Close(ctx)
 }
 
@@ -565,6 +571,9 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 	ver, err := send[any](ctx, db, "version")
 	if err != nil {
 		return nil, err
+	}
+	if ver == nil {
+		return nil, errors.New("unexpected version data: none")
 	}
 
 	switch v := (*ver).(type) {

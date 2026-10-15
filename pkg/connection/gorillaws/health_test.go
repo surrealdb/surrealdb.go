@@ -3,6 +3,8 @@ package gorillaws
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -116,4 +118,34 @@ func TestHTTPEndpoint_sendsTheDialersCookies(t *testing.T) {
 	require.NoError(t, err)
 	defer res.Body.Close()
 	assert.Equal(t, "proxy-session", got)
+}
+
+// Dial hooks given to http.DefaultTransport, which the WebSocket does not
+// use, do not reach the health check either: without hooks of its own, the
+// dialer dials with a plain net.Dialer.
+func TestHealth_ignoresTheDefaultTransportsDialHooks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+
+	refuse := func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("dialed through http.DefaultTransport")
+	}
+	saved := http.DefaultTransport
+	custom := saved.(*http.Transport).Clone()
+	custom.DialContext = refuse
+	custom.DialTLSContext = refuse
+	custom.Dial = func(string, string) (net.Conn, error) { return refuse(context.Background(), "", "") }    //nolint:staticcheck // the deprecated hooks are still used
+	custom.DialTLS = func(string, string) (net.Conn, error) { return refuse(context.Background(), "", "") } //nolint:staticcheck // the deprecated hooks are still used
+	http.DefaultTransport = custom
+	defer func() { http.DefaultTransport = saved }()
+
+	transport := httpClientFor(DefaultDialer, 0).Transport.(*http.Transport)
+	assert.Nil(t, transport.DialContext)
+	assert.Nil(t, transport.DialTLSContext)
+	assert.Nil(t, transport.Dial)    //nolint:staticcheck // the deprecated hooks are still used
+	assert.Nil(t, transport.DialTLS) //nolint:staticcheck // the deprecated hooks are still used
+
+	u, err := url.Parse("ws://" + strings.TrimPrefix(srv.URL, "http://"))
+	require.NoError(t, err)
+	require.NoError(t, New(connection.NewConfig(u)).Health(context.Background()))
 }
