@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
+
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
 type State int
@@ -605,181 +606,56 @@ var accessKeys = map[string]bool{
 	"AC": true, "ACCESS": true,
 }
 
-// accessOf extracts the namespace, database and access method from the
-// authentication data of a signin or signup, which a refresh signin must repeat.
+// accessFields returns the namespace, database and access method in the
+// authentication data of a signin or signup, which a refresh signin must
+// repeat.
 //
-// authData may be any map with string keys, including named map types such as
-// `type Credentials map[string]any`, or a struct (or pointer to one) whose
-// fields are tagged NS, DB and AC, such as surrealdb.Auth, including fields
-// promoted from embedded structs.
-func accessOf(authData any) map[string]any {
+// It reads them from authData as m encodes it, decoded with u, so that it
+// finds what the signin sent however authData is shaped: a map of any type,
+// a struct with fields tagged, promoted from embedded structs or behind
+// pointers, or a type that encodes itself. Only string values are kept, as
+// those are all a namespace, database or access method can be.
+func accessFields(m codec.Marshaler, u codec.Unmarshaler, authData any) map[string]any {
 	access := map[string]any{}
-	v := reflect.ValueOf(authData)
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
-			return access
-		}
-		v = v.Elem()
+	// Encode it as an RPC request's params, which is how the signin sent it:
+	// some marshalers treat the top-level value they are given specially.
+	data, err := m.Marshal([]any{authData})
+	if err != nil {
+		return access
 	}
-
-	switch v.Kind() {
-	case reflect.Map:
-		if v.Type().Key().Kind() != reflect.String {
-			return access
+	var params []map[string]any
+	if err := u.Unmarshal(data, &params); err != nil || len(params) != 1 {
+		return access
+	}
+	for k, v := range params[0] {
+		if s, ok := v.(string); ok && s != "" && accessKeys[strings.ToUpper(k)] {
+			access[k] = s
 		}
-		iter := v.MapRange()
-		for iter.Next() {
-			k := iter.Key().String()
-			if accessKeys[strings.ToUpper(k)] {
-				access[k] = iter.Value().Interface()
-			}
-		}
-	case reflect.Struct:
-		structAccess(v, access)
 	}
 	return access
 }
 
-// structAccess adds the access fields of the struct v to access, finding
-// them as encoding/json and the CBOR encoders find the fields they encode:
-//
-//   - fields of embedded structs without a tag name are promoted, level by
-//     level, and a field hides any of the same name at a deeper level;
-//   - of fields of the same name at the same level, a tagged one beats
-//     untagged ones, and two or more of the same kind cancel out, so that
-//     none of them is encoded.
-func structAccess(v reflect.Value, access map[string]any) {
-	hidden := map[string]bool{}
-	visited := map[reflect.Type]bool{}
-	level := []embedding{{typ: v.Type()}}
-	for len(level) > 0 {
-		count := map[reflect.Type]int{}
-		for _, e := range level {
-			count[e.typ]++
-		}
-
-		var next []embedding
-		names := map[string]bool{}
-		candidates := map[string][]accessField{}
-		for _, e := range level {
-			if visited[e.typ] {
-				continue
-			}
-			visited[e.typ] = true
-			next = append(next, levelFields(e, count[e.typ], hidden, names, candidates)...)
-		}
-
-		for name, fields := range candidates {
-			if f, ok := dominantField(fields); ok {
-				if fv, err := v.FieldByIndexErr(f.index); err == nil {
-					if s, ok := stringValue(fv); ok && s != "" {
-						access[name] = s
-					}
-				}
-			}
-		}
-		for name := range names {
-			hidden[name] = true
-		}
-		level = next
+// refreshAccess returns the access fields of authData as a signin on conn
+// sends them: see accessFields.
+func (arws *Connection[C]) refreshAccess(conn connection.WebSocketConnection, authData any) map[string]any {
+	var m codec.Marshaler
+	if mc, ok := conn.(interface{ GetMarshaler() codec.Marshaler }); ok {
+		m = mc.GetMarshaler()
 	}
-}
-
-// embedding is a struct type found at some level of a struct, with the index
-// path to it.
-type embedding struct {
-	typ   reflect.Type
-	index []int
-}
-
-// accessField is a field with an access name, with the index path to it and
-// whether a tag gave it its name.
-type accessField struct {
-	index  []int
-	tagged bool
-}
-
-// levelFields records the names of the fields of the struct e in names and
-// the access fields not hidden by a shallower level in candidates, as many
-// times as the struct occurs at this level, and returns the structs it embeds.
-func levelFields(e embedding, times int, hidden, names map[string]bool, candidates map[string][]accessField) []embedding {
-	var embedded []embedding
-	for i := 0; i < e.typ.NumField(); i++ {
-		f := e.typ.Field(i)
-		index := append(append([]int(nil), e.index...), i)
-		name := fieldName(f.Tag)
-		if f.Anonymous && name == "" {
-			t := f.Type
-			if t.Kind() == reflect.Pointer {
-				t = t.Elem()
-			}
-			if t.Kind() == reflect.Struct {
-				embedded = append(embedded, embedding{typ: t, index: index})
-				continue
-			}
+	if m == nil {
+		m, _ = arws.unmarshaler.(codec.Marshaler)
+	}
+	u := arws.unmarshaler
+	if m == nil || u == nil {
+		c := surrealcbor.New()
+		if m == nil {
+			m = c
 		}
-		if !f.IsExported() || name == "-" {
-			continue
-		}
-		tagged := name != ""
-		if !tagged {
-			name = f.Name
-		}
-		names[name] = true
-		if hidden[name] || !accessKeys[strings.ToUpper(name)] {
-			continue
-		}
-		for n := 0; n < min(times, 2); n++ {
-			candidates[name] = append(candidates[name], accessField{index: index, tagged: tagged})
+		if u == nil {
+			u = c
 		}
 	}
-	return embedded
-}
-
-// dominantField returns the one of fields of the same name at the same level
-// that is encoded: the only tagged one, or else the only one; none if two or
-// more tie.
-func dominantField(fields []accessField) (accessField, bool) {
-	var tagged []accessField
-	for _, f := range fields {
-		if f.tagged {
-			tagged = append(tagged, f)
-		}
-	}
-	switch {
-	case len(tagged) == 1:
-		return tagged[0], true
-	case len(tagged) == 0 && len(fields) == 1:
-		return fields[0], true
-	default:
-		return accessField{}, false
-	}
-}
-
-// stringValue returns the string a field holds, through any pointers and
-// interfaces, as the encoder sends it, and whether it holds one.
-func stringValue(fv reflect.Value) (string, bool) {
-	for fv.Kind() == reflect.Pointer || fv.Kind() == reflect.Interface {
-		if fv.IsNil() {
-			return "", false
-		}
-		fv = fv.Elem()
-	}
-	if fv.Kind() != reflect.String {
-		return "", false
-	}
-	return fv.String(), true
-}
-
-// fieldName returns the name a struct field's tag gives it for encoding, or
-// "" if it gives none. As the CBOR encoders do, it reads the cbor tag, and the
-// json tag only when there is no cbor tag.
-func fieldName(tag reflect.StructTag) string {
-	t := tag.Get("cbor")
-	if t == "" {
-		t = tag.Get("json")
-	}
-	return strings.Split(t, ",")[0]
+	return accessFields(m, u, authData)
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
@@ -903,7 +779,7 @@ func (arws *Connection[C]) signWithRefresh(
 		return nil, fmt.Errorf("rews.Connection failed to %s: %w", verb, socketErr(ctx, err))
 	}
 
-	arws.setToken(tokens.Access, tokens.Refresh, accessOf(authData))
+	arws.setToken(tokens.Access, tokens.Refresh, arws.refreshAccess(conn, authData))
 	return tokens, nil
 }
 

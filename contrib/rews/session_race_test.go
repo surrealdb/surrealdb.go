@@ -6,13 +6,17 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/require"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
@@ -55,6 +59,19 @@ func TestSessionState_concurrentReplay(t *testing.T) {
 		require.NoError(t, conn.reconnect(ctx))
 	}
 	wg.Wait()
+}
+
+// accessOf returns the access fields of authData as each CBOR codec the SDK
+// offers encodes it, which must agree.
+func accessOf(authData any) map[string]any {
+	sc := surrealcbor.New()
+	got := accessFields(sc, sc, authData)
+	//nolint:staticcheck // The deprecated fxamacker codec is still offered.
+	fx := accessFields(&models.CborMarshaler{}, &models.CborUnmarshaler{}, authData)
+	if !reflect.DeepEqual(got, fx) {
+		panic(fmt.Sprintf("the codecs disagree on %#v: surrealcbor %v, fxamacker %v", authData, got, fx))
+	}
+	return got
 }
 
 func TestAccessOf(t *testing.T) {
@@ -181,6 +198,9 @@ type otherTaggedNS struct {
 }
 type wrapsUntaggedNS struct{ untaggedNS }
 type alsoWrapsUntaggedNS struct{ untaggedNS }
+type repeated struct{ untaggedNS }
+type firstRepeat struct{ repeated }
+type secondRepeat struct{ repeated }
 
 // TestAccessOf_dominance checks that of access fields of the same name at the
 // same depth, the one the encoder sends is kept: a tagged field beats untagged
@@ -189,6 +209,9 @@ func TestAccessOf_dominance(t *testing.T) {
 	cases := map[string]struct {
 		authData any
 		want     map[string]any
+		// jsonDiffers marks a case encoding/json encodes differently from
+		// the CBOR encoders.
+		jsonDiffers bool
 	}{
 		"tagged beats untagged": {
 			authData: struct {
@@ -226,6 +249,16 @@ func TestAccessOf_dominance(t *testing.T) {
 			}{wrapsUntaggedNS{untaggedNS{"a"}}, alsoWrapsUntaggedNS{untaggedNS{"b"}}},
 			want: map[string]any{},
 		},
+		"a struct reached twice is dropped with all it embeds": {
+			authData: struct {
+				firstRepeat
+				secondRepeat
+			}{firstRepeat{repeated{untaggedNS{"a"}}}, secondRepeat{repeated{untaggedNS{"b"}}}},
+			want: map[string]any{},
+			// encoding/json still promotes the fields of what the repeated
+			// struct embeds; fxamacker/cbor drops them.
+			jsonDiffers: true,
+		},
 		"a dominant field behind a nil pointer is not sent": {
 			authData: struct {
 				*taggedNS
@@ -240,7 +273,10 @@ func TestAccessOf_dominance(t *testing.T) {
 			got := accessOf(tc.authData)
 			require.Equal(t, tc.want, got)
 
-			// encoding/json applies the same rules; check against it.
+			if tc.jsonDiffers {
+				return
+			}
+			// encoding/json otherwise applies the same rules; check against it.
 			data, err := json.Marshal(tc.authData)
 			require.NoError(t, err)
 			var encoded map[string]any
@@ -248,4 +284,46 @@ func TestAccessOf_dominance(t *testing.T) {
 			require.Equal(t, accessOf(encoded), got)
 		})
 	}
+}
+
+// opaqueCredentials marshals itself, as the encoder then sends it, rather
+// than as the string it is.
+type opaqueCredentials string
+
+func (c opaqueCredentials) MarshalCBOR() ([]byte, error) {
+	return cbor.Marshal(map[string]any{"NS": "n", "DB": "d", "AC": "a", "user": string(c)})
+}
+
+// TestAccessOf_customEncoding checks that access fields are taken from what
+// authData encodes to when it encodes itself.
+func TestAccessOf_customEncoding(t *testing.T) {
+	require.Equal(t, map[string]any{"NS": "n", "DB": "d", "AC": "a"}, accessOf(opaqueCredentials("u")))
+}
+
+// renamingMarshaler encodes every value as signin params naming the
+// namespace "from-socket".
+type renamingMarshaler struct{}
+
+func (renamingMarshaler) Marshal(any) ([]byte, error) {
+	return cbor.Marshal([]any{map[string]any{"NS": "from-socket"}})
+}
+
+// socketWithMarshaler is a socket that reports the marshaler it encodes with.
+type socketWithMarshaler struct {
+	recordingConnection
+}
+
+func (*socketWithMarshaler) GetMarshaler() codec.Marshaler { return renamingMarshaler{} }
+
+// TestRefreshAccess_usesTheSocketsMarshaler checks that the access fields are
+// read from authData as the socket the signin went over encodes it.
+func TestRefreshAccess_usesTheSocketsMarshaler(t *testing.T) {
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return &recordingConnection{}, nil
+	}, 0, surrealcbor.New(), nil)
+	authData := map[string]any{"NS": "n"}
+
+	require.Equal(t, map[string]any{"NS": "from-socket"}, conn.refreshAccess(&socketWithMarshaler{}, authData))
+	// A socket that does not say falls back to the codec rews was given.
+	require.Equal(t, map[string]any{"NS": "n"}, conn.refreshAccess(&recordingConnection{}, authData))
 }
