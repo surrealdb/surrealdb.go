@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,4 +45,23 @@ func TestHTTPRequest_outlastsTheRPCTimeout(t *testing.T) {
 		_ = res.Body.Close()
 	}
 	require.ErrorIs(t, err, context.DeadlineExceeded, "the context still bounds it")
+}
+
+// Export asks for the text/plain document the server sends.
+func TestExport_acceptsTextPlain(t *testing.T) {
+	var accept string
+	srv := httptest.NewServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		accept = r.Header.Get("Accept")
+		_, _ = w.Write([]byte("OPTION IMPORT;"))
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+	db := &DB{con: http.New(connection.NewConfig(u))}
+
+	var out strings.Builder
+	require.NoError(t, db.Export(context.Background(), &out, nil))
+	assert.Equal(t, "text/plain", accept)
+	assert.Equal(t, "OPTION IMPORT;", out.String())
 }
