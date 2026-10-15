@@ -136,21 +136,28 @@ func GetSurrealDBWSURL() string {
 // (ws to http, wss to https, and back), and any /rpc path removed. It is the
 // form connection.Config.BaseURL takes.
 func GetSurrealDBBaseURL(family string) string {
+	const (
+		schemeWS    = "ws"
+		schemeWSS   = "wss"
+		schemeHTTP  = "http"
+		schemeHTTPS = "https"
+	)
+
 	u, err := url.Parse(GetSurrealDBURL())
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse SurrealDB URL: %v", err))
 	}
 
-	secure := u.Scheme == "wss" || u.Scheme == "https"
+	secure := u.Scheme == schemeWSS || u.Scheme == schemeHTTPS
 	switch {
-	case family == "http" && secure:
-		u.Scheme = "https"
-	case family == "http":
-		u.Scheme = "http"
+	case family == schemeHTTP && secure:
+		u.Scheme = schemeHTTPS
+	case family == schemeHTTP:
+		u.Scheme = schemeHTTP
 	case secure:
-		u.Scheme = "wss"
+		u.Scheme = schemeWSS
 	default:
-		u.Scheme = "ws"
+		u.Scheme = schemeWS
 	}
 	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/rpc")
 	return u.String()
