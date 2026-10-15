@@ -307,11 +307,18 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 	return connection.Send[any](c, ctx, nil, "unset", key)
 }
 
+// HTTPEndpoint returns the server's base URL and the HTTP client to reach it
+// with, which connects as [DefaultDialer] does. The client has no timeout of
+// its own, as a bulk transfer may take long; the request's context bounds it.
+func (c *Connection) HTTPEndpoint() (baseURL string, client *http.Client) {
+	return c.BaseURL, httpClientFor(DefaultDialer, 0)
+}
+
 // Health asks the server whether it is healthy, with GET /health over HTTP.
 // The request reaches the server as the WebSocket does, through the proxy,
 // TLS configuration and dialers of [DefaultDialer].
 func (c *Connection) Health(ctx context.Context) error {
-	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer), c.BaseURL)
+	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer, connection.DefaultHealthClient.Timeout), c.BaseURL)
 }
 
 // baseTransport returns a copy of http.DefaultTransport, or a transport with
@@ -332,8 +339,9 @@ func baseTransport() *http.Transport {
 }
 
 // httpClientFor returns an HTTP client which connects as a WebSocket dialer
-// does. It keeps no idle connections, as it is made for one request.
-func httpClientFor(d *gorilla.Dialer) *http.Client {
+// does, with the given timeout, or none if it is 0. It keeps no idle
+// connections, as it is made for one request.
+func httpClientFor(d *gorilla.Dialer, timeout time.Duration) *http.Client {
 	t := baseTransport()
 	t.DisableKeepAlives = true
 	t.Proxy = d.Proxy
@@ -352,7 +360,7 @@ func httpClientFor(d *gorilla.Dialer) *http.Client {
 	if d.NetDialTLSContext != nil {
 		t.DialTLSContext = d.NetDialTLSContext
 	}
-	return &http.Client{Transport: t, Timeout: connection.DefaultHealthClient.Timeout}
+	return &http.Client{Transport: t, Timeout: timeout}
 }
 
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {

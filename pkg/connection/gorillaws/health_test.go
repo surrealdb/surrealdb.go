@@ -37,6 +37,18 @@ func TestHealth_usesTheDialersTLSConfig(t *testing.T) {
 
 	DefaultDialer.TLSClientConfig = &tls.Config{RootCAs: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs}
 	require.NoError(t, con.Health(context.Background()))
+
+	// Import and Export reach the server the same way, with no timeout of
+	// their own.
+	_, client := con.HTTPEndpoint()
+	require.NotNil(t, client)
+	assert.Zero(t, client.Timeout)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/health", http.NoBody)
+	require.NoError(t, err)
+	res, err := client.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
 type wrappedTransport struct{ http.RoundTripper }
