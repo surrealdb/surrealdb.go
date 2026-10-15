@@ -80,6 +80,11 @@ func (c *Connection) SetHTTPClient(client *http.Client) *Connection {
 	return c
 }
 
+// Health asks the server whether it is healthy, with GET /health.
+func (c *Connection) Health(ctx context.Context) error {
+	return connection.CheckHealth(ctx, c.httpClient, c.BaseURL)
+}
+
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }
