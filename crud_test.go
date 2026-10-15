@@ -6,13 +6,16 @@ import (
 	"errors"
 	"io"
 	nethttp "net/http"
+	"reflect"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -27,16 +30,29 @@ func (f roundTripFunc) RoundTrip(req *nethttp.Request) (*nethttp.Response, error
 // and answered with the result of one successful statement.
 func recordingDB(t *testing.T) (*surrealdb.DB, *[]connection.RPCRequest) {
 	t.Helper()
+	return stubDB(t, surrealcbor.New(), map[string]any{"status": "OK", "result": nil})
+}
+
+// stubDB returns a client that decodes responses with unmarshaler, whose
+// requests are recorded rather than sent, and answered with the one statement
+// result given.
+func stubDB(t *testing.T, unmarshaler codec.Unmarshaler, statement map[string]any) (*surrealdb.DB, *[]connection.RPCRequest) {
+	t.Helper()
 	c := surrealcbor.New()
 	var sent []connection.RPCRequest
+	answer := false
 
-	con := http.New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con := http.New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: unmarshaler})
 	con.SetHTTPClient(&nethttp.Client{Transport: roundTripFunc(func(req *nethttp.Request) *nethttp.Response {
 		body, _ := io.ReadAll(req.Body)
 		var r connection.RPCRequest
 		_ = c.Unmarshal(body, &r)
 		sent = append(sent, r)
-		res, _ := c.Marshal(map[string]any{"id": r.ID, "result": []any{map[string]any{"status": "OK", "result": nil}}})
+		result := []any{map[string]any{"status": "OK", "result": nil}}
+		if answer {
+			result = []any{statement}
+		}
+		res, _ := c.Marshal(map[string]any{"id": r.ID, "result": result})
 		return &nethttp.Response{StatusCode: nethttp.StatusOK, Body: io.NopCloser(bytes.NewReader(res)), Header: nethttp.Header{}}
 	})})
 
@@ -44,6 +60,7 @@ func recordingDB(t *testing.T) (*surrealdb.DB, *[]connection.RPCRequest) {
 	require.NoError(t, err)
 	require.NoError(t, db.Use(context.Background(), "ns", "db"))
 	sent = nil
+	answer = true
 	return db, &sent
 }
 
@@ -110,6 +127,10 @@ func TestCRUD_compilesToQuery(t *testing.T) {
 			"UPDATE ONLY $what MERGE $data RETURN AFTER", rec},
 		{"patch", func(db *surrealdb.DB) error { _, err := surrealdb.Patch(ctx, db, rec, patches); return err },
 			"UPDATE ONLY $what PATCH $data RETURN DIFF", rec},
+		{"patch returning nothing", func(db *surrealdb.DB) error {
+			_, err := surrealdb.PatchWithResult[any](ctx, db, rec, patches, surrealdb.ReturnNone)
+			return err
+		}, "UPDATE $what PATCH $data RETURN NONE", rec},
 		{"patch returning after", func(db *surrealdb.DB) error {
 			_, err := surrealdb.PatchWithResult[any](ctx, db, rec, patches, surrealdb.ReturnAfter)
 			return err
@@ -239,6 +260,92 @@ func TestCRUD_server(t *testing.T) {
 		// zero value, as ExampleSelect_nonExistentRecord_fxamackercbor shows.
 		if gone != nil {
 			assert.Empty(t, *gone)
+		}
+	})
+}
+
+// TestCRUD_statementErrorDetails checks that the details of a failed
+// statement are decoded as those of an RPC error, whatever the connection's
+// codec decodes maps to, so that its code and the predicates see them.
+func TestCRUD_statementErrorDetails(t *testing.T) {
+	ctx := context.Background()
+	//nolint:staticcheck // the legacy codec, decoding maps to map[any]any
+	anyMaps := &models.CborUnmarshaler{DecOptions: cbor.DecOptions{DefaultMapType: reflect.TypeOf(map[any]any(nil))}}
+
+	cases := []struct {
+		name    string
+		kind    string
+		details map[string]any
+		code    int
+		is      func(error) bool
+	}{
+		{"transaction conflict", surrealdb.KindQuery, map[string]any{"kind": "TransactionConflict"},
+			-32009, surrealdb.IsTransactionConflict},
+		{"token expired", surrealdb.KindNotAllowed,
+			map[string]any{"kind": "Auth", "details": map[string]any{"kind": "TokenExpired"}},
+			-32002, surrealdb.IsTokenExpired},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _ := stubDB(t, anyMaps, map[string]any{
+				"status": "ERR", "result": "failed", "kind": tc.kind, "details": tc.details,
+			})
+			_, err := surrealdb.Create[map[string]any](ctx, db, models.NewRecordID("person", "tobie"), nil)
+			require.Error(t, err)
+			assert.True(t, tc.is(err))
+
+			//nolint:staticcheck // RPCError is what the create RPC returned
+			var rpcErr *surrealdb.RPCError
+			require.True(t, errors.As(err, &rpcErr))
+			assert.Equal(t, tc.code, rpcErr.Code)
+
+			var se *surrealdb.ServerError
+			require.True(t, errors.As(err, &se))
+			assert.Equal(t, tc.kind, se.Kind)
+			assert.Equal(t, tc.details, se.Details)
+		})
+	}
+}
+
+// TestCRUD_returnNone checks that PatchWithResult with ReturnNone returns
+// nil, whatever the codec decodes the server's NONE to.
+func TestCRUD_returnNone(t *testing.T) {
+	ctx := context.Background()
+	patches := []surrealdb.PatchData{{Op: "replace", Path: "/age", Value: 33}}
+
+	//nolint:staticcheck // fxamacker decodes NONE to a pointer to a zero value
+	fxamacker := &models.CborUnmarshaler{}
+	for name, unmarshaler := range map[string]codec.Unmarshaler{"surrealcbor": surrealcbor.New(), "fxamacker": fxamacker} {
+		t.Run(name, func(t *testing.T) {
+			db, _ := stubDB(t, unmarshaler, map[string]any{"status": "OK", "result": models.None})
+			got, err := surrealdb.PatchWithResult[map[string]any](ctx, db, models.NewRecordID("person", "tobie"),
+				patches, surrealdb.ReturnNone)
+			require.NoError(t, err)
+			assert.Nil(t, got)
+		})
+	}
+
+	t.Run("server", func(t *testing.T) {
+		for _, impl := range []testenv.CBORImpl{testenv.CBORImplSurrealCBOR, testenv.CBORImplFxamackerCBOR} {
+			t.Run(impl.String(), func(t *testing.T) {
+				c := testenv.MustNewConfig("crud", "crud", "patched")
+				c.CBORImpl = impl
+				db := c.MustNew()
+				defer db.Close(ctx)
+
+				rec := models.NewRecordID("patched", "tobie")
+				_, err := surrealdb.Create[map[string]any](ctx, db, rec, map[string]any{"age": 32})
+				require.NoError(t, err)
+
+				got, err := surrealdb.PatchWithResult[map[string]any](ctx, db, rec, patches, surrealdb.ReturnNone)
+				require.NoError(t, err)
+				assert.Nil(t, got)
+
+				after, err := surrealdb.Select[map[string]any](ctx, db, rec)
+				require.NoError(t, err)
+				require.NotNil(t, after)
+				assert.EqualValues(t, 33, (*after)["age"])
+			})
 		}
 	})
 }

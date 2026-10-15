@@ -77,6 +77,22 @@ func (r *wireError) As(err any) bool {
 	return false
 }
 
+// DecodeErrorDetails decodes the CBOR-encoded details of a failed statement in
+// the result of the query RPC method as the details of an RPC error are
+// decoded, whatever codec the connection uses: maps become map[string]any, as
+// the detail helpers such as IsTransactionConflict expect. It returns nil for
+// no details.
+func DecodeErrorDetails(data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var details any
+	if err := wireDecMode.Unmarshal(data, &details); err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
 // NewStatementError returns the error of a failed statement in the result of
 // the query RPC method, given the message, kind and details SurrealDB reports
 // for it (SurrealDB v2 reports only the message). It is the *RPCError an RPC

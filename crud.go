@@ -41,12 +41,13 @@ func (m ReturnMode) valid() bool {
 }
 
 // statementResult is one result of the query RPC method, with the structured
-// error fields SurrealDB v3 adds to a failed statement.
+// error fields SurrealDB v3 adds to a failed statement. Details is decoded by
+// connection.DecodeErrorDetails rather than the connection's codec.
 type statementResult struct {
 	Status  string          `json:"status"`
 	Result  cbor.RawMessage `json:"result"`
 	Kind    string          `json:"kind,omitempty"`
-	Details any             `json:"details,omitempty"`
+	Details cbor.RawMessage `json:"details,omitempty"`
 }
 
 // queryOne runs a single statement and decodes its result into a TResult,
@@ -56,6 +57,21 @@ type statementResult struct {
 // returned: an *RPCError that unwraps to a *ServerError carrying the kind and
 // details SurrealDB v3 reports.
 func queryOne[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*TResult, error) {
+	raw, err := execOne(ctx, s, sql, vars)
+	if err != nil || len(raw) == 0 {
+		return nil, err
+	}
+
+	var out *TResult
+	if err := unmarshalerFor(s).Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("Send: error unmarshaling result: %w", err)
+	}
+	return out, nil
+}
+
+// execOne runs a single statement and returns its result undecoded, or the
+// error of a failed statement as queryOne does.
+func execOne[S sendable](ctx context.Context, s S, sql string, vars map[string]any) (cbor.RawMessage, error) {
 	results, err := send[[]statementResult](ctx, s, "query", sql, vars)
 	if err != nil {
 		return nil, err
@@ -68,26 +84,22 @@ func queryOne[TResult any, S sendable](ctx context.Context, s S, sql string, var
 		return nil, fmt.Errorf("expected the result of 1 statement, got %d", n)
 	}
 
-	unmarshal := unmarshalerFor(s).Unmarshal
 	res := (*results)[0]
-
-	if res.Status == "ERR" {
-		var message string
-		if len(res.Result) > 0 {
-			if err := unmarshal(res.Result, &message); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
-			}
-		}
-		return nil, connection.NewStatementError(message, res.Kind, res.Details)
+	if res.Status != "ERR" {
+		return res.Result, nil
 	}
 
-	var out *TResult
+	var message string
 	if len(res.Result) > 0 {
-		if err := unmarshal(res.Result, &out); err != nil {
-			return nil, fmt.Errorf("Send: error unmarshaling result: %w", err)
+		if err = unmarshalerFor(s).Unmarshal(res.Result, &message); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
 		}
 	}
-	return out, nil
+	details, err := connection.DecodeErrorDetails(res.Details)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal error details: %w", err)
+	}
+	return nil, connection.NewStatementError(message, res.Kind, details)
 }
 
 func unmarshalerFor[S sendable](s S) interface{ Unmarshal([]byte, any) error } {
@@ -198,6 +210,15 @@ func PatchWithResult[TResult any, TWhat TableOrRecord, S sendable](
 		return nil, fmt.Errorf("invalid return mode %q", output)
 	}
 	vars := map[string]any{}
+	if output == ReturnNone {
+		// Nothing is returned, so there is nothing to decode: the server's
+		// NONE would decode to a pointer to a zero TResult with some codecs.
+		// ONLY is left out as SurrealDB 2.x and 3.0 reject it with RETURN
+		// NONE, and it only shapes the result.
+		sql := withData("UPDATE "+target(what, vars), "PATCH", patches, vars)
+		_, err := execOne(ctx, s, sql+" RETURN NONE", vars)
+		return nil, err
+	}
 	sql := "UPDATE " + only(isRecord(what)) + target(what, vars)
 	sql = withData(sql, "PATCH", patches, vars)
 	return queryOne[TResult](ctx, s, sql+" RETURN "+string(output), vars)
