@@ -55,12 +55,27 @@ func New(connectionURL string) (*DB, error) {
 //
 // Note that this function calls `conn.Connect(ctx)` for you,
 // so you don't need to call it manually.
-func FromConnection(ctx context.Context, conn connection.Connection) (*DB, error) {
+//
+// Unless [WithVersionCheck](false) is passed, it then checks that the server's
+// version is one this SDK supports, and fails with an [UnsupportedVersionError]
+// if not.
+func FromConnection(ctx context.Context, conn connection.Connection, opts ...Option) (*DB, error) {
+	o := applyOptions(opts)
+
 	if err := conn.Connect(ctx); err != nil {
 		return nil, err
 	}
 
-	return &DB{con: conn}, nil
+	db := &DB{con: conn}
+
+	if o.versionCheck {
+		if err := db.checkVersion(ctx); err != nil {
+			_ = conn.Close(ctx)
+			return nil, err
+		}
+	}
+
+	return db, nil
 }
 
 // Deprecated: Use FromEndpointURLString instead.
@@ -104,7 +119,7 @@ func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 // or for a secure connection
 //
 //	db, err := surrealdb.FromEndpointURLString(ctx, "https://localhost:8000")
-func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, error) {
+func FromEndpointURLString(ctx context.Context, connectionURL string, opts ...Option) (*DB, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
@@ -129,7 +144,7 @@ func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, erro
 		return nil, fmt.Errorf("invalid connection url")
 	}
 
-	return FromConnection(ctx, con)
+	return FromConnection(ctx, con, opts...)
 }
 
 // --------------------------------------------------
@@ -144,6 +159,17 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close(ctx context.Context) error {
 	return db.con.Close(ctx)
+}
+
+// Health checks that the server is up, with GET /health over HTTP. It works
+// whichever transport the client uses, needs no authentication, and returns nil
+// if the server answers with a 2xx status.
+func (db *DB) Health(ctx context.Context) error {
+	hc, ok := db.con.(connection.HealthChecker)
+	if !ok {
+		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+	}
+	return hc.Health(ctx)
 }
 
 // Use is a method to select the namespace and table to use.
