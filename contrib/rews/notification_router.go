@@ -47,6 +47,16 @@ func (nr *NotificationRouter) SetupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
 ) (chan connection.Notification, error) {
+	ch, _, err := nr.setupRouting(internalID, externalID, provider)
+	return ch, err
+}
+
+// setupRouting is SetupRouting, also reporting whether the live query had
+// already ended with KILLED, in which case nothing was set up.
+func (nr *NotificationRouter) setupRouting(
+	internalID, externalID string,
+	provider NotificationProvider,
+) (ch chan connection.Notification, ended bool, err error) {
 	nr.routesMu.Lock()
 	defer nr.routesMu.Unlock()
 
@@ -66,7 +76,7 @@ func (nr *NotificationRouter) SetupRouting(
 		nr.logger.Debug("Not routing an ended live query",
 			"internal_id", internalID,
 			"external_id", externalID)
-		return r.internalCh, nil
+		return r.internalCh, true, nil
 	}
 
 	// Get external channel from provider
@@ -76,7 +86,7 @@ func (nr *NotificationRouter) SetupRouting(
 			"internal_id", internalID,
 			"external_id", externalID,
 			"error", err)
-		return r.internalCh, err
+		return r.internalCh, false, err
 	}
 
 	// Update the route's external connection and manage goroutine lifecycle
@@ -86,7 +96,7 @@ func (nr *NotificationRouter) SetupRouting(
 		"internal_id", internalID,
 		"external_id", externalID)
 
-	return r.internalCh, nil
+	return r.internalCh, false, nil
 }
 
 // routeEnded is called by a route's goroutine once its live query has ended

@@ -18,6 +18,8 @@ const (
 	methodLive = "live"
 	// methodQuery is the RPC method name for query operations
 	methodQuery = "query"
+	// methodKill is the RPC method name for killing a live query
+	methodKill = "kill"
 )
 
 // NotificationCloser is an interface for closing live notifications
@@ -288,6 +290,58 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 	return err
 }
 
+// restored records the new external ID of a restored live query and routes
+// its notifications.
+//
+// The live query may have ended while it was being restored: killed, with its
+// KILLED notification routed from the old connection, or had its notifications
+// closed. Then the query just started on the server is killed, as nothing
+// would route its notifications or kill it later.
+func (rlq *reliableLQ) restored(
+	ctx context.Context,
+	sender RPCSender,
+	provider NotificationProvider,
+	internalID, newExternalID string,
+	log logger.Logger,
+) {
+	// Held while routing is set up, so that the live query cannot end
+	// unnoticed in between. A route reports its end without the router's lock.
+	rlq.liveQueriesMu.Lock()
+	info, exists := rlq.liveQueries[internalID]
+	ended := !exists || info.ended
+	if !ended {
+		oldExternalID := info.ExternalID
+		info.ExternalID = newExternalID
+		log.Debug("Live query restored with new external ID",
+			"internal_id", internalID,
+			"old_external", oldExternalID,
+			"new_external", newExternalID)
+
+		var err error
+		_, ended, err = rlq.router.setupRouting(internalID, newExternalID, provider)
+		if err != nil {
+			log.Error("Failed to setup notification routing for restored query",
+				"internal_id", internalID,
+				"external_id", newExternalID,
+				"error", err)
+		}
+	}
+	rlq.liveQueriesMu.Unlock()
+
+	if !ended {
+		return
+	}
+	log.Debug("Live query ended while it was restored, killing the restored query",
+		"internal_id", internalID,
+		"external_id", newExternalID)
+	if _, err := sender.Send(ctx, methodKill, newExternalID); err != nil {
+		log.Error("Failed to kill the restored query of an ended live query",
+			"internal_id", internalID,
+			"external_id", newExternalID,
+			"error", err)
+	}
+}
+
 // restoredLiveQueryID extracts the id of a restored live query from the
 // response to its method. It returns "" if there is none.
 func (rlq *reliableLQ) restoredLiveQueryID(method string, result *cbor.RawMessage) string {
@@ -358,26 +412,7 @@ func (rlq *reliableLQ) restoreLiveQueries(ctx context.Context, sender RPCSender,
 				info.InternalID, info.Method)
 		}
 
-		// Update the mapping with the new external ID
-		rlq.liveQueriesMu.Lock()
-		if oldInfo, exists := rlq.liveQueries[info.InternalID]; exists {
-			// Update with new external ID
-			oldInfo.ExternalID = newExternalID
-
-			log.Debug("Live query restored with new external ID",
-				"internal_id", info.InternalID,
-				"old_external", info.ExternalID,
-				"new_external", newExternalID)
-		}
-		rlq.liveQueriesMu.Unlock()
-
-		// Setup notification routing for the restored query
-		if _, err := rlq.router.SetupRouting(info.InternalID, newExternalID, provider); err != nil {
-			log.Error("Failed to setup notification routing for restored query",
-				"internal_id", info.InternalID,
-				"external_id", newExternalID,
-				"error", err)
-		}
+		rlq.restored(ctx, sender, provider, info.InternalID, newExternalID, log)
 	}
 
 	return nil
