@@ -156,6 +156,11 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, res.Error
 	}
 
+	// A request canceled while its answer arrived changes no state, so that
+	// the answer to a canceled refresh, for one, is not applied.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.trackAuth(request, res.Result)
 
 	return &res, nil
