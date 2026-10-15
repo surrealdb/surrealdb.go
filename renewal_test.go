@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
 // jwtExpiringIn returns an unsigned JWT whose exp claim is d from now.
@@ -89,5 +91,95 @@ func TestRenewer_nil(t *testing.T) {
 	var r *renewer
 	r.set(&Tokens{Access: "a", Refresh: "r"})
 	r.clear()
+	r.stop()
+	require.NoError(t, r.lockAuth(context.Background()))
+	r.unlockAuth()
 	assert.Nil(t, r.current())
+}
+
+func TestRetryBackoff(t *testing.T) {
+	assert.Equal(t, time.Second, retryBackoff(0))
+	assert.Equal(t, 16*time.Second, retryBackoff(4))
+	for attempt := 5; attempt < 200; attempt++ {
+		require.Equal(t, renewalMaxBackoff, retryBackoff(attempt), "attempt %d", attempt)
+	}
+}
+
+// An authentication change waits for a renewal under way, so the renewal's
+// answer can't land after it.
+func TestRenewer_authChangesWaitForRenewal(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	r := newRenewer(time.Minute, func(context.Context, Tokens) (*Tokens, error) {
+		close(started)
+		<-release
+		next := Tokens{Access: jwtExpiringIn(time.Hour), Refresh: "r2"}
+		return &next, nil
+	})
+	defer r.stop()
+
+	r.set(&Tokens{Access: jwtExpiringIn(2 * time.Second), Refresh: "r"})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pair was not renewed")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, r.lockAuth(ctx), context.DeadlineExceeded, "a sign-in waits for the renewal")
+
+	close(release)
+	require.NoError(t, r.lockAuth(context.Background()))
+	r.clear()
+	r.unlockAuth()
+	assert.Nil(t, r.current(), "the sign-in that followed the renewal wins")
+}
+
+// A renewal waits for an authentication change under way, and then finds the
+// pair it was for has gone.
+func TestRenewer_renewalWaitsForAuthChanges(t *testing.T) {
+	var calls atomic.Int32
+	r := newRenewer(time.Minute, func(context.Context, Tokens) (*Tokens, error) {
+		calls.Add(1)
+		return nil, errors.New("unexpected")
+	})
+	defer r.stop()
+
+	require.NoError(t, r.lockAuth(context.Background()))
+	r.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
+	time.Sleep(time.Second)
+	r.clear()
+	r.unlockAuth()
+
+	time.Sleep(200 * time.Millisecond)
+	assert.Zero(t, calls.Load())
+}
+
+type closeOnlyConnection struct{ connection.Connection }
+
+func (closeOnlyConnection) Close(context.Context) error { return nil }
+
+// Closing the client stops the renewal of every session, including attached
+// sessions which were never detached.
+func TestDB_closeStopsEveryRenewal(t *testing.T) {
+	var calls atomic.Int32
+	refresh := func(context.Context, Tokens) (*Tokens, error) {
+		calls.Add(1)
+		return nil, errors.New("unexpected")
+	}
+	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh)}
+	session := newRenewer(time.Minute, refresh)
+	db.trackSessionRenewer(session)
+
+	pair := &Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"}
+	db.renew.set(pair)
+	session.set(pair)
+	require.NoError(t, db.Close(context.Background()))
+	time.Sleep(1500 * time.Millisecond)
+
+	assert.Zero(t, calls.Load())
+	assert.Nil(t, session.current())
+	session.set(pair)
+	assert.Nil(t, session.current(), "a closed client renews nothing")
 }

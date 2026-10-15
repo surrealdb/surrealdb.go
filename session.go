@@ -90,6 +90,7 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 		s.renew = newRenewer(db.opts.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
 			return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
 		})
+		db.trackSessionRenewer(s.renew)
 	}
 	return s, nil
 }
@@ -140,7 +141,8 @@ func (s *Session) Detach(ctx context.Context) error {
 	}
 
 	s.closed = true
-	s.renew.clear()
+	s.renew.stop()
+	s.db.forgetSessionRenewer(s.renew)
 	return nil
 }
 
@@ -174,6 +176,11 @@ func (s *Session) Begin(ctx context.Context) (*Transaction, error) {
 
 // SignUp signs up a new user in this session.
 func (s *Session) SignUp(ctx context.Context, authData any) (string, error) {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return "", err
+	}
+	defer s.renew.unlockAuth()
+
 	token, err := sessionCall[string](ctx, s, connection.SignUp, authData)
 	if err != nil {
 		return "", err
@@ -187,6 +194,11 @@ func (s *Session) SignUp(ctx context.Context, authData any) (string, error) {
 
 // SignUpWithRefresh signs up a new user using a TYPE RECORD access method with WITH REFRESH enabled.
 func (s *Session) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer s.renew.unlockAuth()
+
 	tokens, err := sessionCall[Tokens](ctx, s, connection.SignUp, authData)
 	if err != nil {
 		return nil, err
@@ -197,6 +209,11 @@ func (s *Session) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens,
 
 // SignIn signs in an existing user in this session.
 func (s *Session) SignIn(ctx context.Context, authData any) (string, error) {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return "", err
+	}
+	defer s.renew.unlockAuth()
+
 	token, err := sessionCall[string](ctx, s, connection.SignIn, authData)
 	if err != nil {
 		return "", err
@@ -210,6 +227,11 @@ func (s *Session) SignIn(ctx context.Context, authData any) (string, error) {
 
 // SignInWithRefresh signs in using a TYPE RECORD access method with WITH REFRESH enabled.
 func (s *Session) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer s.renew.unlockAuth()
+
 	tokens, err := sessionCall[Tokens](ctx, s, connection.SignIn, authData)
 	if err != nil {
 		return nil, err
@@ -221,6 +243,11 @@ func (s *Session) SignInWithRefresh(ctx context.Context, authData any) (*Tokens,
 // Refresh exchanges a token pair for a new one and authenticates this session
 // with it. See [DB.Refresh].
 func (s *Session) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer s.renew.unlockAuth()
+
 	next, err := sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
 	if err != nil {
 		return nil, err
@@ -231,6 +258,11 @@ func (s *Session) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
 
 // Revoke revokes the refresh token of a token pair. See [DB.Revoke].
 func (s *Session) Revoke(ctx context.Context, tokens Tokens) error {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer s.renew.unlockAuth()
+
 	if _, err := sessionCall[any](ctx, s, connection.Revoke, tokens); err != nil {
 		return err
 	}
@@ -247,6 +279,11 @@ func (s *Session) Tokens() *Tokens {
 
 // Authenticate authenticates the session with the provided token.
 func (s *Session) Authenticate(ctx context.Context, token string) error {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer s.renew.unlockAuth()
+
 	if _, err := sessionCall[any](ctx, s, connection.Authenticate, token); err != nil {
 		return err
 	}
@@ -256,6 +293,11 @@ func (s *Session) Authenticate(ctx context.Context, token string) error {
 
 // Invalidate invalidates the authentication for this session.
 func (s *Session) Invalidate(ctx context.Context) error {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer s.renew.unlockAuth()
+
 	if _, err := sessionCall[any](ctx, s, connection.Invalidate); err != nil {
 		return err
 	}
@@ -267,6 +309,11 @@ func (s *Session) Invalidate(ctx context.Context) error {
 // signed out, with no namespace, database or variables, and with its live
 // queries killed.
 func (s *Session) Reset(ctx context.Context) error {
+	if err := s.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer s.renew.unlockAuth()
+
 	if _, err := sessionCall[any](ctx, s, connection.Reset); err != nil {
 		return err
 	}
