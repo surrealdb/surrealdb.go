@@ -186,6 +186,10 @@ func TestCRUD_server(t *testing.T) {
 
 		gone, err := surrealdb.Select[map[string]any](ctx, db, tobie)
 		require.NoError(t, err)
-		assert.Nil(t, gone)
+		// surrealcbor decodes NONE to nil; fxamacker/cbor to a pointer to a
+		// zero value, as ExampleSelect_nonExistentRecord_fxamackercbor shows.
+		if gone != nil {
+			assert.Empty(t, *gone)
+		}
 	})
 }
