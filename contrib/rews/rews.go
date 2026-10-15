@@ -3,6 +3,8 @@ package rews
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,6 +141,19 @@ type Connection[C connection.WebSocketConnection] struct {
 	// They are used to restore the namespace and database on reconnection.
 	sessionNS string
 	sessionDB string
+
+	// sessionRefresh is the refresh token returned by a successful SignInWithRefresh
+	// or SignUpWithRefresh, used to obtain a new access token on reconnection when
+	// the stored one has expired.
+	sessionRefresh string
+
+	// sessionAccess holds the namespace, database and access method the refresh
+	// token was issued for, as a refresh signin must name them again.
+	sessionAccess map[string]any
+
+	// sessionMu protects the session fields above, which the reconnection loop
+	// reads while the caller's goroutines change them.
+	sessionMu sync.Mutex
 
 	// reliableLQ contains all the state and functionality for reliable live query management
 	reliableLQ *reliableLQ
@@ -340,11 +355,22 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 		return fmt.Errorf("rews.Connection failed to reconnect: %w", err)
 	}
 
-	if arws.sessionNS != "" && arws.sessionDB != "" {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+
+	arws.sessionMu.Lock()
+	ns, db := arws.sessionNS, arws.sessionDB
+	token, refresh := arws.sessionToken, arws.sessionRefresh
+	access := copyMap(arws.sessionAccess)
+	vars := copyMap(arws.sessionVars)
+	arws.sessionMu.Unlock()
+
+	if ns != "" && db != "" {
 		if arws.logger != nil {
-			arws.logger.Debug("rews.Connection is restoring namespace and database", "namespace", arws.sessionNS, "database", arws.sessionDB)
+			arws.logger.Debug("rews.Connection is restoring namespace and database", "namespace", ns, "database", db)
 		}
-		if err := arws.Use(ctx, arws.sessionNS, arws.sessionDB); err != nil {
+		if err := conn.Use(ctx, ns, db); err != nil {
 			if arws.logger != nil {
 				arws.logger.Error("rews.Connection failed to restore namespace and database", "error", err)
 			}
@@ -355,26 +381,15 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 		}
 	}
 
-	if arws.sessionToken != "" {
-		if arws.logger != nil {
-			arws.logger.Debug("rews.Connection is re-authenticating with the session token")
-		}
-		if err := arws.Authenticate(ctx, arws.sessionToken); err != nil {
-			if arws.logger != nil {
-				arws.logger.Error("rews.Connection failed to re-authenticate with the session token", "error", err)
-			}
-			return fmt.Errorf("rews.Connection failed to re-authenticate with the session token: %w", err)
-		}
-		if arws.logger != nil {
-			arws.logger.Debug("rews.Connection re-authenticated successfully with the session token")
-		}
+	if err := arws.restoreAuth(ctx, conn, token, refresh, access); err != nil {
+		return err
 	}
 
-	for key, value := range arws.sessionVars {
+	for key, value := range vars {
 		if arws.logger != nil {
 			arws.logger.Debug("rews.Connection is restoring session variable", "key", key, "value", value)
 		}
-		if err := arws.Let(ctx, key, value); err != nil {
+		if err := conn.Let(ctx, key, value); err != nil {
 			if arws.logger != nil {
 				arws.logger.Error("rews.Connection failed to restore session variable", "key", key, "error", err)
 			}
@@ -382,11 +397,6 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 		}
 	}
 
-	// Restore live queries after session state is restored
-	// This will also setup notification routing for each restored query
-	arws.connMu.RLock()
-	conn := arws.WebSocketConnection
-	arws.connMu.RUnlock()
 	if err := arws.reliableLQ.restoreLiveQueries(ctx, conn, conn, arws.logger); err != nil {
 		if arws.logger != nil {
 			arws.logger.Error("rews.Connection failed to restore live queries", "error", err)
@@ -397,6 +407,128 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	return nil
 }
 
+// restoreAuth authenticates a new connection as the old one was. When the access
+// token is refused, as it is once it has expired, and a refresh token was kept,
+// it signs in with the refresh token instead and keeps the tokens that returns.
+func (arws *Connection[C]) restoreAuth(
+	ctx context.Context, conn connection.WebSocketConnection, token, refresh string, access map[string]any,
+) error {
+	if token == "" {
+		return nil
+	}
+
+	if arws.logger != nil {
+		arws.logger.Debug("rews.Connection is re-authenticating with the session token")
+	}
+	err := conn.Authenticate(ctx, token)
+	if err == nil {
+		if arws.logger != nil {
+			arws.logger.Debug("rews.Connection re-authenticated successfully with the session token")
+		}
+		return nil
+	}
+
+	if refresh == "" {
+		if arws.logger != nil {
+			arws.logger.Error("rews.Connection failed to re-authenticate with the session token", "error", err)
+		}
+		return fmt.Errorf("rews.Connection failed to re-authenticate with the session token: %w", err)
+	}
+
+	if arws.logger != nil {
+		arws.logger.Debug("rews.Connection is refreshing the session token", "error", err)
+	}
+	params := copyMap(access)
+	if params == nil {
+		params = map[string]any{}
+	}
+	params["refresh"] = refresh
+	tokens, refreshErr := conn.SignInWithRefresh(ctx, params)
+	if refreshErr != nil {
+		if arws.logger != nil {
+			arws.logger.Error("rews.Connection failed to refresh the session token", "error", refreshErr)
+		}
+		return fmt.Errorf("rews.Connection failed to re-authenticate with the session token (%w) or refresh it: %w", err, refreshErr)
+	}
+
+	arws.sessionMu.Lock()
+	// Unless the caller has since signed in again or out.
+	if arws.sessionToken == token {
+		arws.sessionToken = tokens.Access
+		arws.sessionRefresh = tokens.Refresh
+	}
+	arws.sessionMu.Unlock()
+
+	return nil
+}
+
+func (arws *Connection[C]) setToken(token, refresh string, access map[string]any) {
+	arws.sessionMu.Lock()
+	defer arws.sessionMu.Unlock()
+	arws.sessionToken = token
+	arws.sessionRefresh = refresh
+	arws.sessionAccess = access
+}
+
+func copyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	c := make(map[string]any, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
+}
+
+// accessKeys are the keys of signin data naming where a user signs in, which a
+// refresh signin must repeat.
+var accessKeys = map[string]bool{
+	"NS": true, "NAMESPACE": true,
+	"DB": true, "DATABASE": true,
+	"AC": true, "ACCESS": true,
+}
+
+// accessOf extracts the namespace, database and access method from the
+// authentication data of a signin or signup, which a refresh signin must repeat.
+func accessOf(authData any) map[string]any {
+	access := map[string]any{}
+	switch a := authData.(type) {
+	case map[string]any:
+		for k, v := range a {
+			if accessKeys[strings.ToUpper(k)] {
+				access[k] = v
+			}
+		}
+	case map[string]string:
+		for k, v := range a {
+			if accessKeys[strings.ToUpper(k)] {
+				access[k] = v
+			}
+		}
+	default:
+		// Structs such as surrealdb.Auth: read the fields tagged NS, DB and AC.
+		v := reflect.Indirect(reflect.ValueOf(authData))
+		if v.Kind() != reflect.Struct {
+			return access
+		}
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Type().Field(i)
+			name := strings.Split(f.Tag.Get("json"), ",")[0]
+			if name == "" {
+				name = strings.Split(f.Tag.Get("cbor"), ",")[0]
+			}
+			if !accessKeys[strings.ToUpper(name)] {
+				continue
+			}
+			if s, ok := v.Field(i).Interface().(string); ok && s != "" {
+				access[name] = s
+			}
+		}
+	}
+	return access
+}
+
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
 	arws.connMu.RLock()
 	conn := arws.WebSocketConnection
@@ -404,8 +536,10 @@ func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) 
 	if err := conn.Use(ctx, namespace, database); err != nil {
 		return fmt.Errorf("rews.Connection failed to use namespace and database: %w", err)
 	}
+	arws.sessionMu.Lock()
 	arws.sessionNS = namespace
 	arws.sessionDB = database
+	arws.sessionMu.Unlock()
 	return nil
 }
 
@@ -417,7 +551,7 @@ func (arws *Connection[C]) Authenticate(ctx context.Context, token string) error
 		return fmt.Errorf("rews.Connection failed to authenticate: %w", err)
 	}
 
-	arws.sessionToken = token
+	arws.setToken(token, "", nil)
 
 	return nil
 }
@@ -429,7 +563,9 @@ func (arws *Connection[C]) Let(ctx context.Context, key string, value any) error
 	if err := conn.Let(ctx, key, value); err != nil {
 		return fmt.Errorf("rews.Connection failed to set session variable %s: %w", key, err)
 	}
+	arws.sessionMu.Lock()
 	arws.sessionVars[key] = value
+	arws.sessionMu.Unlock()
 	return nil
 }
 
@@ -440,7 +576,9 @@ func (arws *Connection[C]) Unset(ctx context.Context, key string) error {
 	if err := conn.Unset(ctx, key); err != nil {
 		return fmt.Errorf("rews.Connection failed to unset session variable %s: %w", key, err)
 	}
+	arws.sessionMu.Lock()
 	delete(arws.sessionVars, key)
+	arws.sessionMu.Unlock()
 	return nil
 }
 
@@ -453,7 +591,7 @@ func (arws *Connection[C]) SignUp(ctx context.Context, authData any) (string, er
 		return "", fmt.Errorf("rews.Connection failed to sign up: %w", err)
 	}
 
-	arws.sessionToken = token
+	arws.setToken(token, "", nil)
 	return token, nil
 }
 
@@ -466,7 +604,7 @@ func (arws *Connection[C]) SignIn(ctx context.Context, authData any) (string, er
 		return "", fmt.Errorf("rews.Connection failed to sign in: %w", err)
 	}
 
-	arws.sessionToken = token
+	arws.setToken(token, "", nil)
 	return token, nil
 }
 
@@ -482,6 +620,51 @@ func (arws *Connection[C]) SignIn(ctx context.Context, authData any) (string, er
 // it should be better than blocking on potentially never ending connection close operation,
 // because those leaked resources can be eventually cleaned up by the operation system
 // once the application process exits.
+// SignInWithRefresh signs in with a TYPE RECORD access method WITH REFRESH and
+// keeps both tokens, so that a reconnection can re-authenticate, refreshing the
+// access token if it has expired by then.
+func (arws *Connection[C]) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	tokens, err := conn.SignInWithRefresh(ctx, authData)
+	if err != nil {
+		return nil, fmt.Errorf("rews.Connection failed to sign in: %w", err)
+	}
+
+	arws.setToken(tokens.Access, tokens.Refresh, accessOf(authData))
+	return tokens, nil
+}
+
+// SignUpWithRefresh signs up with a TYPE RECORD access method WITH REFRESH and
+// keeps both tokens, as SignInWithRefresh does.
+func (arws *Connection[C]) SignUpWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	tokens, err := conn.SignUpWithRefresh(ctx, authData)
+	if err != nil {
+		return nil, fmt.Errorf("rews.Connection failed to sign up: %w", err)
+	}
+
+	arws.setToken(tokens.Access, tokens.Refresh, accessOf(authData))
+	return tokens, nil
+}
+
+// Invalidate signs the session out and forgets its tokens, so that a
+// reconnection does not authenticate the session again.
+func (arws *Connection[C]) Invalidate(ctx context.Context) error {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	if err := conn.Invalidate(ctx); err != nil {
+		return fmt.Errorf("rews.Connection failed to invalidate: %w", err)
+	}
+
+	arws.setToken("", "", nil)
+	return nil
+}
+
 func (arws *Connection[C]) Close(ctx context.Context) error {
 	if err := arws.transitionTo(StateClosing); err != nil {
 		return fmt.Errorf("rews.Connection is already closing or closed: %w", err)
