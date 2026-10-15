@@ -62,7 +62,9 @@ type StreamFrame[T any] struct {
 
 // QueryStream runs a query and yields its answer frame by frame while it runs,
 // with the query_stream method of SurrealDB 3.3+ over WebSocket. Leaving the
-// loop early cancels the query on the server.
+// loop early cancels the query on the server. In a transaction, leaving the
+// loop waits for the server to end the canceled query, so that the
+// transaction's Commit or Cancel comes after it.
 //
 // When the connection or the server cannot stream, such as over HTTP or with an
 // older server, the query runs with the query method instead and its buffered
@@ -188,10 +190,12 @@ func refusesStreaming(err *connection.RPCError) bool { //nolint:staticcheck // t
 }
 
 // abandon cancels a stream whose reader left before its end frame, and drains
-// it in the background until the end frame arrives, so that frames still in
-// flight are dropped rather than misrouted.
+// it until the end frame arrives, so that frames still in flight are dropped
+// rather than misrouted. A transaction's stream is drained before abandon
+// returns, so that a Commit or Cancel which follows cannot overtake the
+// canceled query; any other stream is drained in the background.
 func abandon(con connection.Connection, req *connection.RPCRequest, stream *connection.ResponseStream) {
-	go func() {
+	drain := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), abandonTimeout)
 		defer cancel()
 		defer stream.Close()
@@ -211,7 +215,13 @@ func abandon(con connection.Connection, req *connection.RPCRequest, stream *conn
 				return
 			}
 		}
-	}()
+	}
+
+	if req.Txn != nil {
+		drain()
+		return
+	}
+	go drain()
 }
 
 // wireFrame is a frame of the streaming query protocol.
