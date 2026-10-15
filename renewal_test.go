@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // jwtExpiringIn returns an unsigned JWT whose exp claim is d from now.
@@ -170,7 +171,7 @@ func TestDB_closeStopsEveryRenewal(t *testing.T) {
 	}
 	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh)}
 	session := newRenewer(time.Minute, refresh)
-	db.trackSessionRenewer(session)
+	db.sessions = map[models.UUID]*Session{{}: {renew: session}}
 
 	pair := &Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"}
 	db.renew.set(pair)
