@@ -47,18 +47,22 @@ func (nr *NotificationRouter) SetupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
 ) (chan connection.Notification, error) {
-	ch, _, err := nr.setupRouting(internalID, externalID, provider, false)
+	ch, _, err := nr.setupRouting(internalID, externalID, provider, false, nil)
 	return ch, err
 }
 
 // setupRouting is SetupRouting, also reporting whether the live query had
 // already ended with KILLED, in which case nothing was set up. previousLost
 // says that the connection of the source being replaced was lost: what it
-// received is routed before anything from the new source.
+// received is routed before anything from the new source, however long that
+// takes. If a KILLED notification is found among it only then, the live
+// query ends there, and orphaned, if set, is called to end the live query
+// externalID, whose notifications nothing will route.
 func (nr *NotificationRouter) setupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
 	previousLost bool,
+	orphaned func(),
 ) (ch chan connection.Notification, ended bool, err error) {
 	nr.routesMu.Lock()
 	defer nr.routesMu.Unlock()
@@ -76,7 +80,7 @@ func (nr *NotificationRouter) setupRouting(
 	// Stop routing from the current source first, taking everything it
 	// holds: a live query which ended with KILLED, even one still to be
 	// routed, gets no more notifications, from this connection or any other.
-	previousID, previousCh := r.externalID, r.externalCh
+	previousID, previousCh, previousOrphaned := r.externalID, r.externalCh, r.orphaned
 	if r.detach(nr.logger, previousLost) {
 		nr.logger.Debug("Not routing an ended live query",
 			"internal_id", internalID,
@@ -92,11 +96,11 @@ func (nr *NotificationRouter) setupRouting(
 			"external_id", externalID,
 			"error", err)
 		// Carry on routing as before.
-		r.attach(previousID, previousCh, nr.logger)
+		r.attach(previousID, previousCh, previousOrphaned, nr.logger)
 		return r.internalCh, false, err
 	}
 
-	r.attach(externalID, externalCh, nr.logger)
+	r.attach(externalID, externalCh, orphaned, nr.logger)
 
 	nr.logger.Debug("Notification routing setup",
 		"internal_id", internalID,

@@ -296,7 +296,8 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 // The live query may have ended while it was being restored: killed, with its
 // KILLED notification routed from the old connection, or had its notifications
 // closed. Then the query just started on the server is killed, as nothing
-// would route its notifications or kill it later.
+// would route its notifications or kill it later. So it is too if a KILLED
+// notification the old connection received is only routed later.
 func (rlq *reliableLQ) restored(
 	ctx context.Context,
 	sender RPCSender,
@@ -317,9 +318,26 @@ func (rlq *reliableLQ) restored(
 			"old_external", oldExternalID,
 			"new_external", newExternalID)
 
+		// The old connection's KILLED notification may be routed only after
+		// the new query's notifications have been subscribed to.
+		orphaned := func() {
+			log.Debug("Live query ended after it was restored, killing the restored query",
+				"internal_id", internalID,
+				"external_id", newExternalID)
+			if closer, ok := provider.(NotificationCloser); ok {
+				if err := closer.CloseLiveNotifications(newExternalID); err != nil {
+					log.Error("Failed to close the notifications of the restored query of an ended live query",
+						"internal_id", internalID,
+						"external_id", newExternalID,
+						"error", err)
+				}
+			}
+			rlq.killRestored(ctx, sender, internalID, newExternalID, log)
+		}
+
 		var err error
 		// Restoring follows a lost connection: route what it received first.
-		_, ended, err = rlq.router.setupRouting(internalID, newExternalID, provider, true)
+		_, ended, err = rlq.router.setupRouting(internalID, newExternalID, provider, true, orphaned)
 		if err != nil {
 			log.Error("Failed to setup notification routing for restored query",
 				"internal_id", internalID,
@@ -335,10 +353,20 @@ func (rlq *reliableLQ) restored(
 	log.Debug("Live query ended while it was restored, killing the restored query",
 		"internal_id", internalID,
 		"external_id", newExternalID)
-	if _, err := sender.Send(ctx, methodKill, newExternalID); err != nil {
+	rlq.killRestored(ctx, sender, internalID, newExternalID, log)
+}
+
+// killRestored kills the restored query of a live query which has ended.
+func (rlq *reliableLQ) killRestored(
+	ctx context.Context,
+	sender RPCSender,
+	internalID, externalID string,
+	log logger.Logger,
+) {
+	if _, err := sender.Send(ctx, methodKill, externalID); err != nil {
 		log.Error("Failed to kill the restored query of an ended live query",
 			"internal_id", internalID,
-			"external_id", newExternalID,
+			"external_id", externalID,
 			"error", err)
 	}
 }

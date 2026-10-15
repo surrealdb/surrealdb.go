@@ -3,7 +3,6 @@ package rews
 import (
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -23,10 +22,33 @@ func panicIfNilNotificationCh(value chan connection.Notification, message string
 	}
 }
 
-// lostSourceDrainTimeout bounds how long a route waits, when it switches
-// source after its connection was lost, for the old source to deliver what that
-// connection received. connection.Toolkit delivers it at once, then closes it.
-const lostSourceDrainTimeout = 5 * time.Second
+// segment is part of what a route has received from earlier sources but not
+// yet routed: items, then, if ch is set, everything a source whose connection
+// was lost goes on delivering until it closes.
+type segment struct {
+	items []connection.Notification
+	ch    chan connection.Notification
+}
+
+// discard reads ch until it is closed, so that whoever delivers on it is not
+// left blocked once nothing routes it any more. A source whose connection was
+// lost closes once it has delivered what it holds.
+func discard(ch chan connection.Notification) {
+	if ch == nil {
+		return
+	}
+	go func() {
+		for range ch {
+		}
+	}()
+}
+
+// discardSegments discards the sources of segments which will not be routed.
+func discardSegments(segments []segment) {
+	for _, s := range segments {
+		discard(s.ch)
+	}
+}
 
 // route represents a single notification routing path
 type route struct {
@@ -56,11 +78,16 @@ type route struct {
 	stopCh     chan struct{}                // Signal to stop routing goroutine
 	stoppedCh  chan struct{}                // Closed by goroutine when it finishes
 
-	// backlog holds notifications received from earlier sources but not yet
+	// orphaned, if set, is called if the live query ends with a KILLED
+	// notification from an earlier source while externalCh is attached:
+	// nothing will route externalCh's live query, which must be ended.
+	orphaned func()
+
+	// backlog holds what was received from earlier sources but not yet
 	// routed, oldest first, for the next routing goroutine to route before
 	// reading its source. It is written by a routing goroutine before it
 	// closes stoppedCh, and otherwise only touched with no goroutine running.
-	backlog []connection.Notification
+	backlog []segment
 }
 
 // newRoute creates a new route with the given internal ID.
@@ -83,6 +110,7 @@ func (r *route) stop() {
 		r.stopRoutingGoroutine()
 	}
 
+	discardSegments(r.backlog)
 	r.backlog = nil
 
 	// Now it's safe to close the internal channel since no goroutine is running.
@@ -109,7 +137,7 @@ func (r *route) setExternal(externalID string, externalCh chan connection.Notifi
 	if r.detach(nil, false) {
 		return true
 	}
-	r.attach(externalID, externalCh, nil)
+	r.attach(externalID, externalCh, nil, nil)
 	return false
 }
 
@@ -118,12 +146,16 @@ func (r *route) setExternal(externalID string, externalCh chan connection.Notifi
 // has ended, in which case routing carries on until the KILLED notification
 // has been routed, and the route takes no new source.
 //
-// Everything the previous source holds is taken now, so that a KILLED
+// What the previous source already holds is taken now, so that a KILLED
 // notification among it is known before a new source is attached.
 //
 // If previousLost, the previous source's connection has been lost, and the
-// source goes on delivering what that connection received before closing:
-// all of it is taken. Otherwise only what the previous source already holds is.
+// source goes on delivering what that connection received before closing.
+// What it delivers after now is routed, before anything from the next source,
+// by the routing goroutine, which reads it until it closes however long that
+// takes. A KILLED notification among it ends the route then, and the next
+// source's orphaned is called. Otherwise only what the previous source
+// already holds is routed.
 func (r *route) detach(l logger.Logger, previousLost bool) bool {
 	previous := r.externalCh
 	if r.stopCh != nil {
@@ -134,78 +166,74 @@ func (r *route) detach(l logger.Logger, previousLost bool) bool {
 		}
 		r.stopRoutingGoroutine()
 	}
+	r.orphaned = nil
 
 	// The goroutine just stopped may have routed a KILLED notification, or
 	// been stopped before routing one already taken into the backlog: then
 	// it carries on routing that.
 	if r.isEnded() {
+		if previousLost {
+			// Its connection was lost: nothing else will read it.
+			discard(previous)
+		}
 		if len(r.backlog) > 0 {
-			r.attach("", nil, l)
+			r.attach("", nil, nil, l)
 		}
 		return true
 	}
 
 	// What remains on the previous source was received before the switch.
 	if previous != nil {
-		r.takeRemaining(previous, previousLost, l)
+		r.backlog = append(r.backlog, takeRemaining(previous, previousLost))
 	}
 
-	for i, n := range r.backlog {
-		if n.Action == connection.KilledAction {
+	for i := range r.backlog {
+		for j, n := range r.backlog[i].items {
+			if n.Action != connection.KilledAction {
+				continue
+			}
 			// Nothing after KILLED is routed. Route what comes before it,
 			// then end.
+			discard(r.backlog[i].ch)
+			discardSegments(r.backlog[i+1:])
+			r.backlog[i] = segment{items: r.backlog[i].items[:j+1]}
 			r.backlog = r.backlog[:i+1]
 			r.ended.Store(true)
-			r.attach("", nil, l)
+			r.attach("", nil, nil, l)
 			return true
 		}
 	}
 	return false
 }
 
-// takeRemaining appends what remains on a previous source to the backlog.
-// With lost, it waits for the source to close, for at most
-// lostSourceDrainTimeout; otherwise it takes only what the source holds.
-func (r *route) takeRemaining(previous chan connection.Notification, lost bool, l logger.Logger) {
-	if !lost {
-		for {
-			select {
-			case n, ok := <-previous:
-				if !ok {
-					return
-				}
-				r.backlog = append(r.backlog, n)
-			default:
-				return
-			}
-		}
-	}
-
-	timeout := time.NewTimer(lostSourceDrainTimeout)
-	defer timeout.Stop()
+// takeRemaining takes what a previous source holds now. With lost, the
+// source, unless already closed, is kept to be read until it closes.
+func takeRemaining(previous chan connection.Notification, lost bool) segment {
+	var s segment
 	for {
 		select {
 		case n, ok := <-previous:
 			if !ok {
-				return
+				return s
 			}
-			r.backlog = append(r.backlog, n)
-		case <-timeout.C:
-			if l != nil {
-				l.Warn("Gave up waiting for the notifications of a lost connection",
-					"internal_id", r.internalID,
-					"external_id", r.externalID)
+			s.items = append(s.items, n)
+		default:
+			if lost {
+				s.ch = previous
 			}
-			return
+			return s
 		}
 	}
 }
 
 // attach starts routing the backlog, then externalCh. With a nil externalCh,
-// only the backlog is routed, then routing waits to be stopped.
-func (r *route) attach(externalID string, externalCh chan connection.Notification, l logger.Logger) {
+// only the backlog is routed, then routing waits to be stopped. orphaned, if
+// set, is called if the live query ends with a KILLED notification from the
+// backlog while externalCh is attached.
+func (r *route) attach(externalID string, externalCh chan connection.Notification, orphaned func(), l logger.Logger) {
 	r.externalID = externalID
 	r.externalCh = externalCh
+	r.orphaned = orphaned
 	r.startRoutingGoroutine(l)
 }
 
@@ -245,11 +273,12 @@ func (r *route) startRoutingGoroutine(l logger.Logger) {
 	g := routing{r: r, externalID: r.externalID, stopCh: r.stopCh, l: l}
 	externalCh := r.externalCh
 	stoppedCh := r.stoppedCh
+	orphaned := r.orphaned
 	earlier := r.backlog
 	r.backlog = nil
 
 	go func() {
-		ended, left := g.route(earlier, externalCh)
+		ended, early, left := g.route(earlier, externalCh)
 		// Read once stoppedCh is closed.
 		r.backlog = left
 		// Signal completion before calling onEnd, which may take locks held
@@ -257,6 +286,9 @@ func (r *route) startRoutingGoroutine(l logger.Logger) {
 		close(stoppedCh)
 		if ended && r.onEnd != nil {
 			r.onEnd(r)
+		}
+		if early && orphaned != nil {
+			orphaned()
 		}
 	}()
 }
@@ -272,8 +304,9 @@ type routing struct {
 // route routes the backlog, then notifications from externalCh, to the
 // internal channel until externalCh is closed or stopCh is closed. It returns
 // true if the live query ended with a KILLED notification, having closed the
-// internal channel. Otherwise it returns what it was stopped before routing.
-func (g *routing) route(backlog []connection.Notification, externalCh chan connection.Notification) (bool, []connection.Notification) {
+// internal channel, and whether that came from the backlog while externalCh
+// was attached. Otherwise it returns what it was stopped before routing.
+func (g *routing) route(backlog []segment, externalCh chan connection.Notification) (ended, early bool, left []segment) {
 	if g.l != nil {
 		g.l.Debug("Starting notification routing",
 			"internal_id", g.r.internalID,
@@ -281,16 +314,64 @@ func (g *routing) route(backlog []connection.Notification, externalCh chan conne
 	}
 
 	for len(backlog) > 0 {
-		n := backlog[0]
-		if !g.forward(n) {
-			return false, backlog
+		var stopped bool
+		if ended, stopped = g.routeSegment(&backlog[0]); stopped {
+			return false, false, backlog
+		}
+		if ended {
+			discardSegments(backlog[1:])
+			return true, externalCh != nil, nil
 		}
 		backlog = backlog[1:]
-		if n.Action == connection.KilledAction {
-			return g.end(), nil
-		}
 	}
 
+	ended, left = g.routeSource(externalCh)
+	return ended, false, left
+}
+
+// routeSegment routes a segment of the backlog. It returns true if the live
+// query ended with a KILLED notification among it, or stopped, true if it was
+// stopped first, leaving s with what it did not route.
+func (g *routing) routeSegment(s *segment) (ended, stopped bool) {
+	for len(s.items) > 0 {
+		n := s.items[0]
+		if !g.forward(n) {
+			return false, true
+		}
+		s.items = s.items[1:]
+		if n.Action == connection.KilledAction {
+			discard(s.ch)
+			return g.end(), false
+		}
+	}
+	// A source whose connection was lost: route everything it delivers,
+	// until it closes, before anything later.
+	for s.ch != nil {
+		select {
+		case n, ok := <-s.ch:
+			if !ok {
+				s.ch = nil
+				return false, false
+			}
+			if !g.forward(n) {
+				s.items = []connection.Notification{n}
+				return false, true
+			}
+			if n.Action == connection.KilledAction {
+				discard(s.ch)
+				return g.end(), false
+			}
+		case <-g.stopCh:
+			return false, true
+		}
+	}
+	return false, false
+}
+
+// routeSource routes notifications from externalCh until it is closed or
+// stopCh is closed. It returns true if the live query ended with a KILLED
+// notification. Otherwise it returns what it was stopped before routing.
+func (g *routing) routeSource(externalCh chan connection.Notification) (bool, []segment) {
 	for {
 		select {
 		case n, ok := <-externalCh:
@@ -303,7 +384,7 @@ func (g *routing) route(backlog []connection.Notification, externalCh chan conne
 				return false, nil
 			}
 			if !g.forward(n) {
-				return false, []connection.Notification{n}
+				return false, []segment{{items: []connection.Notification{n}}}
 			}
 			if n.Action == connection.KilledAction {
 				return g.end(), nil

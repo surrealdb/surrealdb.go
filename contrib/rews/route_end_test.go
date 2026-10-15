@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -304,13 +305,16 @@ func TestRoute_repeatedReconnectsWhileConsumerBehind(t *testing.T) {
 type restoreSender struct {
 	newID   string
 	during  func()
+	mu      sync.Mutex
 	methods []string
 	params  [][]any
 }
 
 func (s *restoreSender) Send(_ context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	s.mu.Lock()
 	s.methods = append(s.methods, method)
 	s.params = append(s.params, params)
+	s.mu.Unlock()
 	var result cbor.RawMessage
 	if method == methodLive {
 		if s.during != nil {
@@ -492,4 +496,148 @@ func TestReliableLQ_restoreAfterLossLosesNothing(t *testing.T) {
 		require.Equal(t, i, n.Result, "notifications arrive in order, none lost")
 	}
 	require.NoError(t, rlq.closeLiveNotifications(restored, "lq"))
+}
+
+// sent returns the methods and params sent so far.
+func (s *restoreSender) sent() (methods []string, params [][]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.methods...), append([][]any(nil), s.params...)
+}
+
+// slowLostSource sets up a live query, routed from a source which the test
+// controls, then restores it on a new connection while the old source is
+// still open: its connection was lost, but it has not yet delivered all it
+// received. Restoring used to wait for it for a few seconds, then route the
+// new source without it, so whatever it delivered afterwards was lost and
+// whoever delivered it was left blocked.
+func slowLostSource(t *testing.T) (rlq *reliableLQ, lost, ch chan connection.Notification, restored *connection.Toolkit, sender *restoreSender) {
+	t.Helper()
+	log := quietLogger()
+	rlq = newReliableLQ(log, surrealcbor.New())
+	rlq.recordLiveQuery("lq", methodLive, []any{"users", false}, log)
+	provider := newMockNotificationProvider()
+	lost = make(chan connection.Notification)
+	provider.channels["lq"] = lost
+
+	ch, err := rlq.liveNotifications("lq", provider)
+	require.NoError(t, err)
+
+	restored = newToolkit()
+	sender = &restoreSender{newID: uuid.Must(uuid.NewV4()).String()}
+	restoredCh := make(chan error, 1)
+	go func() { restoredCh <- rlq.restoreLiveQueries(context.Background(), sender, restored, log) }()
+	select {
+	case err := <-restoredCh:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("restoring waited for the old source to close")
+	}
+	methods, _ := sender.sent()
+	require.Equal(t, []string{methodLive}, methods)
+	return rlq, lost, ch, restored, sender
+}
+
+// TestReliableLQ_restoreWhileLostSourceStillDeliveringLosesNothing delivers
+// more on the old source, after restoring, than every channel in between can
+// hold, then closes it. All of it is routed, before anything from the new
+// connection.
+func TestReliableLQ_restoreWhileLostSourceStillDeliveringLosesNothing(t *testing.T) {
+	rlq, lost, ch, restored, sender := slowLostSource(t)
+	const before, after = 300, 3
+
+	delivered := make(chan struct{})
+	go func() {
+		defer close(delivered)
+		for i := 0; i < before; i++ {
+			lost <- notification(connection.CreateAction, i)
+		}
+		close(lost)
+	}()
+	for i := before; i < before+after; i++ {
+		require.True(t, restored.SendNotification(sender.newID, notification(connection.CreateAction, i)))
+	}
+
+	for i := 0; i < before+after; i++ {
+		n, ok := receiveNotification(t, ch)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result, "notifications arrive in order, none lost")
+	}
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the old source was left blocked")
+	}
+	requireOpenAndEmpty(t, ch)
+	require.NoError(t, rlq.closeLiveNotifications(restored, "lq"))
+}
+
+// TestReliableLQ_killedOnLostSourceAfterRestoreKillsRestored delivers the old
+// connection's KILLED notification only after the live query was restored.
+// The live query ends there, and the restored query, whose notifications
+// nothing will route, is killed and unsubscribed from.
+func TestReliableLQ_killedOnLostSourceAfterRestoreKillsRestored(t *testing.T) {
+	rlq, lost, ch, restored, sender := slowLostSource(t)
+	const before = 150
+
+	require.True(t, restored.SendNotification(sender.newID, notification(connection.CreateAction, -1)))
+	go func() {
+		for i := 0; i < before; i++ {
+			lost <- notification(connection.CreateAction, i)
+		}
+		lost <- notification(connection.KilledAction, before)
+		close(lost)
+	}()
+
+	for i := 0; i < before; i++ {
+		n, ok := receiveNotification(t, ch)
+		require.True(t, ok)
+		require.Equal(t, i, n.Result)
+	}
+	n, ok := receiveNotification(t, ch)
+	require.True(t, ok)
+	assert.Equal(t, connection.KilledAction, n.Action)
+	_, ok = receiveNotification(t, ch)
+	assert.False(t, ok, "nothing from the restored query is routed after KILLED")
+
+	require.Eventually(t, func() bool {
+		methods, _ := sender.sent()
+		return len(methods) == 2
+	}, 2*time.Second, time.Millisecond)
+	methods, params := sender.sent()
+	require.Equal(t, []string{methodLive, methodKill}, methods, "the restored query is killed")
+	assert.Equal(t, []any{sender.newID}, params[1])
+	_, subscribed := restored.GetNotificationChannel(sender.newID)
+	assert.False(t, subscribed, "the restored query's notifications are closed")
+
+	rlq.liveQueriesMu.RLock()
+	ended := rlq.liveQueries["lq"].ended
+	rlq.liveQueriesMu.RUnlock()
+	assert.True(t, ended, "the live query is not restored again")
+	require.NoError(t, rlq.closeLiveNotifications(restored, "lq"))
+}
+
+// TestRoute_stopWhileLostSourceStillDelivering stops a route still waiting
+// for a lost source to close. Whatever delivers on it is not left blocked.
+func TestRoute_stopWhileLostSourceStillDelivering(t *testing.T) {
+	r := newRoute("internal")
+	lost := make(chan connection.Notification)
+	r.setExternal("external-1", lost)
+	require.False(t, r.detach(nil, true))
+	r.attach("external-2", make(chan connection.Notification), nil, nil)
+	r.stop()
+
+	delivered := make(chan struct{})
+	go func() {
+		defer close(delivered)
+		for i := 0; i < 200; i++ {
+			lost <- notification(connection.CreateAction, i)
+		}
+		close(lost)
+	}()
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the old source was left blocked")
+	}
 }
