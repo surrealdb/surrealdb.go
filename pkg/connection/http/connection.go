@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -290,10 +291,13 @@ func scopeParam(params []any, i int) (scopeChange, bool) {
 		return scopeChange{}, true
 	case models.CustomNil, *models.CustomNil:
 		return scopeChange{keep: true}, true
-	case string:
-		return scopeChange{name: p}, true
 	default:
-		return scopeChange{}, false
+		if v := reflect.ValueOf(p); v.Kind() == reflect.Pointer && v.IsNil() {
+			// Encoded as null, as nil is.
+			return scopeChange{}, true
+		}
+		name, ok := stringValue(p)
+		return scopeChange{name: name}, ok
 	}
 }
 
@@ -301,8 +305,53 @@ func paramString(params []any, i int) (string, bool) {
 	if i >= len(params) {
 		return "", false
 	}
-	s, ok := params[i].(string)
-	return s, ok
+	return stringValue(params[i])
+}
+
+// stringValue returns v as the string it is encoded as: a string, a value of
+// a defined string type such as type Token string, or a pointer to either.
+// A type with a CBOR encoding of its own is not taken for a string.
+func stringValue(v any) (string, bool) {
+	if s, ok := v.(string); ok {
+		return s, true
+	}
+	if _, custom := v.(cbor.Marshaler); custom {
+		return "", false
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer && !rv.IsNil() {
+		rv = rv.Elem()
+		if rv.CanInterface() {
+			if _, custom := rv.Interface().(cbor.Marshaler); custom {
+				return "", false
+			}
+		}
+	}
+	if rv.Kind() != reflect.String {
+		return "", false
+	}
+	return rv.String(), true
+}
+
+// stringKeyedMap returns the entries of v when it is a map with string keys,
+// such as a map[string]string or a defined map type, which is encoded as an
+// object as a map[string]any is.
+func stringKeyedMap(v any) (map[string]any, bool) {
+	if m, ok := v.(map[string]any); ok {
+		return m, true
+	}
+	if _, custom := v.(cbor.Marshaler); custom {
+		return nil, false
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+		return nil, false
+	}
+	m := make(map[string]any, rv.Len())
+	for iter := rv.MapRange(); iter.Next(); {
+		m[iter.Key().String()] = iter.Value().Interface()
+	}
+	return m, true
 }
 
 // withVariables returns a copy of a query request whose variables include
@@ -321,7 +370,7 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	}
 
 	if len(request.Params) > 1 && request.Params[1] != nil {
-		given, ok := request.Params[1].(map[string]any)
+		given, ok := stringKeyedMap(request.Params[1])
 		if !ok {
 			// Variables of another type are sent as they are.
 			return request
