@@ -412,6 +412,9 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 	if err != nil {
 		return nil, err
 	}
+	if ver == nil {
+		return nil, errors.New("unexpected version data: none")
+	}
 
 	switch v := (*ver).(type) {
 	case map[string]any:
