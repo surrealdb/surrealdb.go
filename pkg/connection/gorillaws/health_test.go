@@ -37,3 +37,20 @@ func TestHealth_usesTheDialersTLSConfig(t *testing.T) {
 	DefaultDialer.TLSClientConfig = &tls.Config{RootCAs: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs}
 	require.NoError(t, con.Health(context.Background()))
 }
+
+type wrappedTransport struct{ http.RoundTripper }
+
+// An application may replace http.DefaultTransport with another kind of
+// RoundTripper, such as one for tracing; the health check still works.
+func TestHealth_defaultTransportReplaced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+
+	saved := http.DefaultTransport
+	http.DefaultTransport = wrappedTransport{saved}
+	defer func() { http.DefaultTransport = saved }()
+
+	u, err := url.Parse("ws://" + strings.TrimPrefix(srv.URL, "http://"))
+	require.NoError(t, err)
+	require.NoError(t, New(connection.NewConfig(u)).Health(context.Background()))
+}
