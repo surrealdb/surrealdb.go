@@ -54,10 +54,24 @@ func newReliableLQ(log logger.Logger, unmarshaler codec.Unmarshaler) *reliableLQ
 		panic("reliableLQ requires a valid unmarshaler")
 	}
 
-	return &reliableLQ{
+	rlq := &reliableLQ{
 		liveQueries: make(map[string]*LiveQueryInfo),
 		router:      NewNotificationRouter(log),
 		unmarshaler: unmarshaler,
+	}
+	rlq.router.onEnd = rlq.liveQueryEnded
+	return rlq
+}
+
+// liveQueryEnded records that a live query ended with a KILLED notification,
+// so that it is not restored on the next connection. It is forgotten when its
+// notifications are closed.
+func (rlq *reliableLQ) liveQueryEnded(internalID string) {
+	rlq.liveQueriesMu.Lock()
+	defer rlq.liveQueriesMu.Unlock()
+
+	if info, ok := rlq.liveQueries[internalID]; ok {
+		info.ended = true
 	}
 }
 
@@ -71,6 +85,10 @@ type LiveQueryInfo struct {
 	Method string
 	// Params are the parameters used to create the live query
 	Params []any
+
+	// ended is set once the live query has ended with a KILLED notification.
+	// It is not restored after reconnection.
+	ended bool
 }
 
 // isLiveSelectQuery checks if a query string is a LIVE SELECT statement
@@ -236,7 +254,7 @@ func (rlq *reliableLQ) liveNotifications(
 }
 
 // closeLiveNotifications handles closing live notifications with UUID mapping
-func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id string) (string, error) {
+func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id string) error {
 	// Check if this is an internal ID that needs mapping
 	rlq.liveQueriesMu.RLock()
 	info, exists := rlq.liveQueries[id]
@@ -244,14 +262,20 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 		rlq.liveQueriesMu.RUnlock()
 		// This should not happen in normal usage - CloseLiveNotifications should only be called
 		// for live queries that were previously created and tracked
-		return "", fmt.Errorf("live query with ID %s not found - was this live query previously created?", id)
+		return fmt.Errorf("live query with ID %s not found - was this live query previously created?", id)
 	}
 
 	externalID := info.ExternalID
+	ended := info.ended
 	rlq.liveQueriesMu.RUnlock()
 
-	// Close notifications on the underlying connection
-	err := closer.CloseLiveNotifications(externalID)
+	// Close notifications on the underlying connection. Those of a live query
+	// which ended with KILLED are already closed, and may belong to a
+	// connection which has since been replaced.
+	var err error
+	if !ended {
+		err = closer.CloseLiveNotifications(externalID)
+	}
 
 	// Remove route from router
 	rlq.router.RemoveRoute(id)
@@ -261,7 +285,37 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 	delete(rlq.liveQueries, id)
 	rlq.liveQueriesMu.Unlock()
 
-	return externalID, err
+	return err
+}
+
+// restoredLiveQueryID extracts the id of a restored live query from the
+// response to its method. It returns "" if there is none.
+func (rlq *reliableLQ) restoredLiveQueryID(method string, result *cbor.RawMessage) string {
+	if result == nil {
+		return ""
+	}
+	switch method {
+	case methodLive:
+		var uuid models.UUID
+		if err := rlq.unmarshaler.Unmarshal(*result, &uuid); err == nil {
+			return uuid.String()
+		}
+	case methodQuery:
+		type QueryResult struct {
+			Status string          `json:"status"`
+			Time   string          `json:"time"`
+			Result cbor.RawMessage `json:"result"`
+		}
+
+		var queryResults []QueryResult
+		if err := rlq.unmarshaler.Unmarshal(*result, &queryResults); err == nil && len(queryResults) > 0 {
+			var uuid models.UUID
+			if err := rlq.unmarshaler.Unmarshal(queryResults[0].Result, &uuid); err == nil {
+				return uuid.String()
+			}
+		}
+	}
+	return ""
 }
 
 // restoreLiveQueries re-establishes live queries after reconnection.
@@ -274,6 +328,10 @@ func (rlq *reliableLQ) restoreLiveQueries(ctx context.Context, sender RPCSender,
 	rlq.liveQueriesMu.RLock()
 	queries := make([]*LiveQueryInfo, 0, len(rlq.liveQueries))
 	for _, info := range rlq.liveQueries {
+		if info.ended {
+			// Killed: restoring it would start it again.
+			continue
+		}
 		queries = append(queries, info)
 	}
 	rlq.liveQueriesMu.RUnlock()
@@ -294,33 +352,7 @@ func (rlq *reliableLQ) restoreLiveQueries(ctx context.Context, sender RPCSender,
 		}
 
 		// Extract the new external ID from the response
-		var newExternalID string
-		if resp.Result != nil {
-			switch info.Method {
-			case methodLive:
-				var uuid models.UUID
-				if err := rlq.unmarshaler.Unmarshal(*resp.Result, &uuid); err == nil {
-					newExternalID = uuid.String()
-				}
-			case methodQuery:
-				type QueryResult struct {
-					Status string          `json:"status"`
-					Time   string          `json:"time"`
-					Result cbor.RawMessage `json:"result"`
-				}
-
-				var queryResults []QueryResult
-				if err := rlq.unmarshaler.Unmarshal(*resp.Result, &queryResults); err == nil {
-					if len(queryResults) > 0 {
-						var uuid models.UUID
-						if err := rlq.unmarshaler.Unmarshal(queryResults[0].Result, &uuid); err == nil {
-							newExternalID = uuid.String()
-						}
-					}
-				}
-			}
-		}
-
+		newExternalID := rlq.restoredLiveQueryID(info.Method, resp.Result)
 		if newExternalID == "" {
 			return fmt.Errorf("failed to extract UUID from restored live query response for %s (method: %s)",
 				info.InternalID, info.Method)
