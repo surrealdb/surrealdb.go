@@ -342,9 +342,9 @@ func httpClientFor(d *gorilla.Dialer) *http.Client {
 	t := baseTransport()
 	t.DisableKeepAlives = true
 	t.Proxy = d.Proxy
-	if d.TLSClientConfig != nil {
-		t.TLSClientConfig = d.TLSClientConfig.Clone()
-	}
+	// The dialer's TLS configuration, or none, replaces any the default
+	// transport was given, which the WebSocket does not use either.
+	t.TLSClientConfig = d.TLSClientConfig.Clone()
 	switch {
 	case d.NetDialContext != nil:
 		t.DialContext = d.NetDialContext

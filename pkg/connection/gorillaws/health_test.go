@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -53,4 +54,21 @@ func TestHealth_defaultTransportReplaced(t *testing.T) {
 	u, err := url.Parse("ws://" + strings.TrimPrefix(srv.URL, "http://"))
 	require.NoError(t, err)
 	require.NoError(t, New(connection.NewConfig(u)).Health(context.Background()))
+}
+
+// A TLS configuration given to http.DefaultTransport, which the WebSocket
+// does not use, does not reach the health check either.
+func TestHealth_ignoresTheDefaultTransportsTLSConfig(t *testing.T) {
+	saved := http.DefaultTransport
+	custom := saved.(*http.Transport).Clone()
+	custom.TLSClientConfig = &tls.Config{ServerName: "elsewhere.invalid"}
+	http.DefaultTransport = custom
+	defer func() { http.DefaultTransport = saved }()
+
+	savedTLS := DefaultDialer.TLSClientConfig
+	DefaultDialer.TLSClientConfig = nil
+	defer func() { DefaultDialer.TLSClientConfig = savedTLS }()
+
+	client := httpClientFor(DefaultDialer)
+	assert.Nil(t, client.Transport.(*http.Transport).TLSClientConfig)
 }
