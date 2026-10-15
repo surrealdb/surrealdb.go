@@ -8,6 +8,7 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
 )
 
@@ -152,7 +153,10 @@ type Connection[C connection.WebSocketConnection] struct {
 }
 
 var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
-var _ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
+var (
+	_ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
+	_ connection.Streamer            = (*Connection[connection.WebSocketConnection])(nil)
+)
 
 // New creates a new auto-reconnecting WebSocket connection.
 //
@@ -395,6 +399,20 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// CallStream sends a streaming request on the current connection, so that
+// [surrealdb.QueryStream] streams through a reconnecting connection too. A
+// request in flight when the connection drops fails; it is not resent.
+func (arws *Connection[C]) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	streamer, ok := conn.(connection.Streamer)
+	if !ok {
+		return nil, fmt.Errorf("%w: query_stream", constants.ErrMethodNotAvailable)
+	}
+	return streamer.CallStream(ctx, req)
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {

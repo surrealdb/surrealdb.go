@@ -80,13 +80,11 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 			return
 		}
 
-		streamer, ok := con.(connection.Streamer)
-		if !ok {
+		stream, err := openStream(ctx, con, req)
+		if errors.Is(err, constants.ErrMethodNotAvailable) {
 			bufferedFrames(ctx, s, sql, vars, yield)
 			return
 		}
-
-		stream, err := streamer.CallStream(ctx, req)
 		if err != nil {
 			yield(StreamFrame[T]{}, err)
 			return
@@ -139,6 +137,17 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 			}
 		}
 	}
+}
+
+// openStream sends a streaming request, or fails with
+// constants.ErrMethodNotAvailable when the connection cannot stream, such as
+// over HTTP or through a wrapper whose current connection cannot.
+func openStream(ctx context.Context, con connection.Connection, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	streamer, ok := con.(connection.Streamer)
+	if !ok {
+		return nil, constants.ErrMethodNotAvailable
+	}
+	return streamer.CallStream(ctx, req)
 }
 
 // streamRequest returns the connection and the query_stream request for s.

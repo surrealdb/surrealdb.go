@@ -6,12 +6,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/contrib/rews"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
@@ -227,4 +229,38 @@ func TestQueryStream_afterClose(t *testing.T) {
 		got = err
 	}
 	require.Error(t, got, "a closed client yields an error rather than panicking")
+}
+
+// A connection wrapped by contrib/rews still streams.
+func TestQueryStream_throughRews(t *testing.T) {
+	v := getVersion(t)
+	if v.Major < 3 || (v.Major == 3 && v.Minor < 3) {
+		t.Skipf("SurrealDB %s cannot stream", v)
+	}
+	ctx := context.Background()
+
+	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
+	require.NoError(t, err)
+	conf := connection.NewConfig(u)
+	var rec *streamRecorder
+	con := rews.New(func(context.Context) (*streamRecorder, error) {
+		rec = &streamRecorder{Connection: gorillaws.New(conf)}
+		return rec, nil
+	}, time.Second, conf.Unmarshaler, conf.Logger)
+	db, err := surrealdb.FromConnection(ctx, con)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+	_, err = db.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
+	require.NoError(t, err)
+	require.NoError(t, db.Use(ctx, "query_stream", "rews"))
+	rec.queried.Store(false)
+
+	var values []any
+	for frame, err := range surrealdb.QueryStream[any](ctx, db, "RETURN [1, 2]", nil) {
+		require.NoError(t, err)
+		values = append(values, frame.Rows...)
+	}
+	assert.Equal(t, []any{uint64(1), uint64(2)}, values)
+	assert.True(t, rec.streamed.Load(), "the query is streamed")
+	assert.False(t, rec.queried.Load(), "and not re-sent with query")
 }
