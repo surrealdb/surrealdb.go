@@ -314,10 +314,27 @@ func (c *Connection) Health(ctx context.Context) error {
 	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer), c.BaseURL)
 }
 
+// baseTransport returns a copy of http.DefaultTransport, or a transport with
+// the same settings when an application has replaced it with another kind of
+// RoundTripper.
+func baseTransport() *http.Transport {
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		return t.Clone()
+	}
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
+}
+
 // httpClientFor returns an HTTP client which connects as a WebSocket dialer
 // does. It keeps no idle connections, as it is made for one request.
 func httpClientFor(d *gorilla.Dialer) *http.Client {
-	t := http.DefaultTransport.(*http.Transport).Clone()
+	t := baseTransport()
 	t.DisableKeepAlives = true
 	t.Proxy = d.Proxy
 	if d.TLSClientConfig != nil {
