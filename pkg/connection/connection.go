@@ -84,8 +84,12 @@ type Toolkit struct {
 	ResponseChannels     map[string]chan RPCResponse[cbor.RawMessage]
 	ResponseChannelsLock sync.RWMutex
 
+	// NotificationChannels maps the id of each live query with a subscription to
+	// the channel its notifications are delivered on.
 	NotificationChannels     map[string]chan Notification
 	NotificationChannelsLock sync.RWMutex
+
+	live liveState
 }
 
 func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
@@ -102,28 +106,6 @@ func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMe
 	bc.ResponseChannels[id] = ch
 
 	return ch, nil
-}
-
-func (bc *Toolkit) CreateNotificationChannel(liveQueryID string) (chan Notification, error) {
-	bc.NotificationChannelsLock.Lock()
-	defer bc.NotificationChannelsLock.Unlock()
-
-	if _, ok := bc.NotificationChannels[liveQueryID]; ok {
-		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, liveQueryID)
-	}
-
-	ch := make(chan Notification, 16)
-	bc.NotificationChannels[liveQueryID] = ch
-
-	return ch, nil
-}
-
-func (bc *Toolkit) GetNotificationChannel(id string) (chan Notification, bool) {
-	bc.NotificationChannelsLock.RLock()
-	defer bc.NotificationChannelsLock.RUnlock()
-	ch, ok := bc.NotificationChannels[id]
-
-	return ch, ok
 }
 
 func (bc *Toolkit) RemoveResponseChannel(id string) {
@@ -182,51 +164,4 @@ func (bc *Config) Validate() error {
 	}
 
 	return nil
-}
-
-func (bc *Toolkit) LiveNotifications(liveQueryID string) (chan Notification, error) {
-	c, err := bc.CreateNotificationChannel(liveQueryID)
-	if err != nil {
-		bc.Logger.Error(err.Error())
-	}
-	return c, err
-}
-
-func (bc *Toolkit) CloseLiveNotifications(liveQueryID string) error {
-	bc.NotificationChannelsLock.Lock()
-	defer bc.NotificationChannelsLock.Unlock()
-
-	ch, ok := bc.NotificationChannels[liveQueryID]
-	if !ok {
-		return fmt.Errorf("notification channel not found for live query ID: %s", liveQueryID)
-	}
-
-	close(ch)
-	delete(bc.NotificationChannels, liveQueryID)
-	return nil
-}
-
-// SendNotification safely sends a notification to the channel identified by id.
-// It holds the read lock during the send to prevent CloseLiveNotifications from
-// closing the channel concurrently, which would cause a "send on closed channel" panic.
-// Returns true if the notification was sent, false if the channel was not found
-// or was full (dropped).
-func (bc *Toolkit) SendNotification(id string, notification Notification) bool {
-	bc.NotificationChannelsLock.RLock()
-	ch, ok := bc.NotificationChannels[id]
-	if !ok {
-		bc.NotificationChannelsLock.RUnlock()
-		return false
-	}
-
-	select {
-	case ch <- notification:
-		bc.NotificationChannelsLock.RUnlock()
-		return true
-	default:
-		// Channel is full, drop the notification to avoid blocking
-		// while holding the read lock.
-		bc.NotificationChannelsLock.RUnlock()
-		return false
-	}
 }

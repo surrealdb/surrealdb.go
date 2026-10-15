@@ -143,7 +143,7 @@ func (c *Connection) handleResponse(data []byte) {
 
 		if !c.SendNotification(notification.ID.String(), notification) {
 			c.logError(
-				fmt.Sprintf("unavailable NotificationChannel %+v", notification.ID.String()),
+				fmt.Sprintf("dropped notification for ended live query %+v", notification.ID.String()),
 			)
 		}
 	}

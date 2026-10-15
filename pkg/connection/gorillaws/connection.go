@@ -548,7 +548,7 @@ func (c *Connection) handleResponse(res []byte) {
 
 		if !c.SendNotification(channelID.String(), notification) {
 			c.logger.Error(
-				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
+				fmt.Sprintf("dropped notification for ended live query %+v", channelID.String()),
 				"result", fmt.Sprint(rpcRes.Result),
 			)
 		}
