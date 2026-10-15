@@ -109,7 +109,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 
 	// Methods which only change the state of the session are answered here,
 	// as a stateless HTTP request could not keep what they change.
-	if res, handled, err := c.callLocally(request); handled {
+	if res, handled, err := c.callLocally(ctx, request); handled {
 		return res, err
 	}
 
@@ -154,18 +154,39 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	return &res, nil
 }
 
+// The methods which only change the state of the session, which the
+// connection keeps itself.
+const (
+	methodUse   = "use"
+	methodLet   = "let"
+	methodSet   = "set"
+	methodUnset = "unset"
+)
+
 // callLocally answers the methods which only change the state of the session.
-// It refuses parameters a WebSocket server would refuse, rather than keep them.
-func (c *Connection) callLocally(request *connection.RPCRequest) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
+// It refuses parameters a WebSocket server would refuse, rather than keep them,
+// and changes nothing once ctx is done.
+func (c *Connection) callLocally(
+	ctx context.Context, request *connection.RPCRequest,
+) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
 	switch request.Method {
-	case "use":
+	case methodUse, methodLet, methodSet, methodUnset:
+		if err := ctx.Err(); err != nil {
+			return nil, true, err
+		}
+	default:
+		return nil, false, nil
+	}
+
+	switch request.Method {
+	case methodUse:
 		ns, nsOK := optionalString(request.Params, 0)
 		db, dbOK := optionalString(request.Params, 1)
 		if !nsOK || !dbOK || len(request.Params) != 2 {
 			return nil, true, invalidParams(request.Method, "a namespace and a database")
 		}
 		c.setNamespaceAndDatabase(ns, db)
-	case "let", "set":
+	case methodLet, methodSet:
 		key, ok := paramString(request.Params, 0)
 		if !ok || len(request.Params) != 2 {
 			return nil, true, invalidParams(request.Method, "a variable name and a value")
@@ -178,7 +199,7 @@ func (c *Connection) callLocally(request *connection.RPCRequest) (res *connectio
 			return nil, true, fmt.Errorf("%s $%s: %w", request.Method, key, err)
 		}
 		c.setVariable(key, cbor.RawMessage(value))
-	case "unset":
+	case methodUnset:
 		key, ok := paramString(request.Params, 0)
 		if !ok || len(request.Params) != 1 {
 			return nil, true, invalidParams(request.Method, "a variable name")
@@ -192,13 +213,22 @@ func (c *Connection) callLocally(request *connection.RPCRequest) (res *connectio
 }
 
 // invalidParams is the error a SurrealDB server gives for a method called
-// with the wrong parameters.
+// with the wrong parameters. It is built as an error from the server is, so
+// it is both an *RPCError and, through errors.As, a *ServerError.
 func invalidParams(method, want string) error {
-	return &connection.ServerError{
-		Code:    -32602,
-		Kind:    connection.KindValidation,
-		Message: fmt.Sprintf("Invalid params: %s takes %s", method, want),
+	data, err := cbor.Marshal(map[string]any{
+		"code":    -32602,
+		"kind":    connection.KindValidation,
+		"message": fmt.Sprintf("Invalid params: %s takes %s", method, want),
+	})
+	if err != nil {
+		return err
 	}
+	rpcErr := &connection.RPCError{} //nolint:staticcheck // RPCError is still what server errors arrive as
+	if err := rpcErr.UnmarshalCBOR(data); err != nil {
+		return err
+	}
+	return rpcErr
 }
 
 // optionalString returns the string parameter at i, or "" for nil.
@@ -360,8 +390,8 @@ func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
 }
 
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
-	c.setNamespaceAndDatabase(namespace, database)
-	return nil
+	_, _, err := c.callLocally(ctx, &connection.RPCRequest{Method: methodUse, Params: []any{namespace, database}})
+	return err
 }
 
 // Let defines a variable which every subsequent query on this connection can use.
@@ -369,14 +399,14 @@ func (c *Connection) Use(ctx context.Context, namespace, database string) error 
 // As HTTP is stateless, the variable is kept by the connection and sent along with
 // each query, where the variables passed to the query take precedence over it.
 func (c *Connection) Let(ctx context.Context, key string, value any) error {
-	_, _, err := c.callLocally(&connection.RPCRequest{Method: "let", Params: []any{key, value}})
+	_, _, err := c.callLocally(ctx, &connection.RPCRequest{Method: methodLet, Params: []any{key, value}})
 	return err
 }
 
 // Unset removes a variable defined with Let.
 func (c *Connection) Unset(ctx context.Context, key string) error {
-	c.unsetVariable(key)
-	return nil
+	_, _, err := c.callLocally(ctx, &connection.RPCRequest{Method: methodUnset, Params: []any{key}})
+	return err
 }
 
 func (c *Connection) Authenticate(ctx context.Context, token string) error {

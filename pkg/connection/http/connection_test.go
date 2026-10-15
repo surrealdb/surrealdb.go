@@ -185,6 +185,9 @@ func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
 			var serverErr *connection.ServerError
 			require.ErrorAs(t, err, &serverErr, "%s %v", method, params)
 			assert.Equal(t, -32602, serverErr.Code)
+			var rpcErr *connection.RPCError //nolint:staticcheck // callers still match the older error type
+			require.ErrorAs(t, err, &rpcErr, "%s %v", method, params)
+			assert.Equal(t, -32602, rpcErr.Code)
 		}
 	}
 	for _, params := range [][]any{{}, {1}, {"z", "extra"}} {
@@ -217,6 +220,22 @@ func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
 	vars, _ = sent.Params[1].(map[string]any)
 	assert.EqualValues(t, map[string]any{"a": uint64(1)}, vars["m"])
 	assert.NotContains(t, vars, "bad")
+
+	// A canceled context changes nothing.
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = con.Send(canceled, "use", "ns4", "db4")
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = con.Send(canceled, "let", "c", 1)
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, con.Let(canceled, "c", 1), context.Canceled)
+	require.ErrorIs(t, con.Unset(canceled, "z"), context.Canceled)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "ns2", header.Get("Surreal-NS"))
+	vars, _ = sent.Params[1].(map[string]any)
+	assert.NotContains(t, vars, "c")
+	assert.Contains(t, vars, "z")
 
 	// invalidate forgets the token.
 	_, err = con.Send(ctx, "invalidate")
