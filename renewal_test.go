@@ -55,13 +55,18 @@ func TestRenewer_renewsAndRetries(t *testing.T) {
 
 	r.set(&Tokens{Access: jwtExpiringIn(4 * time.Second), Refresh: "r"})
 
+	var next Tokens
 	select {
-	case next := <-renewed:
+	case next = <-renewed:
 		assert.Equal(t, "r+", next.Refresh)
-		assert.Equal(t, &next, r.current())
 	case <-time.After(6 * time.Second):
 		t.Fatal("the pair was not renewed")
 	}
+	// The refresh function returns before the renewer records its result.
+	assert.Eventually(t, func() bool {
+		cur := r.current()
+		return cur != nil && *cur == next
+	}, time.Second, 5*time.Millisecond)
 	assert.Equal(t, int32(2), calls.Load())
 }
 
