@@ -2,6 +2,7 @@ package rews
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -169,4 +170,82 @@ func TestAccessOf_pointerFields(t *testing.T) {
 		accessOf(auth{Namespace: &ns, Database: db, Access: &ac, Username: &user}))
 	require.Equal(t, map[string]any{"DB": "d"}, accessOf(&auth{Database: "d"}))
 	require.Empty(t, accessOf(auth{Database: 1}))
+}
+
+type untaggedNS struct{ NS string }
+type taggedNS struct {
+	Namespace string `json:"NS"`
+}
+type otherTaggedNS struct {
+	Name string `json:"NS"`
+}
+type wrapsUntaggedNS struct{ untaggedNS }
+type alsoWrapsUntaggedNS struct{ untaggedNS }
+
+// TestAccessOf_dominance checks that of access fields of the same name at the
+// same depth, the one the encoder sends is kept: a tagged field beats untagged
+// ones, and two of the same kind cancel out.
+func TestAccessOf_dominance(t *testing.T) {
+	cases := map[string]struct {
+		authData any
+		want     map[string]any
+	}{
+		"tagged beats untagged": {
+			authData: struct {
+				untaggedNS
+				taggedNS
+			}{untaggedNS{"untagged"}, taggedNS{"tagged"}},
+			want: map[string]any{"NS": "tagged"},
+		},
+		"tagged beats untagged, either order": {
+			authData: struct {
+				taggedNS
+				untaggedNS
+			}{taggedNS{"tagged"}, untaggedNS{"untagged"}},
+			want: map[string]any{"NS": "tagged"},
+		},
+		"two tagged cancel out": {
+			authData: struct {
+				taggedNS
+				otherTaggedNS //nolint:govet // two fields tagged NS at one depth is the case under test
+			}{taggedNS{"a"}, otherTaggedNS{"b"}},
+			want: map[string]any{},
+		},
+		"two untagged cancel out": {
+			authData: struct {
+				untaggedNS
+				wrapsUntaggedNS
+				alsoWrapsUntaggedNS
+			}{untaggedNS{"shallow"}, wrapsUntaggedNS{untaggedNS{"a"}}, alsoWrapsUntaggedNS{untaggedNS{"b"}}},
+			want: map[string]any{"NS": "shallow"},
+		},
+		"the same struct reached twice cancels out": {
+			authData: struct {
+				wrapsUntaggedNS
+				alsoWrapsUntaggedNS
+			}{wrapsUntaggedNS{untaggedNS{"a"}}, alsoWrapsUntaggedNS{untaggedNS{"b"}}},
+			want: map[string]any{},
+		},
+		"a dominant field behind a nil pointer is not sent": {
+			authData: struct {
+				*taggedNS
+				untaggedNS
+			}{nil, untaggedNS{"untagged"}},
+			want: map[string]any{},
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := accessOf(tc.authData)
+			require.Equal(t, tc.want, got)
+
+			// encoding/json applies the same rules; check against it.
+			data, err := json.Marshal(tc.authData)
+			require.NoError(t, err)
+			var encoded map[string]any
+			require.NoError(t, json.Unmarshal(data, &encoded))
+			require.Equal(t, accessOf(encoded), got)
+		})
+	}
 }

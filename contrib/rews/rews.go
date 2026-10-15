@@ -561,59 +561,120 @@ func accessOf(authData any) map[string]any {
 	return access
 }
 
-// structAccess adds the access fields of the struct v to access. Fields of
-// embedded structs without a tag name are promoted as encoding/json promotes
-// them: level by level, with a field hiding any of the same name deeper down.
+// structAccess adds the access fields of the struct v to access, finding
+// them as encoding/json and the CBOR encoders find the fields they encode:
+//
+//   - fields of embedded structs without a tag name are promoted, level by
+//     level, and a field hides any of the same name at a deeper level;
+//   - of fields of the same name at the same level, a tagged one beats
+//     untagged ones, and two or more of the same kind cancel out, so that
+//     none of them is encoded.
 func structAccess(v reflect.Value, access map[string]any) {
-	seen := map[string]bool{}
+	hidden := map[string]bool{}
 	visited := map[reflect.Type]bool{}
-	for level := []reflect.Value{v}; len(level) > 0; {
-		var next []reflect.Value
+	level := []embedding{{typ: v.Type()}}
+	for len(level) > 0 {
+		count := map[reflect.Type]int{}
+		for _, e := range level {
+			count[e.typ]++
+		}
+
+		var next []embedding
 		names := map[string]bool{}
-		for _, sv := range level {
-			if visited[sv.Type()] {
+		candidates := map[string][]accessField{}
+		for _, e := range level {
+			if visited[e.typ] {
 				continue
 			}
-			visited[sv.Type()] = true
-			next = append(next, structLevelAccess(sv, access, seen, names)...)
+			visited[e.typ] = true
+			next = append(next, levelFields(e, count[e.typ], hidden, names, candidates)...)
+		}
+
+		for name, fields := range candidates {
+			if f, ok := dominantField(fields); ok {
+				if fv, err := v.FieldByIndexErr(f.index); err == nil {
+					if s, ok := stringValue(fv); ok && s != "" {
+						access[name] = s
+					}
+				}
+			}
 		}
 		for name := range names {
-			seen[name] = true
+			hidden[name] = true
 		}
 		level = next
 	}
 }
 
-// structLevelAccess adds the access fields of the struct sv to access, unless
-// a shallower level had a field of the same name, records the names of its
-// fields in names, and returns the structs it embeds for the next level.
-func structLevelAccess(sv reflect.Value, access map[string]any, seen, names map[string]bool) []reflect.Value {
-	var embedded []reflect.Value
-	for i := 0; i < sv.NumField(); i++ {
-		f, fv := sv.Type().Field(i), sv.Field(i)
+// embedding is a struct type found at some level of a struct, with the index
+// path to it.
+type embedding struct {
+	typ   reflect.Type
+	index []int
+}
+
+// accessField is a field with an access name, with the index path to it and
+// whether a tag gave it its name.
+type accessField struct {
+	index  []int
+	tagged bool
+}
+
+// levelFields records the names of the fields of the struct e in names and
+// the access fields not hidden by a shallower level in candidates, as many
+// times as the struct occurs at this level, and returns the structs it embeds.
+func levelFields(e embedding, times int, hidden, names map[string]bool, candidates map[string][]accessField) []embedding {
+	var embedded []embedding
+	for i := 0; i < e.typ.NumField(); i++ {
+		f := e.typ.Field(i)
+		index := append(append([]int(nil), e.index...), i)
 		name := fieldName(f.Tag)
 		if f.Anonymous && name == "" {
-			if ev, ok := embeddedStruct(fv); ok {
-				embedded = append(embedded, ev)
+			t := f.Type
+			if t.Kind() == reflect.Pointer {
+				t = t.Elem()
+			}
+			if t.Kind() == reflect.Struct {
+				embedded = append(embedded, embedding{typ: t, index: index})
 				continue
 			}
 		}
 		if !f.IsExported() || name == "-" {
 			continue
 		}
-		if name == "" {
+		tagged := name != ""
+		if !tagged {
 			name = f.Name
 		}
 		names[name] = true
-		_, kept := access[name]
-		if seen[name] || kept || !accessKeys[strings.ToUpper(name)] {
+		if hidden[name] || !accessKeys[strings.ToUpper(name)] {
 			continue
 		}
-		if sv, ok := stringValue(fv); ok && sv != "" {
-			access[name] = sv
+		for n := 0; n < min(times, 2); n++ {
+			candidates[name] = append(candidates[name], accessField{index: index, tagged: tagged})
 		}
 	}
 	return embedded
+}
+
+// dominantField returns the one of fields of the same name at the same level
+// that is encoded: the only tagged one, or else the only one; none if two or
+// more tie.
+func dominantField(fields []accessField) (accessField, bool) {
+	var tagged []accessField
+	for _, f := range fields {
+		if f.tagged {
+			tagged = append(tagged, f)
+		}
+	}
+	switch {
+	case len(tagged) == 1:
+		return tagged[0], true
+	case len(tagged) == 0 && len(fields) == 1:
+		return fields[0], true
+	default:
+		return accessField{}, false
+	}
 }
 
 // stringValue returns the string a field holds, through any pointers and
@@ -640,18 +701,6 @@ func fieldName(tag reflect.StructTag) string {
 		t = tag.Get("json")
 	}
 	return strings.Split(t, ",")[0]
-}
-
-// embeddedStruct returns the struct an embedded field holds, through any
-// pointers, and whether there is one.
-func embeddedStruct(fv reflect.Value) (reflect.Value, bool) {
-	for fv.Kind() == reflect.Pointer {
-		if fv.IsNil() {
-			return fv, false
-		}
-		fv = fv.Elem()
-	}
-	return fv, fv.Kind() == reflect.Struct
 }
 
 func (arws *Connection[C]) Use(ctx context.Context, namespace, database string) error {
