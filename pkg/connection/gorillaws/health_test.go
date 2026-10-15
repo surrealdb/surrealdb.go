@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -81,6 +82,38 @@ func TestHealth_ignoresTheDefaultTransportsTLSConfig(t *testing.T) {
 	DefaultDialer.TLSClientConfig = nil
 	defer func() { DefaultDialer.TLSClientConfig = savedTLS }()
 
-	client := httpClientFor(DefaultDialer)
+	client := httpClientFor(DefaultDialer, 0)
 	assert.Nil(t, client.Transport.(*http.Transport).TLSClientConfig)
+}
+
+// Import and Export send the cookies the WebSocket dialer holds, such as a
+// reverse proxy's session.
+func TestHTTPEndpoint_sendsTheDialersCookies(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if c, err := r.Cookie("session"); err == nil {
+			got = c.Value
+		}
+	}))
+	defer srv.Close()
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+	srvURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+	jar.SetCookies(srvURL, []*http.Cookie{{Name: "session", Value: "proxy-session", HttpOnly: true, SameSite: http.SameSiteStrictMode}}) //nolint:gosec // the test server is plain HTTP
+
+	savedJar := DefaultDialer.Jar
+	DefaultDialer.Jar = jar
+	defer func() { DefaultDialer.Jar = savedJar }()
+
+	u, err := url.Parse("ws://" + srvURL.Host)
+	require.NoError(t, err)
+	_, client := New(connection.NewConfig(u)).HTTPEndpoint()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, srv.URL+"/export", http.NoBody)
+	require.NoError(t, err)
+	res, err := client.Do(req)
+	require.NoError(t, err)
+	defer res.Body.Close()
+	assert.Equal(t, "proxy-session", got)
 }
