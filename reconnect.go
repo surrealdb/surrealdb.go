@@ -96,9 +96,14 @@ type reconnector struct {
 	cancel   context.CancelFunc
 	loopDone chan struct{}
 
+	// listenersMu guards the listeners, and the events waiting to be passed to
+	// them. One goroutine at a time passes them on, in order, apart from the
+	// goroutine which reconnects, so that a listener may call Close.
 	listenersMu sync.Mutex
 	listeners   map[int]func(StatusEvent)
 	nextID      int
+	pending     []StatusEvent
+	dispatching bool
 
 	lives liveRouter
 }
@@ -213,18 +218,43 @@ func (r *reconnector) onStatus(fn func(StatusEvent)) func() {
 	}
 }
 
+// emit queues an event for the listeners, and returns without waiting for
+// them: a listener which calls Close would otherwise wait for the goroutine
+// which reconnects, while that goroutine waits for the listener.
 func (r *reconnector) emit(ev StatusEvent) {
 	r.listenersMu.Lock()
-	fns := make([]func(StatusEvent), 0, len(r.listeners))
-	for i := 0; i < r.nextID; i++ {
-		if fn, ok := r.listeners[i]; ok {
-			fns = append(fns, fn)
-		}
+	defer r.listenersMu.Unlock()
+	r.pending = append(r.pending, ev)
+	if !r.dispatching {
+		r.dispatching = true
+		go r.dispatch()
 	}
-	r.listenersMu.Unlock()
+}
 
-	for _, fn := range fns {
-		fn(ev)
+// dispatch passes the queued events to the listeners, in order, until there
+// are none left.
+func (r *reconnector) dispatch() {
+	for {
+		r.listenersMu.Lock()
+		if len(r.pending) == 0 {
+			r.pending = nil
+			r.dispatching = false
+			r.listenersMu.Unlock()
+			return
+		}
+		ev := r.pending[0]
+		r.pending = r.pending[1:]
+		fns := make([]func(StatusEvent), 0, len(r.listeners))
+		for i := 0; i < r.nextID; i++ {
+			if fn, ok := r.listeners[i]; ok {
+				fns = append(fns, fn)
+			}
+		}
+		r.listenersMu.Unlock()
+
+		for _, fn := range fns {
+			fn(ev)
+		}
 	}
 }
 

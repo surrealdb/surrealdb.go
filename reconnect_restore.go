@@ -232,21 +232,30 @@ func (l *liveRouter) close(id string, con connection.Connection) (ok bool, err e
 	return true, con.CloseLiveNotifications(q.serverID)
 }
 
-// forgetSession stops keeping the live queries of a detached session, which
-// the server ended with it, and closes their channels.
-func (l *liveRouter) forgetSession(session models.UUID) {
+// forgetSession stops keeping the live queries of a session, the default one
+// when session is nil, which the server ended when the session was reset or
+// detached. It closes their channels, and those con kept for them.
+func (l *liveRouter) forgetSession(session *models.UUID, con connection.Connection) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for id, q := range l.queries {
-		if q.session == nil || *q.session != session {
+		if !sameSession(q.session, session) {
 			continue
 		}
 		if q.out != nil {
 			q.pump.halt()
 			close(q.out)
+			_ = con.CloseLiveNotifications(q.serverID)
 		}
 		delete(l.queries, id)
 	}
+}
+
+func sameSession(a, b *models.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // closeAll closes the channels of every live query, when the client closes.

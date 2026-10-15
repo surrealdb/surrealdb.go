@@ -499,3 +499,144 @@ func TestReconnect_detachWhileDisconnected(t *testing.T) {
 	status.waitFor(t, surrealdb.StatusDisconnected)
 	require.NoError(t, status.waitFor(t, surrealdb.StatusConnected).Err)
 }
+
+// Kill made while disconnected waits for the new connection, on which the
+// live query was started again under a new server ID, and must kill it by that
+// ID rather than the one of the lost connection.
+func TestReconnect_killWhileDisconnected(t *testing.T) {
+	ctx := context.Background()
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+	signInRoot(t, db, "kill_disconnected")
+	_, err := surrealdb.Query[any](ctx, db, "REMOVE TABLE IF EXISTS item; DEFINE TABLE item SCHEMALESS", nil)
+	require.NoError(t, err)
+
+	id, err := surrealdb.Live(ctx, db, "item", false)
+	require.NoError(t, err)
+	notifications, err := db.LiveNotifications(id.String())
+	require.NoError(t, err)
+
+	p.refuse.Store(true)
+	p.drop()
+	status.waitFor(t, surrealdb.StatusDisconnected)
+
+	killed := make(chan error, 1)
+	go func() { killed <- surrealdb.Kill(ctx, db, id.String()) }()
+	time.Sleep(100 * time.Millisecond)
+	p.refuse.Store(false)
+
+	select {
+	case err := <-killed:
+		require.NoError(t, err, "the restored live query is killed by its new server ID")
+	case <-time.After(20 * time.Second):
+		t.Fatal("Kill did not return after reconnecting")
+	}
+	assertClosed(t, notifications, "Kill closes the channel")
+
+	// The killed query is not restored again.
+	p.drop()
+	status.waitFor(t, surrealdb.StatusDisconnected)
+	require.NoError(t, status.waitFor(t, surrealdb.StatusConnected).Err)
+}
+
+// Reset kills the live queries of the session on the server, so the client
+// must stop restarting them. Were they kept, the restore would fail: the
+// session has no namespace or database after Reset.
+func TestReconnect_resetForgetsLiveQueries(t *testing.T) {
+	ctx := context.Background()
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+	signInRoot(t, db, "reset")
+	_, err := surrealdb.Query[any](ctx, db, "REMOVE TABLE IF EXISTS item; DEFINE TABLE item SCHEMALESS", nil)
+	require.NoError(t, err)
+
+	id, err := surrealdb.Live(ctx, db, "item", false)
+	require.NoError(t, err)
+	notifications, err := db.LiveNotifications(id.String())
+	require.NoError(t, err)
+
+	require.NoError(t, db.Reset(ctx))
+	assertClosed(t, notifications, "Reset closes the channels of the session's live queries")
+
+	p.drop()
+	status.waitFor(t, surrealdb.StatusDisconnected)
+	require.NoError(t, status.waitFor(t, surrealdb.StatusConnected).Err, "nothing is left to restore")
+}
+
+func TestReconnect_sessionResetForgetsLiveQueries(t *testing.T) {
+	if v := getVersion(t); !v.IsV3OrLater() {
+		t.Skipf("SurrealDB %s has no sessions", v)
+	}
+	ctx := context.Background()
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+	signInRoot(t, db, "session_reset")
+	_, err := surrealdb.Query[any](ctx, db, "REMOVE TABLE IF EXISTS item; DEFINE TABLE item SCHEMALESS", nil)
+	require.NoError(t, err)
+
+	// A live query of the default session, which the session's Reset leaves.
+	kept, err := surrealdb.Live(ctx, db, "item", false)
+	require.NoError(t, err)
+	keptNotifications, err := db.LiveNotifications(kept.String())
+	require.NoError(t, err)
+
+	session, err := db.Attach(ctx)
+	require.NoError(t, err)
+	_, err = session.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
+	require.NoError(t, err)
+	require.NoError(t, session.Use(ctx, "reconnect", "session_reset"))
+	id, err := surrealdb.Live(ctx, session, "item", false)
+	require.NoError(t, err)
+	notifications, err := session.LiveNotifications(id.String())
+	require.NoError(t, err)
+
+	require.NoError(t, session.Reset(ctx))
+	assertClosed(t, notifications, "Reset closes the channels of the session's live queries")
+
+	p.drop()
+	status.waitFor(t, surrealdb.StatusDisconnected)
+	require.NoError(t, status.waitFor(t, surrealdb.StatusConnected).Err, "only the default session's live query is restored")
+
+	_, err = surrealdb.Query[any](ctx, db, "CREATE item:after_reset", nil)
+	require.NoError(t, err)
+	select {
+	case n, ok := <-keptNotifications:
+		require.True(t, ok, "the default session's live query is kept")
+		assert.Equal(t, *kept, *n.ID)
+	case <-time.After(10 * time.Second):
+		t.Fatal("no notification for the default session's live query")
+	}
+}
+
+// A status listener which closes the client used to wait for the goroutine
+// which reconnects, which waited for the listener to return.
+func TestReconnect_closeFromOnStatus(t *testing.T) {
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+
+	closed := make(chan error, 1)
+	var once sync.Once
+	db.OnStatus(func(ev surrealdb.StatusEvent) {
+		if ev.Status == surrealdb.StatusDisconnected {
+			once.Do(func() { closed <- db.Close(context.Background()) })
+		}
+	})
+
+	p.refuse.Store(true)
+	p.drop()
+	select {
+	case err := <-closed:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close called from a status listener did not return")
+	}
+	status.waitFor(t, surrealdb.StatusClosed)
+	assert.Equal(t, surrealdb.StatusClosed, db.Status())
+	statuses := status.statuses()
+	assert.Equal(t, surrealdb.StatusDisconnected, statuses[0], "events keep their order: %v", statuses)
+	assert.Equal(t, surrealdb.StatusClosed, statuses[len(statuses)-1], "events keep their order: %v", statuses)
+}
