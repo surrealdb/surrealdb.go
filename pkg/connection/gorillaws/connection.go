@@ -371,7 +371,9 @@ func httpClientFor(d *gorilla.Dialer, timeout time.Duration) *http.Client {
 	if d.NetDialTLSContext != nil {
 		t.DialTLSContext = d.NetDialTLSContext
 	}
-	return &http.Client{Transport: t, Timeout: timeout}
+	// Cookies the WebSocket handshake sends, such as a proxy's session, go
+	// with these requests too.
+	return &http.Client{Transport: t, Timeout: timeout, Jar: d.Jar}
 }
 
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
