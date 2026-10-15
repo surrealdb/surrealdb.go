@@ -389,6 +389,9 @@ func bufferedFrames[T any, S sendable](
 		case res.Error != nil:
 			done.Err = res.Error
 		case isCBORArray(res.Result):
+			// A statement whose result is an array streams it as rows, even
+			// RETURN [1, 2] (checked against SurrealDB 3.3.4), so the
+			// buffered answer gives an array as rows too.
 			var rows []T
 			if err := unmarshal(res.Result, &rows); err != nil {
 				yield(StreamFrame[T]{}, fmt.Errorf("failed to unmarshal rows: %w", err))

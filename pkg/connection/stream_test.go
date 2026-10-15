@@ -88,4 +88,26 @@ func TestClosedError(t *testing.T) {
 	err := ClosedError(cause)
 	assert.ErrorIs(t, err, ErrConnectionClosed)
 	assert.ErrorIs(t, err, cause)
+
+	again := ClosedError(err)
+	assert.ErrorIs(t, again, ErrConnectionClosed)
+	assert.ErrorIs(t, again, cause, "the cause survives a second ClosedError")
+	assert.Equal(t, ErrConnectionClosed, ClosedError(ErrConnectionClosed))
+}
+
+// TestResponseStream_keepsTheCloseCause checks that a stream ended by its
+// connection closing reports why, when the connection's error callback
+// already wraps ErrConnectionClosed, as the transports' do.
+func TestResponseStream_keepsTheCloseCause(t *testing.T) {
+	cause := errors.New("reset by peer")
+	connClosed := make(chan struct{})
+	close(connClosed)
+	tk := Toolkit{ResponseChannels: map[string]chan RPCResponse[cbor.RawMessage]{}}
+	s, err := tk.OpenResponseStream("abc", connClosed, func() error { return ClosedError(cause) })
+	require.NoError(t, err)
+	defer s.Close()
+
+	_, err = s.Next(context.Background())
+	assert.ErrorIs(t, err, ErrConnectionClosed)
+	assert.ErrorIs(t, err, cause)
 }

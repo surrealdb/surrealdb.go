@@ -16,10 +16,15 @@ type WebSocketConnection interface {
 var ErrConnectionClosed = errors.New("connection closed")
 
 // ClosedError is the error for a request on a closed connection: never nil,
-// and wrapping why the connection closed when that is known.
+// and wrapping why the connection closed when that is known. A cause which
+// already wraps ErrConnectionClosed is returned as it is, so that applying
+// ClosedError twice keeps the cause.
 func ClosedError(cause error) error {
-	if cause == nil || errors.Is(cause, ErrConnectionClosed) {
+	if cause == nil {
 		return ErrConnectionClosed
+	}
+	if errors.Is(cause, ErrConnectionClosed) {
+		return cause
 	}
 	return fmt.Errorf("%w: %w", ErrConnectionClosed, cause)
 }
