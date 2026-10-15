@@ -622,7 +622,14 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 // you may get no [RPCError], but a [QueryError] saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
 func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", sql, vars)
+	return queryWith[TResult](ctx, s, "query", sql, vars)
+}
+
+// queryWith sends a query with the query or gql method, whose results have the same form.
+func queryWith[TResult any, S sendable](
+	ctx context.Context, s S, method, sql string, vars map[string]any,
+) (*[]QueryResult[TResult], error) {
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, method, sql, vars)
 	if err != nil {
 		return nil, err
 	}
