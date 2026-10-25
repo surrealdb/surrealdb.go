@@ -27,6 +27,8 @@ func getEncMode() cbor.EncMode {
 		{models.TagStringDecimal, models.DecimalString("")},
 		{models.TagStringDuration, models.CustomDurationString("")},
 		{models.TagSpecBinaryUUID, models.UUID{}},
+		{models.TagFile, models.File{}},
+		{models.TagSet, models.Set{}},
 		{models.TagGeometryPoint, models.GeometryPoint{}},
 		{models.TagGeometryLine, models.GeometryLine{}},
 		{models.TagGeometryPolygon, models.GeometryPolygon{}},

@@ -21,6 +21,9 @@ const (
 
 	TagSpecBinaryUUID uint64 = 37
 
+	TagFile uint64 = 55
+	TagSet  uint64 = 56
+
 	TagRange         uint64 = 49
 	TagBoundIncluded uint64 = 50
 	TagBoundExcluded uint64 = 51
@@ -49,6 +52,9 @@ func registerCborTags() cbor.TagSet {
 		TagStringDuration: CustomDurationString(""),
 
 		TagSpecBinaryUUID: UUID{},
+
+		TagFile: File{},
+		TagSet:  Set{},
 
 		TagGeometryPoint:        GeometryPoint{},
 		TagGeometryLine:         GeometryLine{},
