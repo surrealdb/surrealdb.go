@@ -29,11 +29,11 @@ func TestEncode_durationString(t *testing.T) {
 		enc, err := Marshal(dur)
 		require.NoError(t, err)
 
-		// Decode back to verify
+		// It travels as tag 14, so it reads back in the canonical form.
 		var decoded models.CustomDurationString
 		err = Unmarshal(enc, &decoded)
 		require.NoError(t, err)
-		assert.Equal(t, dur, decoded)
+		assert.Equal(t, models.CustomDurationString("1y2w3d4h5m6s7ms8µs9ns"), decoded)
 	})
 
 	t.Run("encode empty CustomDurationString", func(t *testing.T) {
@@ -49,17 +49,10 @@ func TestEncode_durationString(t *testing.T) {
 		assert.Equal(t, dur, decoded)
 	})
 
-	t.Run("encode negative CustomDurationString", func(t *testing.T) {
-		dur := models.CustomDurationString("-5m30s")
-
-		enc, err := Marshal(dur)
-		require.NoError(t, err)
-
-		// Decode back to verify
-		var decoded models.CustomDurationString
-		err = Unmarshal(enc, &decoded)
-		require.NoError(t, err)
-		assert.Equal(t, dur, decoded)
+	t.Run("a negative CustomDurationString is refused", func(t *testing.T) {
+		// SurrealQL durations are never negative.
+		_, err := Marshal(models.CustomDurationString("-5m30s"))
+		assert.ErrorContains(t, err, "invalid duration")
 	})
 
 	t.Run("encode zero CustomDurationString", func(t *testing.T) {
@@ -68,10 +61,10 @@ func TestEncode_durationString(t *testing.T) {
 		enc, err := Marshal(dur)
 		require.NoError(t, err)
 
-		// Decode back to verify
+		// A zero duration reads back as CustomDuration.String gives it.
 		var decoded models.CustomDurationString
 		err = Unmarshal(enc, &decoded)
 		require.NoError(t, err)
-		assert.Equal(t, dur, decoded)
+		assert.Equal(t, models.CustomDurationString(""), decoded)
 	})
 }
