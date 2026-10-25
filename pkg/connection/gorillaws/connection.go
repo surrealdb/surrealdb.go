@@ -180,6 +180,11 @@ func (c *Connection) SetCompression(compress bool) *Connection {
 // which enables us to clean up everything including the internal goroutine that used to
 // try writing to the WebSocket connection, when this function exists.
 func (c *Connection) Close(ctx context.Context) error {
+	// No more notifications will come: end every live query's notifications
+	// and stop their goroutines, including those still delivering what was
+	// received before the connection was lost.
+	defer c.CloseAllLiveNotifications()
+
 	if c.IsClosed() {
 		return nil
 	}
@@ -408,12 +413,14 @@ func (c *Connection) write(v any) error {
 	return err
 }
 
-func (c *Connection) closeWithError(err error) {
+// closeWithError marks the connection closed with err, and reports whether
+// this call was the one which did.
+func (c *Connection) closeWithError(err error) bool {
 	// Use CompareAndSwap to atomically check and set closed flag
 	// This ensures only one goroutine can proceed to close the channel
 	if !c.closed.CompareAndSwap(false, true) {
 		// Already closed by another goroutine
-		return
+		return false
 	}
 
 	c.closeMutex.Lock()
@@ -423,6 +430,14 @@ func (c *Connection) closeWithError(err error) {
 	// At this point, we know we're the only goroutine that will close the channel
 	// because we successfully set closed from 0 to 1
 	close(c.connCloseCh)
+
+	// The connection was lost: no more notifications will come, but those
+	// already received are still delivered before each live query's channel
+	// is closed. Close stops that. (A nil err means Close is closing it.)
+	if err != nil {
+		c.DrainAllLiveNotifications()
+	}
+	return true
 }
 
 func (c *Connection) readLoop(conn *gorilla.Conn) {
@@ -435,7 +450,13 @@ func (c *Connection) readLoop(conn *gorilla.Conn) {
 			if err != nil {
 				shouldExit := c.handleError(err)
 				if shouldExit {
-					c.closeWithError(err)
+					// Close returns at once for a connection already marked
+					// closed, so release the network connection here, unless
+					// Close marked it and closes it itself: closing it here too
+					// would make Close fail with net.ErrClosed.
+					if c.closeWithError(err) {
+						_ = conn.Close()
+					}
 					return
 				}
 				continue
@@ -458,10 +479,13 @@ func (c *Connection) handleError(err error) bool {
 		return true
 	}
 	if gorilla.IsUnexpectedCloseError(err) {
+		// The server closed the connection, or it was lost without a close
+		// frame. Return at once, so that readLoop marks the connection closed:
+		// waiting for Close here left IsClosed false, so it was never
+		// reconnected, and live queries never learned the connection had gone.
 		c.closeMutex.Lock()
 		c.connCloseError = io.ErrClosedPipe
 		c.closeMutex.Unlock()
-		<-c.connCloseCh
 		return true
 	}
 
@@ -547,10 +571,14 @@ func (c *Connection) handleResponse(res []byte) {
 		}
 
 		if !c.SendNotification(channelID.String(), notification) {
-			c.logger.Error(
-				fmt.Sprintf("unavailable ResponseChannel %+v", channelID.String()),
-				"result", fmt.Sprint(rpcRes.Result),
-			)
+			msg := fmt.Sprintf("dropped notification for ended live query %+v", channelID.String())
+			if notification.Action == connection.KilledAction {
+				// Expected: Kill closes the notifications as soon as the
+				// server answers, which can be before KILLED arrives.
+				c.logger.Debug(msg)
+			} else {
+				c.logger.Error(msg, "result", fmt.Sprint(rpcRes.Result))
+			}
 		}
 	}
 }
