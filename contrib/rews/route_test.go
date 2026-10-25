@@ -41,18 +41,18 @@ func TestSetExternalValidation(t *testing.T) {
 	// Test that it panics with empty externalID
 	assert.Panics(t, func() {
 		ch := make(chan connection.Notification)
-		r.setExternal("", ch, nil)
+		r.setExternal("", ch)
 	}, "Should panic when externalID is empty")
 
 	// Test that it panics with nil externalCh
 	assert.Panics(t, func() {
-		r.setExternal("external-id", nil, nil)
+		r.setExternal("external-id", nil)
 	}, "Should panic when externalCh is nil")
 
 	// Test that it doesn't panic when both are provided
 	assert.NotPanics(t, func() {
 		ch := make(chan connection.Notification)
-		r.setExternal("external-id", ch, nil)
+		r.setExternal("external-id", ch)
 		// Clean up
 		r.stopRoutingGoroutine()
 	}, "Should not panic when both are provided")
@@ -69,7 +69,7 @@ func TestRouteStopRoutingGoroutine(t *testing.T) {
 
 	// Set up an external channel
 	externalCh := make(chan connection.Notification, 1)
-	r.setExternal("ext-1", externalCh, nil)
+	r.setExternal("ext-1", externalCh)
 
 	// Now stopping should return true
 	assert.NotPanics(t, func() {
@@ -90,7 +90,7 @@ func TestRouteSetExternalMultipleTimes(t *testing.T) {
 
 	// First external setup
 	ext1 := make(chan connection.Notification, 10)
-	r.setExternal("ext-1", ext1, nil)
+	r.setExternal("ext-1", ext1)
 
 	// Send a notification through first external
 	ext1 <- sentNotifications[0]
@@ -100,7 +100,7 @@ func TestRouteSetExternalMultipleTimes(t *testing.T) {
 
 	// Switch to second external (should stop first goroutine)
 	ext2 := make(chan connection.Notification, 10)
-	r.setExternal("ext-2", ext2, nil)
+	r.setExternal("ext-2", ext2)
 
 	// Send through second external
 	ext2 <- sentNotifications[1]
@@ -110,7 +110,7 @@ func TestRouteSetExternalMultipleTimes(t *testing.T) {
 
 	// Switch to third external
 	ext3 := make(chan connection.Notification, 10)
-	r.setExternal("ext-3", ext3, nil)
+	r.setExternal("ext-3", ext3)
 
 	// Send through third external
 	ext3 <- sentNotifications[2]
@@ -173,7 +173,7 @@ func TestRouteSequentialReconnection(t *testing.T) {
 		extID := fmt.Sprintf("connection-%d", reconnect)
 
 		// Set this as the new external channel (simulating reconnection with new UUID)
-		r.setExternal(extID, extCh, nil)
+		r.setExternal(extID, extCh)
 
 		// Send messages through this connection
 		go func(connID int, ch chan connection.Notification) {
