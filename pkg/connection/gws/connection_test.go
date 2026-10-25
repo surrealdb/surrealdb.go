@@ -3,6 +3,7 @@ package gws
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -113,5 +114,50 @@ func TestHandleResponse_ValidResponse(t *testing.T) {
 		}
 	default:
 		t.Error("Expected response to be sent to channel")
+	}
+}
+
+// TestHandleResponse_callerStoppedListening checks that a response for a caller
+// which has stopped listening (its context expired after its channel was found)
+// does not block the goroutine reading from the socket, which would hang every
+// other request on the connection.
+func TestHandleResponse_callerStoppedListening(t *testing.T) {
+	testID := "late-1"
+
+	mockUnmarshal := &mockUnmarshaler{
+		unmarshalFunc: func(data []byte, v any) error {
+			if res, ok := v.(*connection.RPCResponse[cbor.RawMessage]); ok {
+				res.ID = testID
+			}
+			return nil
+		},
+	}
+
+	conn := &Connection{
+		Toolkit: connection.Toolkit{
+			Logger:               &mockLogger{},
+			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
+			NotificationChannels: make(map[string]chan connection.Notification),
+			Unmarshaler:          mockUnmarshal,
+		},
+	}
+
+	// The caller's channel exists, but nobody will ever receive from it.
+	if _, err := conn.CreateResponseChannel(testID); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		// The second, duplicate response must not block either.
+		conn.handleResponse([]byte("any data"))
+		conn.handleResponse([]byte("any data"))
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handleResponse blocked on a response channel nobody reads")
 	}
 }
