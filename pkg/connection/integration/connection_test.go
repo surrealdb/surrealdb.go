@@ -37,14 +37,14 @@ func TestConnectionTestSuite(t *testing.T) {
 	c := surrealcbor.New()
 
 	ts.connImplementations["ws"] = gorillaws.New(&connection.Config{
-		BaseURL:     "ws://localhost:8000",
+		BaseURL:     testenv.GetSurrealDBBaseURL("ws"),
 		Marshaler:   c,
 		Unmarshaler: c,
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),
 	})
 
 	ts.connImplementations["http"] = http.New(&connection.Config{
-		BaseURL:     "http://localhost:8000",
+		BaseURL:     testenv.GetSurrealDBBaseURL("http"),
 		Marshaler:   c,
 		Unmarshaler: c,
 		Logger:      logger.New(slog.NewTextHandler(os.Stdout, nil)),

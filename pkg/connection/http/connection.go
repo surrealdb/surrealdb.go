@@ -254,17 +254,57 @@ func (c *Connection) makeRequest(req *http.Request) ([]byte, connection.CBORVers
 		return respBytes, version, nil
 	}
 
-	contentType := strings.Split(respContentType, ";")[0]
-	if strings.TrimSpace(contentType) == "" {
-		return nil, 0, fmt.Errorf("%s", string(respBytes))
+	return nil, 0, c.errorFromResponse(resp, respBytes, version)
+}
+
+// StatusError is returned when the server answers an HTTP request with a non-2xx
+// status and a body that is not a SurrealDB RPC error, such as a plain-text
+// rejection, or an HTML page from a proxy in front of the server.
+type StatusError struct {
+	// StatusCode is the HTTP status code, such as 502.
+	StatusCode int
+	// Status is the HTTP status line, such as "502 Bad Gateway".
+	Status string
+	// ContentType is the media type of the body, if the server sent one.
+	ContentType string
+	// Body is the response body, as text.
+	Body string
+}
+
+func (e *StatusError) Error() string {
+	body := strings.TrimSpace(e.Body)
+	if body == "" {
+		return fmt.Sprintf("unexpected HTTP status %s", e.Status)
 	}
+	return fmt.Sprintf("unexpected HTTP status %s: %s", e.Status, body)
+}
+
+// errorFromResponse turns a non-2xx response into an error. A body carrying a
+// SurrealDB RPC error yields that error; anything else, including a body that is
+// not CBOR at all, yields a *StatusError. The body is decoded in version.
+func (c *Connection) errorFromResponse(resp *http.Response, body []byte, version connection.CBORVersion) error {
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+
+	statusErr := &StatusError{
+		StatusCode:  resp.StatusCode,
+		Status:      resp.Status,
+		ContentType: contentType,
+		Body:        string(body),
+	}
+	if statusErr.Status == "" {
+		statusErr.Status = fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
+	if contentType == "" || len(body) == 0 {
+		return statusErr
+	}
+
 	_, unmarshaler := c.codecs(version)
 	var errorResponse connection.RPCResponse[any]
-	err = unmarshaler.Unmarshal(respBytes, &errorResponse)
-	if err != nil {
-		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
+	if err := unmarshaler.Unmarshal(body, &errorResponse); err != nil || errorResponse.Error == nil {
+		return statusErr
 	}
-	return nil, 0, errorResponse.Error
+	return errorResponse.Error
 }
 
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
