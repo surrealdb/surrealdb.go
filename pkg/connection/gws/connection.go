@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -27,7 +28,9 @@ type Connection struct {
 
 	closeCh    chan struct{}
 	closeError error
-	closed     bool
+	// closed is read by IsClosed without connLock, e.g. by contrib/rews
+	// checking whether to reconnect, so it is atomic.
+	closed atomic.Bool
 
 	handler *websocketHandler
 }
@@ -45,6 +48,11 @@ func (h *websocketHandler) OnOpen(socket *gws.Conn) {
 // Received a close frame from the other end of the network connection, or disconnected voluntarily due to an error in the IO process
 // In the former case, err can be asserted as *gws.CloseError.
 func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
+	// No more notifications will come, but those already received are still
+	// delivered before each live query's channel is closed. When Close is
+	// closing the connection, it has already stopped them all.
+	defer h.conn.DrainAllLiveNotifications()
+
 	h.conn.connLock.Lock()
 	defer h.conn.connLock.Unlock()
 
@@ -58,7 +66,7 @@ func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
 		}
 	}
 
-	h.conn.closed = true
+	h.conn.closed.Store(true)
 }
 
 func (h *websocketHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
@@ -142,9 +150,14 @@ func (c *Connection) handleResponse(data []byte) {
 		}
 
 		if !c.SendNotification(notification.ID.String(), notification) {
-			c.logError(
-				fmt.Sprintf("unavailable NotificationChannel %+v", notification.ID.String()),
-			)
+			msg := fmt.Sprintf("dropped notification for ended live query %+v", notification.ID.String())
+			if notification.Action == connection.KilledAction {
+				// Expected: Kill closes the notifications as soon as the
+				// server answers, which can be before KILLED arrives.
+				c.logDebug(msg)
+			} else {
+				c.logError(msg)
+			}
 		}
 	}
 }
@@ -172,6 +185,11 @@ func (c *Connection) SetTimeout(timeout time.Duration) *Connection {
 
 // Close implements connection.Connection.
 func (c *Connection) Close(ctx context.Context) error {
+	// End every live query's notifications and stop their goroutines, as no
+	// more will come, including those still delivering what was received
+	// before the connection was lost.
+	defer c.CloseAllLiveNotifications()
+
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
@@ -203,7 +221,7 @@ func (c *Connection) Close(ctx context.Context) error {
 }
 
 func (c *Connection) IsClosed() bool {
-	return c.closed
+	return c.closed.Load()
 }
 
 // Connect tries to establish a WebSocket connection to SurrealDB.

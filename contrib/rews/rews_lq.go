@@ -38,6 +38,5 @@ func (arws *Connection[C]) CloseLiveNotifications(id string) error {
 	arws.connMu.RLock()
 	conn := arws.WebSocketConnection
 	arws.connMu.RUnlock()
-	_, err := arws.reliableLQ.closeLiveNotifications(conn, id)
-	return err
+	return arws.reliableLQ.closeLiveNotifications(conn, id)
 }

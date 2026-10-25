@@ -454,6 +454,13 @@ func ExampleLive_withDiff() {
 			connection.DeleteAction: 2,
 		}
 		for notification := range notifications {
+			// KILLED is sent by the server when Kill() is called; the channel
+			// will be closed immediately after. Skip it — its result is nil or
+			// NONE, depending on the CBOR implementation.
+			if notification.Action == connection.KilledAction {
+				continue
+			}
+
 			var resultStr string
 
 			// With diff=true:
@@ -461,11 +468,6 @@ func ExampleLive_withDiff() {
 			// - SurrealDB 3.x: All actions return []any diffs
 			switch result := notification.Result.(type) {
 			case nil:
-				// KILLED notification: server signals the live query has been
-				// terminated. The channel will close immediately after; skip.
-				if notification.Action == connection.KilledAction {
-					continue
-				}
 				panic(fmt.Sprintf("Unexpected nil result for action %s", notification.Action))
 			case []any:
 				// SurrealDB 3.x format (all actions) or 2.x format (CREATE/UPDATE only)

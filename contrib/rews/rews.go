@@ -524,6 +524,10 @@ func (arws *Connection[C]) Close(ctx context.Context) error {
 	close(arws.connCloseCh)
 	<-arws.reconnLoopCloseCh
 
+	// No notifications will come after this, so close the channels of every
+	// live query, as the underlying connection does for its own channels.
+	defer arws.reliableLQ.router.Close()
+
 	arws.connMu.RLock()
 	conn := arws.WebSocketConnection
 	arws.connMu.RUnlock()
