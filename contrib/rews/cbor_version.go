@@ -33,3 +33,14 @@ func (arws *Connection[C]) CBORVersion() connection.CBORVersion {
 	}
 	return connection.CBORv1
 }
+
+// connUnmarshaler decodes with the unmarshaler of the connection in use, so
+// that live-query bookkeeping reads responses in the CBOR version that
+// connection negotiated.
+type connUnmarshaler[C connection.WebSocketConnection] struct {
+	arws *Connection[C]
+}
+
+func (u connUnmarshaler[C]) Unmarshal(data []byte, dst any) error {
+	return u.arws.GetUnmarshaler().Unmarshal(data, dst)
+}
