@@ -131,6 +131,38 @@ func GetSurrealDBWSURL() string {
 	return strings.ReplaceAll(currentURL, "http", "ws")
 }
 
+// GetSurrealDBBaseURL returns the base URL of the test server for the given
+// scheme family, "ws" or "http": the scheme of SURREALDB_URL changed to match
+// (ws to http, wss to https, and back), and any /rpc path removed. It is the
+// form connection.Config.BaseURL takes.
+func GetSurrealDBBaseURL(family string) string {
+	const (
+		schemeWS    = "ws"
+		schemeWSS   = "wss"
+		schemeHTTP  = "http"
+		schemeHTTPS = "https"
+	)
+
+	u, err := url.Parse(GetSurrealDBURL())
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse SurrealDB URL: %v", err))
+	}
+
+	secure := u.Scheme == schemeWSS || u.Scheme == schemeHTTPS
+	switch {
+	case family == schemeHTTP && secure:
+		u.Scheme = schemeHTTPS
+	case family == schemeHTTP:
+		u.Scheme = schemeHTTP
+	case secure:
+		u.Scheme = schemeWSS
+	default:
+		u.Scheme = schemeWS
+	}
+	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/rpc")
+	return u.String()
+}
+
 type Config struct {
 	// Endpoint is the SurrealDB endpoint URL.
 	Endpoint string

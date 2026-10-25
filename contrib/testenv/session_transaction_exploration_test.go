@@ -994,7 +994,11 @@ func TestExplore_TransactionIsolation(t *testing.T) {
 			txnID)
 		// This fails because txn should be at top-level CBOR field, not positional param
 		require.Error(t, err, "query with txn as positional param should fail")
-		assert.Contains(t, err.Error(), "query", "error should be about query format")
+		// Older servers name the query; newer ones say the third
+		// parameter, the options, must be an object.
+		msg := err.Error()
+		assert.True(t, strings.Contains(msg, "query") || strings.Contains(msg, "options"),
+			"error should be about the query's parameters: %s", msg)
 	})
 
 	// Test: Query with txn at top level succeeds (correct format)
