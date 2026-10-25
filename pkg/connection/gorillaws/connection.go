@@ -440,7 +440,10 @@ func (c *Connection) readLoop(conn *gorilla.Conn) {
 				}
 				continue
 			}
-			go c.handleResponse(data)
+			// Handled in order, on this goroutine: delivery never blocks, and
+			// a goroutine per message would reorder live notifications and
+			// the frames of a streamed answer.
+			c.handleResponse(data)
 		}
 	}
 }
@@ -491,14 +494,10 @@ func (c *Connection) handleResponse(res []byte) {
 
 	if rpcRes.ID != nil && rpcRes.ID != "" {
 		// Try to resolve message as response to query
-		responseChan, ok := c.GetResponseChannel(fmt.Sprintf("%v", rpcRes.ID))
-		if !ok {
+		if !c.DeliverResponse(fmt.Sprintf("%v", rpcRes.ID), rpcRes) {
 			err := fmt.Errorf("unavailable ResponseChannel %+v", rpcRes.ID)
 			c.logger.Error(err.Error())
-			return
 		}
-		defer close(responseChan)
-		responseChan <- rpcRes
 	} else if rpcRes.Result == nil && rpcRes.Error != nil {
 		// Some error cases result in the lack of an ID field in the response,
 		// so we handle the error here,
