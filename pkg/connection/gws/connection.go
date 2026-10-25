@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -170,6 +171,7 @@ func New(params *connection.Config) *Connection {
 	conn.BaseURL = params.BaseURL
 	conn.Marshaler = params.Marshaler
 	conn.Unmarshaler = params.Unmarshaler
+	conn.DisableCBORv2 = params.DisableCBORv2
 	conn.ResponseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
 	conn.NotificationChannels = make(map[string]chan connection.Notification)
 	conn.Logger = params.Logger
@@ -250,8 +252,13 @@ func (c *Connection) Connect(ctx context.Context) error {
 
 	option := &gws.ClientOption{
 		Addr: fmt.Sprintf("%s/rpc", c.BaseURL),
+		// The header name is deliberately not canonicalised. gws looks the
+		// offered subprotocols up by the canonical name to check the server
+		// picked one, and that check would refuse a server that picks none,
+		// which this connection has always tolerated. The response header
+		// says which one the server picked.
 		RequestHeader: http.Header{
-			"Sec-WebSocket-Protocol": []string{"cbor"},
+			"Sec-WebSocket-Protocol": []string{strings.Join(c.CBORSubprotocols(), ", ")},
 		},
 		PermessageDeflate: gws.PermessageDeflate{
 			Enabled: true,
@@ -259,6 +266,10 @@ func (c *Connection) Connect(ctx context.Context) error {
 	}
 
 	conn, resp, err := gws.NewClient(c.handler, option)
+	var subprotocol string
+	if resp != nil {
+		subprotocol = resp.Header.Get("Sec-WebSocket-Protocol")
+	}
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			c.logError("failed to close response body", "error", closeErr)
@@ -271,6 +282,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
+	c.UseCBORSubprotocol(subprotocol)
 	c.conn = conn
 	c.closeCh = make(chan struct{})
 
