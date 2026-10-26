@@ -96,17 +96,29 @@ func TestFileAndSet_server(t *testing.T) {
 		} {
 			res, err := surrealdb.Query[string](ctx, db, "RETURN <string>$f", map[string]any{"f": f})
 			require.NoError(t, err)
-			assert.Equal(t, (*res)[0].Result, f.String(), "String matches the server's own formatting")
+			got := (*res)[0].Result
+			if strings.HasPrefix(f.String(), "type::file(") && strings.HasPrefix(got, `f"`) {
+				// Older servers write a file outside the file string grammar
+				// as an f-string with backslash escapes, which does not parse
+				// back.
+				t.Logf("server writes %v as %s, the older form", f, got)
+				continue
+			}
+			assert.Equal(t, got, f.String(), "String matches the server's own formatting")
 		}
 	})
 
 	t.Run("file literal", func(t *testing.T) {
-		f := models.NewFile("my_bucket-1.x", "/dir/sub-dir/file_name.v2.tar.gz")
-		res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
-		if err != nil && strings.Contains(err.Error(), "experimental files feature") {
-			t.Skip("parsing a file literal needs --allow-experimental files")
+		for _, f := range []models.File{
+			models.NewFile("my_bucket-1.x", "/dir/sub-dir/file_name.v2.tar.gz"),
+			models.NewFile("buck et", `/it's "a\b:c"`),
+		} {
+			res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
+			if err != nil && strings.Contains(err.Error(), "experimental files feature") {
+				t.Skip("parsing a file literal needs --allow-experimental files")
+			}
+			require.NoError(t, err, f.String())
+			assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
 		}
-		require.NoError(t, err)
-		assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
 	})
 }
