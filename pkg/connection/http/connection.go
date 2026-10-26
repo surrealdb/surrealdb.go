@@ -109,15 +109,15 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, constants.ErrNoBaseURL
 	}
 
+	// Set request ID if not already set
+	if request.ID == nil || request.ID == "" {
+		request.ID = rand.NewRequestID(constants.RequestIDLength)
+	}
+
 	// Methods which only change the state of the session are answered here,
 	// as a stateless HTTP request could not keep what they change.
 	if res, handled, err := c.callLocally(ctx, request); handled {
 		return res, err
-	}
-
-	// Set request ID if not already set
-	if request.ID == nil || request.ID == "" {
-		request.ID = rand.NewRequestID(constants.RequestIDLength)
 	}
 
 	if request.Method == string(connection.Query) {
@@ -136,7 +136,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
-	c.setSessionHeaders(req)
+	c.setSessionHeaders(req, sendsOwnCredentials(request.Method))
 
 	respData, err := c.MakeRequest(req)
 	if err != nil {
@@ -159,12 +159,26 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 // The methods which only change the state of the session, which the
 // connection keeps itself.
 const (
-	methodUse   = "use"
-	methodLet   = "let"
-	methodSet   = "set"
-	methodUnset = "unset"
-	methodReset = "reset"
+	methodUse        = "use"
+	methodLet        = "let"
+	methodSet        = "set"
+	methodUnset      = "unset"
+	methodReset      = "reset"
+	methodInvalidate = "invalidate"
 )
+
+// sendsOwnCredentials reports whether a method carries the credentials it is
+// checked with, so is sent without the token the connection keeps. The server
+// checks the Authorization header of every request, and answers 401 to one
+// whose token it no longer accepts, so sending the stored token would keep a
+// connection whose token has expired from signing in again.
+func sendsOwnCredentials(method string) bool {
+	switch method {
+	case "signin", "signup", "authenticate":
+		return true
+	}
+	return false
+}
 
 // callLocally answers the methods which only change the state of the session.
 // It refuses parameters a WebSocket server would refuse, rather than keep them,
@@ -172,7 +186,9 @@ const (
 func (c *Connection) callLocally(
 	ctx context.Context, request *connection.RPCRequest,
 ) (res *connection.RPCResponse[cbor.RawMessage], handled bool, err error) {
-	var apply func(method string, params []any) error
+	// apply returns the result the server gives, where nil is the null a
+	// WebSocket server answers let, unset, reset and invalidate with.
+	var apply func(method string, params []any) (any, error)
 	switch request.Method {
 	case methodUse:
 		apply = c.localUse
@@ -182,69 +198,126 @@ func (c *Connection) callLocally(
 		apply = c.localUnset
 	case methodReset:
 		apply = c.localReset
+	case methodInvalidate:
+		apply = c.localInvalidate
 	default:
 		return nil, false, nil
 	}
 
-	if err := ctx.Err(); err != nil {
+	if ctx.Err() != nil {
+		return nil, true, ctx.Err()
+	}
+	result, err := apply(request.Method, request.Params)
+	if err != nil {
 		return nil, true, err
 	}
-	if err := apply(request.Method, request.Params); err != nil {
-		return nil, true, err
+	res = &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}
+	if result != nil {
+		var encoded cbor.RawMessage
+		if encoded, err = c.encodeParam(result); err != nil {
+			return nil, true, err
+		}
+		res.Result = &encoded
 	}
-	return &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}, true, nil
+	return res, true, nil
 }
 
-func (c *Connection) localUse(method string, params []any) error {
+// localUse returns the namespace and database it leaves selected, as
+// SurrealDB 3.x servers do, with NONE for one that is not selected.
+func (c *Connection) localUse(method string, params []any) (any, error) {
 	ns, nsOK := scopeParam(params, 0)
 	db, dbOK := scopeParam(params, 1)
 	if !nsOK || !dbOK || len(params) != 2 {
-		return invalidParams(method, "a namespace and a database")
+		return nil, invalidParams(method, "a namespace and a database")
 	}
-	c.setNamespaceAndDatabase(ns, db)
-	return nil
+	ns.name, db.name = c.setNamespaceAndDatabase(ns, db)
+	return map[string]any{"namespace": noneIfEmpty(ns.name), "database": noneIfEmpty(db.name)}, nil
 }
 
-func (c *Connection) localLet(method string, params []any) error {
+func noneIfEmpty(s string) any {
+	if s == "" {
+		return &models.CustomNil{}
+	}
+	return s
+}
+
+// protectedVariables are the names SurrealDB refuses to bind, with let and in
+// the variables of a query alike.
+var protectedVariables = map[string]bool{"access": true, "auth": true, "token": true, "session": true}
+
+// localLet binds a variable, or, given only a name or a NONE value, removes
+// it, as SurrealDB servers do.
+func (c *Connection) localLet(method string, params []any) (any, error) {
 	key, ok := paramString(params, 0)
-	if !ok || len(params) != 2 {
-		return invalidParams(method, "a variable name and a value")
+	if !ok || len(params) > 2 {
+		return nil, invalidParams(method, "a variable name and an optional value")
+	}
+	if protectedVariables[key] {
+		// Kept, it would be sent with, and refused in, every later query.
+		return nil, invalidParamsError(fmt.Sprintf("Cannot set protected variable: %s", key))
+	}
+	if len(params) == 1 || isNone(params[1]) {
+		c.unsetVariable(key)
+		return nil, nil
 	}
 	// The value is kept encoded, as a WebSocket server would receive it,
 	// so later changes to it do not leak into queries, and a value which
 	// cannot be encoded fails here rather than in every later query.
 	value, err := c.encodeParam(params[1])
 	if err != nil {
-		return fmt.Errorf("%s $%s: %w", method, key, err)
+		return nil, fmt.Errorf("%s $%s: %w", method, key, err)
 	}
 	c.setVariable(key, value)
-	return nil
+	return nil, nil
 }
 
-func (c *Connection) localUnset(method string, params []any) error {
+func isNone(v any) bool {
+	switch v.(type) {
+	case models.CustomNil, *models.CustomNil:
+		return true
+	}
+	return false
+}
+
+func (c *Connection) localUnset(method string, params []any) (any, error) {
 	key, ok := paramString(params, 0)
 	if !ok || len(params) != 1 {
-		return invalidParams(method, "a variable name")
+		return nil, invalidParams(method, "a variable name")
 	}
 	c.unsetVariable(key)
-	return nil
+	return nil, nil
 }
 
 // localReset ignores any parameters, as SurrealDB servers do: 2.x and 3.x
-// reset a WebSocket session given reset with parameters.
-func (c *Connection) localReset(_ string, _ []any) error {
+// reset a WebSocket session given reset with parameters. It is never sent:
+// SurrealDB 2.6.0 aborts given reset over HTTP.
+func (c *Connection) localReset(_ string, _ []any) (any, error) {
 	c.reset()
-	return nil
+	return nil, nil
+}
+
+// localInvalidate forgets the token. Over HTTP the server keeps no session
+// for invalidate to clear, and answers 401 to a request carrying a token it
+// no longer accepts, so sending it could leave the token in place.
+func (c *Connection) localInvalidate(_ string, _ []any) (any, error) {
+	c.setToken("")
+	return nil, nil
 }
 
 // invalidParams is the error a SurrealDB server gives for a method called
-// with the wrong parameters. It is built as an error from the server is, so
-// it is both an *RPCError and, through errors.As, a *ServerError.
+// with the wrong parameters.
 func invalidParams(method, want string) error {
+	return invalidParamsError(fmt.Sprintf("Invalid params: %s takes %s", method, want))
+}
+
+// invalidParamsError is an invalid params error with the given message. It
+// is built as an error from the server is, so it is both an *RPCError and,
+// through errors.As, a *ServerError.
+func invalidParamsError(message string) error {
 	data, err := cbor.Marshal(map[string]any{
 		"code":    -32602,
 		"kind":    connection.KindValidation,
-		"message": fmt.Sprintf("Invalid params: %s takes %s", method, want),
+		"message": message,
 	})
 	if err != nil {
 		return err
@@ -357,20 +430,23 @@ func stringKeyedMap(v any) (map[string]any, bool) {
 // withVariables returns a copy of a query request whose variables include
 // those set with Let, which the variables given with the query take precedence over.
 func (c *Connection) withVariables(request *connection.RPCRequest) *connection.RPCRequest {
-	c.stateMu.RLock()
-	defer c.stateMu.RUnlock()
-
-	if len(c.vars) == 0 || len(request.Params) == 0 {
+	if len(request.Params) == 0 {
 		return request
 	}
 
+	c.stateMu.RLock()
 	merged := make(map[string]any, len(c.vars))
 	for k, v := range c.vars {
 		merged[k] = v
 	}
+	c.stateMu.RUnlock()
+
+	if len(merged) == 0 {
+		return request
+	}
 
 	if len(request.Params) > 1 && request.Params[1] != nil {
-		given, ok := stringKeyedMap(request.Params[1])
+		given, ok := c.variablesObject(request.Params[1])
 		if !ok {
 			// Variables of another type are sent as they are.
 			return request
@@ -390,8 +466,40 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	return &copied
 }
 
+// variablesObject returns the entries of the variables given with a query
+// when they are encoded as an object, such as a map with string keys, a
+// struct, or a pointer to either; a nil pointer, encoded as null, has none.
+func (c *Connection) variablesObject(v any) (map[string]any, bool) {
+	if m, ok := stringKeyedMap(v); ok {
+		return m, true
+	}
+	data, err := c.encodeParam(v)
+	if err != nil || len(data) == 0 {
+		return nil, false
+	}
+	const (
+		cborNull     = 0xf6
+		cborMapMajor = 5
+	)
+	if data[0] == cborNull {
+		return nil, true
+	}
+	if data[0]>>5 != cborMapMajor {
+		return nil, false
+	}
+	var entries map[string]cbor.RawMessage
+	if err := cbor.Unmarshal(data, &entries); err != nil {
+		return nil, false
+	}
+	m := make(map[string]any, len(entries))
+	for k, v := range entries {
+		m[k] = v
+	}
+	return m, true
+}
+
 // trackAuth keeps the token of a successful signin, signup or authenticate
-// request, however it was sent, and forgets it on invalidate.
+// request, however it was sent.
 func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawMessage) {
 	switch request.Method {
 	case "signin", "signup":
@@ -413,12 +521,12 @@ func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawM
 		if token, ok := paramString(request.Params, 0); ok {
 			c.setToken(token)
 		}
-	case "invalidate":
-		c.setToken("")
 	}
 }
 
-func (c *Connection) setNamespaceAndDatabase(namespace, database scopeChange) {
+// setNamespaceAndDatabase changes the namespace and database, and returns
+// those it leaves selected.
+func (c *Connection) setNamespaceAndDatabase(namespace, database scopeChange) (ns, db string) {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	if !namespace.keep {
@@ -427,6 +535,7 @@ func (c *Connection) setNamespaceAndDatabase(namespace, database scopeChange) {
 	if !database.keep {
 		c.database = database.name
 	}
+	return c.namespace, c.database
 }
 
 // reset forgets everything the session holds, as the reset RPC does on a
@@ -461,9 +570,9 @@ func (c *Connection) unsetVariable(key string) {
 	delete(c.vars, key)
 }
 
-// setSessionHeaders sets the namespace, database and authorization headers
-// from the state of this connection.
-func (c *Connection) setSessionHeaders(req *http.Request) {
+// setSessionHeaders sets the namespace, database and, unless withoutToken is
+// set, authorization headers from the state of this connection.
+func (c *Connection) setSessionHeaders(req *http.Request, withoutToken bool) {
 	c.stateMu.RLock()
 	defer c.stateMu.RUnlock()
 
@@ -478,7 +587,7 @@ func (c *Connection) setSessionHeaders(req *http.Request) {
 		req.Header.Set("Surreal-DB", c.database)
 	}
 
-	if c.token != "" {
+	if c.token != "" && !withoutToken {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
 	}
 }
@@ -560,6 +669,11 @@ func (c *Connection) Use(ctx context.Context, namespace, database string) error 
 //
 // As HTTP is stateless, the variable is kept by the connection and sent along with
 // each query, where the variables passed to the query take precedence over it.
+// Only the query method takes variables, so unlike on a WebSocket connection the
+// variable is not available to other methods such as select, create or run.
+//
+// A NONE value (models.None) removes the variable, as Unset does. The names
+// access, auth, token and session are refused, as SurrealDB refuses them.
 func (c *Connection) Let(ctx context.Context, key string, value any) error {
 	_, _, err := c.callLocally(ctx, &connection.RPCRequest{Method: methodLet, Params: []any{key, value}})
 	return err

@@ -182,7 +182,7 @@ func TestLetUnset_keptApartFromConnectionState(t *testing.T) {
 
 	// let, set and unset with missing parameters fail, as they do over a
 	// WebSocket, and change nothing.
-	for _, params := range [][]any{{}, {"w"}, {1, 2}, {"w", 1, 2}} {
+	for _, params := range [][]any{{}, {1, 2}, {"w", 1, 2}} {
 		for _, method := range []string{"let", "set"} {
 			_, err = con.Send(ctx, method, params...)
 			var serverErr *connection.ServerError
@@ -375,6 +375,9 @@ func TestLet_deprecatedMarshaler(t *testing.T) {
 	require.NoError(t, con.Let(ctx, "m", map[string]string{"a": "b"}))
 	_, err := con.Send(ctx, "set", "s", "text")
 	require.NoError(t, err)
+	res, err := con.Send(ctx, "use", "ns", nil)
+	require.NoError(t, err)
+	require.NotNil(t, res.Result, "use returns the scope it leaves selected")
 
 	_, err = con.Send(ctx, "query", "RETURN [$n, $m, $s]")
 	require.NoError(t, err)
@@ -520,4 +523,210 @@ func TestMakeRequest_cborErrorBody(t *testing.T) {
 	var serverErr *connection.ServerError
 	require.ErrorAs(t, err, &serverErr)
 	assert.Equal(t, "There was a problem with authentication", serverErr.Message)
+}
+
+// A let given only a name, or a NONE value, removes the variable, as
+// SurrealDB 2.x and 3.x servers do, while a null value is kept.
+func TestLet_withoutAValueUnsets(t *testing.T) {
+	for _, unset := range [][]any{{"x"}, {"x", models.None}, {"x", &models.None}} {
+		for _, method := range []string{"let", "set"} {
+			con, sent, _ := recordingConnection(t, surrealcbor.New())
+			ctx := context.Background()
+			require.NoError(t, con.Let(ctx, "x", 1))
+			require.NoError(t, con.Let(ctx, "y", 2))
+
+			res, err := con.Send(ctx, method, unset...)
+			require.NoError(t, err, "%s %v", method, unset)
+			assert.Nil(t, res.Result)
+
+			_, err = con.Send(ctx, "query", "RETURN [$x, $y]")
+			require.NoError(t, err)
+			vars, _ := sent.Params[1].(map[string]any)
+			assert.NotContains(t, vars, "x", "%s %v", method, unset)
+			assert.EqualValues(t, 2, vars["y"])
+		}
+	}
+
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "x", 1))
+	require.NoError(t, con.Let(ctx, "x", models.None))
+	require.NoError(t, con.Let(ctx, "n", nil))
+	_, err := con.Send(ctx, "query", "RETURN [$x, $n]")
+	require.NoError(t, err)
+	vars, _ := sent.Params[1].(map[string]any)
+	assert.NotContains(t, vars, "x")
+	assert.Contains(t, vars, "n")
+	assert.Nil(t, vars["n"])
+}
+
+// The names SurrealDB refuses to bind are refused, as a WebSocket server
+// refuses them, rather than kept and sent with, and refused in, every query.
+func TestLet_protectedNames(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+	ctx := context.Background()
+
+	for _, name := range []string{"access", "auth", "token", "session"} {
+		for _, call := range []func() error{
+			func() error { return con.Let(ctx, name, 1) },
+			func() error { _, err := con.Send(ctx, "let", name, 1); return err },
+			func() error { _, err := con.Send(ctx, "set", name, 1); return err },
+			func() error { _, err := con.Send(ctx, "let", name); return err },
+		} {
+			err := call()
+			var serverErr *connection.ServerError
+			require.ErrorAs(t, err, &serverErr, name)
+			assert.Equal(t, -32602, serverErr.Code)
+			assert.Contains(t, serverErr.Message, name)
+		}
+	}
+
+	// Names are compared as SurrealDB compares them, with case.
+	require.NoError(t, con.Let(ctx, "Token", 1))
+	_, err := con.Send(ctx, "query", "RETURN $Token")
+	require.NoError(t, err)
+	vars, _ := sent.Params[1].(map[string]any)
+	assert.Equal(t, []string{"Token"}, mapKeys(vars))
+}
+
+func mapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// The methods answered locally return what a server gives: use returns the
+// namespace and database it leaves selected, as SurrealDB 3.x does, with NONE
+// for one that is not selected, and let, set, unset, reset and invalidate
+// return null, which leaves the Result nil, as it does over a WebSocket.
+func TestLocalMethods_results(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+	ctx := context.Background()
+
+	scope := func(params ...any) map[string]any {
+		t.Helper()
+		var res connection.RPCResponse[map[string]any]
+		require.NoError(t, connection.Send(con, ctx, &res, "use", params...))
+		require.NotNil(t, res.Result, "use %v", params)
+		assert.NotNil(t, res.ID)
+		return *res.Result
+	}
+	assert.Equal(t, map[string]any{"namespace": "ns", "database": "db"}, scope("ns", "db"))
+	assert.Equal(t, map[string]any{"namespace": "ns", "database": "db2"}, scope(models.None, "db2"))
+
+	var raw connection.RPCResponse[map[string]models.CustomNil]
+	require.NoError(t, connection.Send(con, ctx, &raw, "use", nil, nil))
+	require.NotNil(t, raw.Result)
+	assert.Len(t, *raw.Result, 2, "both are NONE")
+	res, err := con.Send(ctx, "use", nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0xc6, 0xf6}, []byte(*res.Result)[len(*res.Result)-2:], "NONE is tag 6")
+
+	for _, call := range [][]any{{"let", "x", 1}, {"set", "x", 1}, {"unset", "x"}, {"reset"}, {"invalidate"}} {
+		res, err := con.Send(ctx, call[0].(string), call[1:]...)
+		require.NoError(t, err, "%v", call)
+		assert.Nil(t, res.Result, "%v", call)
+		assert.NotNil(t, res.ID, "%v", call)
+	}
+	assert.Empty(t, sent.Method, "no request was made")
+}
+
+// Over HTTP the server answers 401 to any request whose token it no longer
+// accepts, so signin, signup and authenticate, which carry their own
+// credentials, are sent without the stored token, and invalidate forgets it
+// without a request. A connection whose token has expired can then recover.
+func TestAuth_expiredTokenCanBeReplaced(t *testing.T) {
+	c := surrealcbor.New()
+	answer := func(v map[string]any) *http.Response {
+		body, err := c.Marshal(v)
+		require.NoError(t, err)
+		status := http.StatusOK
+		if _, isErr := v["error"]; isErr {
+			status = http.StatusUnauthorized
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(bytes.NewReader(body)), Header: http.Header{"Content-Type": {"application/cbor"}}}
+	}
+
+	var methods []string
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		var sent connection.RPCRequest
+		body, _ := io.ReadAll(req.Body)
+		_ = c.Unmarshal(body, &sent)
+		methods = append(methods, sent.Method)
+		if req.Header.Get("Authorization") == "Bearer expired" {
+			return answer(map[string]any{"error": map[string]any{"code": -32000, "message": "There was a problem with authentication"}})
+		}
+		switch sent.Method {
+		case "signin", "signup":
+			return answer(map[string]any{"result": "fresh"})
+		case "query":
+			return answer(map[string]any{"result": []any{req.Header.Get("Authorization")}})
+		}
+		return answer(map[string]any{"result": nil})
+	}))
+	ctx := context.Background()
+
+	authorization := func() string {
+		t.Helper()
+		var res connection.RPCResponse[[]string]
+		require.NoError(t, connection.Send(con, ctx, &res, "query", "RETURN 1"))
+		return (*res.Result)[0]
+	}
+
+	for _, recover := range []func() error{
+		func() error { _, err := con.SignIn(ctx, map[string]any{"user": "u", "pass": "p"}); return err },
+		func() error { _, err := con.SignUp(ctx, map[string]any{"user": "u", "pass": "p"}); return err },
+		func() error { return con.Authenticate(ctx, "fresh") },
+	} {
+		require.NoError(t, con.Authenticate(ctx, "expired"))
+		_, err := con.Send(ctx, "query", "RETURN 1")
+		require.Error(t, err, "the server refuses the expired token")
+
+		require.NoError(t, recover())
+		assert.Equal(t, "Bearer fresh", authorization())
+	}
+
+	require.NoError(t, con.Authenticate(ctx, "expired"))
+	methods = nil
+	require.NoError(t, con.Invalidate(ctx))
+	assert.Empty(t, methods, "invalidate needs no request")
+	assert.Empty(t, authorization())
+}
+
+type structVars struct {
+	Y int `cbor:"y"`
+}
+
+// Variables bound with Let are merged into a query's variables of any type
+// encoded as an object, such as a struct or a pointer to a map, and a nil
+// pointer, encoded as null, gives only those bound with Let.
+func TestWithVariables_structsAndPointers(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "x", 1))
+	require.NoError(t, con.Let(ctx, "y", 1))
+
+	for _, given := range []any{structVars{Y: 2}, &structVars{Y: 2}, &map[string]any{"y": 2}} {
+		_, err := con.Send(ctx, "query", "RETURN [$x, $y]", given)
+		require.NoError(t, err)
+		require.Len(t, sent.Params, 2)
+		vars, isMap := sent.Params[1].(map[string]any)
+		require.True(t, isMap, "%T", sent.Params[1])
+		assert.EqualValues(t, 1, vars["x"], "%T", given)
+		assert.EqualValues(t, 2, vars["y"], "%T", given)
+	}
+
+	_, err := con.Send(ctx, "query", "RETURN [$x, $y]", (*map[string]any)(nil))
+	require.NoError(t, err)
+	vars, _ := sent.Params[1].(map[string]any)
+	assert.EqualValues(t, map[string]any{"x": uint64(1), "y": uint64(1)}, vars)
+
+	// Variables which are not an object are sent as they are, for the server to refuse.
+	_, err = con.Send(ctx, "query", "RETURN 1", []any{1})
+	require.NoError(t, err)
+	assert.Equal(t, []any{uint64(1)}, sent.Params[1])
 }

@@ -2,12 +2,15 @@ package surrealdb_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // TestHTTP_letAndUnset checks that variables defined with Let are visible to
@@ -50,5 +53,63 @@ func TestHTTP_letAndUnset(t *testing.T) {
 
 	// Still signed in as root: the variable named auth_token did not replace the token.
 	_, err = surrealdb.Query[any](ctx, db, "INFO FOR ROOT", nil)
+	require.NoError(t, err)
+
+	// A NONE value removes the variable, as on a WebSocket.
+	require.NoError(t, db.Let(ctx, "name", "tobie"))
+	require.NoError(t, db.Let(ctx, "name", models.None))
+	unset, err = surrealdb.Query[any](ctx, db, "RETURN $name", nil)
+	require.NoError(t, err)
+	assert.Nil(t, (*unset)[0].Result)
+
+	// A name the server refuses to bind is refused, and later queries still work.
+	for _, name := range []string{"access", "auth", "token", "session"} {
+		require.Error(t, db.Let(ctx, name, "x"), name)
+	}
+	_, err = surrealdb.Query[any](ctx, db, "RETURN 1", nil)
+	require.NoError(t, err)
+}
+
+// TestHTTP_expiredTokenCanBeReplaced checks that a connection whose token the
+// server no longer accepts can sign in again, and invalidate it, though the
+// server answers 401 to every request carrying it.
+func TestHTTP_expiredTokenCanBeReplaced(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := surrealdb.FromEndpointURLString(ctx, httpEndpoint())
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	root := surrealdb.Auth{Username: "root", Password: "root"}
+	_, err = db.SignIn(ctx, root)
+	require.NoError(t, err)
+	// A name of its own, as runs against the same server may overlap.
+	user := fmt.Sprintf("http_short_lived_%d", time.Now().UnixNano())
+	_, err = surrealdb.Query[any](ctx, db,
+		"DEFINE USER "+user+" ON ROOT PASSWORD 'short-lived' ROLES VIEWER DURATION FOR TOKEN 1s", nil)
+	require.NoError(t, err)
+	defer func() {
+		_, _ = db.SignIn(ctx, root)
+		_, _ = surrealdb.Query[any](ctx, db, "REMOVE USER IF EXISTS "+user+" ON ROOT", nil)
+	}()
+
+	expire := func() {
+		t.Helper()
+		_, signInErr := db.SignIn(ctx, surrealdb.Auth{Username: user, Password: "short-lived"})
+		require.NoError(t, signInErr)
+		time.Sleep(2 * time.Second)
+		_, queryErr := surrealdb.Query[any](ctx, db, "RETURN 1", nil)
+		require.Error(t, queryErr, "the server refuses the expired token")
+	}
+
+	expire()
+	_, err = db.SignIn(ctx, root)
+	require.NoError(t, err, "signin is sent without the expired token")
+	_, err = surrealdb.Query[any](ctx, db, "INFO FOR ROOT", nil)
+	require.NoError(t, err)
+
+	expire()
+	require.NoError(t, db.Invalidate(ctx), "invalidate forgets the expired token")
+	_, err = db.SignIn(ctx, root)
 	require.NoError(t, err)
 }
