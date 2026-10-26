@@ -117,21 +117,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	req.Header.Set("Accept", "application/cbor")
 	req.Header.Set("Content-Type", "application/cbor")
 
-	if namespace, ok := c.variables.Load("namespace"); ok {
-		req.Header.Set("Surreal-NS", namespace.(string))
-	} else {
-		return nil, constants.ErrNoNamespaceOrDB
-	}
-
-	if database, ok := c.variables.Load("database"); ok {
-		req.Header.Set("Surreal-DB", database.(string))
-	} else {
-		return nil, constants.ErrNoNamespaceOrDB
-	}
-
-	if token, ok := c.variables.Load(constants.AuthTokenKey); ok {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
-	}
+	c.setSessionHeaders(req)
 
 	respData, err := c.MakeRequest(req)
 	if err != nil {
@@ -147,6 +133,25 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	}
 
 	return &res, nil
+}
+
+// setSessionHeaders sets the namespace, database and authorization headers
+// from the state of this connection.
+func (c *Connection) setSessionHeaders(req *http.Request) {
+	// The namespace and database are optional: a root or namespace user signs in,
+	// asks for the version, or runs a query naming its own namespace without them.
+	// Methods that do need them are refused by the server with its own error.
+	if namespace, ok := c.variables.Load("namespace"); ok && namespace.(string) != "" {
+		req.Header.Set("Surreal-NS", namespace.(string))
+	}
+
+	if database, ok := c.variables.Load("database"); ok && database.(string) != "" {
+		req.Header.Set("Surreal-DB", database.(string))
+	}
+
+	if token, ok := c.variables.Load(constants.AuthTokenKey); ok {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.(string)))
+	}
 }
 
 func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
@@ -165,16 +170,56 @@ func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
 		return respBytes, nil
 	}
 
-	contentType := strings.Split(resp.Header.Get("Content-Type"), ";")[0]
-	if strings.TrimSpace(contentType) == "" {
-		return nil, fmt.Errorf("%s", string(respBytes))
+	return nil, c.errorFromResponse(resp, respBytes)
+}
+
+// StatusError is returned when the server answers an HTTP request with a non-2xx
+// status and a body that is not a SurrealDB RPC error, such as a plain-text
+// rejection, or an HTML page from a proxy in front of the server.
+type StatusError struct {
+	// StatusCode is the HTTP status code, such as 502.
+	StatusCode int
+	// Status is the HTTP status line, such as "502 Bad Gateway".
+	Status string
+	// ContentType is the media type of the body, if the server sent one.
+	ContentType string
+	// Body is the response body, as text.
+	Body string
+}
+
+func (e *StatusError) Error() string {
+	body := strings.TrimSpace(e.Body)
+	if body == "" {
+		return fmt.Sprintf("unexpected HTTP status %s", e.Status)
 	}
+	return fmt.Sprintf("unexpected HTTP status %s: %s", e.Status, body)
+}
+
+// errorFromResponse turns a non-2xx response into an error. A body carrying a
+// SurrealDB RPC error yields that error; anything else, including a body that is
+// not CBOR at all, yields a *StatusError.
+func (c *Connection) errorFromResponse(resp *http.Response, body []byte) error {
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+
+	statusErr := &StatusError{
+		StatusCode:  resp.StatusCode,
+		Status:      resp.Status,
+		ContentType: contentType,
+		Body:        string(body),
+	}
+	if statusErr.Status == "" {
+		statusErr.Status = fmt.Sprintf("%d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+	}
+
+	if contentType == "" || len(body) == 0 {
+		return statusErr
+	}
+
 	var errorResponse connection.RPCResponse[any]
-	err = c.Unmarshaler.Unmarshal(respBytes, &errorResponse)
-	if err != nil {
-		panic(fmt.Sprintf("%s: %s", err, string(respBytes)))
+	if err := c.Unmarshaler.Unmarshal(body, &errorResponse); err != nil || errorResponse.Error == nil {
+		return statusErr
 	}
-	return nil, errorResponse.Error
+	return errorResponse.Error
 }
 
 func (c *Connection) Use(ctx context.Context, namespace, database string) error {
