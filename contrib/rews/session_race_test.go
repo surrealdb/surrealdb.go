@@ -196,6 +196,20 @@ type taggedNS struct {
 type otherTaggedNS struct {
 	Name string `json:"NS"`
 }
+
+// twoTaggedNS returns a struct embedding taggedNS and otherTaggedNS, which both
+// tag a field NS. It is built at run time because go vet rejects the repeated
+// tag in a struct type written out.
+func twoTaggedNS(a, b string) any {
+	v := reflect.New(reflect.StructOf([]reflect.StructField{
+		{Name: "TaggedNS", Type: reflect.TypeOf(taggedNS{}), Anonymous: true},
+		{Name: "OtherTaggedNS", Type: reflect.TypeOf(otherTaggedNS{}), Anonymous: true},
+	})).Elem()
+	v.Field(0).Set(reflect.ValueOf(taggedNS{a}))
+	v.Field(1).Set(reflect.ValueOf(otherTaggedNS{b}))
+	return v.Interface()
+}
+
 type wrapsUntaggedNS struct{ untaggedNS }
 type alsoWrapsUntaggedNS struct{ untaggedNS }
 type repeated struct{ untaggedNS }
@@ -228,11 +242,8 @@ func TestAccessOf_dominance(t *testing.T) {
 			want: map[string]any{"NS": "tagged"},
 		},
 		"two tagged cancel out": {
-			authData: struct {
-				taggedNS
-				otherTaggedNS //nolint:govet // two fields tagged NS at one depth is the case under test
-			}{taggedNS{"a"}, otherTaggedNS{"b"}},
-			want: map[string]any{},
+			authData: twoTaggedNS("a", "b"),
+			want:     map[string]any{},
 		},
 		"two untagged cancel out": {
 			authData: struct {

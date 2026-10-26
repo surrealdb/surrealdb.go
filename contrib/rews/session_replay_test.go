@@ -32,6 +32,27 @@ type recordingConnection struct {
 	blocked     bool
 	entered     chan struct{}
 	release     chan struct{}
+
+	// failMethods names the RPCs that fail after being recorded.
+	failMethods []string
+	// tokens, if set, is the pair the refresh variants return.
+	tokens *connection.Tokens
+}
+
+func (c *recordingConnection) fails(method string) error {
+	for _, m := range c.failMethods {
+		if m == method {
+			return fmt.Errorf("%s failed", method)
+		}
+	}
+	return nil
+}
+
+func (c *recordingConnection) pair() *connection.Tokens {
+	if c.tokens != nil {
+		return c.tokens
+	}
+	return &connection.Tokens{Access: "token", Refresh: "refresh"}
 }
 
 func (c *recordingConnection) record(ctx context.Context, call string) error {
@@ -79,10 +100,16 @@ func (c *recordingConnection) Use(ctx context.Context, ns, db string) error {
 	return c.record(ctx, fmt.Sprintf("use %s %s", ns, db))
 }
 func (c *recordingConnection) Authenticate(ctx context.Context, token string) error {
-	return c.record(ctx, "authenticate "+token)
+	if err := c.record(ctx, "authenticate "+token); err != nil {
+		return err
+	}
+	return c.fails("authenticate")
 }
 func (c *recordingConnection) Invalidate(ctx context.Context) error {
-	return c.record(ctx, "invalidate")
+	if err := c.record(ctx, "invalidate"); err != nil {
+		return err
+	}
+	return c.fails("invalidate")
 }
 func (c *recordingConnection) Let(ctx context.Context, key string, value any) error {
 	return c.record(ctx, fmt.Sprintf("let %s %v", key, value))
@@ -102,17 +129,87 @@ func (c *recordingConnection) SignUp(ctx context.Context, _ any) (string, error)
 	}
 	return "token", nil
 }
-func (c *recordingConnection) SignInWithRefresh(ctx context.Context, _ any) (*connection.Tokens, error) {
-	if err := c.record(ctx, "signin"); err != nil {
+func (c *recordingConnection) SignInWithRefresh(ctx context.Context, authData any) (*connection.Tokens, error) {
+	call := "signin"
+	if m, ok := authData.(map[string]any); ok && m["refresh"] != nil {
+		call = fmt.Sprintf("signin refresh %v", m["refresh"])
+	}
+	if err := c.record(ctx, call); err != nil {
 		return nil, err
 	}
-	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
+	return c.pair(), nil
 }
 func (c *recordingConnection) SignUpWithRefresh(ctx context.Context, _ any) (*connection.Tokens, error) {
 	if err := c.record(ctx, "signup"); err != nil {
 		return nil, err
 	}
-	return &connection.Tokens{Access: "token", Refresh: "refresh"}, nil
+	return c.pair(), nil
+}
+
+// TestInvalidate_failureStillForgetsTokens checks that a reconnection after an
+// Invalidate whose RPC failed, as it does on a dropped socket, does not sign the
+// session back in.
+func TestInvalidate_failureStillForgetsTokens(t *testing.T) {
+	ctx := context.Background()
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	next := &recordingConnection{}
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 0, surrealcbor.New(), log)
+	old := &recordingConnection{failMethods: []string{"invalidate"}}
+	conn.WebSocketConnection = old
+	conn.state = StateConnected
+
+	require.NoError(t, conn.Use(ctx, "ns", "db"))
+	require.NoError(t, conn.Authenticate(ctx, "token"))
+	require.Error(t, conn.Invalidate(ctx))
+
+	require.NoError(t, conn.reconnect(ctx))
+	require.Equal(t, []string{"use ns db"}, next.Calls())
+}
+
+// TestReconnect_refreshTellsTheCaller checks that when a reconnection signs in
+// with the refresh token, which the server then revokes, the caller can learn
+// the new pair, from OnTokensRefreshed and from Tokens.
+func TestReconnect_refreshTellsTheCaller(t *testing.T) {
+	ctx := context.Background()
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	// The new socket refuses the expired access token, and gives a new pair
+	// for the refresh token.
+	next := &recordingConnection{
+		failMethods: []string{"authenticate"},
+		tokens:      &connection.Tokens{Access: "token2", Refresh: "refresh2"},
+	}
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 0, surrealcbor.New(), log)
+	conn.WebSocketConnection = &recordingConnection{}
+	conn.state = StateConnected
+
+	var got []connection.Tokens
+	conn.OnTokensRefreshed = func(pair connection.Tokens) {
+		// The callback runs without the session lock, so it can read Tokens.
+		waitCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		current, err := conn.Tokens(waitCtx)
+		require.NoError(t, err)
+		require.Equal(t, pair, current)
+		got = append(got, pair)
+	}
+
+	pair, err := conn.SignInWithRefresh(ctx, map[string]any{"NS": "ns", "DB": "db", "AC": "ac"})
+	require.NoError(t, err)
+	require.Equal(t, connection.Tokens{Access: "token", Refresh: "refresh"}, *pair)
+
+	require.NoError(t, conn.reconnect(ctx))
+	require.Equal(t, []string{"authenticate token", "signin refresh refresh"}, next.Calls())
+	require.Equal(t, []connection.Tokens{{Access: "token2", Refresh: "refresh2"}}, got)
+
+	tokens, err := conn.Tokens(ctx)
+	require.NoError(t, err)
+	require.Equal(t, connection.Tokens{Access: "token2", Refresh: "refresh2"}, tokens)
 }
 
 // TestReconnect_serialisesReplayWithSessionChanges checks that a session change

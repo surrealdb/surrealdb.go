@@ -335,6 +335,11 @@ type Tokens = connection.Tokens
 // Note: The "refresh" parameter is for record access refresh tokens only.
 // For bearer access methods, use SignIn with the "key" parameter.
 // For other access methods (system users, record users without refresh), use SignIn.
+//
+// The server replaces a refresh token once it is used. On a connection from
+// contrib/rews, a reconnection after the access token has expired signs in with
+// the refresh token, so the one returned here then no longer works: read the new
+// pair with rews.Connection.Tokens, or set rews.Connection.OnTokensRefreshed.
 func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
 	return db.con.SignInWithRefresh(ctx, authData)
 }
