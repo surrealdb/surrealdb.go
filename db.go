@@ -1,6 +1,7 @@
 package surrealdb
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -649,7 +650,7 @@ func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars m
 			r TResult
 			e *QueryError
 		)
-		if result.Status == "ERR" {
+		if result.Status == statusERR {
 			var errMsg string
 			if result.Result != nil {
 				if err := unmarshaler(result.Result, &errMsg); err != nil {
@@ -783,11 +784,25 @@ func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relations
 // statement returning a random string, so that the results show where the results
 // of each QueryStmt end. If a QueryStmt yields several results or none, as it does
 // when it holds several statements or only a comment, QueryRaw returns an error and
-// leaves the results unset. Once a transaction has failed, the server runs neither
-// the statements nor the markers in it, and returns an error in place of each;
-// QueryRaw gives each QueryStmt in it the error returned in its place, but cannot
-// check there that each QueryStmt holds one statement. The variables of all the
-// statements are sent together, so two statements must not give one name different values.
+// leaves the results unchanged.
+//
+// A transaction written as statements (BEGIN, ..., COMMIT or CANCEL, each a
+// QueryStmt of its own) works too:
+//   - Once a transaction has failed, the server runs neither the statements nor the
+//     markers in it, and returns an error in place of each. QueryRaw gives each
+//     QueryStmt the error returned in its place.
+//   - A BEGIN, COMMIT or CANCEL for which the server returns no result, as SurrealDB
+//     2.x does for all three and 3.x does for a COMMIT or CANCEL after a failure, is
+//     given a NONE result, or an error if it is a COMMIT after a failure.
+//   - A RETURN directly before the COMMIT or CANCEL works. SurrealDB 3.0 to 3.3 skip
+//     the rest of a transaction after a RETURN in it, so other statements after a
+//     RETURN in a transaction make QueryRaw return an error.
+//
+// If a statement fails in a way that leaves results out, such as a transaction that
+// times out, QueryRaw returns an error which includes the server's error.
+//
+// The variables of all the statements are sent together, so two statements must
+// not give one name different values.
 //
 // You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
 func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
@@ -804,6 +819,10 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 	if err != nil {
 		return err
 	}
+	kinds := make([]rawStmtKind, len(*queries))
+	for i := range *queries {
+		kinds[i] = rawStmtKindOf((*queries)[i].SQL)
+	}
 
 	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", preparedQuery, parameters)
 	if err != nil {
@@ -811,7 +830,7 @@ func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error 
 	}
 
 	unmarshaler := unmarshalerOf(s)
-	results, err := splitRawResults(res, len(*queries), marker, unmarshaler)
+	results, err := splitRawResults(res, kinds, marker, unmarshaler)
 	if err != nil {
 		return err
 	}
@@ -841,7 +860,7 @@ func composeRawQuery(queries []QueryStmt, marker string) (sql string, vars map[s
 	var preparedQuery strings.Builder
 	parameters := map[string]any{}
 	for i := range queries {
-		stmt := strings.TrimRight(strings.TrimSpace(queries[i].SQL), "; \t\r\n")
+		stmt := trimRawStmt(queries[i].SQL)
 		if stmt == "" {
 			return "", nil, fmt.Errorf("QueryRaw: statement %d is empty", i)
 		}
@@ -850,8 +869,8 @@ func composeRawQuery(queries []QueryStmt, marker string) (sql string, vars map[s
 		preparedQuery.WriteString("\n;\n'" + marker + "';\n")
 
 		for k, v := range queries[i].Vars {
-			if prev, ok := parameters[k]; ok && !reflect.DeepEqual(prev, v) {
-				return "", nil, fmt.Errorf("QueryRaw: variable $%s is given different values by different statements", k)
+			if prev, ok := parameters[k]; ok && !sameRawVar(prev, v) {
+				return "", nil, fmt.Errorf("QueryRaw: variable $%s is given different values by different statements (%T and %T)", k, prev, v)
 			}
 			parameters[k] = v
 		}
@@ -860,50 +879,202 @@ func composeRawQuery(queries []QueryStmt, marker string) (sql string, vars map[s
 	return preparedQuery.String(), parameters, nil
 }
 
+// trimRawStmt returns sql without surrounding white space and trailing semicolons.
+func trimRawStmt(sql string) string {
+	return strings.TrimRight(strings.TrimSpace(sql), "; \t\r\n")
+}
+
+// sameRawVar reports whether a and b are the same value to the server: equal Go
+// values, or values with the same CBOR encoding, such as 1 and int64(1).
+func sameRawVar(a, b any) bool {
+	if reflect.DeepEqual(a, b) {
+		return true
+	}
+	ea, err := cbor.Marshal(a)
+	if err != nil {
+		return false
+	}
+	eb, err := cbor.Marshal(b)
+	return err == nil && bytes.Equal(ea, eb)
+}
+
+// rawStmtKind tells the statements that begin and end a transaction from others,
+// as the server may return no result for them.
+type rawStmtKind int
+
+const (
+	rawOther rawStmtKind = iota
+	rawBegin
+	rawCommit
+	rawCancel
+)
+
+// rawStmtKindOf returns the kind of the statement sql.
+func rawStmtKindOf(sql string) rawStmtKind {
+	switch strings.ToUpper(strings.Join(strings.Fields(trimRawStmt(sql)), " ")) {
+	case "BEGIN", "BEGIN TRANSACTION":
+		return rawBegin
+	case "COMMIT", "COMMIT TRANSACTION":
+		return rawCommit
+	case "CANCEL", "CANCEL TRANSACTION":
+		return rawCancel
+	}
+	return rawOther
+}
+
 // The errors SurrealDB returns in place of the result of a statement which it did not
 // run because the transaction it is in had failed.
 const (
 	errFailedTransaction    = "The query was not executed due to a failed transaction"
 	errCancelledTransaction = "The query was not executed due to a cancelled transaction" //nolint:misspell // the server's spelling
+	// errAbortedCommit is what SurrealDB 3.3 and later return for a COMMIT after a failure.
+	errAbortedCommit = "Cannot COMMIT: the transaction was aborted due to a prior error"
 )
 
-// splitRawResults returns the result of each of the n statements of a query
-// composed by composeRawQuery. Each statement must have yielded exactly one result,
-// followed by the marker after it, or by the error the server returns in place of a
-// marker it did not run because its transaction had failed; otherwise it is unknown
-// which result belongs to which statement, and splitRawResults returns an error.
-func splitRawResults(
-	res *[]QueryResult[cbor.RawMessage], n int, marker string, unmarshaler codec.Unmarshaler,
-) ([]QueryResult[cbor.RawMessage], error) {
-	isMarker := func(r QueryResult[cbor.RawMessage]) bool {
-		var s string
-		return r.Status == "OK" && unmarshaler.Unmarshal(r.Result, &s) == nil && s == marker
-	}
-	// isEnd reports whether r is the marker after a statement, or the error in its place.
-	isEnd := func(r QueryResult[cbor.RawMessage]) bool {
-		var s string
-		return isMarker(r) || r.Status == "ERR" && unmarshaler.Unmarshal(r.Result, &s) == nil &&
-			(s == errFailedTransaction || s == errCancelledTransaction)
-	}
+// The statuses of a QueryResult.
+const (
+	statusOK  = "OK"
+	statusERR = "ERR"
+)
 
-	var rest []QueryResult[cbor.RawMessage]
+// splitRawResults returns the result of each statement of a query composed by
+// composeRawQuery, given the kind of each. Each statement must have yielded exactly
+// one result, followed by the marker after it, or by the error the server returns
+// in place of a marker it did not run because its transaction had failed. The
+// exceptions are those described for QueryRaw. Otherwise it is unknown which result
+// belongs to which statement, and splitRawResults returns an error.
+func splitRawResults(
+	res *[]QueryResult[cbor.RawMessage], kinds []rawStmtKind, marker string, unmarshaler codec.Unmarshaler,
+) ([]QueryResult[cbor.RawMessage], error) {
+	m := rawResults{marker: marker, unmarshaler: unmarshaler}
 	if res != nil {
-		rest = *res
+		m.all = *res
 	}
-	results := make([]QueryResult[cbor.RawMessage], n)
-	for i := range results {
-		if len(rest) < 2 || isMarker(rest[0]) || !isEnd(rest[1]) {
-			return nil, fmt.Errorf("QueryRaw: statement %d did not yield exactly one result; "+
-				"each QueryStmt must hold exactly one statement", i)
+	rest := m.all
+	results := make([]QueryResult[cbor.RawMessage], len(kinds))
+	for i := 0; i < len(kinds); {
+		rows, stmts := m.match(kinds, i, rest, results)
+		if stmts == 0 {
+			return nil, m.unmatched(i)
 		}
-		results[i] = rest[0]
-		rest = rest[2:]
+		rest = rest[rows:]
+		i += stmts
 	}
 	if len(rest) != 0 {
 		return nil, fmt.Errorf("QueryRaw: the server returned %d results more than expected", len(rest))
 	}
 
 	return results, nil
+}
+
+// rawResults are the results of a query composed by composeRawQuery.
+type rawResults struct {
+	all         []QueryResult[cbor.RawMessage]
+	marker      string
+	unmarshaler codec.Unmarshaler
+}
+
+// isText reports whether r has the status and the text result given.
+func (m *rawResults) isText(r QueryResult[cbor.RawMessage], status, text string) bool {
+	// A text string encodes in at most 9 bytes more than its length, so a longer
+	// result is not worth decoding.
+	if r.Status != status || len(r.Result) > len(text)+9 {
+		return false
+	}
+	var s string
+	return m.unmarshaler.Unmarshal(r.Result, &s) == nil && s == text
+}
+
+func (m *rawResults) isMarker(r QueryResult[cbor.RawMessage]) bool {
+	return m.isText(r, statusOK, m.marker)
+}
+
+// isSkipped reports whether r is the error in place of a statement not run because
+// its transaction had failed.
+func (m *rawResults) isSkipped(r QueryResult[cbor.RawMessage]) bool {
+	return m.isText(r, statusERR, errFailedTransaction) || m.isText(r, statusERR, errCancelledTransaction)
+}
+
+// isEnd reports whether r is the marker after a statement, or the error in its place.
+func (m *rawResults) isEnd(r QueryResult[cbor.RawMessage]) bool {
+	return m.isMarker(r) || m.isSkipped(r)
+}
+
+// match gives results to the statements from statement i on, from the results
+// rest, and returns how many results it used and for how many statements. It
+// returns 0 statements if the results do not match.
+func (m *rawResults) match(
+	kinds []rawStmtKind, i int, rest []QueryResult[cbor.RawMessage], results []QueryResult[cbor.RawMessage],
+) (rows, stmts int) {
+	if m.noResult(kinds[i], rest) {
+		results[i] = noRawResult(kinds[i], i > 0 && results[i-1].Status == statusERR)
+		return 1, 1
+	}
+	if len(rest) >= 2 && !m.isMarker(rest[0]) && m.isEnd(rest[1]) {
+		results[i] = rest[0]
+		return 2, 1
+	}
+	// SurrealDB 3.0 to 3.3 skip the rest of a transaction after a RETURN in it,
+	// including the marker after the RETURN, up to the COMMIT or CANCEL.
+	if i+1 < len(kinds) && isRawTxnEnd(kinds[i+1]) &&
+		len(rest) >= 3 && !m.isMarker(rest[0]) && !m.isMarker(rest[1]) && m.isEnd(rest[2]) {
+		results[i], results[i+1] = rest[0], rest[1]
+		return 3, 2
+	}
+	return 0, 0
+}
+
+// noResult reports whether the server returned no result for a statement of the
+// kind given, whose results would begin with rest.
+func (m *rawResults) noResult(kind rawStmtKind, rest []QueryResult[cbor.RawMessage]) bool {
+	switch {
+	case len(rest) == 0:
+		return false
+	// SurrealDB 2.x returns no result for BEGIN; 3.x returns NONE, never an error.
+	case kind == rawBegin:
+		return m.isEnd(rest[0])
+	// SurrealDB 2.x returns no result for COMMIT and CANCEL, and 3.x none for a
+	// CANCEL, or for a COMMIT before 3.3, after a failure. The marker after them
+	// runs outside the transaction.
+	case isRawTxnEnd(kind):
+		return m.isMarker(rest[0])
+	}
+	return false
+}
+
+// isRawTxnEnd reports whether kind ends a transaction.
+func isRawTxnEnd(kind rawStmtKind) bool {
+	return kind == rawCommit || kind == rawCancel
+}
+
+// unmatched returns the error for results which cannot be matched to the statements
+// from statement i on. It names the first error the server returned, other than
+// those for statements it skipped, as that is likely the cause.
+func (m *rawResults) unmatched(i int) error {
+	for _, r := range m.all {
+		if r.Status != statusERR || m.isSkipped(r) {
+			continue
+		}
+		var msg string
+		if m.unmarshaler.Unmarshal(r.Result, &msg) != nil {
+			msg = "an error"
+		}
+		return fmt.Errorf("QueryRaw: the results cannot be matched to the statements from statement %d on, "+
+			"after the server returned an error: %s", i, msg)
+	}
+	return fmt.Errorf("QueryRaw: statement %d did not yield exactly one result; "+
+		"each QueryStmt must hold exactly one statement", i)
+}
+
+// noRawResult returns the result given to a BEGIN, COMMIT or CANCEL for which the
+// server returned none: NONE, or for a COMMIT after a failure, the error SurrealDB
+// 3.3 and later return for it.
+func noRawResult(kind rawStmtKind, failed bool) QueryResult[cbor.RawMessage] {
+	if kind == rawCommit && failed {
+		msg, _ := cbor.Marshal(errAbortedCommit)
+		return QueryResult[cbor.RawMessage]{Status: statusERR, Result: msg}
+	}
+	return QueryResult[cbor.RawMessage]{Status: statusOK, Result: cbor.RawMessage{0xf6}}
 }
 
 // unmarshalerOf returns the unmarshaler of the connection s sends on.

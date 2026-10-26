@@ -675,26 +675,77 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 	})
 
 	s.Run("a failed transaction", func() {
-		// SurrealDB 2.x yields no result for BEGIN, so it cannot be a QueryStmt of its own.
-		if !getVersion(s.T()).IsV3OrLater() {
-			s.T().Skip("BEGIN yields a result only on SurrealDB 3.x and later")
-		}
 		// Once THROW fails the transaction, the server runs neither the statements
-		// nor the markers after it, and returns an error in place of each.
+		// nor the markers after it, and returns an error in place of each. Some
+		// versions return no result for BEGIN, or for the COMMIT or CANCEL after a
+		// failure.
+		for _, end := range []string{"COMMIT", "CANCEL"} {
+			queries := []surrealdb.QueryStmt{
+				{SQL: "BEGIN"},
+				{SQL: "CREATE users:queryraw_tx"},
+				{SQL: "THROW 'boom'"},
+				{SQL: "RETURN 5"},
+				{SQL: end},
+				{SQL: "RETURN 6"},
+			}
+			s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries), end)
+			s.Equal("OK", queries[0].Result.Status, "BEGIN")
+			for _, q := range queries[1:4] {
+				s.Equal("ERR", q.Result.Status, q.SQL)
+			}
+			var msg string
+			s.Require().NoError(queries[2].GetResult(&msg))
+			s.Contains(msg, "boom")
+			if end == "COMMIT" {
+				s.Equal("ERR", queries[4].Result.Status, "COMMIT after a failure")
+			} else {
+				s.Equal("OK", queries[4].Result.Status, "CANCEL after a failure")
+			}
+			var six int
+			s.Require().NoError(queries[5].GetResult(&six), "after the transaction")
+			s.Equal(6, six)
+		}
+	})
+
+	s.Run("a transaction", func() {
+		for _, end := range []string{"COMMIT", "CANCEL"} {
+			queries := []surrealdb.QueryStmt{
+				{SQL: "BEGIN TRANSACTION"},
+				{SQL: "UPSERT users:queryraw_txn"},
+				{SQL: end + " TRANSACTION;"},
+				{SQL: "RETURN 2"},
+			}
+			s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries), end)
+			for _, q := range queries {
+				s.NotEmpty(q.Result.Status, q.SQL)
+			}
+			var two int
+			s.Require().NoError(queries[3].GetResult(&two))
+			s.Equal(2, two)
+		}
+	})
+
+	s.Run("RETURN before COMMIT", func() {
+		// SurrealDB 2.x returns only the RETURN for the whole transaction.
+		if !getVersion(s.T()).IsV3OrLater() {
+			s.T().Skip("SurrealDB 2.x returns one result for a transaction with a RETURN")
+		}
+		// SurrealDB 3.0 to 3.3 skip the marker after a RETURN in a transaction.
 		queries := []surrealdb.QueryStmt{
 			{SQL: "BEGIN"},
-			{SQL: "CREATE users:queryraw_tx"},
-			{SQL: "THROW 'boom'"},
-			{SQL: "RETURN 5"},
+			{SQL: "UPSERT users:queryraw_return"},
+			{SQL: "RETURN true"},
+			{SQL: "COMMIT"},
+			{SQL: "RETURN 7"},
 		}
 		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
-		s.Equal("OK", queries[0].Result.Status)
-		for _, q := range queries[1:] {
-			s.Equal("ERR", q.Result.Status, q.SQL)
-		}
-		var msg string
-		s.Require().NoError(queries[2].GetResult(&msg))
-		s.Contains(msg, "boom")
+		var ok bool
+		s.Require().NoError(queries[2].GetResult(&ok))
+		s.True(ok)
+		s.Equal("OK", queries[3].Result.Status, "COMMIT")
+		var seven int
+		s.Require().NoError(queries[4].GetResult(&seven))
+		s.Equal(7, seven)
 	})
 
 	s.Run("conflicting variables", func() {
