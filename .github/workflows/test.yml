@@ -64,14 +64,14 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          # SurrealDB 3.0.x can run an HTTP request in the namespace and database of
-          # another request in flight (fixed in 3.1.0), so tests in one package hit
-          # tables of another. Test one package at a time.
           - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-            goflags: '-p=1'
+            # SurrealDB 3.0.x keeps one shared session for all HTTP /rpc requests, so
+            # concurrent requests can run in each other's namespace and database
+            # (fixed in 3.1.0). Run the test packages one at a time.
+            go-test-flags: '-p 1'
           # 2.x
           - surrealdb-version: 'v2.6.0'
             go-version: '1.25.0'
@@ -113,13 +113,13 @@ jobs:
             sleep 2
           done
       - name: Test ${{ matrix.connection-type }} connection
-        run: go test -v -cover -race ./...
+        run: go test -v -cover -race $GO_TEST_FLAGS ./...
         env:
           SURREALDB_URL: ${{ matrix.surrealdb-url }}
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
           SURREALDB_CBOR_IMPL: ${{ matrix.surrealdb-cbor-impl }}
           SURREALDB_RECONNECTION_CHECK_INTERVAL: ${{ matrix.surrealdb-reconnection-check-interval }}
-          GOFLAGS: ${{ matrix.goflags }}
+          GO_TEST_FLAGS: ${{ matrix.go-test-flags }}
 
   surrealnote-e2e:
     name: SurrealNote E2E Tests
