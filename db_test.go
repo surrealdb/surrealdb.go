@@ -536,11 +536,6 @@ func (s *SurrealDBTestSuite) TestVersion() {
 }
 
 func (s *SurrealDBTestSuite) TestLetUnset() {
-	// Session variables don't persist across stateless HTTP requests.
-	if strings.HasPrefix(getURL(), "http") {
-		s.T().Skip("Let/Unset variables do not persist across stateless HTTP requests")
-	}
-
 	s.Run("let sets variable readable via query", func() {
 		err := s.db.Let(context.Background(), "testvar", "hello")
 		s.Require().NoError(err)
@@ -562,6 +557,27 @@ func (s *SurrealDBTestSuite) TestLetUnset() {
 		s.Require().NoError(err)
 		s.Require().NotNil(result)
 		s.Nil((*result)[0].Result)
+	})
+
+	s.Run("let with NONE removes variable", func() {
+		err := s.db.Let(context.Background(), "testvar3", "world")
+		s.Require().NoError(err)
+
+		err = s.db.Let(context.Background(), "testvar3", models.None)
+		s.Require().NoError(err)
+
+		result, err := surrealdb.Query[any](context.Background(), s.db, "RETURN $testvar3", nil)
+		s.Require().NoError(err)
+		s.Require().NotNil(result)
+		s.Nil((*result)[0].Result)
+	})
+
+	s.Run("let refuses a protected name", func() {
+		err := s.db.Let(context.Background(), "session", "x")
+		s.Require().Error(err)
+
+		_, err = surrealdb.Query[any](context.Background(), s.db, "RETURN 1", nil)
+		s.Require().NoError(err)
 	})
 }
 
