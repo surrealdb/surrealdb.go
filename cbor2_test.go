@@ -158,6 +158,14 @@ func TestCBORSizedNumbers_cbor2(t *testing.T) {
 		assert.Equal(t, in, (*res)[0].Result)
 	})
 
+	t.Run("through a variable set with Let", func(t *testing.T) {
+		require.NoError(t, db.Let(ctx, "sized", int8(-1)))
+		defer func() { _ = db.Unset(ctx, "sized") }()
+		res, err := surrealdb.Query[any](ctx, db, "RETURN $sized", nil)
+		require.NoError(t, err)
+		assert.Equal(t, int8(-1), (*res)[0].Result)
+	})
+
 	t.Run("stored in a record", func(t *testing.T) {
 		type sized struct {
 			ID  *models.RecordID `json:"id,omitempty"`
