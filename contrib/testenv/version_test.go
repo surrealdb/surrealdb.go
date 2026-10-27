@@ -39,7 +39,7 @@ func TestParseVersion(t *testing.T) {
 		},
 		{
 			name:       "nightly with build metadata",
-			input:      "surrealdb-3.4.0-nightly+20261014.4f7fa16",
+			input:      "surrealdb-3.4.0-nightly+20261014.abcdef0",
 			major:      3,
 			minor:      4,
 			patch:      0,
