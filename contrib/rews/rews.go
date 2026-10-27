@@ -824,7 +824,8 @@ func (arws *Connection[C]) Invalidate(ctx context.Context) error {
 
 	// Forget the tokens even if the RPC fails, as it does when the socket has
 	// dropped, so that the next reconnection cannot sign the session back in
-	// after the caller signed it out.
+	// Forget the tokens even if the RPC fails, so that the next reconnection
+	// cannot sign a session back in after the caller signed it out.
 	arws.setToken("", "", nil)
 	if err := conn.Invalidate(ctx); err != nil {
 		return fmt.Errorf("rews.Connection failed to invalidate: %w", socketErr(ctx, err))
