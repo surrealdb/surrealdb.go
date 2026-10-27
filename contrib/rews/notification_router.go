@@ -22,6 +22,11 @@ type NotificationRouter struct {
 
 	// logger for debugging
 	logger logger.Logger
+
+	// onEnd, if set, is called with the internal ID of a live query which has
+	// ended with a KILLED notification, once its internal channel is closed.
+	// The route stays until RemoveRoute, but routes nothing more.
+	onEnd func(internalID string)
 }
 
 // NewNotificationRouter creates a new NotificationRouter
@@ -42,6 +47,23 @@ func (nr *NotificationRouter) SetupRouting(
 	internalID, externalID string,
 	provider NotificationProvider,
 ) (chan connection.Notification, error) {
+	ch, _, err := nr.setupRouting(internalID, externalID, provider, false, nil)
+	return ch, err
+}
+
+// setupRouting is SetupRouting, also reporting whether the live query had
+// already ended with KILLED, in which case nothing was set up. previousLost
+// says that the connection of the source being replaced was lost: what it
+// received is routed before anything from the new source, however long that
+// takes. If a KILLED notification is found among it only then, the live
+// query ends there, and orphaned, if set, is called to end the live query
+// externalID, whose notifications nothing will route.
+func (nr *NotificationRouter) setupRouting(
+	internalID, externalID string,
+	provider NotificationProvider,
+	previousLost bool,
+	orphaned func(),
+) (ch chan connection.Notification, ended bool, err error) {
 	nr.routesMu.Lock()
 	defer nr.routesMu.Unlock()
 
@@ -50,8 +72,20 @@ func (nr *NotificationRouter) SetupRouting(
 	if !exists {
 		// Create new route with internal channel
 		r = newRoute(internalID)
+		r.onEnd = nr.routeEnded
 		nr.routes[internalID] = r
 		nr.logger.Debug("Created new route", "internal_id", internalID)
+	}
+
+	// Stop routing from the current source first, taking everything it
+	// holds: a live query which ended with KILLED, even one still to be
+	// routed, gets no more notifications, from this connection or any other.
+	previousID, previousCh, previousOrphaned := r.externalID, r.externalCh, r.orphaned
+	if r.detach(nr.logger, previousLost) {
+		nr.logger.Debug("Not routing an ended live query",
+			"internal_id", internalID,
+			"external_id", externalID)
+		return r.internalCh, true, nil
 	}
 
 	// Get external channel from provider
@@ -61,17 +95,27 @@ func (nr *NotificationRouter) SetupRouting(
 			"internal_id", internalID,
 			"external_id", externalID,
 			"error", err)
-		return r.internalCh, err
+		// Carry on routing as before.
+		r.attach(previousID, previousCh, previousOrphaned, nr.logger)
+		return r.internalCh, false, err
 	}
 
-	// Update the route's external connection and manage goroutine lifecycle
-	r.setExternal(externalID, externalCh, nr.logger)
+	r.attach(externalID, externalCh, orphaned, nr.logger)
 
 	nr.logger.Debug("Notification routing setup",
 		"internal_id", internalID,
 		"external_id", externalID)
 
-	return r.internalCh, nil
+	return r.internalCh, false, nil
+}
+
+// routeEnded is called by a route's goroutine once its live query has ended
+// with a KILLED notification.
+func (nr *NotificationRouter) routeEnded(r *route) {
+	nr.logger.Debug("Live query ended", "internal_id", r.internalID)
+	if nr.onEnd != nil {
+		nr.onEnd(r.internalID)
+	}
 }
 
 // RemoveRoute removes a routing entry and stops its goroutine
