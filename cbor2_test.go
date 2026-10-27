@@ -168,7 +168,7 @@ func TestCBORSizedNumbers_cbor2(t *testing.T) {
 			U64 uint64           `json:"u64"`
 		}
 		in := sized{I8: -1, U32: 7, F32: 0.25, F16: models.MustFloat16(-2), U64: math.MaxUint64}
-		created, err := surrealdb.Create[sized](ctx, db, models.Table("t"), in)
+		created, err := surrealdb.Create[sized](ctx, db, models.NewRecordID("t", "sized"), in)
 		require.NoError(t, err)
 		require.NotNil(t, created.ID)
 		got, err := surrealdb.Select[sized](ctx, db, *created.ID)
