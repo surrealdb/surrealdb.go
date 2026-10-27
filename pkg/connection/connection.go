@@ -95,6 +95,12 @@ type Toolkit struct {
 	live liveState
 }
 
+// GetMarshaler returns the marshaler requests are encoded with, so that a
+// wrapper such as contrib/rews can see what a request sends.
+func (bc *Toolkit) GetMarshaler() codec.Marshaler {
+	return bc.Marshaler
+}
+
 func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMessage], error) {
 	bc.ResponseChannelsLock.Lock()
 	defer bc.ResponseChannelsLock.Unlock()
