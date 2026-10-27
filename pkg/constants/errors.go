@@ -10,10 +10,12 @@ var (
 )
 
 var (
-	ErrIDInUse            = errors.New("id already in use")
-	ErrNoBaseURL          = errors.New("base url not set")
-	ErrNoMarshaler        = errors.New("marshaler is not set")
-	ErrNoUnmarshaler      = errors.New("unmarshaler is not set")
+	ErrIDInUse       = errors.New("id already in use")
+	ErrNoBaseURL     = errors.New("base url not set")
+	ErrNoMarshaler   = errors.New("marshaler is not set")
+	ErrNoUnmarshaler = errors.New("unmarshaler is not set")
+	// Deprecated: the HTTP connection no longer requires a namespace and database
+	// before every request, and does not return this error.
 	ErrNoNamespaceOrDB    = errors.New("namespace or database or both are not set")
 	ErrMethodNotAvailable = errors.New("method not available on this connection")
 

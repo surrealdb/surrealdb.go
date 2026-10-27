@@ -16,7 +16,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # v3.0.1 with Go 1.25.0
+          # Latest 3.x release (the docker `v3` tag follows the newest 3.x)
+          - surrealdb-version: 'v3'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v3'
+            go-version: '1.25.0'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+          # Latest 3.x, gws
+          - surrealdb-version: 'v3'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-connection-impl: 'gws'
+          # Latest 3.x, gorilla/websocket, fxamackercbor (legacy)
+          - surrealdb-version: 'v3'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-cbor-impl: 'fxamackercbor'
+          # Latest 3.x, gorilla/websocket, reconnection
+          - surrealdb-version: 'v3'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-reconnection-check-interval: '1s'
+          # Latest 3.x with the oldest supported Go
+          - surrealdb-version: 'v3'
+            go-version: '1.24.6'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          # Nightly: the next release line (4.0). Reported, but does not block a merge.
+          - surrealdb-version: 'nightly'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            experimental: true
+          - surrealdb-version: 'nightly'
+            go-version: '1.25.0'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+            experimental: true
+          # Oldest 3.x
           - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'ws'
@@ -25,62 +68,26 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # v2.6.0 with Go 1.25.0, http
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'http'
-            surrealdb-url: 'http://localhost:8000'
-          # v2.6.0 with Go 1.25.0, http, fxamackercbor (legacy)
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'http'
-            surrealdb-url: 'http://localhost:8000'
-            surrealdb-cbor-impl: 'fxamackercbor'
-          # v2.6.0 with Go 1.25.0, gorilla/websocket
+            # SurrealDB 3.0.x keeps one shared session for all HTTP /rpc requests, so
+            # concurrent requests can run in each other's namespace and database
+            # (fixed in 3.1.0). Run the test packages one at a time.
+            go-test-flags: '-p 1'
+          # 2.x
           - surrealdb-version: 'v2.6.0'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-          # v2.6.0 with Go 1.25.0, gorilla/websocket, fxamackercbor (legacy)
+          - surrealdb-version: 'v2.6.0'
+            go-version: '1.25.0'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
           - surrealdb-version: 'v2.6.0'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-cbor-impl: 'fxamackercbor'
-          # v2.6.0 with Go 1.25.0, gorilla/websocket, reconnection
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-reconnection-check-interval: '1s'
-          # v2.6.0 with Go 1.25.0, gws
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-connection-impl: 'gws'
-          # v2.6.0 with Go 1.25.0, gws, reconnection
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-connection-impl: 'gws'
-            surrealdb-reconnection-check-interval: '1s'
-          # v2.6.0 with Go 1.25.0, explicit surrealcbor
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.25.0'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-cbor-impl: 'surrealcbor'
-          # v2.6.0 with Go 1.24.6
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.24.6'
-            connection-type: 'ws'
-            surrealdb-url: 'ws://localhost:8000/rpc'
-          - surrealdb-version: 'v2.6.0'
-            go-version: '1.24.6'
-            connection-type: 'http'
-            surrealdb-url: 'http://localhost:8000'
+    name: test (${{ matrix.surrealdb-version }}, ${{ matrix.connection-type }}${{ matrix.surrealdb-connection-impl && format(', {0}', matrix.surrealdb-connection-impl) || '' }}${{ matrix.surrealdb-cbor-impl && format(', {0}', matrix.surrealdb-cbor-impl) || '' }}${{ matrix.surrealdb-reconnection-check-interval && ', reconnect' || '' }}, go ${{ matrix.go-version }})
+    continue-on-error: ${{ matrix.experimental == true }}
     permissions:
       contents: read
       pull-requests: read
@@ -95,6 +102,7 @@ jobs:
       - name: Start SurrealDB
         run: |
           docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:${{ matrix.surrealdb-version }} start --user root --pass root
+          docker run --rm surrealdb/surrealdb:${{ matrix.surrealdb-version }} version
           # Wait for SurrealDB to be ready
           for i in {1..30}; do
             if curl -f http://localhost:8000/health 2>/dev/null; then
@@ -105,12 +113,13 @@ jobs:
             sleep 2
           done
       - name: Test ${{ matrix.connection-type }} connection
-        run: go test -v -cover -race ./...
+        run: go test -v -cover -race $GO_TEST_FLAGS ./...
         env:
           SURREALDB_URL: ${{ matrix.surrealdb-url }}
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
           SURREALDB_CBOR_IMPL: ${{ matrix.surrealdb-cbor-impl }}
           SURREALDB_RECONNECTION_CHECK_INTERVAL: ${{ matrix.surrealdb-reconnection-check-interval }}
+          GO_TEST_FLAGS: ${{ matrix.go-test-flags }}
 
   surrealnote-e2e:
     name: SurrealNote E2E Tests
