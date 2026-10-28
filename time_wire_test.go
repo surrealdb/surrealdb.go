@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -48,4 +49,41 @@ func TestQuery_valuesTravelInCompactForms(t *testing.T) {
 	back, err := surrealdb.Query[models.CustomDateTime](ctx, db, "RETURN $at", map[string]any{"at": at})
 	require.NoError(t, err)
 	assert.True(t, at.Equal((*back)[0].Result.Time), "%v != %v", at, (*back)[0].Result.Time)
+}
+
+// TestQuery_longDurationsAndWideYearsTravel sends durations longer than a
+// time.Duration can hold, about 292 years, and times outside the years 0000 to
+// 9999. Such durations used to wrap without an error, and such times failed
+// to marshal.
+func TestQuery_longDurationsAndWideYearsTravel(t *testing.T) {
+	ctx := context.Background()
+	db := testenv.MustNew("wire_forms", "long", "dummy")
+	t.Cleanup(func() { _ = db.Close(ctx) })
+
+	for _, text := range []string{"300y", "600y", "1000y", "584942417355y"} {
+		t.Run(text, func(t *testing.T) {
+			vars := map[string]any{"d": models.CustomDurationString(text)}
+			res, err := surrealdb.Query[string](ctx, db, "RETURN <string> $d", vars)
+			require.NoError(t, err)
+			assert.Equal(t, text, (*res)[0].Result, "the server reads the duration it was sent")
+
+			if os.Getenv(testenv.EnvSurrealCBORImpl) == "fxamackercbor" {
+				return // the deprecated decoder reads tag 14 only into time.Duration types
+			}
+			back, err := surrealdb.Query[models.CustomDurationString](ctx, db, "RETURN $d", vars)
+			require.NoError(t, err)
+			assert.Equal(t, models.CustomDurationString(text), (*back)[0].Result, "and it reads back the same")
+		})
+	}
+
+	for _, at := range []time.Time{
+		time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(-1, 1, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		t.Run(at.Format(time.RFC3339), func(t *testing.T) {
+			res, err := surrealdb.Query[models.CustomDateTime](ctx, db, "RETURN $at", map[string]any{"at": at})
+			require.NoError(t, err)
+			assert.True(t, at.Equal((*res)[0].Result.Time), "%v != %v", at, (*res)[0].Result.Time)
+		})
+	}
 }

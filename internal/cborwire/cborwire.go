@@ -20,8 +20,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"regexp"
+	"math/bits"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -50,6 +51,10 @@ const (
 	maxNestingDepth   = 1 << 12
 	nanosPerSecond    = int64(time.Second)
 	errInvalidContent = "cborwire: tag %d must contain %s"
+
+	// Tags 180 to 188 are the sized numbers of cbor.2, such as 186 for a u64.
+	tagSizedNumberFirst = 180
+	tagSizedNumberLast  = 188
 )
 
 var errTruncated = errors.New("cborwire: truncated CBOR")
@@ -82,15 +87,20 @@ type walker struct {
 	pos    int
 	out    []byte
 	copied int // in[:copied] is already in out
+	leaf   int // above 0 inside a tag whose content must not be rewritten
 }
 
-// replace writes repl in place of in[from:w.pos].
-func (w *walker) replace(from int, repl []byte) {
+// begin copies in[copied:from] to out. A rewrite then appends its replacement
+// for in[from:pos] to out and calls end.
+func (w *walker) begin(from int) {
 	if w.out == nil {
-		w.out = make([]byte, 0, len(w.in)+16)
+		w.out = make([]byte, 0, len(w.in)+len(w.in)/8)
 	}
 	w.out = append(w.out, w.in[w.copied:from]...)
-	w.out = append(w.out, repl...)
+}
+
+// end marks in[:pos] as copied, after a rewrite.
+func (w *walker) end() {
 	w.copied = w.pos
 }
 
@@ -142,8 +152,10 @@ func (w *walker) item(depth int) error {
 
 	switch major {
 	case majorUint, majorNegInt:
-		if arg > math.MaxInt64 {
-			w.replace(start, bigIntDecimal(major, arg))
+		if arg > math.MaxInt64 && w.leaf == 0 {
+			w.begin(start)
+			w.out = appendBigIntDecimal(w.out, major, arg)
+			w.end()
 		}
 	case majorBytes, majorText:
 		return w.skip(arg)
@@ -155,14 +167,27 @@ func (w *walker) item(depth int) error {
 		}
 		return w.items(2*arg, depth)
 	case majorTag:
-		switch arg {
-		case tagDatetimeText, tagUUIDText, tagDurationText:
-			return w.textTag(start, arg)
-		}
-		return w.item(depth + 1)
+		return w.tag(start, arg, depth)
 	}
 	// majorSimple: a simple value or a float, read whole by head.
 	return nil
+}
+
+// tag reads the content of a tag, rewriting the tag if it needs it.
+func (w *walker) tag(start int, tag uint64, depth int) error {
+	switch {
+	case w.leaf > 0:
+	case tag == tagDatetimeText, tag == tagUUIDText, tag == tagDurationText:
+		return w.textTag(start, tag)
+	case tag >= tagSizedNumberFirst && tag <= tagSizedNumberLast:
+		// The content of a sized number must stay as it is, such as the u64
+		// in tag 186. Walk it without rewriting anything.
+		w.leaf++
+		err := w.item(depth + 1)
+		w.leaf--
+		return err
+	}
+	return w.item(depth + 1)
 }
 
 // items reads n items one level down.
@@ -242,56 +267,88 @@ func (w *walker) textTag(start int, tag uint64) error {
 	if err != nil {
 		return err
 	}
-	text := string(b)
 
-	var repl []byte
 	switch tag {
 	case tagDatetimeText:
-		t, err := time.Parse(time.RFC3339Nano, text)
+		t, err := parseDatetime(string(b))
 		if err != nil {
-			return fmt.Errorf("cborwire: tag 0 contains an invalid datetime: %w", err)
+			return fmt.Errorf("cborwire: invalid datetime: %w", err)
 		}
-		repl = secondsAndNanos(tagDatetime, t.Unix(), int64(t.Nanosecond()))
+		w.begin(start)
+		w.out = appendPair(w.out, tagDatetime)
+		w.out = appendInt(w.out, t.Unix())
+		w.out = appendHead(w.out, majorUint, uint64(t.Nanosecond())) //nolint:gosec // 0 to 999999999
 	case tagUUIDText:
-		u, err := uuid.FromString(text)
-		if err != nil {
-			return fmt.Errorf("cborwire: tag 9 contains an invalid UUID: %w", err)
+		var u uuid.UUID
+		if err := u.UnmarshalText(b); err != nil {
+			return fmt.Errorf("cborwire: invalid UUID: %w", err)
 		}
-		repl = appendHead(appendHead(nil, majorTag, tagUUID), majorBytes, uint64(len(u)))
-		repl = append(repl, u.Bytes()...)
+		w.begin(start)
+		w.out = appendHead(w.out, majorTag, tagUUID)
+		w.out = appendHead(w.out, majorBytes, uint64(len(u)))
+		w.out = append(w.out, u[:]...)
 	case tagDurationText:
-		ns, err := ParseDuration(text)
+		seconds, nanos, err := ParseDuration(b)
 		if err != nil {
-			return fmt.Errorf("cborwire: tag 13 contains an invalid duration: %w", err)
+			return fmt.Errorf("cborwire: %w", err)
 		}
-		repl = secondsAndNanos(tagDuration, ns/nanosPerSecond, ns%nanosPerSecond)
+		w.begin(start)
+		w.out = appendPair(w.out, tagDuration)
+		w.out = appendHead(w.out, majorUint, seconds)
+		w.out = appendHead(w.out, majorUint, uint64(nanos))
 	}
-	w.replace(start, repl)
+	w.end()
 	return nil
 }
 
-// secondsAndNanos encodes tag [seconds, nanoseconds].
-func secondsAndNanos(tag uint64, seconds, nanos int64) []byte {
-	b := appendHead(nil, majorTag, tag)
-	b = appendHead(b, majorArray, 2)
-	b = appendInt(b, seconds)
-	return appendInt(b, nanos)
+// parseDatetime parses an RFC 3339 datetime. Go writes a time.Time outside the
+// years 0000 to 9999 with more digits or a minus sign, as in
+// "10000-01-01T00:00:00Z" or "-0001-01-01T00:00:00Z", and time.Parse refuses
+// those. So the rest is parsed with a stand-in year that has the same leap-year
+// status, then moved to the real year.
+func parseDatetime(text string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, text)
+	if err == nil || len(text) < 2 {
+		return t, err
+	}
+	i := strings.IndexByte(text[1:], '-') + 1 // the first byte can be a minus sign
+	if i < 1 {
+		return t, err
+	}
+	year, yearErr := strconv.Atoi(text[:i])
+	if yearErr != nil {
+		return t, err
+	}
+	standIn := 2001
+	if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+		standIn = 2000
+	}
+	moved, standInErr := time.Parse(time.RFC3339Nano, strconv.Itoa(standIn)+text[i:])
+	if standInErr != nil {
+		return t, err
+	}
+	return moved.AddDate(year-standIn, 0, 0), nil
 }
 
-// bigIntDecimal encodes an integer outside the range of an i64 as tag 10.
-func bigIntDecimal(major byte, arg uint64) []byte {
-	var text string
-	if major == majorUint {
-		text = strconv.FormatUint(arg, 10)
-	} else {
+// appendPair appends the head of tag [_, _], such as [seconds, nanoseconds].
+func appendPair(b []byte, tag uint64) []byte {
+	return appendHead(appendHead(b, majorTag, tag), majorArray, 2)
+}
+
+// appendBigIntDecimal appends an integer outside the range of an i64 as tag 10.
+func appendBigIntDecimal(b []byte, major byte, arg uint64) []byte {
+	var buf [len("-18446744073709551616")]byte
+	text := buf[:0]
+	switch {
+	case major == majorUint:
+		text = strconv.AppendUint(text, arg, 10)
+	case arg == math.MaxUint64:
 		// A negative integer is -1 - arg; arg + 1 can overflow a uint64.
-		if arg == math.MaxUint64 {
-			text = "-18446744073709551616"
-		} else {
-			text = "-" + strconv.FormatUint(arg+1, 10)
-		}
+		text = append(text, "-18446744073709551616"...)
+	default:
+		text = strconv.AppendUint(append(text, '-'), arg+1, 10)
 	}
-	b := appendHead(nil, majorTag, tagDecimalText)
+	b = appendHead(b, majorTag, tagDecimalText)
 	b = appendHead(b, majorText, uint64(len(text)))
 	return append(b, text...)
 }
@@ -319,58 +376,141 @@ func appendHead(b []byte, major byte, arg uint64) []byte {
 	return binary.BigEndian.AppendUint64(append(b, m|27), arg)
 }
 
+// Seconds in each duration unit from a year down to a second, and nanoseconds
+// in each unit below a second.
 var (
-	durationUnits  = regexp.MustCompile(`(\d+)([a-zµ]+)`)
-	durationSyntax = regexp.MustCompile(`^(\d+[a-zµ]+)*$`)
+	durationUnits = []struct {
+		name    string
+		seconds uint64
+	}{
+		{"y", 365 * 24 * 3600}, {"w", 7 * 24 * 3600}, {"d", 24 * 3600}, {"h", 3600}, {"m", 60}, {"s", 1},
+	}
+	subsecondUnits = []struct {
+		name  string
+		nanos uint32
+	}{
+		{"ms", 1e6}, {"µs", 1e3}, {"ns", 1},
+	}
+)
+
+var (
+	errDurationTooLong = errors.New("its seconds must fit in 64 bits")
+	errDurationUnit    = errors.New("unknown unit")
 )
 
 // ParseDuration parses a SurrealQL duration such as "1h30m" or "2w3d" into
-// nanoseconds.
-func ParseDuration(duration string) (int64, error) {
-	const (
-		ns     = int64(1)
-		us     = 1000 * ns
-		ms     = 1000 * us
-		sec    = 1000 * ms
-		minute = 60 * sec
-		hr     = 60 * minute
-		day    = 24 * hr
-		wk     = 7 * day
-		yr     = 365 * day
-	)
-	if !durationSyntax.MatchString(duration) {
-		return 0, fmt.Errorf("invalid duration %q", duration)
-	}
-	var total int64
-	for _, match := range durationUnits.FindAllStringSubmatch(duration, -1) {
-		value, err := strconv.ParseInt(match[1], 10, 64)
-		if err != nil {
-			return 0, err
+// whole seconds and the nanoseconds left over. Like SurrealDB, it holds the
+// seconds in a uint64, so it fails only for a duration longer than that.
+func ParseDuration[T ~string | ~[]byte](duration T) (seconds uint64, nanos uint32, err error) {
+	var sum durationSum
+	for i := 0; i < len(duration); {
+		value, unit, next, overflow, ok := durationPart(duration, i)
+		if !ok {
+			return 0, 0, fmt.Errorf("invalid duration %q", duration)
 		}
-		var unit int64
-		switch match[2] {
-		case "y":
-			unit = yr
-		case "w":
-			unit = wk
-		case "d":
-			unit = day
-		case "h":
-			unit = hr
-		case "m":
-			unit = minute
-		case "s":
-			unit = sec
-		case "ms":
-			unit = ms
-		case "µs", "us":
-			unit = us
-		case "ns":
-			unit = ns
-		default:
-			return 0, fmt.Errorf("unknown duration unit %q", match[2])
+		sum.tooLong = sum.tooLong || overflow
+		if err := sum.add(value, string(duration[unit:next])); err != nil {
+			return 0, 0, fmt.Errorf("invalid duration %q: %w %q", duration, err, duration[unit:next])
 		}
-		total += value * unit
+		i = next
 	}
-	return total, nil
+	if sum.tooLong {
+		return 0, 0, fmt.Errorf("duration %q is too long: %w", duration, errDurationTooLong)
+	}
+	return sum.seconds, uint32(sum.nanos), nil //nolint:gosec // below a second
+}
+
+// durationPart reads a number and a unit, such as "30m", from duration[i:].
+// The unit is duration[unit:next]. overflow reports a number past a uint64.
+func durationPart[T ~string | ~[]byte](duration T, i int) (value uint64, unit, next int, overflow, ok bool) {
+	digits := i
+	for ; i < len(duration) && duration[i] >= '0' && duration[i] <= '9'; i++ {
+		hi, lo := bits.Mul64(value, 10)
+		sum, carry := bits.Add64(lo, uint64(duration[i]-'0'), 0)
+		overflow = overflow || hi != 0 || carry != 0
+		value = sum
+	}
+	unit = i
+	for i < len(duration) {
+		if c := duration[i]; c >= 'a' && c <= 'z' {
+			i++
+		} else if c == 0xc2 && i+1 < len(duration) && duration[i+1] == 0xb5 { // µ
+			i += 2
+		} else {
+			break
+		}
+	}
+	return value, unit, i, overflow, unit > digits && i > unit
+}
+
+// durationSum adds up the parts of a duration.
+type durationSum struct {
+	seconds uint64
+	nanos   uint64 // always below a second
+	tooLong bool
+}
+
+func (s *durationSum) add(value uint64, unit string) error {
+	unitSeconds, unitNanos := durationUnit(unit)
+	var add uint64 // whole seconds to add
+	switch {
+	case unitSeconds != 0:
+		hi, lo := bits.Mul64(value, unitSeconds)
+		s.tooLong = s.tooLong || hi != 0
+		add = lo
+	case unitNanos != 0:
+		perSecond := uint64(nanosPerSecond) / unitNanos
+		add = value / perSecond
+		s.nanos += value % perSecond * unitNanos
+		if s.nanos >= uint64(nanosPerSecond) {
+			s.nanos -= uint64(nanosPerSecond)
+			add++ // cannot wrap: value / perSecond is far below MaxUint64
+		}
+	default:
+		return errDurationUnit
+	}
+	var carry uint64
+	s.seconds, carry = bits.Add64(s.seconds, add, 0)
+	s.tooLong = s.tooLong || carry != 0
+	return nil
+}
+
+// durationUnit returns the seconds in a unit from a year down to a second, or
+// the nanoseconds in a unit below a second. It returns zeros for an unknown
+// unit.
+func durationUnit(name string) (seconds, nanos uint64) {
+	if name == "us" {
+		name = "µs"
+	}
+	for _, u := range durationUnits {
+		if u.name == name {
+			return u.seconds, 0
+		}
+	}
+	for _, u := range subsecondUnits {
+		if u.name == name {
+			return 0, uint64(u.nanos)
+		}
+	}
+	return 0, 0
+}
+
+// FormatDuration formats seconds and nanoseconds as a SurrealQL duration in
+// its canonical form, such as "1h30m". A zero duration is "". nanos must be
+// below a second.
+func FormatDuration(seconds uint64, nanos uint32) string {
+	var b []byte
+	for _, u := range durationUnits {
+		if n := seconds / u.seconds; n > 0 {
+			b = append(strconv.AppendUint(b, n, 10), u.name...)
+		}
+		seconds %= u.seconds
+	}
+	for _, u := range subsecondUnits {
+		if n := nanos / u.nanos; n > 0 {
+			b = append(strconv.AppendUint(b, uint64(n), 10), u.name...)
+		}
+		nanos %= u.nanos
+	}
+	return string(b)
 }
