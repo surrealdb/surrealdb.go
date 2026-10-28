@@ -436,7 +436,7 @@ func (w *sizedWalker) walkMap(v reflect.Value, depth int) error {
 		var elem reflect.Value
 		if key, ok := w.readText(); ok {
 			switch {
-			case keyType.Kind() == reflect.String:
+			case keyType.Kind() == reflect.String && !encodesItself(keyType):
 				elem = v.MapIndex(reflect.ValueOf(key).Convert(keyType))
 			case keyType.Kind() == reflect.Interface && reflect.TypeOf(key).Implements(keyType):
 				elem = v.MapIndex(reflect.ValueOf(key))
@@ -496,98 +496,124 @@ func (w *sizedWalker) walkStruct(v reflect.Value, depth int) error {
 
 var encodedFieldsCache sync.Map // reflect.Type -> map[string][]int
 
+// encodedField is a struct field fxamacker/cbor may encode.
+type encodedField struct {
+	name     string
+	index    []int
+	tagged   bool // it has a cbor or json tag, so wins a name conflict at its depth
+	keyAsInt bool // its name is encoded as an integer
+}
+
 // encodedFields maps the names fxamacker/cbor gives a struct's fields when it
-// encodes them (the cbor tag name, else the json tag name, else the field
-// name, with embedded structs' fields promoted as encoding/json does) to the
-// field's index path. A name that is ambiguous is left out.
-//
-//nolint:gocyclo // follows encoding/json's field visibility rules
+// encodes them as text to the field's index path. It follows getFields and
+// appendFields in fxamacker/cbor v2.9.2 (encoding/json's visibility rules): the
+// cbor tag name, else the json tag name, else the field name, with the fields
+// of embedded structs promoted. A name that is ambiguous is left out.
 func encodedFields(t reflect.Type) map[string][]int {
 	if cached, ok := encodedFieldsCache.Load(t); ok {
 		return cached.(map[string][]int)
 	}
 
-	type candidate struct {
-		index  []int
-		tagged bool
-	}
-	byName := map[string][]candidate{}
-	depthOf := map[string]int{}
-
-	type level struct {
-		t     reflect.Type
-		index []int
-	}
-	current := []level{{t: t}}
-	visited := map[reflect.Type]bool{}
-	for depth := 0; len(current) > 0; depth++ {
-		var next []level
-		for _, l := range current {
-			if visited[l.t] {
+	flds, next := appendEncodedFields(t, nil, nil, nil)
+	visited := map[reflect.Type]bool{t: true} // types embedded at a shallower depth
+	for len(next) > 0 {
+		var current map[reflect.Type][][]int
+		current, next = next, nil
+		for ft, indexes := range current {
+			// fxamacker ignores every embedded struct whose type is embedded
+			// more than once at the same depth, and one embedded at a
+			// shallower depth.
+			if len(indexes) > 1 || visited[ft] {
 				continue
 			}
-			visited[l.t] = true
-			for i := 0; i < l.t.NumField(); i++ {
-				f := l.t.Field(i)
-				index := append(append([]int(nil), l.index...), i)
-				name, tagged, skip := encodedFieldName(&f)
-				if skip {
-					continue
-				}
-				ft := f.Type
-				if ft.Kind() == reflect.Pointer {
-					ft = ft.Elem()
-				}
-				if f.Anonymous && !tagged && ft.Kind() == reflect.Struct {
-					next = append(next, level{t: ft, index: index})
-					continue
-				}
-				if !f.IsExported() {
-					continue
-				}
-				if d, seen := depthOf[name]; seen && d < depth {
-					continue // a shallower field hides this one
-				}
-				depthOf[name] = depth
-				byName[name] = append(byName[name], candidate{index: index, tagged: tagged})
-			}
+			visited[ft] = true
+			flds, next = appendEncodedFields(ft, indexes[0], flds, next)
 		}
-		current = next
 	}
 
+	// A name is encoded for the shallowest field with it, if that one is
+	// alone at its depth or the only one there with a tag.
+	byName := map[string][]encodedField{}
+	for _, f := range flds {
+		if f.keyAsInt {
+			continue // its key is an integer, never the text the walk looks up
+		}
+		byName[f.name] = append(byName[f.name], f)
+	}
 	fields := make(map[string][]int, len(byName))
 	for name, cands := range byName {
-		if len(cands) == 1 {
-			fields[name] = cands[0].index
-			continue
+		depth := len(cands[0].index)
+		for _, c := range cands[1:] {
+			depth = min(depth, len(c.index))
 		}
-		var taggedOnes []candidate
+		var shallowest, tagged []encodedField
 		for _, c := range cands {
-			if c.tagged {
-				taggedOnes = append(taggedOnes, c)
+			if len(c.index) == depth {
+				shallowest = append(shallowest, c)
+				if c.tagged {
+					tagged = append(tagged, c)
+				}
 			}
 		}
-		if len(taggedOnes) == 1 {
-			fields[name] = taggedOnes[0].index
+		switch {
+		case len(shallowest) == 1:
+			fields[name] = shallowest[0].index
+		case len(tagged) == 1:
+			fields[name] = tagged[0].index
 		}
 	}
 	encodedFieldsCache.Store(t, fields)
 	return fields
 }
 
-// encodedFieldName returns the name fxamacker/cbor encodes field f under,
-// whether that name came from a struct tag, and whether f is not encoded at all.
-func encodedFieldName(f *reflect.StructField) (name string, tagged, skip bool) {
-	tag, ok := f.Tag.Lookup("cbor")
-	if !ok {
-		tag = f.Tag.Get("json")
+// appendEncodedFields appends the fields of struct type t, at index path index,
+// to flds, and the embedded structs whose fields are promoted to next, as
+// appendFields in fxamacker/cbor does.
+func appendEncodedFields(
+	t reflect.Type, index []int, flds []encodedField, next map[reflect.Type][][]int,
+) (all []encodedField, embedded map[reflect.Type][][]int) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		// An unexported embedded struct can still promote exported fields.
+		if !f.IsExported() && (!f.Anonymous || ft.Kind() != reflect.Struct) {
+			continue
+		}
+
+		// An empty cbor tag falls back to the json tag.
+		tag := f.Tag.Get("cbor")
+		if tag == "" {
+			tag = f.Tag.Get("json")
+		}
+		if tag == "-" {
+			continue
+		}
+		tagged := tag != ""
+		name, options, _ := strings.Cut(tag, ",")
+		keyAsInt := false
+		for options != "" {
+			var option string
+			option, options, _ = strings.Cut(options, ",")
+			if option == "keyasint" {
+				keyAsInt = true
+			}
+		}
+
+		fieldIndex := append(append([]int(nil), index...), i)
+		if f.Anonymous && ft.Kind() == reflect.Struct && name == "" {
+			if next == nil {
+				next = map[reflect.Type][][]int{}
+			}
+			next[ft] = append(next[ft], fieldIndex)
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		flds = append(flds, encodedField{name: name, index: fieldIndex, tagged: tagged, keyAsInt: keyAsInt})
 	}
-	if tag == "-" {
-		return "", false, true
-	}
-	name, _, _ = strings.Cut(tag, ",")
-	if name != "" {
-		return name, true, false
-	}
-	return f.Name, false, false
+	return flds, next
 }
