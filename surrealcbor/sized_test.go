@@ -246,3 +246,14 @@ func mustDecodeHex(t *testing.T, s string) []byte {
 	require.NoError(t, err)
 	return b
 }
+
+// A u64 up to math.MaxInt64 decoded into an interface goes back as an int.
+// See the Codec documentation.
+func TestRoundTripV2_u64BecomesInt(t *testing.T) {
+	var got any
+	require.NoError(t, NewV2().Unmarshal(mustDecodeHex(t, "d8ba05"), &got))
+	assert.Equal(t, uint64(5), got)
+	b, err := NewV2().Marshal(got)
+	require.NoError(t, err)
+	assert.Equal(t, "05", hex.EncodeToString(b))
+}

@@ -8,7 +8,8 @@ package surrealcbor
 //	eval "$(scripts/fetch-surrealdb-protocol.sh)"
 //	go test ./surrealcbor -run TestConformanceVectors
 //
-// Without SURREALDB_PROTOCOL_DIR the tests skip. CI checks the tag out.
+// Without SURREALDB_PROTOCOL_DIR the tests skip. CI checks out the commit
+// the tag points at.
 //
 // Each vector runs through the plain cbor codec (New) and the cbor.2 codec
 // (NewV2), as the protocol repository's spec/README.md describes: canonical

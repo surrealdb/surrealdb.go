@@ -27,6 +27,10 @@ const (
 //     the int64 range; otherwise they are sent as plain integers, as before.
 //     A non-negative integer decoded into an interface is a uint64, so this
 //     keeps a SurrealDB int an int when it makes a round trip through Go.
+//   - The other way round, a SurrealDB u64 (tag 186) also decodes into an
+//     interface as a uint64. Sent back, one up to math.MaxInt64 goes untagged,
+//     so the server reads it as an int. u64 is the only sized kind that does
+//     not keep its kind when a value read into an interface is written back.
 //   - int, int64 and float64 values are plain integers and floats, as before.
 //   - Decoding into an interface yields the exact kind for each tag: int8,
 //     uint8, int16, uint16, int32, uint32, uint64, [models.Float16] and
