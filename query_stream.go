@@ -401,7 +401,7 @@ func bufferedFrames[T any, S sendable](
 		return
 	}
 
-	unmarshal := unmarshalerOf(s)
+	unmarshal := unmarshalerOf(s).Unmarshal
 	for i, res := range *results {
 		done := StreamFrame[T]{Statement: i, Done: true, Time: res.Time}
 
@@ -434,18 +434,6 @@ func bufferedFrames[T any, S sendable](
 			return
 		}
 	}
-}
-
-func unmarshalerOf[S sendable](s S) func([]byte, any) error {
-	switch v := any(s).(type) {
-	case *DB:
-		return v.con.GetUnmarshaler().Unmarshal
-	case *Session:
-		return v.db.con.GetUnmarshaler().Unmarshal
-	case *Transaction:
-		return v.db.con.GetUnmarshaler().Unmarshal
-	}
-	panic("unreachable")
 }
 
 // isCBORArray reports whether raw encodes an array.
