@@ -263,8 +263,6 @@ func (s *Server) SetGlobalFailures(failures []FailureConfig) {
 	s.globalFailures = failures
 }
 
-// Start starts the server and begins accepting WebSocket connections.
-// Returns an error if the server cannot bind to the specified address.
 // DefaultVersion is the version a Server reports when Version is empty.
 const DefaultVersion = "3.0.0"
 
@@ -275,6 +273,8 @@ func (s *Server) versionString() string {
 	return s.Version
 }
 
+// Start starts the server and begins accepting WebSocket connections.
+// Returns an error if the server cannot bind to the specified address.
 func (s *Server) Start() error {
 	var lc net.ListenConfig
 	listener, err := lc.Listen(context.Background(), "tcp", s.addr)

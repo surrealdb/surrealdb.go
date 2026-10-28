@@ -280,12 +280,12 @@ func (c *Connection) Connect(ctx context.Context) error {
 	return nil
 }
 
-// GetUnmarshaler implements connection.Connection.
 // Health asks the server whether it is healthy, with GET /health over HTTP.
 func (c *Connection) Health(ctx context.Context) error {
 	return connection.CheckHealth(ctx, nil, c.BaseURL)
 }
 
+// GetUnmarshaler implements connection.Connection.
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }

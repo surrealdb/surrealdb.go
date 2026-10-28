@@ -58,7 +58,8 @@ func New(connectionURL string) (*DB, error) {
 //
 // Unless [WithVersionCheck](false) is passed, it then checks that the server's
 // version is one this SDK supports, and fails with an [UnsupportedVersionError]
-// if not.
+// if not. The check sends a version request, so it adds a round trip to every
+// connect, which matters to code that connects for each request.
 func FromConnection(ctx context.Context, conn connection.Connection, opts ...Option) (*DB, error) {
 	o := applyOptions(opts)
 

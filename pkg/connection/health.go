@@ -21,7 +21,9 @@ type HealthChecker interface {
 var DefaultHealthClient = &http.Client{Timeout: 10 * time.Second}
 
 // HTTPBaseURL returns the HTTP form of a connection's base URL: ws becomes http
-// and wss becomes https, and any path is dropped.
+// and wss becomes https. A path, such as the prefix of a reverse proxy, is kept,
+// as it is for /rpc, but a trailing /rpc is dropped, so that the URL of the RPC
+// endpoint gives the base URL too.
 func HTTPBaseURL(baseURL string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
@@ -36,7 +38,8 @@ func HTTPBaseURL(baseURL string) (string, error) {
 	default:
 		return "", fmt.Errorf("cannot derive an HTTP URL from %q", baseURL)
 	}
-	u.Path = ""
+	u.Path = strings.TrimSuffix(strings.TrimSuffix(u.Path, "/"), "/rpc")
+	u.RawPath = ""
 	u.RawQuery = ""
 	return strings.TrimSuffix(u.String(), "/"), nil
 }
