@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -98,6 +99,43 @@ func TestImport_reportsFailedStatements(t *testing.T) {
 			two, err := surrealdb.Select[map[string]any](ctx, db, models.NewRecordID("thing", "two"))
 			require.NoError(t, err)
 			assert.NotNil(t, two, "the statements which succeeded are kept")
+		})
+	}
+}
+
+// An import of many records, which SurrealDB 2.x answers with every one of
+// them, reports only the statement which failed.
+func TestImport_manyRecords(t *testing.T) {
+	ctx := context.Background()
+
+	var doc strings.Builder
+	doc.WriteString("OPTION IMPORT;\n")
+	for batch := range 20 {
+		doc.WriteString("INSERT INTO item [")
+		for i := range 500 {
+			fmt.Fprintf(&doc, "{ id: %d, name: 'item %d' },", batch*500+i, batch*500+i)
+		}
+		doc.WriteString("];\n")
+		if batch == 10 {
+			doc.WriteString("CREATE item:1;\n")
+		}
+	}
+
+	for family, endpoint := range endpoints() {
+		t.Run(family, func(t *testing.T) {
+			db := rootClient(t, endpoint, "many_"+family)
+
+			err := db.Import(ctx, strings.NewReader(doc.String()))
+			var importErr *surrealdb.ImportError
+			require.True(t, errors.As(err, &importErr), "%T: %v", err, err)
+			require.Len(t, importErr.Failures, 1)
+			assert.Contains(t, importErr.Failures[0].Error(), "already exists")
+
+			count, err := surrealdb.Query[[]map[string]int](ctx, db, "SELECT count() FROM item GROUP ALL", nil)
+			require.NoError(t, err)
+			require.Len(t, *count, 1)
+			require.Len(t, (*count)[0].Result, 1)
+			assert.Equal(t, 10000, (*count)[0].Result[0]["count"])
 		})
 	}
 }

@@ -1,15 +1,16 @@
 package surrealdb
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/constants"
 )
 
 // ImportError is returned by [DB.Import] when statements of the imported
@@ -21,7 +22,10 @@ type ImportError struct {
 }
 
 func (e *ImportError) Error() string {
-	if len(e.Failures) == 1 {
+	switch len(e.Failures) {
+	case 0:
+		return "import: statements failed"
+	case 1:
 		return "import: 1 statement failed: " + e.Failures[0].Error()
 	}
 	return fmt.Sprintf("import: %d statements failed, the first: %v", len(e.Failures), e.Failures[0])
@@ -79,67 +83,120 @@ func (o *ExportOptions) config() map[string]any {
 
 // Import runs a SurrealQL document, such as one written by [DB.Export], in the
 // namespace and database of the default session, with POST /import. It works
-// over WebSocket and HTTP connections alike, authenticated as the default
-// session is.
+// over WebSocket and HTTP connections alike.
+//
+// Import authenticates with the token the client last received, from SignIn,
+// SignUp, Authenticate or a renewal, not with the WebSocket session. Over
+// WebSocket the session can outlive that token, which lasts 1h by default for
+// system users: once it expires, Import fails with 401 Unauthorized while
+// queries still work. Sign in or authenticate again to get a new token.
 //
 // SurrealDB 3.x requires the document to start with OPTION IMPORT;, as an
-// export does.
+// export does. Import does not close the document; that is for the caller.
 //
 // When statements fail, Import returns an *ImportError listing them, read from
 // the server's answer: SurrealDB 3.0.5 and later list the failed statements,
 // with status 422 from 3.3.1. The statements which succeeded are kept.
 func (db *DB) Import(ctx context.Context, document io.Reader) error {
+	// The transport closes a body which is an io.Closer, and the document
+	// is the caller's to close.
+	if _, ok := document.(io.Closer); ok {
+		document = io.NopCloser(document)
+	}
 	res, err := db.httpRequest(ctx, "/import", document, "text/plain", "application/json")
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
 
-	body, err := io.ReadAll(res.Body)
+	ok := res.StatusCode >= 200 && res.StatusCode < 300
+	body := bufio.NewReader(res.Body)
+	if !startsWithArray(body) {
+		if ok {
+			return nil
+		}
+		message, _ := io.ReadAll(io.LimitReader(body, 64<<10))
+		return fmt.Errorf("import failed: %s: %s", res.Status, strings.TrimSpace(string(message)))
+	}
+
+	failures, err := failedStatements(body)
 	if err != nil {
 		return fmt.Errorf("import: reading the answer: %w", err)
 	}
-
-	if failures := failedStatements(body); len(failures) > 0 {
+	if len(failures) > 0 {
 		return &ImportError{Failures: failures}
 	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("import failed: %s: %s", res.Status, strings.TrimSpace(string(body)))
+	if !ok {
+		return fmt.Errorf("import failed: %s", res.Status)
 	}
 	return nil
 }
 
-// failedStatements reads the statement results /import answers with, and
-// returns the error of each that failed.
-func failedStatements(body []byte) []error {
-	var results []struct {
-		Status  string `json:"status"`
-		Result  any    `json:"result"`
-		Kind    string `json:"kind"`
-		Details any    `json:"details"`
+// startsWithArray reports whether the answer, after any white space, is a JSON
+// array, without consuming it.
+func startsWithArray(r *bufio.Reader) bool {
+	for {
+		b, err := r.Peek(1)
+		if err != nil {
+			return false
+		}
+		switch b[0] {
+		case ' ', '\t', '\r', '\n':
+			_, _ = r.ReadByte()
+		default:
+			return b[0] == '['
+		}
 	}
-	if json.Unmarshal(body, &results) != nil {
-		return nil
+}
+
+// failedStatements reads the array of statement results /import answers with,
+// one at a time, and returns the error of each that failed. SurrealDB 2.x
+// answers with the result of every statement, which holds every imported
+// record, so only the failures are kept.
+func failedStatements(r io.Reader) ([]error, error) {
+	dec := json.NewDecoder(r)
+	if _, err := dec.Token(); err != nil {
+		return nil, err
 	}
 
 	var failures []error
-	for _, r := range results {
-		if r.Status != "ERR" {
+	for dec.More() {
+		var s struct {
+			Status  string          `json:"status"`
+			Result  json.RawMessage `json:"result"`
+			Kind    string          `json:"kind"`
+			Details any             `json:"details"`
+		}
+		if err := dec.Decode(&s); err != nil {
+			return nil, err
+		}
+		if s.Status != "ERR" {
 			continue
 		}
-		message, ok := r.Result.(string)
+		var result any
+		_ = json.Unmarshal(s.Result, &result)
+		message, ok := result.(string)
 		if !ok {
-			message = fmt.Sprint(r.Result)
+			message = fmt.Sprint(result)
 		}
-		failures = append(failures, connection.NewStatementError(message, r.Kind, r.Details))
+		failures = append(failures, connection.NewStatementError(message, s.Kind, s.Details))
 	}
-	return failures
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	return failures, nil
 }
 
 // Export writes the namespace and database of the default session as a
 // SurrealQL document, with POST /export, as the server produces it. It works
-// over WebSocket and HTTP connections alike, authenticated as the default
-// session is. A nil options exports what the server does by default.
+// over WebSocket and HTTP connections alike. A nil options exports what the
+// server does by default.
+//
+// Export authenticates with the token the client last received, from SignIn,
+// SignUp, Authenticate or a renewal, not with the WebSocket session. Over
+// WebSocket the session can outlive that token, which lasts 1h by default for
+// system users: once it expires, Export fails with 401 Unauthorized while
+// queries still work. Sign in or authenticate again to get a new token.
 func (db *DB) Export(ctx context.Context, w io.Writer, options *ExportOptions) error {
 	cfg, err := json.Marshal(options.config())
 	if err != nil {
@@ -164,7 +221,7 @@ func (db *DB) Export(ctx context.Context, w io.Writer, options *ExportOptions) e
 
 // errNoHTTPEndpoint is returned for a connection which cannot reach the
 // server's HTTP endpoints.
-var errNoHTTPEndpoint = errors.New("the connection does not know the server's HTTP endpoint")
+var errNoHTTPEndpoint = fmt.Errorf("%w: import and export", constants.ErrMethodNotAvailable)
 
 // httpRequest posts a body to one of the server's HTTP endpoints, with the
 // namespace, database and token of the default session.
