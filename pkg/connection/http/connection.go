@@ -246,14 +246,16 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 
 	respData, respVersion, err := c.makeRequest(req)
 	if respVersion != 0 {
+		// Any response but a cbor.2 one, an error included, sends the next
+		// request in plain CBOR: the server behind the URL may not speak cbor.2.
+		send := int32(connection.CBORv1)
 		if respVersion == connection.CBORv2 {
 			// Results are decoded later with GetUnmarshaler, so switch before
 			// returning, and before the next request can be sent in cbor.2.
 			c.cborVersion.Store(int32(connection.CBORv2))
+			send = int32(connection.CBORv2)
 		}
-		// Any response but a cbor.2 one, an error included, sends the next
-		// request in plain CBOR: the server behind the URL may not speak cbor.2.
-		c.sendVersion.Store(int32(respVersion))
+		c.sendVersion.Store(send)
 	}
 	if err != nil {
 		return nil, err

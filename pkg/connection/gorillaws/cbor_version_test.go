@@ -32,7 +32,7 @@ type cborEchoServer struct {
 
 func newCBOREchoServer(t *testing.T, subprotocols ...string) *cborEchoServer {
 	t.Helper()
-	return newCBOREchoServerWith(t, gorilla.Upgrader{Subprotocols: subprotocols}, nil)
+	return newCBOREchoServerWith(t, &gorilla.Upgrader{Subprotocols: subprotocols}, nil)
 }
 
 // newCBOREchoServerAnswering is a cborEchoServer that picks subprotocol
@@ -40,10 +40,10 @@ func newCBOREchoServer(t *testing.T, subprotocols ...string) *cborEchoServer {
 func newCBOREchoServerAnswering(t *testing.T, subprotocol string) *cborEchoServer {
 	t.Helper()
 	// Without Subprotocols, the upgrader answers the one in the header.
-	return newCBOREchoServerWith(t, gorilla.Upgrader{}, http.Header{"Sec-Websocket-Protocol": {subprotocol}})
+	return newCBOREchoServerWith(t, &gorilla.Upgrader{}, http.Header{"Sec-Websocket-Protocol": {subprotocol}})
 }
 
-func newCBOREchoServerWith(t *testing.T, upgrader gorilla.Upgrader, header http.Header) *cborEchoServer {
+func newCBOREchoServerWith(t *testing.T, upgrader *gorilla.Upgrader, header http.Header) *cborEchoServer {
 	t.Helper()
 	s := &cborEchoServer{}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
