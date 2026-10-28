@@ -30,9 +30,16 @@ import (
 // encodes itself, a toarray struct, an unexpected shape) it copies the bytes
 // unchanged, which leaves those numbers widened, as plain cbor sends them.
 // So the walk can fail to tag a number, but cannot tag the wrong one.
+//
+// The walk is on the path of every cbor.2 request, so it stays cheap when
+// there is little to tag: it copies no bytes until the first tag, skips the
+// items of any type that cannot hold a sized kind (decided once per type),
+// and looks keys up without allocating.
 
 var (
 	marshalerType  = reflect.TypeOf((*cbor.Marshaler)(nil)).Elem()
+	stringType     = reflect.TypeOf("")
+	anyMapType     = reflect.TypeOf(map[string]any(nil))
 	recordIDType   = reflect.TypeOf(models.RecordID{})
 	timeType       = reflect.TypeOf(time.Time{})
 	bigIntType     = reflect.TypeOf(big.Int{})
@@ -45,24 +52,27 @@ const maxSizedWalkDepth = 512
 // tagSizedNumbers returns data, the plain cbor encoding of v, with every sized
 // number in v tagged for cbor.2. It returns data itself when nothing needed a tag.
 func tagSizedNumbers(data []byte, v any) ([]byte, error) {
-	w := &sizedWalker{in: data, out: make([]byte, 0, len(data)+8)}
+	w := &sizedWalker{in: data}
 	if err := w.walk(reflect.ValueOf(v), 0); err != nil {
 		return nil, fmt.Errorf("cbor.2: tagging sized numbers: %w", err)
 	}
 	if w.pos != len(data) {
 		return nil, errors.New("cbor.2: tagging sized numbers: trailing bytes")
 	}
-	if !w.tagged {
+	if w.out == nil {
 		return data, nil
 	}
-	return w.out, nil
+	return append(w.out, w.in[w.written:]...), nil
 }
 
+// sizedWalker walks the plain cbor in, and builds out, in with the tags added.
+// out is nil until the first tag: the bytes before each tag are copied to out
+// only when the tag is written.
 type sizedWalker struct {
-	in     []byte
-	pos    int
-	out    []byte
-	tagged bool
+	in      []byte
+	pos     int
+	out     []byte
+	written int // in[:written] is in out already
 }
 
 // head is a decoded CBOR initial byte and argument.
@@ -174,21 +184,24 @@ func (w *sizedWalker) copyItem() error {
 	if err != nil {
 		return err
 	}
-	w.out = append(w.out, w.in[w.pos:end]...)
 	w.pos = end
 	return nil
 }
 
 // copyHead copies just the initial byte and argument of the item at the current position.
 func (w *sizedWalker) copyHead(h head) {
-	w.out = append(w.out, w.in[w.pos:w.pos+h.size]...)
 	w.pos += h.size
 }
 
 // tagItem writes tag (180 to 188) and then copies the item at the current position.
 func (w *sizedWalker) tagItem(tag uint64) error {
+	if w.out == nil {
+		// Each tag takes two bytes: leave room for a few.
+		w.out = make([]byte, 0, len(w.in)+len(w.in)/8+64)
+	}
+	w.out = append(w.out, w.in[w.written:w.pos]...)
 	w.out = append(w.out, 0xd8, byte(tag)) //nolint:gosec // tags 180 to 188 fit in a byte
-	w.tagged = true
+	w.written = w.pos
 	return w.copyItem()
 }
 
@@ -206,7 +219,103 @@ func encodesItself(t reflect.Type) bool {
 	return false
 }
 
-//nolint:gocyclo // one case per Go kind
+// walkPlan is how the walk treats the items of a type.
+type walkPlan uint8
+
+const (
+	// planCopy is for a type that cannot hold a sized kind, or encodes
+	// itself: its items are copied without a look at the value.
+	planCopy walkPlan = iota
+	planWalk
+	planFloat16
+	planRecordID
+)
+
+var walkPlanCache sync.Map // reflect.Type -> walkPlan
+
+// planFor returns how the walk treats the items of type t.
+func planFor(t reflect.Type) walkPlan {
+	switch t.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int64, reflect.Float64, reflect.String,
+		reflect.Complex64, reflect.Complex128, reflect.Uintptr, reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		return planCopy
+	case reflect.Interface:
+		return planWalk
+	}
+	p, _ := cachedPlan(t, nil)
+	return p
+}
+
+// noAssumption is the assumed depth of a plan that holds whatever else.
+const noAssumption = math.MaxInt
+
+// cachedPlan returns the plan for t from the cache, or works it out.
+//
+// visiting maps each struct being worked out to its depth, so that a
+// recursive type ends: a struct met again is taken not to hold a sized kind,
+// unless another of its fields does. A planCopy that rests on such an
+// assumption is right for the outermost struct it was made for, but maybe not
+// for the types inside, so only planWalk and plans with no assumption are
+// cached. assumed is the depth of the shallowest struct a plan rests on, or
+// noAssumption.
+func cachedPlan(t reflect.Type, visiting map[reflect.Type]int) (p walkPlan, assumed int) {
+	if p, ok := walkPlanCache.Load(t); ok {
+		return p.(walkPlan), noAssumption
+	}
+	p, assumed = computePlan(t, visiting)
+	if p != planCopy || assumed == noAssumption {
+		walkPlanCache.Store(t, p)
+	}
+	return p, assumed
+}
+
+func computePlan(t reflect.Type, visiting map[reflect.Type]int) (p walkPlan, assumed int) {
+	switch {
+	case t == float16Type:
+		return planFloat16, noAssumption
+	case t == recordIDType:
+		return planRecordID, noAssumption
+	case encodesItself(t):
+		return planCopy, noAssumption
+	}
+	switch t.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Uint8, reflect.Uint16, reflect.Uint32,
+		reflect.Uint, reflect.Uint64, reflect.Float32, reflect.Interface:
+		return planWalk, noAssumption
+	case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+		// Map keys are never tagged, so only the elements count.
+		if p, a := cachedPlan(t.Elem(), visiting); p == planCopy {
+			return planCopy, a
+		}
+		return planWalk, noAssumption
+	case reflect.Struct:
+		if depth, ok := visiting[t]; ok {
+			return planCopy, depth
+		}
+		if visiting == nil {
+			visiting = map[reflect.Type]int{}
+		}
+		depth := len(visiting)
+		visiting[t] = depth
+		defer delete(visiting, t)
+		assumed = noAssumption
+		for i := 0; i < t.NumField(); i++ {
+			p, a := cachedPlan(t.Field(i).Type, visiting)
+			if p != planCopy {
+				return planWalk, noAssumption
+			}
+			assumed = min(assumed, a)
+		}
+		if assumed >= depth {
+			// It rests on nothing but itself, so holds no sized kind.
+			assumed = noAssumption
+		}
+		return planCopy, assumed
+	default:
+		return planCopy, noAssumption
+	}
+}
+
 func (w *sizedWalker) walk(v reflect.Value, depth int) error {
 	if depth > maxSizedWalkDepth {
 		return w.copyItem()
@@ -221,14 +330,14 @@ func (w *sizedWalker) walk(v reflect.Value, depth int) error {
 	if !v.IsValid() {
 		return w.copyItem()
 	}
-	switch t := v.Type(); {
-	case t == float16Type:
+	switch planFor(v.Type()) {
+	case planCopy:
+		return w.copyItem()
+	case planFloat16:
 		// Read the bits through reflection: v may be an unexported field.
 		return w.walkFloat16(models.Float16FromBits(uint16(v.Field(0).Uint()))) //nolint:gosec // the field is a uint16
-	case t == recordIDType:
+	case planRecordID:
 		return w.walkRecordID(v, depth)
-	case encodesItself(t):
-		return w.copyItem()
 	}
 
 	// A type registered in the encoder's TagSet (models.Set, models.Table and
@@ -408,18 +517,18 @@ func (w *sizedWalker) walkSequence(v reflect.Value, depth int) error {
 	return nil
 }
 
-// readText returns the text string at the current position without consuming
-// it, if it is a definite-length text string.
-func (w *sizedWalker) readText() (string, bool) {
+// readText returns the bytes of the text string at the current position
+// without consuming it, if it is a definite-length text string.
+func (w *sizedWalker) readText() ([]byte, bool) {
 	h, err := w.peekHead()
 	if err != nil || h.major != 3 || h.indefinite {
-		return "", false
+		return nil, false
 	}
 	start := w.pos + h.size
 	if h.arg > uint64(len(w.in)-start) { //nolint:gosec // start <= len(w.in)
-		return "", false
+		return nil, false
 	}
-	return string(w.in[start : start+int(h.arg)]), true //nolint:gosec // bounded by len(w.in) just above
+	return w.in[start : start+int(h.arg)], true //nolint:gosec // bounded by len(w.in) just above
 }
 
 func (w *sizedWalker) walkMap(v reflect.Value, depth int) error {
@@ -432,15 +541,16 @@ func (w *sizedWalker) walkMap(v reflect.Value, depth int) error {
 	}
 	w.copyHead(h)
 	keyType := v.Type().Key()
+	// The most common map is looked up without reflection, and so without
+	// allocating for each key.
+	var anyMap map[string]any
+	if v.Type() == anyMapType && v.CanInterface() {
+		anyMap, _ = v.Interface().(map[string]any)
+	}
 	for i := uint64(0); i < h.arg; i++ {
 		var elem reflect.Value
 		if key, ok := w.readText(); ok {
-			switch {
-			case keyType.Kind() == reflect.String && !encodesItself(keyType):
-				elem = v.MapIndex(reflect.ValueOf(key).Convert(keyType))
-			case keyType.Kind() == reflect.Interface && reflect.TypeOf(key).Implements(keyType):
-				elem = v.MapIndex(reflect.ValueOf(key))
-			}
+			elem = mapElem(v, anyMap, keyType, key)
 		}
 		if err := w.copyItem(); err != nil { // the key
 			return err
@@ -458,6 +568,20 @@ func (w *sizedWalker) walkMap(v reflect.Value, depth int) error {
 	return nil
 }
 
+// mapElem returns the element of map v, which is anyMap when that is not
+// nil, under the text key, if the key is the Go key it was encoded from.
+func mapElem(v reflect.Value, anyMap map[string]any, keyType reflect.Type, key []byte) reflect.Value {
+	switch {
+	case anyMap != nil:
+		return reflect.ValueOf(anyMap[string(key)])
+	case keyType.Kind() == reflect.String && !encodesItself(keyType):
+		return v.MapIndex(reflect.ValueOf(string(key)).Convert(keyType))
+	case keyType.Kind() == reflect.Interface && stringType.Implements(keyType):
+		return v.MapIndex(reflect.ValueOf(string(key)))
+	}
+	return reflect.Value{}
+}
+
 func (w *sizedWalker) walkStruct(v reflect.Value, depth int) error {
 	h, err := w.peekHead()
 	if err != nil {
@@ -472,7 +596,7 @@ func (w *sizedWalker) walkStruct(v reflect.Value, depth int) error {
 	for i := uint64(0); i < h.arg; i++ {
 		var field reflect.Value
 		if key, ok := w.readText(); ok {
-			if index, ok := fields[key]; ok {
+			if index, ok := fields[string(key)]; ok {
 				if f, err := v.FieldByIndexErr(index); err == nil {
 					field = f
 				}
