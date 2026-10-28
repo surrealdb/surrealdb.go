@@ -16,7 +16,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Latest 3.x release (the docker `v3` tag follows the newest 3.x)
+          # The docker `v3` tag. It can lag behind the newest 3.x release (it was
+          # 3.2.6 while 3.3.4 was out), so 3.3 is also pinned below.
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
@@ -25,29 +26,44 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-          # Latest 3.x, gws
+          # `v3` tag, gws
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-connection-impl: 'gws'
-          # Latest 3.x, gorilla/websocket, fxamackercbor (legacy)
+          # `v3` tag, gorilla/websocket, fxamackercbor (legacy)
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-cbor-impl: 'fxamackercbor'
-          # Latest 3.x, gorilla/websocket, reconnection
+          # `v3` tag, gorilla/websocket, reconnection
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-reconnection-check-interval: '1s'
-          # Latest 3.x with the oldest supported Go
+          # `v3` tag with the oldest supported Go
           - surrealdb-version: 'v3'
             go-version: '1.24.6'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+          # 3.3.x, the first release line which streams queries (query_stream)
+          - surrealdb-version: 'v3.3.4'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          - surrealdb-version: 'v3.3.4'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-connection-impl: 'gws'
+          - surrealdb-version: 'v3.3.4'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-cbor-impl: 'fxamackercbor'
           # Nightly: the next release line (4.0). Reported, but does not block a merge.
           - surrealdb-version: 'nightly'
             go-version: '1.25.0'
