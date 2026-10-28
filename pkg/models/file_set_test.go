@@ -60,8 +60,10 @@ func TestFile_string(t *testing.T) {
 		// Anything else is written as type::file with quoted strings.
 		{models.NewFile("", "/path"), `type::file('', '/path')`},
 		{models.NewFile("bucket", "/"), `type::file('bucket', '/')`},
-		{models.File{Bucket: "bucket", Key: "a"}, `type::file('bucket', 'a')`},
-		{models.File{Bucket: "bucket"}, `type::file('bucket', '')`},
+		// A key with no leading slash is written with one, as the server holds it.
+		{models.File{Bucket: "bucket", Key: "a"}, `f"bucket:/a"`},
+		{models.File{Bucket: "bucket"}, `type::file('bucket', '/')`},
+		{models.File{}, `type::file('', '/')`},
 		{models.NewFile("buck et", `/a"b\c:d`), `type::file('buck et', '/a"b\\c:d')`},
 		{models.NewFile("b/c", "/é d"), `type::file('b/c', '/é d')`},
 		// A single quote switches to double quotes, which are then escaped.

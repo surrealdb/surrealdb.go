@@ -92,7 +92,17 @@ func TestFileAndSet_server(t *testing.T) {
 	t.Run("file string", func(t *testing.T) {
 		for _, f := range []models.File{
 			models.NewFile("bucket", "/a/b.txt"),
+			models.NewFile("b", "//"),
+			models.NewFile("", "/path"),
+			models.NewFile("bucket", "/"),
 			models.NewFile("buck et", `/a"b\c:d`),
+			models.NewFile("it's", `/"q"`),
+			models.NewFile("b", `/it's "q"`),
+			models.NewFile("b", "/\x00\r\t\n\b\f"),
+			// The server adds the leading slash to a key that has none.
+			{Bucket: "bucket", Key: "a"},
+			{Bucket: "bucket"},
+			{},
 		} {
 			res, err := surrealdb.Query[string](ctx, db, "RETURN <string>$f", map[string]any{"f": f})
 			require.NoError(t, err)
@@ -114,7 +124,10 @@ func TestFileAndSet_server(t *testing.T) {
 			models.NewFile("buck et", `/it's "a\b:c"`),
 		} {
 			res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
-			if err != nil && strings.Contains(err.Error(), "experimental files feature") {
+			// The f-string fails to parse and type::file fails to run without
+			// the flag, with different messages.
+			if err != nil && (strings.Contains(err.Error(), "experimental files feature") ||
+				strings.Contains(err.Error(), "Experimental feature files is not enabled")) {
 				t.Skip("parsing a file literal needs --allow-experimental files")
 			}
 			require.NoError(t, err, f.String())

@@ -42,13 +42,19 @@ func NewFile(bucket, key string) File {
 // that builds it, type::file('bucket', '/key'), with both arguments quoted as
 // SurrealQL strings.
 //
-// Either form parses back into the same File. To send a File in a query, bind
-// it as a parameter rather than formatting it into the query text.
+// Either form parses back into the same File. A key with no leading slash is
+// written with one, as NewFile and the server add it, so it parses back with
+// the slash. To send a File in a query, bind it as a parameter rather than
+// formatting it into the query text.
 func (f File) String() string {
-	if fileStringAdmits(f.Bucket, f.Key) {
-		return `f"` + f.Bucket + ":" + f.Key + `"`
+	key := f.Key
+	if !strings.HasPrefix(key, "/") {
+		key = "/" + key
 	}
-	return "type::file(" + quoteString(f.Bucket) + ", " + quoteString(f.Key) + ")"
+	if fileStringAdmits(f.Bucket, key) {
+		return `f"` + f.Bucket + ":" + key + `"`
+	}
+	return "type::file(" + quoteString(f.Bucket) + ", " + quoteString(key) + ")"
 }
 
 // fileStringAdmits reports whether the file string f"bucket:key" reads back as
