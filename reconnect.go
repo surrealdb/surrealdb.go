@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -16,12 +18,18 @@ import (
 )
 
 const (
-	// DefaultReconnectMinDelay is how long the client waits before its second
-	// attempt to reconnect. The first attempt is made at once.
-	DefaultReconnectMinDelay = 500 * time.Millisecond
-	// DefaultReconnectMaxDelay bounds the wait between attempts to reconnect,
-	// which doubles after each failed attempt.
-	DefaultReconnectMaxDelay = 30 * time.Second
+	// DefaultReconnectMinDelay is the base of the wait before each attempt to
+	// reconnect, which is this delay times 2 to the power of the attempt's
+	// number, counting from 1, as in the JavaScript SDK: with the defaults the
+	// waits are about 2s, 4s, 8s, 16s, 32s.
+	DefaultReconnectMinDelay = time.Second
+	// DefaultReconnectMaxDelay bounds the wait before an attempt to reconnect.
+	DefaultReconnectMaxDelay = time.Minute
+	// DefaultReconnectAttempts is how many attempts in a row the client makes
+	// to reconnect before it gives up.
+	DefaultReconnectAttempts = 5
+	// reconnectJitter randomises each wait by up to this fraction either way.
+	reconnectJitter = 0.1
 
 	// reconnectAttemptTimeout bounds one attempt: connecting and restoring.
 	reconnectAttemptTimeout = 30 * time.Second
@@ -290,10 +298,16 @@ func (r *reconnector) watch(con connection.Connection) {
 // reconnect makes a new connection, with backoff between attempts, and
 // returns it once the client's state is restored on it.
 func (r *reconnector) reconnect(lost connection.Connection) (connection.Connection, error) {
-	delay := r.minDelay
 	for attempt := 1; ; attempt++ {
 		r.setState(StatusReconnecting, nil)
 		r.emit(StatusEvent{Status: StatusReconnecting, Attempt: attempt})
+
+		// Wait before each attempt, the first included, as the JavaScript SDK does.
+		select {
+		case <-time.After(r.backoff(attempt)):
+		case <-r.stop.Done():
+			return nil, ErrClientClosed
+		}
 
 		next, partial, err := r.attempt(lost)
 		if err == nil {
@@ -322,14 +336,16 @@ func (r *reconnector) reconnect(lost connection.Connection) (connection.Connecti
 			r.emit(StatusEvent{Status: StatusClosed, Attempt: attempt, Err: err})
 			return nil, err
 		}
-
-		select {
-		case <-time.After(delay):
-		case <-r.stop.Done():
-			return nil, ErrClientClosed
-		}
-		delay = min(delay*2, r.maxDelay)
 	}
+}
+
+// backoff returns how long to wait before the given attempt, counting from 1:
+// minDelay * 2^attempt, randomised by up to reconnectJitter either way, and
+// capped at maxDelay after that.
+func (r *reconnector) backoff(attempt int) time.Duration {
+	d := float64(r.minDelay) * math.Pow(2, float64(attempt))
+	d *= 1 + (rand.Float64()*2-1)*reconnectJitter
+	return time.Duration(min(d, float64(r.maxDelay)))
 }
 
 // attempt connects once and restores the client's state. It fails when either

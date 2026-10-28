@@ -26,6 +26,7 @@ func defaultOptions() options {
 		reconnect:         true,
 		reconnectMinDelay: DefaultReconnectMinDelay,
 		reconnectMaxDelay: DefaultReconnectMaxDelay,
+		reconnectAttempts: DefaultReconnectAttempts,
 	}
 }
 
@@ -96,10 +97,10 @@ func WithReconnect(enabled bool) Option {
 	}
 }
 
-// WithReconnectDelay sets the wait between attempts to reconnect, which starts
-// at minDelay after the first failed attempt and doubles after each until
-// maxDelay. They default to [DefaultReconnectMinDelay] and
-// [DefaultReconnectMaxDelay].
+// WithReconnectDelay sets the wait before each attempt to reconnect: minDelay
+// times 2 to the power of the attempt's number, counting from 1, with up to 10%
+// jitter, and at most maxDelay. They default to [DefaultReconnectMinDelay] and
+// [DefaultReconnectMaxDelay], which are the JavaScript SDK's.
 func WithReconnectDelay(minDelay, maxDelay time.Duration) Option {
 	return func(o *options) {
 		if minDelay > 0 {
@@ -113,7 +114,9 @@ func WithReconnectDelay(minDelay, maxDelay time.Duration) Option {
 }
 
 // WithReconnectAttempts sets how many attempts in a row the client makes to
-// reconnect before it gives up and closes. It defaults to 0: no limit.
+// reconnect before it gives up and closes. It defaults to
+// [DefaultReconnectAttempts]. Zero or less (the JavaScript SDK's -1) means no
+// limit.
 func WithReconnectAttempts(attempts int) Option {
 	return func(o *options) {
 		o.reconnectAttempts = max(attempts, 0)
