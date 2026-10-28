@@ -133,7 +133,7 @@ func (l *statusLog) statuses() []surrealdb.ConnectionStatus {
 func connectThrough(t *testing.T, p *dropProxy, opts ...surrealdb.Option) *surrealdb.DB {
 	t.Helper()
 	ctx := context.Background()
-	opts = append([]surrealdb.Option{surrealdb.WithReconnectDelay(20*time.Millisecond, 200*time.Millisecond)}, opts...)
+	opts = append([]surrealdb.Option{surrealdb.WithReconnectDelay(20*time.Millisecond, 200*time.Millisecond), surrealdb.WithReconnectAttempts(0)}, opts...)
 	db, err := surrealdb.FromEndpointURLStringWithOptions(ctx, p.url(), opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close(context.Background()) })
