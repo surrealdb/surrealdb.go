@@ -120,7 +120,7 @@ func (bc *Toolkit) CBORSubprotocols() []string {
 func (bc *Toolkit) UseCBORSubprotocol(subprotocol string) {
 	v := CBORVersionFromSubprotocol(subprotocol)
 	m, u, ok := CBORCodecs(bc.Marshaler, bc.Unmarshaler, v)
-	if !ok {
+	if !ok || (v == CBORv2 && bc.DisableCBORv2) {
 		// The server picked a version we did not offer; stay on plain CBOR.
 		v = CBORv1
 		m, u, _ = CBORCodecs(bc.Marshaler, bc.Unmarshaler, v)

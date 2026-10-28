@@ -32,13 +32,25 @@ type cborEchoServer struct {
 
 func newCBOREchoServer(t *testing.T, subprotocols ...string) *cborEchoServer {
 	t.Helper()
+	return newCBOREchoServerWith(t, gorilla.Upgrader{Subprotocols: subprotocols}, nil)
+}
+
+// newCBOREchoServerAnswering is a cborEchoServer that picks subprotocol
+// whatever the client offers, as a misbehaving server or proxy could.
+func newCBOREchoServerAnswering(t *testing.T, subprotocol string) *cborEchoServer {
+	t.Helper()
+	// Without Subprotocols, the upgrader answers the one in the header.
+	return newCBOREchoServerWith(t, gorilla.Upgrader{}, http.Header{"Sec-Websocket-Protocol": {subprotocol}})
+}
+
+func newCBOREchoServerWith(t *testing.T, upgrader gorilla.Upgrader, header http.Header) *cborEchoServer {
+	t.Helper()
 	s := &cborEchoServer{}
-	upgrader := gorilla.Upgrader{Subprotocols: subprotocols}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		s.offered = append(s.offered, r.Header.Get("Sec-WebSocket-Protocol"))
 		s.mu.Unlock()
-		conn, err := upgrader.Upgrade(w, r, nil)
+		conn, err := upgrader.Upgrade(w, r, header)
 		if err != nil {
 			return
 		}
@@ -142,6 +154,27 @@ func TestCBORNegotiation(t *testing.T) {
 				"request %x", srv.lastRequest())
 		})
 	}
+}
+
+// TestCBORNegotiationDisabledRefusesCBOR2 checks that DisableCBORv2 holds
+// even when the server picks cbor.2 though only cbor was offered.
+func TestCBORNegotiationDisabledRefusesCBOR2(t *testing.T) {
+	srv := newCBOREchoServerAnswering(t, connection.SubprotocolCBOR2)
+	c := surrealcbor.New()
+	conn := newTestConnection(&connection.Config{BaseURL: srv.baseURL(), Marshaler: c, Unmarshaler: c, DisableCBORv2: true})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, conn.Connect(ctx))
+	defer func() { _ = conn.Close(ctx) }()
+
+	assert.Equal(t, connection.SubprotocolCBOR, srv.lastOffer())
+	assert.Equal(t, connection.CBORv1, conn.CBORVersion())
+
+	// The connection sends plain CBOR, which a cbor.2 decoder also reads.
+	_, err := conn.Send(ctx, "echo", int8(-5))
+	require.NoError(t, err)
+	assert.NotContains(t, hex.EncodeToString(srv.lastRequest()), "d8b424")
 }
 
 func newTestConnection(conf *connection.Config) *Connection {
