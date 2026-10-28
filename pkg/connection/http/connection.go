@@ -28,9 +28,12 @@ import (
 // It negotiates the CBOR protocol version as it goes (see
 // [connection.CBORVersion]): when its codec speaks cbor.2, it sends plain
 // CBOR requests with "Accept: application/cbor; v=2" until the server answers
-// one in cbor.2, and from then on sends cbor.2 requests. Servers before
-// SurrealDB 4.0 answer in plain CBOR, so the connection stays on it. Each
-// response is decoded by its own Content-Type.
+// one in cbor.2, and then sends cbor.2 requests. Servers before SurrealDB 4.0
+// answer in plain CBOR, so the connection stays on it. Each request is sent
+// in the version of the latest response: after a plain CBOR response, such
+// as from a 3.x server behind the same URL during a rolling upgrade or a
+// rollback, the next request is plain CBOR again, still asking for cbor.2.
+// Each response is decoded by its own Content-Type.
 type Connection struct {
 	BaseURL     string
 	Marshaler   codec.Marshaler
@@ -48,10 +51,29 @@ type Connection struct {
 	namespace string
 	database  string
 	token     string
-	vars      map[string]any
+	vars      map[string]variable
 
-	// cborVersion becomes CBORv2 once the server has answered in cbor.2.
+	// cborVersion becomes CBORv2 once the server has answered in cbor.2, and
+	// stays there, so that GetUnmarshaler never gives a plain CBOR decoder for
+	// a cbor.2 result. A cbor.2 decoder also reads plain CBOR.
 	cborVersion atomic.Int32
+	// sendVersion is the CBOR version of the latest response, which the next
+	// request is sent in.
+	sendVersion atomic.Int32
+}
+
+// variable is a variable bound with let, kept encoded in each CBOR version a
+// request can be sent in.
+type variable struct {
+	v1, v2 cbor.RawMessage
+}
+
+// in returns the variable encoded in CBOR version v.
+func (v variable) in(version connection.CBORVersion) cbor.RawMessage {
+	if version == connection.CBORv2 && v.v2 != nil {
+		return v.v2
+	}
+	return v.v1
 }
 
 func New(p *connection.Config) *Connection {
@@ -113,6 +135,15 @@ func (c *Connection) CBORVersion() connection.CBORVersion {
 	return connection.CBORv1
 }
 
+// sendCBORVersion returns the CBOR version to send the next request in: the
+// version of the latest response.
+func (c *Connection) sendCBORVersion() connection.CBORVersion {
+	if connection.CBORVersion(c.sendVersion.Load()) == connection.CBORv2 {
+		return connection.CBORv2
+	}
+	return connection.CBORv1
+}
+
 // offersCBORv2 reports whether requests ask for cbor.2 responses.
 func (c *Connection) offersCBORv2() bool {
 	return !c.DisableCBORv2 && connection.CanSpeakCBORv2(c.Marshaler, c.Unmarshaler)
@@ -129,14 +160,13 @@ func (c *Connection) codecs(v connection.CBORVersion) (codec.Marshaler, codec.Un
 }
 
 // requestFormat returns the marshaler and the Content-Type and Accept headers
-// for the next request.
+// for a request sent in CBOR version version (see sendCBORVersion).
 //
-// It sends cbor.2 only once the server has answered in it: a server that
+// It sends cbor.2 only after the server has answered in it: a server that
 // speaks cbor.2 refuses a cbor.2 request that asks for a plain CBOR response,
-// and one before SurrealDB 4.0 does not know cbor.2 at all. Until then, it
+// and one before SurrealDB 4.0 does not know cbor.2 at all. Otherwise, it
 // sends plain CBOR and asks for cbor.2 back.
-func (c *Connection) requestFormat() (marshaler codec.Marshaler, contentType, accept string) {
-	version := c.CBORVersion()
+func (c *Connection) requestFormat(version connection.CBORVersion) (marshaler codec.Marshaler, contentType, accept string) {
 	marshaler, _ = c.codecs(version)
 	switch {
 	case version == connection.CBORv2:
@@ -193,11 +223,13 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return res, err
 	}
 
+	// The version is read once, so the body, its variables and the headers agree.
+	version := c.sendCBORVersion()
 	if request.Method == string(connection.Query) {
-		request = c.withVariables(request)
+		request = c.withVariables(request, version)
 	}
 
-	marshaler, contentType, accept := c.requestFormat()
+	marshaler, contentType, accept := c.requestFormat(version)
 	reqBody, err := marshaler.Marshal(request)
 	if err != nil {
 		return nil, err
@@ -213,12 +245,18 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	c.setSessionHeaders(req, sendsOwnCredentials(request.Method))
 
 	respData, respVersion, err := c.makeRequest(req)
+	if respVersion != 0 {
+		if respVersion == connection.CBORv2 {
+			// Results are decoded later with GetUnmarshaler, so switch before
+			// returning, and before the next request can be sent in cbor.2.
+			c.cborVersion.Store(int32(connection.CBORv2))
+		}
+		// Any response but a cbor.2 one, an error included, sends the next
+		// request in plain CBOR: the server behind the URL may not speak cbor.2.
+		c.sendVersion.Store(int32(respVersion))
+	}
 	if err != nil {
 		return nil, err
-	}
-	if respVersion == connection.CBORv2 {
-		// Results are decoded later with GetUnmarshaler, so switch before returning.
-		c.cborVersion.Store(int32(connection.CBORv2))
 	}
 
 	_, unmarshaler := c.codecs(respVersion)
@@ -293,7 +331,7 @@ func (c *Connection) callLocally(
 	res = &connection.RPCResponse[cbor.RawMessage]{ID: request.ID}
 	if result != nil {
 		var encoded cbor.RawMessage
-		if encoded, err = c.encodeParam(result); err != nil {
+		if encoded, err = c.encodeParam(result, c.CBORVersion()); err != nil {
 			return nil, true, err
 		}
 		res.Result = &encoded
@@ -341,10 +379,17 @@ func (c *Connection) localLet(method string, params []any) (any, error) {
 	}
 	// The value is kept encoded, as a WebSocket server would receive it,
 	// so later changes to it do not leak into queries, and a value which
-	// cannot be encoded fails here rather than in every later query.
-	value, err := c.encodeParam(params[1])
-	if err != nil {
+	// cannot be encoded fails here rather than in every later query. It is
+	// kept in each version a query can be sent in.
+	var value variable
+	var err error
+	if value.v1, err = c.encodeParam(params[1], connection.CBORv1); err != nil {
 		return nil, fmt.Errorf("%s $%s: %w", method, key, err)
+	}
+	if c.offersCBORv2() {
+		if value.v2, err = c.encodeParam(params[1], connection.CBORv2); err != nil {
+			return nil, fmt.Errorf("%s $%s: %w", method, key, err)
+		}
 	}
 	c.setVariable(key, value)
 	return nil, nil
@@ -411,10 +456,9 @@ func invalidParamsError(message string) error {
 // encodeParam encodes a parameter as it is encoded within a request: as an
 // element of the request's parameters rather than on its own, as the
 // deprecated models.CborMarshaler changes, and can fail on, the top-level
-// value it is given. It encodes in the CBOR version requests are sent in now, as
-// a WebSocket session sends let in the version it speaks at the time.
-func (c *Connection) encodeParam(v any) (cbor.RawMessage, error) {
-	marshaler, _, _ := c.requestFormat()
+// value it is given. It encodes in CBOR version version.
+func (c *Connection) encodeParam(v any, version connection.CBORVersion) (cbor.RawMessage, error) {
+	marshaler, _ := c.codecs(version)
 	data, err := marshaler.Marshal([]any{v})
 	if err != nil {
 		return nil, err
@@ -510,7 +554,7 @@ func stringKeyedMap(v any) (map[string]any, bool) {
 
 // withVariables returns a copy of a query request whose variables include
 // those set with Let, which the variables given with the query take precedence over.
-func (c *Connection) withVariables(request *connection.RPCRequest) *connection.RPCRequest {
+func (c *Connection) withVariables(request *connection.RPCRequest, version connection.CBORVersion) *connection.RPCRequest {
 	if len(request.Params) == 0 {
 		return request
 	}
@@ -518,7 +562,7 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	c.stateMu.RLock()
 	merged := make(map[string]any, len(c.vars))
 	for k, v := range c.vars {
-		merged[k] = v
+		merged[k] = v.in(version)
 	}
 	c.stateMu.RUnlock()
 
@@ -527,7 +571,7 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 	}
 
 	if len(request.Params) > 1 && request.Params[1] != nil {
-		given, ok := c.variablesObject(request.Params[1])
+		given, ok := c.variablesObject(request.Params[1], version)
 		if !ok {
 			// Variables of another type are sent as they are.
 			return request
@@ -550,11 +594,11 @@ func (c *Connection) withVariables(request *connection.RPCRequest) *connection.R
 // variablesObject returns the entries of the variables given with a query
 // when they are encoded as an object, such as a map with string keys, a
 // struct, or a pointer to either; a nil pointer, encoded as null, has none.
-func (c *Connection) variablesObject(v any) (map[string]any, bool) {
+func (c *Connection) variablesObject(v any, version connection.CBORVersion) (map[string]any, bool) {
 	if m, ok := stringKeyedMap(v); ok {
 		return m, true
 	}
-	data, err := c.encodeParam(v)
+	data, err := c.encodeParam(v, version)
 	if err != nil || len(data) == 0 {
 		return nil, false
 	}
@@ -636,11 +680,11 @@ func (c *Connection) setToken(token string) {
 	c.token = token
 }
 
-func (c *Connection) setVariable(key string, value any) {
+func (c *Connection) setVariable(key string, value variable) {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
 	if c.vars == nil {
-		c.vars = make(map[string]any)
+		c.vars = make(map[string]variable)
 	}
 	c.vars[key] = value
 }
@@ -679,7 +723,9 @@ func (c *Connection) MakeRequest(req *http.Request) ([]byte, error) {
 }
 
 // makeRequest sends req and returns the response body with the CBOR version
-// to decode it in, which its Content-Type decides.
+// to decode it in, which its Content-Type decides. The version is also
+// returned with the error for a non-2xx response, and is 0 when there was no
+// response.
 func (c *Connection) makeRequest(req *http.Request) ([]byte, connection.CBORVersion, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -699,7 +745,7 @@ func (c *Connection) makeRequest(req *http.Request) ([]byte, connection.CBORVers
 		return respBytes, version, nil
 	}
 
-	return nil, 0, c.errorFromResponse(resp, respBytes, version)
+	return nil, version, c.errorFromResponse(resp, respBytes, version)
 }
 
 // StatusError is returned when the server answers an HTTP request with a non-2xx

@@ -157,3 +157,115 @@ func TestCBORVersionFromContentType(t *testing.T) {
 		assert.Equal(t, want != 0, ok, ct)
 	}
 }
+
+// TestCBORNegotiationStepsBack checks that a connection sends each request in
+// the version of the latest response, as behind a load balancer that mixes a
+// 4.0 server with a 3.x one during a rolling upgrade or a rollback. The 3.x
+// server reads every body as plain CBOR, so refuses the tags of cbor.2.
+func TestCBORNegotiationStepsBack(t *testing.T) {
+	const (
+		plain = connection.MIMECBOR
+		v2    = connection.MIMECBOR2
+	)
+	// The server behind the URL for each request, and what the client sees.
+	steps := []struct {
+		speaksV2    bool
+		contentType string // of the request
+		ok          bool
+	}{
+		{true, plain, true},  // no response yet
+		{false, v2, false},   // 3.x cannot read the cbor.2 body
+		{true, plain, true},  // the error stepped back
+		{false, v2, false},   //
+		{false, plain, true}, // a plain request, which 3.x reads
+		{true, plain, true},  // the plain response stepped back
+		{true, v2, true},     // back on cbor.2
+	}
+
+	var mu sync.Mutex
+	var requests []seenRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		i := len(requests)
+		requests = append(requests, seenRequest{r.Header.Get("Content-Type"), r.Header.Get("Accept"), body})
+		mu.Unlock()
+		if i >= len(steps) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		speaksV2 := steps[i].speaksV2
+		in := surrealcbor.New()
+		if speaksV2 && r.Header.Get("Content-Type") == v2 {
+			in = surrealcbor.NewV2()
+		}
+		var req struct {
+			ID     any   `cbor:"id"`
+			Params []any `cbor:"params"`
+		}
+		if err := in.Unmarshal(body, &req); err != nil {
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("Parse error"))
+			return
+		}
+		out, contentType := surrealcbor.New(), plain
+		if speaksV2 && r.Header.Get("Accept") == v2 {
+			out, contentType = surrealcbor.NewV2(), v2
+		}
+		res, err := out.Marshal(map[string]any{"id": req.ID, "result": req.Params})
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		_, _ = w.Write(res)
+	}))
+	t.Cleanup(srv.Close)
+
+	c := surrealcbor.New()
+	conn := New(&connection.Config{BaseURL: srv.URL, Marshaler: c, Unmarshaler: c})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// A variable bound before the connection speaks cbor.2 is sent in cbor.2
+	// too, and the other way round.
+	require.NoError(t, conn.Let(ctx, "v", int8(-5)))
+
+	for i, step := range steps {
+		if i == 3 {
+			require.NoError(t, conn.Let(ctx, "w", int8(-5)))
+		}
+		_, err := conn.Send(ctx, "query", "RETURN $v", map[string]any{"p": int8(-5)})
+		if step.ok {
+			require.NoError(t, err, "request %d", i)
+		} else {
+			var statusErr *StatusError
+			require.ErrorAs(t, err, &statusErr, "request %d", i)
+			assert.Equal(t, http.StatusBadRequest, statusErr.StatusCode, "request %d", i)
+		}
+		if i > 0 {
+			// Once a server has answered in cbor.2, results may be cbor.2.
+			assert.Equal(t, connection.CBORv2, conn.CBORVersion(), "after request %d", i)
+		}
+	}
+
+	mu.Lock()
+	seen := append([]seenRequest(nil), requests...)
+	mu.Unlock()
+	require.Len(t, seen, len(steps))
+	for i, step := range steps {
+		assert.Equal(t, step.contentType, seen[i].contentType, "Content-Type of request %d", i)
+		assert.Equal(t, v2, seen[i].accept, "Accept of request %d", i)
+		// The parameter and every variable carry the tag in cbor.2 only.
+		tags := strings.Count(hex.EncodeToString(seen[i].body), "d8b424")
+		wantTags := 0
+		if step.contentType == v2 {
+			wantTags = 2
+			if i >= 3 {
+				wantTags = 3
+			}
+		}
+		assert.Equal(t, wantTags, tags, "tags in request %d", i)
+	}
+}
