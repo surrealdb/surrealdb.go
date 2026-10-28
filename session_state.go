@@ -2,9 +2,15 @@ package surrealdb
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"maps"
 	"sync"
+	"time"
 
+	"github.com/fxamacker/cbor/v2"
+
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
@@ -90,23 +96,50 @@ func (s *sessionState) snapshot(renew *renewer) sessionSnapshot {
 	return snap
 }
 
-// newSession returns the Session object for an attached session ID, and
-// registers it with the client.
-func (db *DB) newSession(id models.UUID) *Session {
-	s := &Session{db: db, id: &id}
+// marshalerGetter is a connection which exposes the marshaler it encodes
+// requests with.
+type marshalerGetter interface {
+	GetMarshaler() codec.Marshaler
+}
+
+// letValue returns the value for Let to send and record. Over a WebSocket
+// connection which exposes its marshaler, that is the value encoded once, so
+// that a later change to the value reaches neither the server nor a fork.
+// Otherwise it is the value itself.
+func letValue(con connection.Connection, val any) (any, error) {
+	if _, ok := con.(connection.WebSocketConnection); !ok {
+		return val, nil
+	}
+	m, ok := con.(marshalerGetter)
+	if !ok || m.GetMarshaler() == nil {
+		return val, nil
+	}
+	data, err := m.GetMarshaler().Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+	return cbor.RawMessage(data), nil
+}
+
+// newSession returns a Session object for a session ID. tracked is whether
+// the client knows the session's state, as it does for a session it attached.
+func (db *DB) newSession(id models.UUID, tracked bool) *Session {
+	s := &Session{db: db, id: &id, tracked: tracked}
 	if db.opts.tokenRenewal {
 		s.renew = newRenewer(db.opts.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
 			return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
 		})
 	}
+	return s
+}
 
-	db.sessionsMu.Lock()
-	defer db.sessionsMu.Unlock()
+// registerSessionLocked registers a Session object with the client. The
+// caller holds sessionsMu.
+func (db *DB) registerSessionLocked(s *Session) {
 	if db.sessions == nil {
 		db.sessions = make(map[models.UUID]*Session)
 	}
-	db.sessions[id] = s
-	return s
+	db.sessions[*s.id] = s
 }
 
 func (db *DB) forgetSession(id models.UUID) {
@@ -118,6 +151,11 @@ func (db *DB) forgetSession(id models.UUID) {
 // Sessions lists the sessions attached to the connection, other than its
 // default one, as the Session objects that [DB.Attach] and [DB.Fork] return.
 // It needs SurrealDB v3+ over WebSocket.
+//
+// A session attached on the connection without this client, such as with
+// [connection.Call] on the connection itself, is listed too. The client does not know its namespace, database,
+// variables or authentication, so it cannot be forked: [Session.Fork] returns
+// [constants.ErrForkUntracked] for it.
 func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 	if _, ok := db.con.(connection.WebSocketConnection); !ok {
 		return nil, constants.ErrSessionsNotSupported
@@ -131,14 +169,17 @@ func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 		return nil, nil
 	}
 
+	// The lookups and inserts happen under one hold of the lock, so that a
+	// session Attach registers meanwhile is not replaced.
+	db.sessionsMu.Lock()
+	defer db.sessionsMu.Unlock()
 	sessions := make([]*Session, 0, len(*ids))
 	for _, id := range *ids {
-		db.sessionsMu.Lock()
 		s, ok := db.sessions[id]
-		db.sessionsMu.Unlock()
 		if !ok {
-			// Attached on this connection without the client, such as with Send.
-			s = db.newSession(id)
+			// Attached on this connection without the client.
+			s = db.newSession(id, false)
+			db.registerSessionLocked(s)
 		}
 		sessions = append(sessions, s)
 	}
@@ -149,8 +190,20 @@ func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 // the same namespace and database, the same variables, and authenticated with
 // the same access token. The two sessions are independent from then on.
 //
+// The new session is signed in with the access token, not with the session:
+// the server cannot copy a session's authentication. A session signed in with
+// a username and password outlives its token. By default a token lasts an
+// hour and the session has no limit. Once the token has expired, Fork returns
+// an error wrapping [constants.ErrForkTokenExpired] without attaching a
+// session. Attach a session and sign it in yourself then.
+//
 // A token pair is not copied, since a refresh token can be used only once, so
 // the new session does not renew its access token by itself.
+//
+// The variables are copied as Let encoded them. The built-in WebSocket
+// connections expose their marshaler for this. Over another connection, Let
+// keeps the value itself instead, so a value passed to Let must not be
+// changed afterwards.
 //
 // Fork needs SurrealDB v3+ over WebSocket.
 func (db *DB) Fork(ctx context.Context) (*Session, error) {
@@ -158,21 +211,46 @@ func (db *DB) Fork(ctx context.Context) (*Session, error) {
 }
 
 // Fork attaches a new session which starts as a copy of this one. See [DB.Fork].
+// Like it, the new session is signed in with this session's access token, so
+// Fork returns an error wrapping [constants.ErrForkTokenExpired] once that
+// token has expired.
+//
+// Fork returns [constants.ErrForkUntracked] for a session that [DB.Sessions]
+// lists but this client did not attach, as the client does not know its state.
 func (s *Session) Fork(ctx context.Context) (*Session, error) {
 	if s.isClosed() {
 		return nil, constants.ErrSessionClosed
+	}
+	if !s.tracked {
+		return nil, constants.ErrForkUntracked
 	}
 	return s.db.fork(ctx, s.state.snapshot(s.renew))
 }
 
 func (db *DB) fork(ctx context.Context, snap sessionSnapshot) (*Session, error) {
+	if snap.token != "" {
+		if exp, ok := tokenExpiry(snap.token); ok && !time.Now().Before(exp) {
+			return nil, fmt.Errorf("%w at %s", constants.ErrForkTokenExpired, exp.Format(time.RFC3339))
+		}
+	}
+
 	child, err := db.Attach(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := child.restore(ctx, snap); err != nil {
-		_ = child.Detach(ctx)
+		// ctx may be what failed, so the cleanup gets a deadline of its own.
+		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if derr := child.Detach(dctx); derr != nil {
+			// The caller never gets the fork, so the client forgets it all
+			// the same. If it is still attached, Sessions lists it as a
+			// session the client did not attach.
+			child.renew.stop()
+			db.forgetSession(*child.id)
+			return nil, errors.Join(err, fmt.Errorf("detaching the fork: %w", derr))
+		}
 		return nil, err
 	}
 	return child, nil

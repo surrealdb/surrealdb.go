@@ -509,6 +509,9 @@ func (db *DB) Revoke(ctx context.Context, tokens Tokens) error {
 		return err
 	}
 	if current := db.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		// The session stays signed in with the latest access token, which
+		// may be newer than the one recorded when the pair was obtained.
+		db.state.setToken(current.Access)
 		db.renew.clear()
 	}
 	return nil
@@ -584,7 +587,16 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 	return nil
 }
 
+// Let sets a variable in the session.
+//
+// Over WebSocket, the client keeps the variable for [DB.Fork]. It encodes the
+// value once, before it sends it, so that changing the value after Let
+// returns changes neither the variable nor a later fork.
 func (db *DB) Let(ctx context.Context, key string, val any) error {
+	val, err := letValue(db.con, val)
+	if err != nil {
+		return err
+	}
 	if err := db.con.Let(ctx, key, val); err != nil {
 		return err
 	}

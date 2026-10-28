@@ -30,6 +30,9 @@ type Session struct {
 	renew *renewer
 	// state is what this session holds, for Fork.
 	state sessionState
+	// tracked is whether the client knows state, as it does for a session it
+	// attached, unlike one that Sessions found.
+	tracked bool
 }
 
 // Attach creates a new session on the WebSocket connection.
@@ -73,6 +76,13 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 	}
 	sessionID := models.UUID{UUID: newUUID}
 
+	// The session is registered before it is attached, so that Sessions,
+	// which may list it as soon as the server has it, returns this object.
+	s := db.newSession(sessionID, true)
+	db.sessionsMu.Lock()
+	db.registerSessionLocked(s)
+	db.sessionsMu.Unlock()
+
 	// Send the attach RPC request with the session UUID as a top-level field
 	req := &connection.RPCRequest{
 		Method:  string(connection.Attach),
@@ -81,10 +91,11 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 
 	var res connection.RPCResponse[any]
 	if err := connection.Call(db.con, ctx, &res, req); err != nil {
+		db.forgetSession(sessionID)
 		return nil, err
 	}
 
-	return db.newSession(sessionID), nil
+	return s, nil
 }
 
 // sessionCall sends an RPC request in this session.
@@ -273,6 +284,9 @@ func (s *Session) Revoke(ctx context.Context, tokens Tokens) error {
 		return err
 	}
 	if current := s.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		// The session stays signed in with the latest access token, which
+		// may be newer than the one recorded when the pair was obtained.
+		s.state.setToken(current.Access)
 		s.renew.clear()
 	}
 	return nil
@@ -339,8 +353,12 @@ func (s *Session) Use(ctx context.Context, ns, database string) error {
 	return nil
 }
 
-// Let sets a variable in this session.
+// Let sets a variable in this session. See [DB.Let].
 func (s *Session) Let(ctx context.Context, key string, val any) error {
+	val, err := letValue(s.db.con, val)
+	if err != nil {
+		return err
+	}
 	if _, err := sessionCall[any](ctx, s, connection.Let, key, val); err != nil {
 		return err
 	}
