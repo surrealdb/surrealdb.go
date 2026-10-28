@@ -26,6 +26,10 @@ type scriptedStreamer struct {
 	onCancel []map[string]any
 	calls    chan *connection.RPCRequest
 	stream   *connection.ResponseStream
+	// timeout is the stream's FirstResponseTimeout.
+	timeout time.Duration
+	// opened is closed once the stream is opened.
+	opened chan struct{}
 }
 
 func newScriptedStreamer(frames ...map[string]any) *scriptedStreamer {
@@ -37,6 +41,7 @@ func newScriptedStreamer(frames ...map[string]any) *scriptedStreamer {
 		codec:  surrealcbor.New(),
 		frames: frames,
 		calls:  make(chan *connection.RPCRequest, 8),
+		opened: make(chan struct{}),
 	}
 }
 
@@ -71,10 +76,12 @@ func (f *scriptedStreamer) CallStream(_ context.Context, req *connection.RPCRequ
 	if err != nil {
 		return nil, err
 	}
+	s.FirstResponseTimeout = f.timeout
 	f.stream = s
 	if err := f.deliver(f.frames); err != nil {
 		return nil, err
 	}
+	close(f.opened)
 	return s, nil
 }
 
@@ -144,4 +151,53 @@ func TestQueryStream_transactionWaitsForTheCanceledQuery(t *testing.T) {
 	defer cancel()
 	_, err := con.stream.Next(ctx)
 	require.ErrorIs(t, err, connection.ErrStreamClosed, "the stream was drained to its end frame")
+}
+
+// A server which stops answering is caught by the connection's timeout while
+// the stream waits for its first frame, even when ctx has no deadline.
+func TestQueryStream_timesOutWaitingForTheFirstFrame(t *testing.T) {
+	con := newScriptedStreamer()
+	con.timeout = 50 * time.Millisecond
+	db := &DB{con: con}
+
+	done := make(chan error, 1)
+	go func() {
+		var got error
+		for _, err := range QueryStream[any](context.Background(), db, "SELECT * FROM big", nil) {
+			got = err
+		}
+		done <- got
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream did not time out waiting for its first frame")
+	}
+}
+
+// After the first frame the timeout no longer applies, as a statement can
+// run for longer than it without sending anything.
+func TestQueryStream_noTimeoutAfterTheFirstFrame(t *testing.T) {
+	con := newScriptedStreamer(map[string]any{"stream": "begin", "statements": 1, "version": 1})
+	con.timeout = 50 * time.Millisecond
+	db := &DB{con: con}
+
+	go func() {
+		<-con.opened
+		time.Sleep(4 * con.timeout)
+		_ = con.deliver([]map[string]any{
+			{"stream": "value", "index": 0, "value": 1},
+			{"stream": "finished", "index": 0, "single": true},
+			{"stream": "end", "results": 1},
+		})
+	}()
+
+	var values []any
+	for frame, err := range QueryStream[any](context.Background(), db, "SLEEP 200ms; RETURN 1", nil) {
+		require.NoError(t, err)
+		values = append(values, frame.Value)
+	}
+	assert.Equal(t, []any{uint64(1)}, values)
 }

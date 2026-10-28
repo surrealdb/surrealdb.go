@@ -408,6 +408,7 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 	if err != nil {
 		return nil, err
 	}
+	stream.FirstResponseTimeout = c.Timeout
 	if err := c.write(req); err != nil {
 		stream.Close()
 		return nil, err

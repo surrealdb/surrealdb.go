@@ -184,15 +184,33 @@ func TestQueryStream_fallsBackWhenServerCannotStream(t *testing.T) {
 	require.NoError(t, db.Use(ctx, "query_stream", "fallback"))
 	rec.queried.Store(false)
 
-	var values []any
-	for frame, err := range surrealdb.QueryStream[any](ctx, db, "RETURN 1; RETURN [2, 3]", nil) {
+	sql := "RETURN 1; RETURN [2, 3]"
+	wantSingles := map[int]bool{0: true, 1: false}
+	if v.Major >= 3 {
+		// A set arrives as CBOR tag 56 rather than an array, so it is a
+		// single value whether it streams or not, where an array is rows.
+		sql += "; RETURN <set>[4, 5]"
+		wantSingles[2] = true
+	}
+
+	values := map[int][]any{}
+	singles := map[int]bool{}
+	for frame, err := range surrealdb.QueryStream[any](ctx, db, sql, nil) {
 		require.NoError(t, err)
-		values = append(values, frame.Rows...)
+		values[frame.Statement] = append(values[frame.Statement], frame.Rows...)
+		if frame.Done {
+			singles[frame.Statement] = frame.Single
+		}
 		if frame.Single {
-			values = append(values, frame.Value)
+			values[frame.Statement] = append(values[frame.Statement], frame.Value)
 		}
 	}
-	assert.Equal(t, []any{uint64(1), uint64(2), uint64(3)}, values)
+	assert.Equal(t, []any{uint64(1)}, values[0])
+	assert.Equal(t, []any{uint64(2), uint64(3)}, values[1])
+	if v.Major >= 3 {
+		assert.Equal(t, []any{models.Set{uint64(4), uint64(5)}}, values[2])
+	}
+	assert.Equal(t, wantSingles, singles)
 
 	assert.True(t, rec.streamed.Load(), "streaming is tried first")
 	streams := v.Major > 3 || (v.Major == 3 && v.Minor >= 3)

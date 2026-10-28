@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -28,6 +29,10 @@ var ErrStreamClosed = errors.New("response stream closed")
 type ResponseStream struct {
 	// ID is the ID of the request.
 	ID string
+	// FirstResponseTimeout is the connection's timeout for a response, which
+	// a reader can apply to the wait for the first response only: later ones
+	// may legitimately take as long as the request runs. Zero means none.
+	FirstResponseTimeout time.Duration
 
 	mu       sync.Mutex
 	queue    []RPCResponse[cbor.RawMessage]
@@ -43,10 +48,10 @@ type ResponseStream struct {
 	release func()
 }
 
-// NewResponseStream returns a stream for the request id. connClosed is closed
+// newResponseStream returns a stream for the request id. connClosed is closed
 // when the connection is, and connErr then returns why; release is called once
 // when the stream is closed.
-func NewResponseStream(id string, connClosed <-chan struct{}, connErr func() error, release func()) *ResponseStream {
+func newResponseStream(id string, connClosed <-chan struct{}, connErr func() error, release func()) *ResponseStream {
 	return &ResponseStream{
 		ID:         id,
 		wake:       make(chan struct{}, 1),
@@ -144,7 +149,7 @@ func (bc *Toolkit) OpenResponseStream(id string, connClosed <-chan struct{}, con
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
 	}
 
-	s := NewResponseStream(id, connClosed, connErr, func() {
+	s := newResponseStream(id, connClosed, connErr, func() {
 		bc.ResponseChannelsLock.Lock()
 		defer bc.ResponseChannelsLock.Unlock()
 		delete(bc.responseStreams, id)

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"strings"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
@@ -64,7 +63,17 @@ type StreamFrame[T any] struct {
 // with the query_stream method of SurrealDB 3.3+ over WebSocket. Leaving the
 // loop early cancels the query on the server. In a transaction, leaving the
 // loop waits for the server to end the canceled query, so that the
-// transaction's Commit or Cancel comes after it.
+// transaction's Commit or Cancel comes after it. The statements which ran
+// before the cancel stay in the transaction, even one whose Done frame was
+// not read: call Cancel rather than Commit to discard them.
+//
+// The connection's Timeout bounds the wait for the first frame only, which the
+// server sends at once. After it, ctx is the only bound, as a statement sends
+// nothing until it has rows or finishes.
+//
+// The server does not wait for the reader. Frames which arrive faster than
+// the loop reads them are buffered without bound, so a slow reader can hold
+// the whole result in memory, as Query does.
 //
 // When the connection or the server cannot stream, such as over HTTP or with an
 // older server, the query runs with the query method instead and its buffered
@@ -102,8 +111,8 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 			abandon(con, req, stream)
 		}()
 
-		for {
-			res, err := stream.Next(ctx)
+		for first := true; ; first = false {
+			res, err := nextResponse(ctx, stream, first)
 			if err != nil {
 				yield(StreamFrame[T]{}, err)
 				return
@@ -139,6 +148,20 @@ func QueryStream[T any, S sendable](ctx context.Context, s S, sql string, vars m
 			}
 		}
 	}
+}
+
+// nextResponse waits for the stream's next response. The wait for the first
+// one is also bounded by the connection's timeout, as the server answers with
+// a begin frame at once, so that a server which stopped answering is caught.
+// Later waits are bounded by ctx only, as a statement sends nothing until it
+// has rows or finishes.
+func nextResponse(ctx context.Context, stream *connection.ResponseStream, first bool) (connection.RPCResponse[cbor.RawMessage], error) {
+	if first && stream.FirstResponseTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, stream.FirstResponseTimeout)
+		defer cancel()
+	}
+	return stream.Next(ctx)
 }
 
 // openStream sends a streaming request, or fails with
@@ -179,14 +202,11 @@ func streamRequest[S sendable](s S, sql string, vars map[string]any) (connection
 // refusesStreaming reports whether an error answering query_stream, before any
 // frame, means the server does not stream: it does not know the method, or it
 // does not allow it. The query has not run then, so it can be sent again.
+//
+// SurrealDB sends -32602 only for a method it does not allow, before running
+// it, with the message "Method not allowed"; invalid params are -32603.
 func refusesStreaming(err *connection.RPCError) bool { //nolint:staticcheck // the RPC response carries an RPCError
-	switch err.Code {
-	case codeMethodNotFound:
-		return true
-	case codeMethodNotAllowed:
-		return strings.Contains(err.Message, methodQueryStream)
-	}
-	return false
+	return err.Code == codeMethodNotFound || err.Code == codeMethodNotAllowed
 }
 
 // abandon cancels a stream whose reader left before its end frame, and drains

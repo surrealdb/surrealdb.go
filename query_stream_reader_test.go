@@ -153,8 +153,9 @@ func TestStreamReader(t *testing.T) {
 func TestRefusesStreaming(t *testing.T) {
 	type rpcError = connection.RPCError //nolint:staticcheck // query_stream errors arrive as RPC errors
 	assert.True(t, refusesStreaming(&rpcError{Code: -32601, Message: "Method not found"}))
-	assert.True(t, refusesStreaming(&rpcError{Code: -32602, Message: "Method query_stream not allowed"}))
-	assert.False(t, refusesStreaming(&rpcError{Code: -32602, Message: "Invalid params"}))
+	// What SurrealDB 3.3.4 sends when started with --deny-rpc query_stream.
+	assert.True(t, refusesStreaming(&rpcError{Code: -32602, Message: "Method not allowed"}))
+	assert.False(t, refusesStreaming(&rpcError{Code: -32603, Message: "Expected (query:string, vars:object)"}))
 	assert.False(t, refusesStreaming(&rpcError{Code: -32000, Message: "There was a problem"}))
 }
 
