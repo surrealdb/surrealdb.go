@@ -24,6 +24,19 @@ import (
 
 const testTokenSignIn = "test_token_signin"
 
+// selectTimeout bounds a select the test requires to succeed, where a timeout
+// means the machine was slow rather than the connection broken. The server is
+// in-process, so the bound only has to rule out a hang, and it must stay above
+// the worst delay scheduling can impose between sending a frame and running the
+// goroutine that reads the reply.
+//
+// The reconnection loop's own selects keep a short bound instead. Most of them
+// poll a connection that is still down, where a timeout is the expected result
+// and a long bound would stretch every poll into a wait for a reply that cannot
+// arrive; the one that finally succeeds is cheap enough to be worth that trade,
+// and a lost race there costs one more poll rather than the test.
+const selectTimeout = 5 * time.Second
+
 func TestRewsGorillaWsDoReconnect(t *testing.T) {
 	testDoReconnect(t, func(wsURL string) func(context.Context) (*gorillaws.Connection, error) {
 		return func(ctx context.Context) (*gorillaws.Connection, error) {
@@ -148,7 +161,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	// Test select with retries
 	// First two selects should work
 	for i := 0; i < 2; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), selectTimeout)
 		result, err := surrealdb.Select[TestRecord](
 			ctx,
 			db,

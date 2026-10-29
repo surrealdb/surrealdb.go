@@ -26,11 +26,15 @@ func GetVersion(ctx context.Context, db *surrealdb.DB) (*SurrealDBVersion, error
 	return ParseVersion(v.Version)
 }
 
-// ParseVersion parses version strings like "3.0.0-beta.3" or "2.6.0".
+// ParseVersion parses version strings like "3.0.0-beta.3", "2.6.0" or
+// "3.3.6+20261018".
 // It also handles the older "surrealdb-X.Y.Z" format.
 func ParseVersion(version string) (*SurrealDBVersion, error) {
 	// Remove "surrealdb-" prefix if present (older format)
 	version = strings.TrimPrefix(version, "surrealdb-")
+	// Drop build metadata, as in "3.3.6+20261018": it has no bearing on the
+	// version's order.
+	version, _, _ = strings.Cut(version, "+")
 
 	// Split on hyphen for prerelease
 	parts := strings.SplitN(version, "-", 2)

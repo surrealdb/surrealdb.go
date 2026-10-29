@@ -34,6 +34,13 @@ func (d *decoder) decodeSpecificTag(tagNum uint64, v reflect.Value) error {
 	if tagNum == models.TagSpecBinaryUUID {
 		return d.decodeBinaryUUIDTag(v)
 	}
+	// File and Set types
+	if tagNum == models.TagFile {
+		return d.decodeFileTag(v)
+	}
+	if tagNum == models.TagSet {
+		return d.decodeSetTag(v)
+	}
 	// Range/Bound types
 	if tagNum >= 49 && tagNum <= 51 {
 		return d.decodeRangeBoundTag(tagNum, v)
@@ -491,6 +498,47 @@ func (d *decoder) decodeGeometryCollectionTag(v reflect.Value) error {
 		v.Set(reflect.ValueOf(geomCollection))
 	}
 	return nil
+}
+
+func (d *decoder) decodeFileTag(v reflect.Value) error {
+	var arr []any
+	if err := d.decodeValue(reflect.ValueOf(&arr).Elem()); err != nil {
+		return err
+	}
+	if len(arr) != 2 {
+		return fmt.Errorf("file (tag 55) must hold [bucket, key], got %d elements", len(arr))
+	}
+	bucket, ok1 := arr[0].(string)
+	key, ok2 := arr[1].(string)
+	if !ok1 || !ok2 {
+		return fmt.Errorf("file (tag 55) must hold two strings, got %T and %T", arr[0], arr[1])
+	}
+	file := models.File{Bucket: bucket, Key: key}
+
+	switch {
+	case v.Type() == reflect.TypeOf(models.File{}):
+		v.Set(reflect.ValueOf(file))
+	case v.Kind() == reflect.Interface:
+		v.Set(reflect.ValueOf(file))
+	default:
+		return fmt.Errorf("cannot decode file (tag 55) into %s", v.Type())
+	}
+	return nil
+}
+
+func (d *decoder) decodeSetTag(v reflect.Value) error {
+	switch {
+	case v.Type() == reflect.TypeOf(models.Set{}), v.Kind() == reflect.Interface:
+		var values []any
+		if err := d.decodeValue(reflect.ValueOf(&values).Elem()); err != nil {
+			return err
+		}
+		v.Set(reflect.ValueOf(models.Set(values)))
+		return nil
+	default:
+		// A set can be decoded into a slice or array of a concrete type.
+		return d.decodeValue(v)
+	}
 }
 
 func (d *decoder) decodeUnknownTag(v reflect.Value) error {
