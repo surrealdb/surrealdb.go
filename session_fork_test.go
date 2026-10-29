@@ -205,24 +205,36 @@ func TestAttach_cancelledDetaches(t *testing.T) {
 }
 
 // Let keeps the value as it was when it was set, so a later change to it does
-// not reach a fork.
+// not reach a fork. So does a reconnecting connection.
 func TestFork_letValueChangedAfterwards(t *testing.T) {
 	skipBeforeV3(t)
 	ctx := context.Background()
-	db := mustNewWS("sessions", "fork_let")
-	defer db.Close(ctx)
 
-	m := map[string]any{"a": 1}
-	require.NoError(t, db.Let(ctx, "x", m))
-	m["a"] = 2
+	reconnecting := testenv.MustNewConfig("sessions", "fork_let", "fork_let")
+	reconnecting.Endpoint = testenv.GetSurrealDBWSURL()
+	reconnecting.ReconnectDuration = time.Second
 
-	fork, err := db.Fork(ctx)
-	require.NoError(t, err)
-	defer func() { _ = fork.Detach(ctx) }()
+	for name, newDB := range map[string]func() *surrealdb.DB{
+		"websocket":    func() *surrealdb.DB { return mustNewWS("sessions", "fork_let") },
+		"reconnecting": reconnecting.MustNew,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := newDB()
+			defer db.Close(ctx)
 
-	res, err := surrealdb.Query[map[string]any](ctx, fork, "RETURN $x", nil)
-	require.NoError(t, err)
-	assert.EqualValues(t, map[string]any{"a": uint64(1)}, (*res)[0].Result)
+			m := map[string]any{"a": 1}
+			require.NoError(t, db.Let(ctx, "x", m))
+			m["a"] = 2
+
+			fork, err := db.Fork(ctx)
+			require.NoError(t, err)
+			defer func() { _ = fork.Detach(ctx) }()
+
+			res, err := surrealdb.Query[map[string]any](ctx, fork, "RETURN $x", nil)
+			require.NoError(t, err)
+			assert.EqualValues(t, map[string]any{"a": uint64(1)}, (*res)[0].Result)
+		})
+	}
 }
 
 // After Revoke, the session stays signed in with the last renewed token, and

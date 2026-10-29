@@ -464,6 +464,21 @@ func (arws *Connection[C]) Health(ctx context.Context) error {
 	return hc.Health(ctx)
 }
 
+// GetMarshaler returns the marshaler of the connection in use, so that
+// [surrealdb.DB.Let] encodes a value once through a reconnecting connection
+// too, as it does through the built-in ones. It returns nil when that
+// connection does not expose one.
+func (arws *Connection[C]) GetMarshaler() codec.Marshaler {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	m, ok := any(conn).(interface{ GetMarshaler() codec.Marshaler })
+	if !ok {
+		return nil
+	}
+	return m.GetMarshaler()
+}
+
 // restoreAuth authenticates a new connection as the old one was. When the access
 // token is refused, as it is once it has expired, and a refresh token was kept,
 // it signs in with the refresh token instead, keeps the tokens that returns, and
