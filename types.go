@@ -29,6 +29,18 @@ type RPCError = connection.RPCError
 // se.Kind directly against the Kind* constants (e.g. [KindNotFound]).
 type ServerError = connection.ServerError
 
+// HealthError is returned by [DB.Health] when the server answers its health
+// check with a status other than 2xx, as it does when it cannot reach its
+// datastore.
+//
+// Extract it using errors.As:
+//
+//	var he *surrealdb.HealthError
+//	if errors.As(err, &he) {
+//	    fmt.Println(he.StatusCode, he.Body)
+//	}
+type HealthError = connection.HealthError
+
 // Known values for ServerError.Kind. See [connection.KindNotFound] and its
 // siblings for the full list and provenance.
 const (
