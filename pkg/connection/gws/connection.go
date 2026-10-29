@@ -26,7 +26,11 @@ type Connection struct {
 
 	Timeout time.Duration
 
-	closeCh    chan struct{}
+	// done is closed when the connection closes, by Close or because it was
+	// lost, and closeError then says why.
+	done       chan struct{}
+	closeOnce  sync.Once
+	closeMu    sync.RWMutex
 	closeError error
 	// closed is read by IsClosed without connLock, e.g. by contrib/rews
 	// checking whether to reconnect, so it is atomic.
@@ -35,7 +39,11 @@ type Connection struct {
 	handler *websocketHandler
 }
 
-var _ connection.Connection = (*Connection)(nil)
+var (
+	_ connection.Connection    = (*Connection)(nil)
+	_ connection.CloseNotifier = (*Connection)(nil)
+	_ connection.Redialer      = (*Connection)(nil)
+)
 
 type websocketHandler struct {
 	conn *Connection
@@ -53,20 +61,57 @@ func (h *websocketHandler) OnClose(socket *gws.Conn, err error) {
 	// closing the connection, it has already stopped them all.
 	defer h.conn.DrainAllLiveNotifications()
 
-	h.conn.connLock.Lock()
-	defer h.conn.connLock.Unlock()
-
-	if h.conn.closeCh != nil {
-		select {
-		case <-h.conn.closeCh:
-			// Already closed
-		default:
-			close(h.conn.closeCh)
-			h.conn.closeError = err
-		}
+	if err == nil {
+		err = connection.ErrConnectionClosed
 	}
+	h.conn.markClosed(err)
+}
 
-	h.conn.closed.Store(true)
+// markClosed records that the connection closed, with err nil when Close was
+// called. Only the first call counts.
+func (c *Connection) markClosed(err error) {
+	c.closeOnce.Do(func() {
+		c.closeMu.Lock()
+		c.closeError = err
+		c.closeMu.Unlock()
+		c.closed.Store(true)
+		if c.done != nil {
+			close(c.done)
+		}
+	})
+}
+
+// Closed returns a channel which is closed when the connection closes.
+func (c *Connection) Closed() <-chan struct{} {
+	return c.done
+}
+
+// CloseError returns why the connection closed: nil after Close.
+func (c *Connection) CloseError() error {
+	c.closeMu.RLock()
+	defer c.closeMu.RUnlock()
+	return c.closeError
+}
+
+// closedError is the error for a request on a closed connection.
+func (c *Connection) closedError() error {
+	if err := c.CloseError(); err != nil && !errors.Is(err, connection.ErrConnectionClosed) {
+		return fmt.Errorf("%w: %w", connection.ErrConnectionClosed, err)
+	}
+	return connection.ErrConnectionClosed
+}
+
+// Redial returns a new connection to the same server, with the same
+// configuration, for reconnecting after this one is lost.
+func (c *Connection) Redial() connection.Connection {
+	n := New(&connection.Config{
+		BaseURL:     c.BaseURL,
+		Marshaler:   c.Marshaler,
+		Unmarshaler: c.Unmarshaler,
+		Logger:      c.Logger,
+	})
+	n.Timeout = c.Timeout
+	return n
 }
 
 func (h *websocketHandler) OnMessage(socket *gws.Conn, message *gws.Message) {
@@ -173,6 +218,7 @@ func New(params *connection.Config) *Connection {
 	conn.ResponseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
 	conn.NotificationChannels = make(map[string]chan connection.Notification)
 	conn.Logger = params.Logger
+	conn.done = make(chan struct{})
 
 	return conn
 }
@@ -198,14 +244,7 @@ func (c *Connection) Close(ctx context.Context) error {
 	}
 
 	// Signal closing
-	if c.closeCh != nil {
-		select {
-		case <-c.closeCh:
-			// Already closed
-		default:
-			close(c.closeCh)
-		}
-	}
+	c.markClosed(nil)
 
 	err := c.conn.WriteClose(constants.CloseMessageCode, []byte(""))
 	if err != nil {
@@ -272,7 +311,6 @@ func (c *Connection) Connect(ctx context.Context) error {
 	defer c.connLock.Unlock()
 
 	c.conn = conn
-	c.closeCh = make(chan struct{})
 
 	// Start reading messages
 	go conn.ReadLoop()
@@ -359,8 +397,8 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	}
 
 	select {
-	case <-c.closeCh:
-		return nil, c.closeError
+	case <-c.done:
+		return nil, c.closedError()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
@@ -388,6 +426,8 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	case <-c.done:
+		return nil, c.closedError()
 	case rpcRes, open := <-responseChan:
 		if !open {
 			return nil, errors.New("response channel closed")
