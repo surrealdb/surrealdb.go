@@ -15,7 +15,7 @@ type options struct {
 func defaultOptions() options {
 	return options{
 		versionCheck: false,
-		tokenRenewal: true,
+		tokenRenewal: false,
 		expiryMargin: DefaultTokenExpiryMargin,
 	}
 }
@@ -42,11 +42,16 @@ func WithVersionCheck(enabled bool) Option {
 	}
 }
 
-// WithTokenRenewal turns automatic token renewal on or off. It is on by
-// default: once a session holds a token pair, from [DB.SignInWithRefresh],
-// [DB.SignUpWithRefresh] or [DB.Refresh], the client exchanges it for a new
-// pair shortly before the access token expires, and keeps doing so. The
-// current pair is returned by [DB.Tokens].
+// WithTokenRenewal turns automatic token renewal on or off. It is off by
+// default. When it is on, once a session holds a token pair, from
+// [DB.SignInWithRefresh], [DB.SignUpWithRefresh] or [DB.Refresh], the client
+// exchanges it for a new pair shortly before the access token expires, and
+// keeps doing so. The current pair is returned by [DB.Tokens].
+//
+// Each renewal uses up the refresh token of the pair it replaces, as the server
+// revokes a refresh token once it is used. So a program which saves the pair
+// from SignInWithRefresh, to use it later, must save the pair from
+// [DB.Tokens] instead once renewal is on.
 func WithTokenRenewal(enabled bool) Option {
 	return func(o *options) {
 		o.tokenRenewal = enabled

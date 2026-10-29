@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,14 +15,101 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	surrealhttp "github.com/surrealdb/surrealdb.go/pkg/connection/http"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // jwtExpiringIn returns an unsigned JWT whose exp claim is d from now.
 func jwtExpiringIn(d time.Duration) string {
+	return jwt(fmt.Sprintf(`{"exp":%d}`, time.Now().Add(d).Unix()))
+}
+
+// jwt returns an unsigned JWT with the given claims.
+func jwt(claims string) string {
 	enc := base64.RawURLEncoding.EncodeToString
-	payload := fmt.Sprintf(`{"exp":%d}`, time.Now().Add(d).Unix())
-	return enc([]byte(`{"alg":"none"}`)) + "." + enc([]byte(payload)) + ".sig"
+	return enc([]byte(`{"alg":"none"}`)) + "." + enc([]byte(claims)) + ".sig"
+}
+
+// A token's lifetime comes from its own claims when it has iat, so that a
+// client clock out of step with the server's does not change it.
+func TestTokenLifetime(t *testing.T) {
+	skewed := time.Now().Add(-48 * time.Hour)
+	lifetime, ok := tokenLifetime(jwt(fmt.Sprintf(`{"iat":%d,"exp":%d}`, skewed.Unix(), skewed.Add(time.Hour).Unix())))
+	require.True(t, ok)
+	assert.Equal(t, time.Hour, lifetime)
+
+	lifetime, ok = tokenLifetime(jwtExpiringIn(time.Hour))
+	require.True(t, ok)
+	assert.InDelta(t, float64(time.Hour), float64(lifetime), float64(2*time.Second))
+}
+
+// A token which looks expired already is not renewed in a tight loop.
+func TestRenewer_expiredTokensWait(t *testing.T) {
+	var calls atomic.Int32
+	r := newRenewer(time.Minute, func(context.Context, Tokens) (*Tokens, error) {
+		calls.Add(1)
+		return &Tokens{Access: jwtExpiringIn(-time.Hour), Refresh: "r"}, nil
+	})
+	defer r.stop()
+
+	r.set(&Tokens{Access: jwtExpiringIn(-time.Hour), Refresh: "r"})
+	time.Sleep(1500 * time.Millisecond)
+	assert.Equal(t, int32(1), calls.Load())
+}
+
+// The refresh token still works once the access token has expired, so a
+// renewal which fails for want of the server goes on after that.
+func TestRenewer_retriesPastExpiry(t *testing.T) {
+	var calls atomic.Int32
+	up := time.Now().Add(3500 * time.Millisecond)
+	renewed := make(chan Tokens, 1)
+	r := newRenewer(time.Minute, func(_ context.Context, tokens Tokens) (*Tokens, error) {
+		calls.Add(1)
+		if time.Now().Before(up) {
+			return nil, errors.New("connection refused")
+		}
+		next := Tokens{Access: jwtExpiringIn(time.Hour), Refresh: tokens.Refresh + "+"}
+		renewed <- next
+		return &next, nil
+	})
+	defer r.stop()
+
+	r.set(&Tokens{Access: jwtExpiringIn(2 * time.Second), Refresh: "r"})
+	select {
+	case next := <-renewed:
+		assert.Equal(t, "r+", next.Refresh)
+	case <-time.After(10 * time.Second):
+		t.Fatalf("the pair was not renewed after %d attempts", calls.Load())
+	}
+}
+
+// Once the access token has expired, a refresh token the server refuses ends
+// renewal, as retrying cannot change the answer.
+func TestRenewer_givesUpWhenRefused(t *testing.T) {
+	var calls atomic.Int32
+	r := newRenewer(time.Minute, func(context.Context, Tokens) (*Tokens, error) {
+		calls.Add(1)
+		return nil, &connection.RPCError{Code: -32000, Message: "the refresh token is invalid"} //nolint:staticcheck // what the server answers with
+	})
+	defer r.stop()
+
+	r.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
+	time.Sleep(3500 * time.Millisecond)
+	assert.Equal(t, int32(1), calls.Load())
+}
+
+func TestRefusedByServer(t *testing.T) {
+	assert.True(t, refusedByServer(fmt.Errorf("refresh: %w", &connection.RPCError{Code: -32000}))) //nolint:staticcheck // what the server answers with
+	assert.True(t, refusedByServer(&surrealhttp.StatusError{StatusCode: 401}))
+	assert.False(t, refusedByServer(&surrealhttp.StatusError{StatusCode: 502}))
+	assert.False(t, refusedByServer(&surrealhttp.StatusError{StatusCode: 429}))
+	assert.False(t, refusedByServer(errors.New("connection reset by peer")))
+	assert.False(t, refusedByServer(context.DeadlineExceeded))
+}
+
+// DB stays comparable, as it was before it kept the renewers of sessions.
+func TestDB_comparable(t *testing.T) {
+	assert.True(t, reflect.TypeOf(DB{}).Comparable())
 }
 
 func TestTokenExpiry(t *testing.T) {
@@ -170,7 +258,7 @@ func TestDB_closeStopsEveryRenewal(t *testing.T) {
 		calls.Add(1)
 		return nil, errors.New("unexpected")
 	}
-	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh)}
+	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh), sessionRenewers: newRenewerSet()}
 	session := newRenewer(time.Minute, refresh)
 	db.trackSessionRenewer(session)
 
@@ -245,7 +333,7 @@ func (c detachConnection) Call(ctx context.Context, req *connection.RPCRequest) 
 // Detaching a session cancels its renewal under way, and waits for it.
 func TestSession_detachCancelsAnInflightRenewal(t *testing.T) {
 	b := newBlockingRefresh()
-	db := &DB{con: detachConnection{refresh: b}}
+	db := &DB{con: detachConnection{refresh: b}, sessionRenewers: newRenewerSet()}
 	s := &Session{db: db, id: &models.UUID{}}
 	s.renew = newRenewer(time.Minute, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
 		return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
