@@ -126,6 +126,9 @@ var (
 	SignIn       RPCFunction = "signin"
 	Authenticate RPCFunction = "authenticate"
 	Invalidate   RPCFunction = "invalidate"
+	Refresh      RPCFunction = "refresh"
+	Revoke       RPCFunction = "revoke"
+	Reset        RPCFunction = "reset"
 	Let          RPCFunction = "let"
 	Unset        RPCFunction = "unset"
 	Live         RPCFunction = "live"
@@ -144,7 +147,10 @@ var (
 	// SurrealDB v3+ session and transaction methods
 	Attach RPCFunction = "attach"
 	Detach RPCFunction = "detach"
-	Begin  RPCFunction = "begin"
-	Commit RPCFunction = "commit"
-	Cancel RPCFunction = "cancel"
+	// Sessions lists the sessions attached to the connection, other than its
+	// default one.
+	Sessions RPCFunction = "sessions"
+	Begin    RPCFunction = "begin"
+	Commit   RPCFunction = "commit"
+	Cancel   RPCFunction = "cancel"
 )

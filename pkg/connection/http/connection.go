@@ -158,6 +158,11 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, res.Error
 	}
 
+	// A request canceled while its answer arrived changes no state, so that
+	// the answer to a canceled refresh, for one, is not applied.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.trackAuth(request, res.Result)
 
 	return &res, nil
@@ -181,10 +186,11 @@ const methodGQL = "gql"
 // checked with, so is sent without the token the connection keeps. The server
 // checks the Authorization header of every request, and answers 401 to one
 // whose token it no longer accepts, so sending the stored token would keep a
-// connection whose token has expired from signing in again.
+// connection whose token has expired from signing in again, or from refreshing
+// or revoking its tokens.
 func sendsOwnCredentials(method string) bool {
 	switch method {
-	case "signin", "signup", "authenticate":
+	case "signin", "signup", "refresh", "revoke", "authenticate":
 		return true
 	}
 	return false
@@ -508,11 +514,11 @@ func (c *Connection) variablesObject(v any) (map[string]any, bool) {
 	return m, true
 }
 
-// trackAuth keeps the token of a successful signin, signup or authenticate
-// request, however it was sent.
+// trackAuth keeps the token of a successful signin, signup, refresh or
+// authenticate request, however it was sent.
 func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawMessage) {
 	switch request.Method {
-	case "signin", "signup":
+	case "signin", "signup", "refresh":
 		if result == nil {
 			return
 		}
