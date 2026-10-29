@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -66,9 +67,10 @@ type Bound[T any] interface {
 
 // Range is a SurrealQL range such as 1..=10 or an open `..`.
 //
-// A nil Begin or End means that side is open (no limit). Do not pass [None]
-// as a scalar begin/end — SurrealDB rejects that. Use [None] inside
-// array-style ids, for example []any{"London", None}.
+// A nil Begin or End means that side is open (no limit). In a record ID range,
+// a bound's value cannot be NULL (nil) or [None]: SurrealDB rejects that, so
+// [RecordID.MarshalCBOR] returns an error. Use [None] inside array-style ids,
+// for example []any{"London", None}.
 //
 // For convenient constructors (open and closed forms), use the helpers in
 // github.com/surrealdb/surrealdb.go/contrib/surrealql.
@@ -97,27 +99,57 @@ func (r Range[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 	})
 }
 
+// UnmarshalCBOR decodes a range. An open side (CBOR null, undefined or NONE)
+// leaves Begin or End nil, the same as MarshalCBOR writes it.
 func (r *Range[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
 	data, err := getTaggedContent(data, TagRange)
 	if err != nil {
 		return fmt.Errorf("Range: %w", err)
 	}
 
-	var temp [2]cbor.RawTag
-	if err := cbor.Unmarshal(data, &temp); err != nil {
-		return err
+	var bounds []cbor.RawMessage
+	if err = cbor.Unmarshal(data, &bounds); err != nil {
+		return fmt.Errorf("Range: %w", err)
+	}
+	if len(bounds) != 2 {
+		return fmt.Errorf("Range: expected 2 bounds, got %d", len(bounds))
 	}
 
-	var begin TBeg
-	beginEnc, _ := temp[0].MarshalCBOR()
-	_ = cbor.Unmarshal(beginEnc, &begin)
+	begin, err := unmarshalBound[TBeg](bounds[0])
+	if err != nil {
+		return fmt.Errorf("Range begin: %w", err)
+	}
+	end, err := unmarshalBound[TEnd](bounds[1])
+	if err != nil {
+		return fmt.Errorf("Range end: %w", err)
+	}
 
-	var end TEnd
-	endEnc, _ := temp[1].MarshalCBOR()
-	_ = cbor.Unmarshal(endEnc, &end)
+	r.Begin = begin
+	r.End = end
+	return nil
+}
 
-	r.Begin = &begin
-	r.End = &end
+// unmarshalBound decodes one side of a range. An open side decodes to nil.
+func unmarshalBound[B any](data cbor.RawMessage) (*B, error) {
+	var none CustomNil
+	if none.UnmarshalCBOR(data) == nil {
+		return nil, nil
+	}
+
+	bound := new(B)
+	if err := cbor.Unmarshal(data, bound); err != nil {
+		return nil, err
+	}
+	return bound, nil
+}
+
+// validateRecordIDRange returns an error if Begin or End holds NULL or NONE.
+// SurrealDB cannot decode a record ID range with such a bound; see
+// [RecordID.MarshalCBOR]. A nil Begin or End is an open side, which is fine.
+func (r Range[T, TBeg, TEnd]) validateRecordIDRange() error {
+	if isNullOrNoneBound(r.Begin) || isNullOrNoneBound(r.End) {
+		return errors.New("a range bound is NULL or NONE; leave that side open (nil Begin or End) instead")
+	}
 	return nil
 }
 
@@ -136,6 +168,27 @@ func (rr RecordRangeID[T, TBeg, TEnd]) MarshalCBOR() ([]byte, error) {
 		ID:    rr.Range,
 	}
 	return rid.MarshalCBOR()
+}
+
+// UnmarshalCBOR decodes a record ID whose ID is a range, the inverse of MarshalCBOR.
+func (rr *RecordRangeID[T, TBeg, TEnd]) UnmarshalCBOR(data []byte) error {
+	content, err := getTaggedContent(data, TagRecordID)
+	if err != nil {
+		return fmt.Errorf("RecordRangeID: %w", err)
+	}
+
+	var rid struct {
+		_     struct{} `cbor:",toarray"`
+		Table string
+		Range Range[T, TBeg, TEnd]
+	}
+	if err := cbor.Unmarshal(content, &rid); err != nil {
+		return fmt.Errorf("RecordRangeID: %w", err)
+	}
+
+	rr.Table = Table(rid.Table)
+	rr.Range = rid.Range
+	return nil
 }
 
 // joinFromBounds returns the SurrealQL join between two bounds: .., ..=, >.., or >..=.
@@ -175,6 +228,26 @@ func isIncludedBound(v any) bool {
 	}
 	name := t.Name()
 	return name == "BoundIncluded" || strings.HasPrefix(name, "BoundIncluded[")
+}
+
+// isNullOrNoneBound reports whether v, a *BoundIncluded[T] or *BoundExcluded[T],
+// holds NULL (a nil value) or NONE. A nil v is an open side, not a NULL bound.
+func isNullOrNoneBound(v any) bool {
+	if isNilBound(v) {
+		return false
+	}
+	value := reflect.ValueOf(v).Elem().FieldByName("Value")
+	if !value.IsValid() {
+		return false
+	}
+	if (value.Kind() == reflect.Interface || value.Kind() == reflect.Pointer) && value.IsNil() {
+		return true
+	}
+	switch value.Interface().(type) {
+	case CustomNil, *CustomNil:
+		return true
+	}
+	return false
 }
 
 func boundValueString(v any) string {

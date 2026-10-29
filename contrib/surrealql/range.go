@@ -42,9 +42,9 @@ func RangeOpenEndExclusive[T any](t T) models.Range[T, models.BoundIncluded[T], 
 }
 
 // RangeBeginInclusiveEndInclusive returns a range with both ends inclusive
-// (`a..=b`). a and b may be different Go types. Pass nil for a bound value of
-// NULL (that is not the same as leaving a side open — use the RangeOpen*
-// helpers for open sides).
+// (`a..=b`). a and b may be different Go types. In a record ID range, a and b
+// cannot be nil (NULL) or models.None; use the RangeOpen* helpers to leave a
+// side open.
 func RangeBeginInclusiveEndInclusive(a, b any) models.Range[any, models.BoundIncluded[any], models.BoundIncluded[any]] {
 	return models.Range[any, models.BoundIncluded[any], models.BoundIncluded[any]]{
 		Begin: &models.BoundIncluded[any]{Value: a},

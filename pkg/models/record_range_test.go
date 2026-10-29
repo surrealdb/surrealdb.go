@@ -180,6 +180,84 @@ func TestRecordRangeID_MarshalCBOR_UsesRange(t *testing.T) {
 	assert.Equal(t, TagRange, rangeTag.Number)
 }
 
+func TestRecordRangeID_UnmarshalCBOR_RoundTrip(t *testing.T) {
+	type rangeID = RecordRangeID[int, BoundIncluded[int], BoundExcluded[int]]
+	cases := map[string]rangeID{
+		"closed": {
+			Range: Range[int, BoundIncluded[int], BoundExcluded[int]]{
+				Begin: &BoundIncluded[int]{Value: 1},
+				End:   &BoundExcluded[int]{Value: 10},
+			},
+			Table: Table("person"),
+		},
+		"open end":  {Range: Range[int, BoundIncluded[int], BoundExcluded[int]]{Begin: &BoundIncluded[int]{Value: 1}}, Table: Table("person")},
+		"both open": {Table: Table("person")},
+	}
+	for name, rr := range cases {
+		t.Run(name, func(t *testing.T) {
+			encoded, err := cbor.Marshal(rr)
+			require.NoError(t, err)
+
+			var decoded rangeID
+			require.NoError(t, cbor.Unmarshal(encoded, &decoded))
+			assert.Equal(t, rr, decoded)
+		})
+	}
+
+	t.Run("bare range is not a record ID", func(t *testing.T) {
+		encoded, err := cbor.Marshal(Range[int, BoundIncluded[int], BoundExcluded[int]]{})
+		require.NoError(t, err)
+
+		var decoded rangeID
+		assert.ErrorContains(t, cbor.Unmarshal(encoded, &decoded), "unexpected tag number: got 49, want 8")
+	})
+}
+
+func TestRange_UnmarshalCBOR_OpenSides(t *testing.T) {
+	type intRange = Range[int, BoundIncluded[int], BoundIncluded[int]]
+
+	t.Run("round trip", func(t *testing.T) {
+		for _, r := range []intRange{
+			{Begin: &BoundIncluded[int]{Value: 1}, End: &BoundIncluded[int]{Value: 10}},
+			{Begin: &BoundIncluded[int]{Value: 1}},
+			{End: &BoundIncluded[int]{Value: 10}},
+			{},
+		} {
+			encoded, err := cbor.Marshal(r)
+			require.NoError(t, err)
+
+			var decoded intRange
+			require.NoError(t, cbor.Unmarshal(encoded, &decoded))
+			assert.Equal(t, r, decoded, r.String())
+		}
+	})
+
+	t.Run("undefined and NONE are open sides", func(t *testing.T) {
+		// 49([undefined, 6(null)])
+		var decoded intRange
+		require.NoError(t, cbor.Unmarshal([]byte{0xd8, 0x31, 0x82, 0xf7, 0xc6, 0xf6}, &decoded))
+		assert.Nil(t, decoded.Begin)
+		assert.Nil(t, decoded.End)
+	})
+
+	t.Run("mismatched bound is an error", func(t *testing.T) {
+		encoded, err := cbor.Marshal(Range[int, BoundIncluded[int], BoundExcluded[int]]{
+			Begin: &BoundIncluded[int]{Value: 1},
+			End:   &BoundExcluded[int]{Value: 10},
+		})
+		require.NoError(t, err)
+
+		var decoded intRange
+		assert.ErrorContains(t, cbor.Unmarshal(encoded, &decoded), "Range end: BoundIncluded: unexpected tag number: got 51, want 50")
+	})
+
+	t.Run("wrong number of bounds is an error", func(t *testing.T) {
+		// 49([null])
+		var decoded intRange
+		assert.ErrorContains(t, cbor.Unmarshal([]byte{0xd8, 0x31, 0x81, 0xf6}, &decoded), "expected 2 bounds, got 1")
+	})
+}
+
 func TestRecordID_Range_MarshalCBOR_OpenNoneNullNested(t *testing.T) {
 	t.Run("open end is null slot", func(t *testing.T) {
 		rr := personRange(Range[any, BoundIncluded[any], BoundIncluded[any]]{
@@ -199,26 +277,35 @@ func TestRecordID_Range_MarshalCBOR_OpenNoneNullNested(t *testing.T) {
 		assertBoundIncluded(t, bounds[1], int64(10))
 	})
 
-	t.Run("Begin=None is TagBoundIncluded + TagNone", func(t *testing.T) {
+	// SurrealDB can't decode a record ID range with a NULL or NONE bound, and
+	// over WebSocket the call would hang, so marshaling must fail instead.
+	t.Run("Begin=None is rejected", func(t *testing.T) {
 		rr := personRange(Range[any, BoundIncluded[any], BoundIncluded[any]]{
 			Begin: &BoundIncluded[any]{Value: None},
 			End:   &BoundIncluded[any]{Value: 10},
 		})
-		bounds := encodeRecordIDRangeBounds(t, rr)
-		begin := assertBoundIncludedTag(t, bounds[0])
-		noneTag, ok := begin.(cbor.Tag)
-		require.True(t, ok)
-		assert.Equal(t, TagNone, noneTag.Number)
+		_, err := cbor.Marshal(&rr)
+		assert.ErrorContains(t, err, "NULL or NONE")
 	})
 
-	t.Run("End=nil is TagBoundIncluded + null value", func(t *testing.T) {
+	t.Run("End=nil (NULL) is rejected", func(t *testing.T) {
 		rr := personRange(Range[any, BoundIncluded[any], BoundIncluded[any]]{
 			Begin: &BoundIncluded[any]{Value: 1},
 			End:   &BoundIncluded[any]{Value: nil},
 		})
-		bounds := encodeRecordIDRangeBounds(t, rr)
-		end := assertBoundIncludedTag(t, bounds[1])
-		assert.Nil(t, end, "NULL bound value must be CBOR null inside the included tag")
+		_, err := cbor.Marshal(&rr)
+		assert.ErrorContains(t, err, "NULL or NONE")
+	})
+
+	t.Run("RecordRangeID with a NULL bound is rejected", func(t *testing.T) {
+		rr := RecordRangeID[*int, BoundIncluded[*int], BoundExcluded[*int]]{
+			Range: Range[*int, BoundIncluded[*int], BoundExcluded[*int]]{
+				Begin: &BoundIncluded[*int]{Value: nil},
+			},
+			Table: Table("person"),
+		}
+		_, err := cbor.Marshal(rr)
+		assert.ErrorContains(t, err, "NULL or NONE")
 	})
 
 	t.Run("End=open Range nests TagRange with both slots null", func(t *testing.T) {

@@ -152,7 +152,8 @@ func printOmitVsNoneIDs(label string, rows []omitVsNonePerson) {
 
 // queryRangeBound runs SELECT through type::thing (v2) / type::record (v3).
 // SurrealDB rejects NONE/NULL as scalar record-id bounds; this path returns
-// that error cleanly (passing such a range to Select can stall the WS).
+// the server's error. Select returns an error for such a range before sending
+// it (see models.RecordID.MarshalCBOR).
 func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any) error {
 	ver, err := testenv.GetVersion(ctx, db)
 	if err != nil {

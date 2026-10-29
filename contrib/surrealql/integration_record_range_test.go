@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,21 +14,10 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
-func TestIntegration_RecordRange_v2(t *testing.T) {
-	runRecordRangeIntegration(t, "v2.3.7")
-}
-
-func TestIntegration_RecordRange_v3(t *testing.T) {
-	runRecordRangeIntegration(t, "v3.0.4")
-}
-
-// runRecordRangeIntegration checks selecting records by id range against a live server.
-func runRecordRangeIntegration(t *testing.T, version string) {
-	t.Helper()
-
-	db, cleanup := testenv.SetupVersionTest(t, version)
-	defer cleanup()
-
+// TestIntegration_RecordRange checks selecting records by id range against the
+// server, transport and codec that the test environment provides.
+func TestIntegration_RecordRange(t *testing.T) {
+	db := testenv.MustNew("surrealqlexamples", "rr_integration", "person", "temp", "temp3")
 	ctx := context.Background()
 
 	ver, err := testenv.GetVersion(ctx, db)
@@ -73,6 +63,35 @@ func runRecordRangeIntegration(t *testing.T, version string) {
 		got, err := surrealdb.Select[[]Person](ctx, db, what)
 		require.NoError(t, err)
 		require.Len(t, *got, 2)
+	})
+
+	t.Run("core Select with a NULL or NONE bound fails before sending", func(t *testing.T) {
+		// The server can't decode such a range, and over WebSocket the call
+		// would otherwise hang until the timeout.
+		timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		for _, id := range []any{
+			surrealql.RangeBeginInclusiveEndInclusive(1, nil),
+			surrealql.RangeBeginInclusiveEndInclusive(models.None, 10),
+		} {
+			_, err := surrealdb.Select[[]Person](timeoutCtx, db, models.RecordID{Table: "person", ID: id})
+			require.ErrorContains(t, err, "NULL or NONE")
+		}
+	})
+
+	t.Run("ranges from the server decode with open sides", func(t *testing.T) {
+		type intRange = models.Range[int, models.BoundIncluded[int], models.BoundIncluded[int]]
+		res, err := surrealdb.Query[intRange](ctx, db, "RETURN 1..", nil)
+		require.NoError(t, err)
+		r := (*res)[0].Result
+		require.NotNil(t, r.Begin)
+		assert.Equal(t, 1, r.Begin.Value)
+		assert.Nil(t, r.End)
+
+		rid, err := surrealdb.Query[models.RecordRangeID[int, models.BoundIncluded[int], models.BoundIncluded[int]]](
+			ctx, db, "RETURN person:1..=10", nil)
+		require.NoError(t, err)
+		assert.Equal(t, "person:1..=10", (*rid)[0].Result.String())
 	})
 
 	t.Run("surrealql Select with RecordID range", func(t *testing.T) {

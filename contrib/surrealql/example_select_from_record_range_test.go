@@ -64,24 +64,11 @@ func ExampleSelect_recordIDRange_open() {
 	//   from_id_1: {person ..}
 }
 
-// ExampleSelect_recordIDRange_nullBound shows NULL as a bound value.
-//
-// RangeBeginInclusiveEndInclusive(1, nil) stores NULL on the end side. That is not "leave the side
-// open" — use RangeOpenBeginInclusive when the end has no limit.
-func ExampleSelect_recordIDRange_nullBound() {
-	sql, vars := surrealql.Select(models.RecordID{
-		Table: "person",
-		ID:    surrealql.RangeBeginInclusiveEndInclusive(1, nil),
-	}).Build()
-	fmt.Println(sql)
-	dumpVars(vars)
-	// Output:
-	// SELECT * FROM $from_id_1
-	// Vars:
-	//   from_id_1: {person 1..=<nil>}
-}
-
 // ExampleSelect_recordIDRange_nestedOpenRange shows open `..` as a bound value.
+//
+// A whole bound of `..`, as in person:1..=.., needs SurrealDB 3.x. SurrealDB 2.x
+// can't decode it, so the request fails. On both versions, `..` works as a
+// part of an array-style id (ExampleSelect_recordIDRange_compositeID).
 func ExampleSelect_recordIDRange_nestedOpenRange() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "person",
