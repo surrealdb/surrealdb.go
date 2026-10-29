@@ -63,8 +63,10 @@ func skipBeforeV3(t *testing.T) {
 	}
 }
 
+// newClient returns a client with token renewal on, unless opts turn it off.
 func newClient(t *testing.T, endpoint string, opts ...surrealdb.Option) *surrealdb.DB {
 	t.Helper()
+	opts = append([]surrealdb.Option{surrealdb.WithTokenRenewal(true)}, opts...)
 	db, err := surrealdb.FromEndpointURLStringWithOptions(context.Background(), endpoint, opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close(context.Background()) })
@@ -182,6 +184,15 @@ func TestTokenRenewal(t *testing.T) {
 	t.Run("off", func(t *testing.T) {
 		db := newClient(t, testenv.GetSurrealDBWSURL(), surrealdb.WithTokenRenewal(false))
 		signUpWithRefresh(t, db, "norenew"+uniq())
+		assert.Nil(t, db.Tokens())
+	})
+
+	t.Run("off by default", func(t *testing.T) {
+		db, err := surrealdb.FromEndpointURLString(context.Background(), testenv.GetSurrealDBWSURL())
+		require.NoError(t, err)
+		defer db.Close(context.Background())
+		require.NoError(t, db.Use(context.Background(), refreshNS, refreshDB))
+		signUpWithRefresh(t, db, "defaultrenew"+uniq())
 		assert.Nil(t, db.Tokens())
 	})
 }

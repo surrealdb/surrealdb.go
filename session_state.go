@@ -133,19 +133,51 @@ func (db *DB) newSession(id models.UUID, tracked bool) *Session {
 	return s
 }
 
-// registerSessionLocked registers a Session object with the client. The
-// caller holds sessionsMu.
-func (db *DB) registerSessionLocked(s *Session) {
-	if db.sessions == nil {
-		db.sessions = make(map[models.UUID]*Session)
+// sessionRegistry holds the Session objects of a client, by ID.
+type sessionRegistry struct {
+	mu   sync.Mutex
+	byID map[models.UUID]*Session
+}
+
+// addLocked registers a Session object. The caller holds mu.
+func (r *sessionRegistry) addLocked(s *Session) {
+	if r.byID == nil {
+		r.byID = make(map[models.UUID]*Session)
 	}
-	db.sessions[*s.id] = s
+	r.byID[*s.id] = s
+}
+
+func (r *sessionRegistry) add(s *Session) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.addLocked(s)
+}
+
+func (r *sessionRegistry) remove(id models.UUID) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.byID, id)
+}
+
+// all returns the registered sessions.
+func (r *sessionRegistry) all() []*Session {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sessions := make([]*Session, 0, len(r.byID))
+	for _, s := range r.byID {
+		sessions = append(sessions, s)
+	}
+	return sessions
 }
 
 func (db *DB) forgetSession(id models.UUID) {
-	db.sessionsMu.Lock()
-	defer db.sessionsMu.Unlock()
-	delete(db.sessions, id)
+	db.sessions.remove(id)
 }
 
 // Sessions lists the sessions attached to the connection, other than its
@@ -171,15 +203,15 @@ func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 
 	// The lookups and inserts happen under one hold of the lock, so that a
 	// session Attach registers meanwhile is not replaced.
-	db.sessionsMu.Lock()
-	defer db.sessionsMu.Unlock()
+	db.sessions.mu.Lock()
+	defer db.sessions.mu.Unlock()
 	sessions := make([]*Session, 0, len(*ids))
 	for _, id := range *ids {
-		s, ok := db.sessions[id]
+		s, ok := db.sessions.byID[id]
 		if !ok {
 			// Attached on this connection without the client.
 			s = db.newSession(id, false)
-			db.registerSessionLocked(s)
+			db.sessions.addLocked(s)
 		}
 		sessions = append(sessions, s)
 	}

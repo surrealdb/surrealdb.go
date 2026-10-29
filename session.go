@@ -82,9 +82,7 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 	// The session is registered before it is attached, so that Sessions,
 	// which may list it as soon as the server has it, returns this object.
 	s := db.newSession(sessionID, true)
-	db.sessionsMu.Lock()
-	db.registerSessionLocked(s)
-	db.sessionsMu.Unlock()
+	db.sessions.add(s)
 
 	// Send the attach RPC request with the session UUID as a top-level field
 	req := &connection.RPCRequest{

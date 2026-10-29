@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
-	"sync"
 
 	"github.com/fxamacker/cbor/v2"
 
@@ -49,11 +48,11 @@ type DB struct {
 	// token renewal is turned off.
 	renew *renewer
 	// state is what the default session holds, for Fork.
-	state sessionState
-
-	sessionsMu sync.Mutex
-	// sessions are the sessions attached with this client, by ID.
-	sessions map[models.UUID]*Session
+	state *sessionState
+	// sessions are the sessions attached with this client.
+	//
+	// Both are pointers, so that DB stays comparable and holds no lock.
+	sessions *sessionRegistry
 }
 
 // New creates a new SurrealDB client.
@@ -88,10 +87,10 @@ func FromConnectionWithOptions(ctx context.Context, conn connection.Connection, 
 		return nil, err
 	}
 
-	db := &DB{con: conn, opts: o}
+	db := &DB{con: conn, opts: o, state: &sessionState{}, sessions: &sessionRegistry{}}
 	if o.tokenRenewal {
 		db.renew = newRenewer(o.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
-			return rpc.Refresh(conn, ctx, tokens)
+			return rpc.Refresh(conn, ctx, heldTokens(ctx, conn, tokens))
 		})
 	}
 
@@ -103,6 +102,28 @@ func FromConnectionWithOptions(ctx context.Context, conn connection.Connection, 
 	}
 
 	return db, nil
+}
+
+// tokenHolder is a connection which holds the session's token pair itself, and
+// may replace it, as one from contrib/rews does when a reconnection refreshes
+// an expired access token.
+type tokenHolder interface {
+	Tokens(ctx context.Context) (connection.Tokens, error)
+}
+
+// heldTokens returns the pair to renew: the one the connection holds, if it
+// holds one with a refresh token, as it may have replaced tokens since the
+// client recorded them, and tokens otherwise.
+func heldTokens(ctx context.Context, conn connection.Connection, tokens Tokens) Tokens {
+	holder, ok := conn.(tokenHolder)
+	if !ok {
+		return tokens
+	}
+	held, err := holder.Tokens(ctx)
+	if err != nil || held.Refresh == "" {
+		return tokens
+	}
+	return held
 }
 
 // Deprecated: Use FromEndpointURLString instead.
@@ -200,13 +221,7 @@ func (db *DB) Close(ctx context.Context) error {
 	db.renew.stop()
 	// The renewers are stopped outside the lock, as stopping one waits for
 	// a renewal under way.
-	db.sessionsMu.Lock()
-	sessions := make([]*Session, 0, len(db.sessions))
-	for _, s := range db.sessions {
-		sessions = append(sessions, s)
-	}
-	db.sessionsMu.Unlock()
-	for _, s := range sessions {
+	for _, s := range db.sessions.all() {
 		s.renew.stop()
 	}
 	return db.con.Close(ctx)
@@ -453,8 +468,8 @@ type Tokens = connection.Tokens
 // For bearer access methods, use SignIn with the "key" parameter.
 // For other access methods (system users, record users without refresh), use SignIn.
 //
-// Unless token renewal is turned off with [WithTokenRenewal], the client then
-// renews the pair before the access token expires; see [DB.Tokens].
+// With token renewal turned on by [WithTokenRenewal], the client then renews
+// the pair before the access token expires; see [DB.Tokens].
 //
 // The server replaces a refresh token once it is used. On a connection from
 // contrib/rews, a reconnection after the access token has expired signs in with
@@ -479,9 +494,9 @@ func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, err
 // the refresh token it is given, so only the returned pair can be refreshed
 // again. Refresh needs SurrealDB v3+.
 //
-// The client renews the pair it holds by itself unless token renewal is turned
-// off with [WithTokenRenewal], so Refresh is mostly for pairs kept elsewhere,
-// such as one stored between runs of a program.
+// With token renewal turned on by [WithTokenRenewal], the client renews the
+// pair it holds by itself, and Refresh is then mostly for pairs kept
+// elsewhere, such as one stored between runs of a program.
 func (db *DB) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
 	if err := db.renew.lockAuth(ctx); err != nil {
 		return nil, err
@@ -519,7 +534,11 @@ func (db *DB) Revoke(ctx context.Context, tokens Tokens) error {
 
 // Tokens returns the token pair the session holds, which changes each time the
 // client renews it, or nil when the session holds no pair or token renewal is
-// turned off.
+// off, as it is unless [WithTokenRenewal] turns it on.
+//
+// On a connection from contrib/rews, a reconnection after the access token has
+// expired replaces the pair, which the client then renews. Until it does,
+// Tokens returns the pair it replaced: read rews.Connection.Tokens instead.
 func (db *DB) Tokens() *Tokens {
 	return db.renew.current()
 }
