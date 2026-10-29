@@ -15,9 +15,9 @@ const (
 	MaximumServerVersion = "5.0.0"
 )
 
-// UnsupportedVersionError is returned when connecting to a server whose version
-// is outside the range this SDK supports. Pass [WithVersionCheck](false) to
-// connect anyway.
+// UnsupportedVersionError is returned, when [WithVersionCheck] is on, when
+// connecting to a server whose version is outside the range this SDK supports.
+// Pass [WithVersionCheck](false) to connect anyway.
 type UnsupportedVersionError struct {
 	// Version is the version the server reported.
 	Version string
@@ -28,7 +28,8 @@ type UnsupportedVersionError struct {
 }
 
 func (e *UnsupportedVersionError) Error() string {
-	return fmt.Sprintf("SurrealDB server version %q is not supported by this SDK (supported: >= %s, < %s)",
+	return fmt.Sprintf("SurrealDB server version %q is not supported by this SDK (supported: >= %s, < %s); "+
+		"to connect anyway, turn the check off with surrealdb.WithVersionCheck(false)",
 		e.Version, e.Minimum, e.Maximum)
 }
 
@@ -85,7 +86,7 @@ func compareRelease(a, b [3]int) int {
 func (db *DB) checkVersion(ctx context.Context) error {
 	v, err := db.Version(ctx)
 	if err != nil {
-		return fmt.Errorf("checking the server version: %w", err)
+		return fmt.Errorf("checking the server version (turn the check off with surrealdb.WithVersionCheck(false)): %w", err)
 	}
 	if !IsVersionSupported(v.Version) {
 		return &UnsupportedVersionError{

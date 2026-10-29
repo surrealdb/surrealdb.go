@@ -380,6 +380,9 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 			h.sendResponse(socket, req.ID, "surrealdb-"+h.server.versionString())
 			return
 		}
+		// A stubbed version needs no authentication either.
+		h.answerStub(socket, &req, matchedStub)
+		return
 	case "use":
 		h.handleUse(socket, &req)
 		return
@@ -430,19 +433,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 
 	// If we have a stub, use it regardless of the method
 	if matchedStub != nil {
-		for _, failure := range matchedStub.Failures {
-			if shouldTriggerFailure(failure.Probability) {
-				if err := h.applyFailure(socket, failure, &req, matchedStub); err != nil {
-					return
-				}
-			}
-		}
-
-		if matchedStub.Error != nil {
-			h.sendError(socket, req.ID, matchedStub.Error.Code, matchedStub.Error.Message)
-		} else {
-			h.sendResponse(socket, req.ID, matchedStub.Result)
-		}
+		h.answerStub(socket, &req, matchedStub)
 		return
 	}
 
@@ -452,6 +443,23 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 		"method":  req.Method,
 		"params":  req.Params,
 	})
+}
+
+// answerStub answers req as stub says, after applying the stub's failures.
+func (h *Handler) answerStub(socket *gws.Conn, req *connection.RPCRequest, stub *StubResponse) {
+	for _, failure := range stub.Failures {
+		if shouldTriggerFailure(failure.Probability) {
+			if err := h.applyFailure(socket, failure, req, stub); err != nil {
+				return
+			}
+		}
+	}
+
+	if stub.Error != nil {
+		h.sendError(socket, req.ID, stub.Error.Code, stub.Error.Message)
+	} else {
+		h.sendResponse(socket, req.ID, stub.Result)
+	}
 }
 
 //nolint:gocyclo,funlen
