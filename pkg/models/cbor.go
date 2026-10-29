@@ -90,6 +90,7 @@ type CborMarshaler struct {
 }
 
 func (c *CborMarshaler) Marshal(v any) ([]byte, error) {
+	v = PrepareForEncode(v)
 	v = replacerBeforeEncode(v)
 	return c.cborEncMode().Marshal(v)
 }

@@ -49,6 +49,10 @@ func getEncMode() cbor.EncMode {
 		}
 	}
 
+	// A bare time.Time cannot be encoded as tag 12 by this mode, as fxamacker/cbor
+	// hard-codes it. Callers go through models.PrepareForEncode, which swaps it
+	// for models.CustomDateTime first. These options only apply to any time.Time
+	// that slips through (tag 0, which SurrealDB 4.0 rejects).
 	em, err := cbor.EncOptions{
 		Time:    cbor.TimeRFC3339,
 		TimeTag: cbor.EncTagRequired,
@@ -71,7 +75,7 @@ func (enc *Encoder) Encode(v any) error {
 	// Use fxamacker/cbor marshaling which automatically handles:
 	// - Types implementing cbor.Marshaler (including our Marshaler interface)
 	// - Built-in types and registered tags
-	data, err := enc.em.Marshal(v)
+	data, err := enc.em.Marshal(models.PrepareForEncode(v))
 	if err != nil {
 		return err
 	}
