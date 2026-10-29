@@ -199,6 +199,7 @@ var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
 var (
 	_ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
 	_ connection.Streamer            = (*Connection[connection.WebSocketConnection])(nil)
+	_ connection.HealthChecker       = (*Connection[connection.WebSocketConnection])(nil)
 )
 
 // New creates a new auto-reconnecting WebSocket connection.
@@ -464,6 +465,20 @@ func (arws *Connection[C]) CallStream(ctx context.Context, req *connection.RPCRe
 		return nil, fmt.Errorf("%w: query_stream", constants.ErrMethodNotAvailable)
 	}
 	return streamer.CallStream(ctx, req)
+}
+
+// Health asks the server whether it is healthy, through the connection in use,
+// so that [surrealdb.DB.Health] works through a reconnecting connection too. It
+// needs no open socket, so it also answers while the connection reconnects.
+func (arws *Connection[C]) Health(ctx context.Context) error {
+	arws.connMu.RLock()
+	conn := arws.WebSocketConnection
+	arws.connMu.RUnlock()
+	hc, ok := any(conn).(connection.HealthChecker)
+	if !ok {
+		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+	}
+	return hc.Health(ctx)
 }
 
 // restoreAuth authenticates a new connection as the old one was. When the access
