@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,4 +45,37 @@ func TestCheckHealth_keepsThePathPrefix(t *testing.T) {
 	require.NoError(t, CheckHealth(context.Background(), nil, server.URL+"/surreal"))
 	require.NoError(t, CheckHealth(context.Background(), nil, "ws"+server.URL[len("http"):]+"/surreal/rpc"))
 	assert.Equal(t, []string{"/surreal/health", "/surreal/health"}, asked)
+}
+
+// TestCheckHealth_unhealthy checks that an answer other than 2xx is a
+// *HealthError holding the status and the body, and that a server which cannot
+// be reached is not.
+func TestCheckHealth_unhealthy(t *testing.T) {
+	answer := func(status int, body string) *httptest.Server {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(body))
+		}))
+		t.Cleanup(server.Close)
+		return server
+	}
+
+	err := CheckHealth(context.Background(), nil, answer(http.StatusServiceUnavailable, " datastore unavailable\n").URL)
+	var he *HealthError
+	require.ErrorAs(t, err, &he)
+	assert.Equal(t, http.StatusServiceUnavailable, he.StatusCode)
+	assert.Equal(t, "503 Service Unavailable", he.Status)
+	assert.Equal(t, "datastore unavailable", he.Body)
+	assert.EqualError(t, err, "health check failed: 503 Service Unavailable: datastore unavailable")
+
+	err = CheckHealth(context.Background(), nil, answer(http.StatusInternalServerError, "").URL)
+	require.ErrorAs(t, err, &he)
+	assert.Empty(t, he.Body)
+	assert.EqualError(t, err, "health check failed: 500 Internal Server Error")
+
+	unreachable := answer(http.StatusOK, "")
+	unreachable.Close()
+	err = CheckHealth(context.Background(), nil, unreachable.URL)
+	require.Error(t, err)
+	assert.False(t, errors.As(err, &he), "a server which cannot be reached gives no status")
 }

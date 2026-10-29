@@ -23,3 +23,22 @@ func TestIsVersionSupported(t *testing.T) {
 		assert.False(t, IsVersionSupported(v), v)
 	}
 }
+
+func TestIsVersionInRange(t *testing.T) {
+	for _, c := range []struct {
+		version, minimum, maximum string
+		in                        bool
+	}{
+		{"3.3.0", "3.3.0", MaximumServerVersion, true},
+		{"surrealdb-3.4.1", "3.3.0", MaximumServerVersion, true},
+		{"3.3.0-nightly", "3.3.0", MaximumServerVersion, true},
+		{"3.2.9", "3.3.0", MaximumServerVersion, false},
+		{"3.0.0", "2.0.0", "3.0.0", false},
+		{"2.6.0", "2.0.0", "3.0.0", true},
+		{"nonsense", "2.0.0", "3.0.0", false},
+		{"2.6.0", "nonsense", "3.0.0", false},
+		{"2.6.0", "2.0.0", "", false},
+	} {
+		assert.Equal(t, c.in, IsVersionInRange(c.version, c.minimum, c.maximum), "%s in [%s, %s)", c.version, c.minimum, c.maximum)
+	}
+}

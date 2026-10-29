@@ -38,12 +38,30 @@ func (e *UnsupportedVersionError) Error() string {
 // Only the major, minor and patch numbers are compared, so a pre-release of a
 // supported version is supported.
 func IsVersionSupported(version string) bool {
+	return IsVersionInRange(version, MinimumServerVersion, MaximumServerVersion)
+}
+
+// IsVersionInRange reports whether a SurrealDB version is at least minimum and
+// below maximum, such as whether a server has a feature which first came in
+// 3.3.0:
+//
+//	surrealdb.IsVersionInRange(v.Version, "3.3.0", surrealdb.MaximumServerVersion)
+//
+// Versions are compared as [IsVersionSupported] compares them. A version or
+// bound which cannot be read, such as "nonsense", is in no range.
+func IsVersionInRange(version, minimum, maximum string) bool {
 	v, ok := parseRelease(version)
 	if !ok {
 		return false
 	}
-	lo, _ := parseRelease(MinimumServerVersion)
-	hi, _ := parseRelease(MaximumServerVersion)
+	lo, ok := parseRelease(minimum)
+	if !ok {
+		return false
+	}
+	hi, ok := parseRelease(maximum)
+	if !ok {
+		return false
+	}
 	return compareRelease(v, lo) >= 0 && compareRelease(v, hi) < 0
 }
 

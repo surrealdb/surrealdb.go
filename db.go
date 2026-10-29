@@ -185,7 +185,8 @@ func (db *DB) Close(ctx context.Context) error {
 
 // Health checks that the server is up, with GET /health over HTTP. It works
 // whichever transport the client uses, needs no authentication, and returns nil
-// if the server answers with a 2xx status.
+// if the server answers with a 2xx status. If the server answers with another
+// status, it returns a [*HealthError], which holds the status and the body.
 func (db *DB) Health(ctx context.Context) error {
 	hc, ok := db.con.(connection.HealthChecker)
 	if !ok {
