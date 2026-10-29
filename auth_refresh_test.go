@@ -102,6 +102,32 @@ func TestRefreshAndRevoke(t *testing.T) {
 	}
 }
 
+// TestRefresh_afterExpiry refreshes and revokes pairs whose access token has
+// expired, a token the server answers 401 to over HTTP.
+func TestRefresh_afterExpiry(t *testing.T) {
+	skipBeforeV3(t)
+	defineRefreshAccess(t, "1s")
+	ctx := context.Background()
+
+	for family, endpoint := range endpoints() {
+		t.Run(family, func(t *testing.T) {
+			db := newClient(t, endpoint, surrealdb.WithTokenRenewal(false))
+			first := signUpWithRefresh(t, db, "expired_"+family+uniq())
+			time.Sleep(2 * time.Second)
+
+			second, err := db.Refresh(ctx, *first)
+			require.NoError(t, err)
+			assert.NotEqual(t, first.Refresh, second.Refresh)
+			assert.NotNil(t, whoAmI(t, db), "the session is authenticated with the new pair")
+
+			time.Sleep(2 * time.Second)
+			require.NoError(t, db.Revoke(ctx, *second), "a pair can be revoked once its access token has expired")
+			_, err = db.Refresh(ctx, *second)
+			require.Error(t, err, "a revoked refresh token cannot be used")
+		})
+	}
+}
+
 func TestReset(t *testing.T) {
 	ctx := context.Background()
 
