@@ -28,7 +28,7 @@ const (
 	// DefaultReconnectAttempts is how many attempts in a row the client makes
 	// to reconnect before it gives up.
 	DefaultReconnectAttempts = 5
-	// reconnectJitter randomises each wait by up to this fraction either way.
+	// reconnectJitter randomizes each wait by up to this fraction either way.
 	reconnectJitter = 0.1
 
 	// reconnectAttemptTimeout bounds one attempt: connecting and restoring.
@@ -340,11 +340,11 @@ func (r *reconnector) reconnect(lost connection.Connection) (connection.Connecti
 }
 
 // backoff returns how long to wait before the given attempt, counting from 1:
-// minDelay * 2^attempt, randomised by up to reconnectJitter either way, and
+// minDelay * 2^attempt, randomized by up to reconnectJitter either way, and
 // capped at maxDelay after that.
 func (r *reconnector) backoff(attempt int) time.Duration {
 	d := float64(r.minDelay) * math.Pow(2, float64(attempt))
-	d *= 1 + (rand.Float64()*2-1)*reconnectJitter
+	d *= 1 + (rand.Float64()*2-1)*reconnectJitter //nolint:gosec // jitter needs no secure randomness
 	return time.Duration(min(d, float64(r.maxDelay)))
 }
 
@@ -503,6 +503,16 @@ func (r *reconnector) SignInWithRefresh(ctx context.Context, authData any) (*con
 
 func (r *reconnector) GetUnmarshaler() codec.Unmarshaler {
 	return r.current().GetUnmarshaler()
+}
+
+// GetMarshaler returns the marshaler of the connection in use, so that Let
+// encodes its value as that connection would. It is nil when that connection
+// does not expose one.
+func (r *reconnector) GetMarshaler() codec.Marshaler {
+	if m, ok := r.current().(interface{ GetMarshaler() codec.Marshaler }); ok {
+		return m.GetMarshaler()
+	}
+	return nil
 }
 
 func (r *reconnector) Health(ctx context.Context) error {
