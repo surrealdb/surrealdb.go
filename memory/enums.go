@@ -76,9 +76,16 @@ const (
 type Tier string
 
 const (
-	TierDirect      Tier = "direct"
-	TierCache       Tier = "cache"
-	TierHybrid      Tier = "hybrid"
+	TierDirect Tier = "direct"
+	TierCache  Tier = "cache"
+	TierHybrid Tier = "hybrid"
+	// TierEscalated is the full-context tier. The wire value was renamed from
+	// "full_context" to "escalated"; note that [QueryKind] still uses
+	// "full_context" for its own, separate, classification.
+	TierEscalated Tier = "escalated"
+
+	// Deprecated: the server renamed this tier to "escalated". Comparing
+	// against this constant silently never matches. Use [TierEscalated].
 	TierFullContext Tier = "full_context"
 )
 
@@ -88,8 +95,10 @@ type ResultKind string
 const (
 	ResultAttribute   ResultKind = "attribute"
 	ResultEntity      ResultKind = "entity"
+	ResultAction      ResultKind = "action"
 	ResultChunk       ResultKind = "chunk"
 	ResultMemoryChunk ResultKind = "memory_chunk"
+	ResultTurn        ResultKind = "turn"
 	ResultSection     ResultKind = "section"
 )
 
@@ -153,6 +162,9 @@ const (
 	EdgeSectionMatch        GraphEdgeKind = "section_match"
 	EdgeDocumentLink        GraphEdgeKind = "document_link"
 	EdgeDocumentSummary     GraphEdgeKind = "document_summary"
-	EdgeKeywordCooccurrence GraphEdgeKind = "keyword_cooccurrence"
 	EdgeHybridGraph         GraphEdgeKind = "hybrid_graph"
+
+	// Deprecated: the server no longer emits this edge kind, and rejects it
+	// as a [DocumentQueryRequest.GraphEdges] filter.
+	EdgeKeywordCooccurrence GraphEdgeKind = "keyword_cooccurrence"
 )

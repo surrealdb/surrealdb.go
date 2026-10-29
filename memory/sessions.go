@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"iter"
 	"net/http"
 	"net/url"
 )
@@ -53,7 +54,7 @@ func (s *Sessions) Context(ctx context.Context, sessionID, query string) (*Sessi
 		Query string `json:"query"`
 	}{Query: query}
 	var out SessionContextResponse
-	if err := s.client.doJSON(ctx, http.MethodPost, path, req, &out, false); err != nil {
+	if err := s.client.doJSON(ctx, http.MethodPost, path, req, &out, true); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -69,17 +70,33 @@ type Turn struct {
 	CreatedAt string   `json:"createdAt"`
 }
 
-// TurnListResponse is the result of [Sessions.Turns].
+// TurnListResponse is a page of turns from [Sessions.Turns].
 type TurnListResponse struct {
-	Turns []Turn `json:"turns"`
+	Turns []Turn   `json:"turns"`
+	Page  PageMeta `json:"page"`
 }
 
-// Turns lists the turns recorded in a session, in sequence order.
-func (s *Sessions) Turns(ctx context.Context, sessionID string) (*TurnListResponse, error) {
+// Turns returns one page of the turns recorded in a session, oldest first.
+func (s *Sessions) Turns(ctx context.Context, sessionID string, opts PageOptions) (*TurnListResponse, error) {
 	path := s.client.base + "/sessions/" + url.PathEscape(sessionID) + "/turns"
+	q := url.Values{}
+	opts.apply(q)
 	var out TurnListResponse
-	if err := s.client.getJSON(ctx, path, nil, &out); err != nil {
+	if err := s.client.getJSON(ctx, path, q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// AllTurns walks every page of a session's turns, oldest first.
+func (s *Sessions) AllTurns(ctx context.Context, sessionID string, opts PageOptions) iter.Seq2[Turn, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]Turn, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := s.Turns(ctx, sessionID, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Turns, page.Page, nil
+	})
 }

@@ -24,7 +24,20 @@ var (
 	ErrScope = errors.New("memory: scope forbidden")
 	// ErrNotFound signals a 404: addressed entity, document, or session does not exist.
 	ErrNotFound = errors.New("memory: not found")
+	// ErrStream signals a failure reported inside an already-open SSE stream.
+	// A stream is established with a 200, so a mid-flight server failure can
+	// only arrive as a frame; it surfaces here rather than as a status code.
+	ErrStream = errors.New("memory: stream failed")
 )
+
+// streamError builds the *APIError for a server error frame received on an
+// open stream. StatusCode is 0 because the response itself succeeded.
+func streamError(msg string, body any) *APIError {
+	if msg == "" {
+		msg = "chat stream failed"
+	}
+	return &APIError{Message: msg, Body: body, sentinel: ErrStream}
+}
 
 // APIError describes a non-2xx response from the Agent Memory API.
 type APIError struct {

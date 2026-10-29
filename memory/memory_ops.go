@@ -25,6 +25,9 @@ type ConsolidateOutcome struct {
 	ProofCount    int          `json:"proofCount"`
 	ObservationID string       `json:"observationId,omitempty"`
 	Rationale     string       `json:"rationale,omitempty"`
+	// Persisted reports whether the outcome was written, as opposed to being
+	// a dry-run preview.
+	Persisted bool `json:"persisted"`
 }
 
 // ConsolidateResponse is the result of [Client.Consolidate].
@@ -132,6 +135,9 @@ type InspectOptions struct {
 
 func (o *InspectOptions) values() url.Values {
 	q := url.Values{}
+	if o == nil {
+		return q
+	}
 	if o.Ref != "" {
 		q.Set("ref", o.Ref)
 	}
@@ -153,6 +159,7 @@ func (o *InspectOptions) values() url.Values {
 // Inspect returns a low-level diagnostic view of the substrate. The shape is
 // deliberately untyped in the spec, so the raw JSON object is returned for the
 // caller to decode.
+// A nil opts sends no query parameters.
 func (c *Client) Inspect(ctx context.Context, opts *InspectOptions) (rawObject, error) {
 	var out rawObject
 	if err := c.getJSON(ctx, c.base+"/inspect", opts.values(), &out); err != nil {
@@ -166,7 +173,7 @@ type FsckRequest struct {
 	// Check selects which integrity checks to run; empty runs all of them.
 	Check string `json:"check,omitempty"`
 	// DuplicateThreshold is the similarity cutoff for the duplicate check.
-	DuplicateThreshold float64 `json:"duplicateThreshold,omitempty"`
+	DuplicateThreshold *float64 `json:"duplicateThreshold,omitempty"`
 	// MaxResults caps the findings returned per category.
 	MaxResults int `json:"maxResults,omitempty"`
 }
@@ -198,6 +205,16 @@ type FsckReport struct {
 	Duplicates     []DuplicateFinding     `json:"duplicates"`
 	Injection      []InjectionFinding     `json:"injection"`
 	Total          int                    `json:"total"`
+	// UnscopedContent lists rows carrying no scope, which no lens can narrow
+	// and every reader can therefore see.
+	UnscopedContent []UnscopedContentFinding `json:"unscopedContent"`
+}
+
+// UnscopedContentFinding counts the rows in one table that carry no scope.
+type UnscopedContentFinding struct {
+	Table     string   `json:"table"`
+	Count     int      `json:"count"`
+	SampleIDs []string `json:"sampleIds"`
 }
 
 // Fsck runs integrity checks over the context's memory: contradictions,
@@ -217,6 +234,8 @@ type ContextQueryRequest struct {
 	Labels    []string  `json:"labels,omitempty"`
 	Lens      ScopeSets `json:"lens,omitempty"`
 	ScopeView string    `json:"scopeView,omitempty"`
+	// Subject narrows the composed block to one entity, as <type>/<name>.
+	Subject string `json:"subject,omitempty"`
 }
 
 // ContextQueryResponse is the result of [Client.QueryContext]: a single fused
@@ -231,7 +250,7 @@ type ContextQueryResponse struct {
 // splice into a prompt.
 func (c *Client) QueryContext(ctx context.Context, req *ContextQueryRequest) (*ContextQueryResponse, error) {
 	var out ContextQueryResponse
-	if err := c.doJSON(ctx, http.MethodPost, c.base+"/context", req, &out, false); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, c.base+"/context", req, &out, true); err != nil {
 		return nil, err
 	}
 	return &out, nil

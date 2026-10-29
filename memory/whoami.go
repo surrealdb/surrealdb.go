@@ -10,7 +10,6 @@ type WhoamiResponse struct {
 	PrincipalID          string              `json:"principalId"`
 	DisplayName          string              `json:"displayName"`
 	Kind                 string              `json:"kind"`
-	Enforce              bool                `json:"enforce"`
 	Grants               map[string][]string `json:"grants"`
 	EffectiveGrants      map[string][]string `json:"effectiveGrants"`
 	DelegatedPrincipalID string              `json:"delegatedPrincipalId,omitempty"`

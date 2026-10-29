@@ -42,6 +42,8 @@ type Client struct {
 	principals *Principals
 	keys       *Keys
 	traces     *Traces
+	facts      *Facts
+	uncertain  *Uncertainty
 }
 
 // New constructs an Agent Memory Client.
@@ -91,6 +93,8 @@ func (c *Client) bindNamespaces() {
 	c.principals = &Principals{client: c}
 	c.keys = &Keys{client: c}
 	c.traces = &Traces{client: c}
+	c.facts = &Facts{client: c}
+	c.uncertain = &Uncertainty{client: c}
 }
 
 // OnBehalfOf returns a derived Client that attributes every request to the
@@ -141,6 +145,14 @@ func (c *Client) Keys() *Keys { return c.keys }
 
 // Traces returns the trace sub-client.
 func (c *Client) Traces() *Traces { return c.traces }
+
+// Facts returns the fact sub-client, which walks the attribute, relation and
+// action collections.
+func (c *Client) Facts() *Facts { return c.facts }
+
+// Uncertainty returns the uncertainty sub-client, which lists what the context
+// knows it is unsure about and settles those flags.
+func (c *Client) Uncertainty() *Uncertainty { return c.uncertain }
 
 // getJSON issues a GET to path with the supplied query parameters and decodes
 // the JSON response into dst. GETs are safe to retry on 5xx and transport
