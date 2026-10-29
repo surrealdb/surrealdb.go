@@ -48,11 +48,12 @@ type DB struct {
 	// renew keeps the token pair of the default session fresh. It is nil when
 	// token renewal is turned off.
 	renew *renewer
+	// state is what the default session holds, for Fork.
+	state sessionState
 
-	// sessionRenewers are the renewers of the attached sessions, which Close
-	// stops.
-	sessionRenewersMu sync.Mutex
-	sessionRenewers   map[*renewer]struct{}
+	sessionsMu sync.Mutex
+	// sessions are the sessions attached with this client, by ID.
+	sessions map[models.UUID]*Session
 }
 
 // New creates a new SurrealDB client.
@@ -197,36 +198,18 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close(ctx context.Context) error {
 	db.renew.stop()
-	db.sessionRenewersMu.Lock()
-	for r := range db.sessionRenewers {
-		r.stop()
+	// The renewers are stopped outside the lock, as stopping one waits for
+	// a renewal under way.
+	db.sessionsMu.Lock()
+	sessions := make([]*Session, 0, len(db.sessions))
+	for _, s := range db.sessions {
+		sessions = append(sessions, s)
 	}
-	db.sessionRenewers = nil
-	db.sessionRenewersMu.Unlock()
+	db.sessionsMu.Unlock()
+	for _, s := range sessions {
+		s.renew.stop()
+	}
 	return db.con.Close(ctx)
-}
-
-// trackSessionRenewer keeps a session's renewer, for Close to stop.
-func (db *DB) trackSessionRenewer(r *renewer) {
-	if r == nil {
-		return
-	}
-	db.sessionRenewersMu.Lock()
-	defer db.sessionRenewersMu.Unlock()
-	if db.sessionRenewers == nil {
-		db.sessionRenewers = map[*renewer]struct{}{}
-	}
-	db.sessionRenewers[r] = struct{}{}
-}
-
-// forgetSessionRenewer stops keeping a detached session's renewer.
-func (db *DB) forgetSessionRenewer(r *renewer) {
-	if r == nil {
-		return
-	}
-	db.sessionRenewersMu.Lock()
-	defer db.sessionRenewersMu.Unlock()
-	delete(db.sessionRenewers, r)
 }
 
 // Health checks that the server is up, with GET /health over HTTP. It works
@@ -243,7 +226,11 @@ func (db *DB) Health(ctx context.Context) error {
 
 // Use is a method to select the namespace and table to use.
 func (db *DB) Use(ctx context.Context, ns, database string) error {
-	return db.con.Use(ctx, ns, database)
+	if err := db.con.Use(ctx, ns, database); err != nil {
+		return err
+	}
+	db.state.use(ns, database)
+	return nil
 }
 
 func (db *DB) Info(ctx context.Context) (map[string]any, error) {
@@ -289,6 +276,7 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 	token, err := db.con.SignUp(ctx, authData)
 	if err == nil {
 		db.renew.clear()
+		db.state.setToken(token)
 	}
 	return token, err
 }
@@ -321,6 +309,7 @@ func (db *DB) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, err
 	tokens, err := db.con.SignUpWithRefresh(ctx, authData)
 	if err == nil {
 		db.renew.set(tokens)
+		db.state.setTokens(tokens)
 	}
 	return tokens, err
 }
@@ -421,6 +410,7 @@ func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
 	token, err := db.con.SignIn(ctx, authData)
 	if err == nil {
 		db.renew.clear()
+		db.state.setToken(token)
 	}
 	return token, err
 }
@@ -479,6 +469,7 @@ func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, err
 	tokens, err := db.con.SignInWithRefresh(ctx, authData)
 	if err == nil {
 		db.renew.set(tokens)
+		db.state.setTokens(tokens)
 	}
 	return tokens, err
 }
@@ -500,6 +491,7 @@ func (db *DB) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
 	next, err := rpc.Refresh(db.con, ctx, tokens)
 	if err == nil {
 		db.renew.set(next)
+		db.state.setTokens(next)
 	}
 	return next, err
 }
@@ -517,6 +509,9 @@ func (db *DB) Revoke(ctx context.Context, tokens Tokens) error {
 		return err
 	}
 	if current := db.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		// The session stays signed in with the latest access token, which
+		// may be newer than the one recorded when the pair was obtained.
+		db.state.setToken(current.Access)
 		db.renew.clear()
 	}
 	return nil
@@ -540,6 +535,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.setToken("")
 	return nil
 }
 
@@ -557,6 +553,7 @@ func (db *DB) Reset(ctx context.Context) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.reset()
 	return nil
 }
 
@@ -586,15 +583,33 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.setToken(token)
 	return nil
 }
 
+// Let sets a variable in the session.
+//
+// Over WebSocket, the client keeps the variable for [DB.Fork]. It encodes the
+// value once, before it sends it, so that changing the value after Let
+// returns changes neither the variable nor a later fork.
 func (db *DB) Let(ctx context.Context, key string, val any) error {
-	return db.con.Let(ctx, key, val)
+	val, err := letValue(db.con, val)
+	if err != nil {
+		return err
+	}
+	if err := db.con.Let(ctx, key, val); err != nil {
+		return err
+	}
+	db.state.let(key, val)
+	return nil
 }
 
 func (db *DB) Unset(ctx context.Context, key string) error {
-	return db.con.Unset(ctx, key)
+	if err := db.con.Unset(ctx, key); err != nil {
+		return err
+	}
+	db.state.unset(key)
+	return nil
 }
 
 func (db *DB) Version(ctx context.Context) (*VersionData, error) {

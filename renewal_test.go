@@ -172,7 +172,7 @@ func TestDB_closeStopsEveryRenewal(t *testing.T) {
 	}
 	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh)}
 	session := newRenewer(time.Minute, refresh)
-	db.trackSessionRenewer(session)
+	db.sessions = map[models.UUID]*Session{{}: {renew: session}}
 
 	pair := &Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"}
 	db.renew.set(pair)
@@ -250,7 +250,7 @@ func TestSession_detachCancelsAnInflightRenewal(t *testing.T) {
 	s.renew = newRenewer(time.Minute, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
 		return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
 	})
-	db.trackSessionRenewer(s.renew)
+	db.sessions = map[models.UUID]*Session{*s.id: s}
 
 	s.renew.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
 	b.waitStarted(t)

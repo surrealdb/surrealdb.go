@@ -24,4 +24,11 @@ var (
 	ErrTransactionsNotSupported = errors.New("interactive transactions require WebSocket connection")
 	ErrSessionClosed            = errors.New("session already detached")
 	ErrTransactionClosed        = errors.New("transaction already committed or canceled")
+	// ErrForkTokenExpired is returned by Fork when the access token the
+	// session was signed in with has expired, as the fork would be signed in
+	// with that token.
+	ErrForkTokenExpired = errors.New("cannot fork: the session's access token has expired")
+	// ErrForkUntracked is returned by Fork for a session this client did not
+	// attach, as the client does not know its state.
+	ErrForkUntracked = errors.New("cannot fork a session this client did not attach")
 )

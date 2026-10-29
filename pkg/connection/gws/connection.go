@@ -290,6 +290,11 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }
 
+// GetMarshaler returns the marshaler the connection encodes requests with.
+func (c *Connection) GetMarshaler() codec.Marshaler {
+	return c.Marshaler
+}
+
 // Let implements connection.Connection.
 func (c *Connection) Let(ctx context.Context, key string, value any) error {
 	return connection.Send[any](c, ctx, nil, "let", key, value)
