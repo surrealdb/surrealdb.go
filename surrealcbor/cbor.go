@@ -79,6 +79,7 @@ import (
 	"reflect"
 
 	"github.com/surrealdb/surrealdb.go/internal/cborwire"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // globalFieldResolver is a shared field resolver used by Unmarshal functions
@@ -154,7 +155,7 @@ func NewDecoderWithBufferSize(r io.Reader, bufSize int) *Decoder {
 // Marshal uses fxamacker/cbor for marshaling with proper tag registration
 func Marshal(v any) ([]byte, error) {
 	em := getEncMode()
-	data, err := em.Marshal(v)
+	data, err := em.Marshal(models.PrepareForEncode(v))
 	if err != nil {
 		return nil, err
 	}
