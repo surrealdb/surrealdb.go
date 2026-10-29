@@ -52,19 +52,27 @@ func TestFile_string(t *testing.T) {
 		file models.File
 		want string
 	}{
-		// A valid SurrealQL literal: only letters, digits, '_', '-', '.' and,
-		// in the key, '/'.
+		// A file string: a named bucket of letters, digits, '_', '-' and '.',
+		// and a key of '/' followed by those characters or '/'.
 		{models.NewFile("bucket", "/a/b.txt"), `f"bucket:/a/b.txt"`},
 		{models.NewFile("my_bucket-1.x", "dir/file_name.v2.tar.gz"), `f"my_bucket-1.x:/dir/file_name.v2.tar.gz"`},
-		{models.NewFile("", "/"), `f":/"`},
-		// Display only, as SurrealDB 3.3.4 formats them with <string>: the
-		// parser accepts none of these characters, escaped or not.
-		{models.NewFile("b", `"q"\`), `f"b:/\"q\"\\"`},
-		{models.NewFile("buck et", `/a"b`), `f"buck\ et:/a\"b"`},
-		{models.NewFile("bucket", "a:b"), `f"bucket:/a\:b"`},
-		{models.NewFile("b/c", "/é d"), `f"b\/c:/\é\ d"`},
+		{models.NewFile("b", "//"), `f"b://"`},
+		// Anything else is written as type::file with quoted strings.
+		{models.NewFile("", "/path"), `type::file('', '/path')`},
+		{models.NewFile("bucket", "/"), `type::file('bucket', '/')`},
+		// A key with no leading slash is written with one, as the server holds it.
+		{models.File{Bucket: "bucket", Key: "a"}, `f"bucket:/a"`},
+		{models.File{Bucket: "bucket"}, `type::file('bucket', '/')`},
+		{models.File{}, `type::file('', '/')`},
+		{models.NewFile("buck et", `/a"b\c:d`), `type::file('buck et', '/a"b\\c:d')`},
+		{models.NewFile("b/c", "/é d"), `type::file('b/c', '/é d')`},
+		// A single quote switches to double quotes, which are then escaped.
+		{models.NewFile("it's", `/"q"`), `type::file("it's", '/"q"')`},
+		{models.NewFile("b", `/it's "q"`), `type::file('b', "/it's \"q\"")`},
+		// Control characters use the server's escapes.
+		{models.NewFile("b", "/\x00\r\t\n\b\f"), `type::file('b', '/\0\r\t\n\u{8}\f')`},
 	} {
-		assert.Equal(t, tt.want, tt.file.String())
+		assert.Equal(t, tt.want, tt.file.String(), "%#v", tt.file)
 	}
 }
 
