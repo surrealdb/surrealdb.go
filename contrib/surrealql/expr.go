@@ -83,23 +83,22 @@ func buildExprLike(c *queryBuildContext, b *strings.Builder, ex any, args []any)
 		v.build(c, b)
 		return nil
 	case models.Table:
-		name := c.generateAndAddParam("table", v)
-		b.WriteString("$")
-		b.WriteString(name)
+		writeParam(c, b, "table", v)
 		return nil
 	case *models.RecordID:
-		name := c.generateAndAddParam("id", v)
-		b.WriteString("$")
-		b.WriteString(name)
+		writeParam(c, b, "id", v)
 		return nil
 	case models.RecordID:
-		name := c.generateAndAddParam("id", v)
-		b.WriteString("$")
-		b.WriteString(name)
+		writeParam(c, b, "id", v)
 		return nil
 	default:
 		panic(fmt.Sprintf("unsupported select field type: %T", ex))
 	}
+}
+
+func writeParam(c *queryBuildContext, b *strings.Builder, prefix string, v any) {
+	b.WriteString("$")
+	b.WriteString(c.generateAndAddParam(prefix, v))
 }
 
 // expr represents a expr in a SELECT query.

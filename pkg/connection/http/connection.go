@@ -225,7 +225,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 
 	// The version is read once, so the body, its variables and the headers agree.
 	version := c.sendCBORVersion()
-	if request.Method == string(connection.Query) {
+	if takesSessionVariables(request.Method) {
 		request = c.withVariables(request, version)
 	}
 
@@ -285,6 +285,9 @@ const (
 	methodReset      = "reset"
 	methodInvalidate = "invalidate"
 )
+
+// methodGQL runs an ISO GQL query, whose parameters have the form of a query's.
+const methodGQL = "gql"
 
 // sendsOwnCredentials reports whether a method carries the credentials it is
 // checked with, so is sent without the token the connection keeps. The server
@@ -554,7 +557,14 @@ func stringKeyedMap(v any) (map[string]any, bool) {
 	return m, true
 }
 
-// withVariables returns a copy of a query request whose variables include
+// takesSessionVariables reports whether the server merges the session's
+// variables into those of a request of this method, as it does for query and
+// gql, so the variables set with Let are merged into it here.
+func takesSessionVariables(method string) bool {
+	return method == string(connection.Query) || method == methodGQL
+}
+
+// withVariables returns a copy of a query or gql request whose variables include
 // those set with Let, which the variables given with the query take precedence over.
 func (c *Connection) withVariables(request *connection.RPCRequest, version connection.CBORVersion) *connection.RPCRequest {
 	if len(request.Params) == 0 {
