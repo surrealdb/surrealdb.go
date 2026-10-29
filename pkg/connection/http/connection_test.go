@@ -411,6 +411,29 @@ func TestWithVariables_otherStringKeyedMaps(t *testing.T) {
 	}
 }
 
+// Variables bound with Let are merged into those of a gql request, as the
+// server merges the session's variables into them over a WebSocket.
+func TestWithVariables_gql(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "min", 30))
+
+	const query = "MATCH (p:person) WHERE p.age >= $min AND p.age < $max RETURN p.name AS name"
+	for _, given := range []any{map[string]any{"max": 40}, nil} {
+		_, err := con.Send(ctx, "gql", query, given)
+		require.NoError(t, err)
+		assert.Equal(t, "gql", sent.Method)
+		require.Len(t, sent.Params, 2)
+		vars, isMap := sent.Params[1].(map[string]any)
+		require.True(t, isMap, "%T", sent.Params[1])
+		assert.EqualValues(t, 30, vars["min"], "%v", given)
+		if given != nil {
+			assert.EqualValues(t, 40, vars["max"])
+		}
+	}
+}
+
 type namedString string
 
 // Values of a defined string type, encoded as strings, are taken as strings:

@@ -120,7 +120,9 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return res, err
 	}
 
-	if request.Method == string(connection.Query) {
+	// The server merges the session's variables into those of query and gql,
+	// so the variables set with Let are merged into them here.
+	if request.Method == string(connection.Query) || request.Method == methodGQL {
 		request = c.withVariables(request)
 	}
 
@@ -166,6 +168,9 @@ const (
 	methodReset      = "reset"
 	methodInvalidate = "invalidate"
 )
+
+// methodGQL runs an ISO GQL query, whose parameters have the form of a query's.
+const methodGQL = "gql"
 
 // sendsOwnCredentials reports whether a method carries the credentials it is
 // checked with, so is sent without the token the connection keeps. The server
@@ -427,7 +432,7 @@ func stringKeyedMap(v any) (map[string]any, bool) {
 	return m, true
 }
 
-// withVariables returns a copy of a query request whose variables include
+// withVariables returns a copy of a query or gql request whose variables include
 // those set with Let, which the variables given with the query take precedence over.
 func (c *Connection) withVariables(request *connection.RPCRequest) *connection.RPCRequest {
 	if len(request.Params) == 0 {
