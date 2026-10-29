@@ -17,6 +17,14 @@ type HealthChecker interface {
 	Health(ctx context.Context) error
 }
 
+// HTTPEndpoint is implemented by connections which know the server's HTTP base
+// URL, for the endpoints which have no RPC method, such as /import and /export.
+type HTTPEndpoint interface {
+	// HTTPEndpoint returns the base URL, which may be a WebSocket URL, and the
+	// HTTP client to use, or nil for a default one.
+	HTTPEndpoint() (baseURL string, client *http.Client)
+}
+
 // DefaultHealthClient is the HTTP client CheckHealth uses when given none.
 var DefaultHealthClient = &http.Client{Timeout: 10 * time.Second}
 
