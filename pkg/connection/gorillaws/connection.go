@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -317,6 +318,60 @@ func (c *Connection) Invalidate(ctx context.Context) error {
 
 func (c *Connection) Unset(ctx context.Context, key string) error {
 	return connection.Send[any](c, ctx, nil, "unset", key)
+}
+
+// Health asks the server whether it is healthy, with GET /health over HTTP.
+// The request reaches the server as the WebSocket does, through the proxy,
+// TLS configuration and dialers of [DefaultDialer].
+func (c *Connection) Health(ctx context.Context) error {
+	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer), c.BaseURL)
+}
+
+// baseTransport returns a copy of http.DefaultTransport, or a transport with
+// the same settings when an application has replaced it with another kind of
+// RoundTripper.
+func baseTransport() *http.Transport {
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		return t.Clone()
+	}
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
+}
+
+// httpClientFor returns an HTTP client which connects as a WebSocket dialer
+// does. It keeps no idle connections, as it is made for one request.
+func httpClientFor(d *gorilla.Dialer) *http.Client {
+	t := baseTransport()
+	t.DisableKeepAlives = true
+	t.Proxy = d.Proxy
+	// The dialer's TLS configuration, or none, replaces any the default
+	// transport was given, which the WebSocket does not use either.
+	t.TLSClientConfig = d.TLSClientConfig.Clone()
+	// So do its dial hooks: without any, it dials with a plain net.Dialer,
+	// not with hooks an application gave the default transport.
+	t.DialContext = nil
+	t.DialTLSContext = nil
+	t.Dial = nil    //nolint:staticcheck // a deprecated hook is still used if set
+	t.DialTLS = nil //nolint:staticcheck // a deprecated hook is still used if set
+	switch {
+	case d.NetDialContext != nil:
+		t.DialContext = d.NetDialContext
+	case d.NetDial != nil:
+		netDial := d.NetDial
+		t.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+			return netDial(network, addr)
+		}
+	}
+	if d.NetDialTLSContext != nil {
+		t.DialTLSContext = d.NetDialTLSContext
+	}
+	return &http.Client{Transport: t, Timeout: connection.DefaultHealthClient.Timeout}
 }
 
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
