@@ -3,7 +3,10 @@ package surrealdb
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
+	"time"
 
 	"github.com/gofrs/uuid"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -89,13 +92,50 @@ func (db *DB) Attach(ctx context.Context) (*Session, error) {
 		Session: &sessionID,
 	}
 
+	// Once the request is sent, the server may attach the session even if ctx
+	// ends. So ending ctx does not stop the request at once: the client waits
+	// up to sessionCleanupTimeout for the answer, and then detaches the session.
+	callCtx, cancelCall := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelCall()
+	stop := context.AfterFunc(ctx, func() {
+		time.AfterFunc(sessionCleanupTimeout, cancelCall)
+	})
+	defer stop()
+
 	var res connection.RPCResponse[any]
-	if err := connection.Call(db.con, ctx, &res, req); err != nil {
+	err = connection.Call(db.con, callCtx, &res, req)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		if err == nil {
+			return nil, errors.Join(ctxErr, s.discard(ctx))
+		}
+		db.forgetSession(sessionID)
+		return nil, ctxErr
+	}
+	if err != nil {
 		db.forgetSession(sessionID)
 		return nil, err
 	}
 
 	return s, nil
+}
+
+// sessionCleanupTimeout bounds how long the client takes to detach a session
+// it attached but does not return, after the context of the call has ended.
+const sessionCleanupTimeout = 5 * time.Second
+
+// discard detaches a session that is not returned to the caller, with a
+// deadline of its own, as ctx may have ended. If the session cannot be
+// detached, the client forgets it all the same, and Sessions lists it as a
+// session the client did not attach.
+func (s *Session) discard(ctx context.Context) error {
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sessionCleanupTimeout)
+	defer cancel()
+	if err := s.Detach(dctx); err != nil {
+		s.renew.stop()
+		s.db.forgetSession(*s.id)
+		return fmt.Errorf("detaching the session: %w", err)
+	}
+	return nil
 }
 
 // sessionCall sends an RPC request in this session.

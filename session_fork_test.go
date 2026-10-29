@@ -184,6 +184,26 @@ func TestFork_cancelledDetaches(t *testing.T) {
 	assert.Equal(t, before, sessionCount(t, db), "the fork is detached")
 }
 
+// An Attach whose context ends while the server attaches the session does not
+// leave the session attached.
+func TestAttach_cancelledDetaches(t *testing.T) {
+	skipBeforeV3(t)
+	ctx := context.Background()
+	db := mustNewWS("sessions", "attach_cancel")
+	defer db.Close(ctx)
+	before := sessionCount(t, db)
+
+	for i := range 200 {
+		short, cancel := context.WithTimeout(ctx, time.Duration(i)*10*time.Microsecond)
+		s, err := db.Attach(short)
+		cancel()
+		if err == nil {
+			_ = s.Detach(ctx)
+		}
+	}
+	assert.Equal(t, before, sessionCount(t, db), "no session is left attached")
+}
+
 // Let keeps the value as it was when it was set, so a later change to it does
 // not reach a fork.
 func TestFork_letValueChangedAfterwards(t *testing.T) {

@@ -240,18 +240,7 @@ func (db *DB) fork(ctx context.Context, snap sessionSnapshot) (*Session, error) 
 	}
 
 	if err := child.restore(ctx, snap); err != nil {
-		// ctx may be what failed, so the cleanup gets a deadline of its own.
-		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		if derr := child.Detach(dctx); derr != nil {
-			// The caller never gets the fork, so the client forgets it all
-			// the same. If it is still attached, Sessions lists it as a
-			// session the client did not attach.
-			child.renew.stop()
-			db.forgetSession(*child.id)
-			return nil, errors.Join(err, fmt.Errorf("detaching the fork: %w", derr))
-		}
-		return nil, err
+		return nil, errors.Join(err, child.discard(ctx))
 	}
 	return child, nil
 }
