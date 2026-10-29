@@ -65,6 +65,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // globalFieldResolver is a shared field resolver used by Unmarshal functions
@@ -140,7 +142,7 @@ func NewDecoderWithBufferSize(r io.Reader, bufSize int) *Decoder {
 // Marshal uses fxamacker/cbor for marshaling with proper tag registration
 func Marshal(v any) ([]byte, error) {
 	em := getEncMode()
-	return em.Marshal(v)
+	return em.Marshal(models.PrepareForEncode(v))
 }
 
 // NewEncoder creates an encoder that writes to w
