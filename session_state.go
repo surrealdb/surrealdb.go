@@ -239,7 +239,19 @@ func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 //
 // Fork needs SurrealDB v3+ over WebSocket.
 func (db *DB) Fork(ctx context.Context) (*Session, error) {
-	return db.fork(ctx, db.state.snapshot(db.renew))
+	return db.fork(ctx, db.snapshot(ctx))
+}
+
+// snapshot copies the state of the default session. A connection from
+// contrib/rews holds that session's token pair itself, and replaces it when a
+// reconnection refreshes an expired access token, so its access token is the
+// latest. A session the client signed out stays signed out.
+func (db *DB) snapshot(ctx context.Context) sessionSnapshot {
+	snap := db.state.snapshot(db.renew)
+	if snap.token != "" {
+		snap.token = heldAccess(ctx, db.con, snap.token)
+	}
+	return snap
 }
 
 // Fork attaches a new session which starts as a copy of this one. See [DB.Fork].

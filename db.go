@@ -126,6 +126,21 @@ func heldTokens(ctx context.Context, conn connection.Connection, tokens Tokens) 
 	return held
 }
 
+// heldAccess returns the access token the connection holds, if it holds one,
+// as it may have replaced the pair since the client recorded it, and token
+// otherwise.
+func heldAccess(ctx context.Context, conn connection.Connection, token string) string {
+	holder, ok := conn.(tokenHolder)
+	if !ok {
+		return token
+	}
+	held, err := holder.Tokens(ctx)
+	if err != nil || held.Access == "" {
+		return token
+	}
+	return held.Access
+}
+
 // Deprecated: Use FromEndpointURLString instead.
 func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 	return FromEndpointURLString(ctx, connectionURL)
