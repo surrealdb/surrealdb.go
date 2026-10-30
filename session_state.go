@@ -80,7 +80,18 @@ func (s *sessionState) reset() {
 
 // snapshot copies the state. The access token of a pair the renewer holds is
 // newer than the one recorded when the pair was obtained.
+//
+// A nil state has nothing recorded, and snapshots as the zero value: a client
+// made by [Connect] always has one, but the package's own tests build clients
+// that hold only the connection they exercise.
 func (s *sessionState) snapshot(renew *renewer) sessionSnapshot {
+	if s == nil {
+		var snap sessionSnapshot
+		if tokens := renew.current(); tokens != nil {
+			snap.token = tokens.Access
+		}
+		return snap
+	}
 	s.mu.Lock()
 	snap := sessionSnapshot{
 		namespace: s.namespace,

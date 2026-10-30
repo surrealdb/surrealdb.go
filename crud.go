@@ -126,12 +126,27 @@ func target(what any, vars map[string]any) string {
 
 // isRecord reports whether what is a single record, for which a statement
 // returns that record rather than an array.
+//
+// A record ID whose key is a range names every record in that range, not one
+// record, so it is not a single record: ONLY on such a target makes SurrealDB
+// refuse the statement with "Expected a single result output when using the
+// ONLY keyword".
 func isRecord(what any) bool {
-	switch what.(type) {
-	case models.RecordID, *models.RecordID:
-		return true
+	switch v := what.(type) {
+	case models.RecordID:
+		return !isKeyRange(v.ID)
+	case *models.RecordID:
+		return v != nil && !isKeyRange(v.ID)
 	}
 	return false
+}
+
+// isKeyRange reports whether a record ID key is a range of keys. models.Range
+// is generic, so it is recognised by its GetJoinString method rather than by
+// its type.
+func isKeyRange(id any) bool {
+	_, ok := id.(interface{ GetJoinString() string })
+	return ok
 }
 
 // isNil reports whether v is nil, or holds a nil map, slice, pointer,

@@ -39,8 +39,12 @@ func TestMarshalV2_sizedKinds(t *testing.T) {
 		{"u16", uint16(65535), "19ffff", "d8b719ffff"},
 		{"i32", int32(-2147483648), "3a7fffffff", "d8b83a7fffffff"},
 		{"u32", uint32(4294967295), "1affffffff", "d8b91affffffff"},
-		{"u64 past int64", uint64(math.MaxUint64), "1bffffffffffffffff", "d8ba1bffffffffffffffff"},
-		{"uint past int64", uint(math.MaxUint64), "1bffffffffffffffff", "d8ba1bffffffffffffffff"},
+		// Over plain cbor an integer past the i64 range goes as a tag 10 decimal:
+		// SurrealDB 3.x wraps such an integer silently and 4.0 refuses it, so
+		// cborwire.Normalize rewrites it. Over cbor.2 the sized tag carries it
+		// as it is, because Normalize leaves the content of tags 180 to 188 alone.
+		{"u64 past int64", uint64(math.MaxUint64), "ca743138343436373434303733373039353531363135", "d8ba1bffffffffffffffff"},
+		{"uint past int64", uint(math.MaxUint64), "ca743138343436373434303733373039353531363135", "d8ba1bffffffffffffffff"},
 		{"u64 within int64 stays an int", uint64(5), "05", "05"},
 		{"int stays an int", 5, "05", "05"},
 		{"int64 stays an int", int64(-1), "20", "20"},
