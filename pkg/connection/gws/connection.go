@@ -280,6 +280,11 @@ func (c *Connection) Connect(ctx context.Context) error {
 	return nil
 }
 
+// HTTPEndpoint returns the server's base URL and the HTTP client to reach it with.
+func (c *Connection) HTTPEndpoint() (baseURL string, client *http.Client) {
+	return c.BaseURL, nil
+}
+
 // Health asks the server whether it is healthy, with GET /health over HTTP.
 func (c *Connection) Health(ctx context.Context) error {
 	return connection.CheckHealth(ctx, nil, c.BaseURL)

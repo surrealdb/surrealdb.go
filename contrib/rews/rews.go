@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -450,18 +451,31 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	return nil
 }
 
+// current returns the connection in use, which a reconnection replaces.
+func (arws *Connection[C]) current() connection.WebSocketConnection {
+	arws.connMu.RLock()
+	defer arws.connMu.RUnlock()
+	return arws.WebSocketConnection
+}
+
+// HTTPEndpoint returns the HTTP endpoint of the connection in use, for the
+// server's endpoints which have no RPC method, such as /import and /export.
+// It returns no base URL if that connection does not know one.
+func (arws *Connection[C]) HTTPEndpoint() (baseURL string, client *http.Client) {
+	if e, ok := arws.current().(connection.HTTPEndpoint); ok {
+		return e.HTTPEndpoint()
+	}
+	return "", nil
+}
+
 // Health asks the server whether it is healthy, through the connection in use,
 // so that [surrealdb.DB.Health] works through a reconnecting connection too. It
 // needs no open socket, so it also answers while the connection reconnects.
 func (arws *Connection[C]) Health(ctx context.Context) error {
-	arws.connMu.RLock()
-	conn := arws.WebSocketConnection
-	arws.connMu.RUnlock()
-	hc, ok := any(conn).(connection.HealthChecker)
-	if !ok {
-		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+	if hc, ok := arws.current().(connection.HealthChecker); ok {
+		return hc.Health(ctx)
 	}
-	return hc.Health(ctx)
+	return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
 }
 
 // GetMarshaler returns the marshaler of the connection in use, so that
