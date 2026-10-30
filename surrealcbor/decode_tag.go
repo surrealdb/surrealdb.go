@@ -5,8 +5,10 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"strconv"
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/internal/cborwire"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -252,6 +254,9 @@ func (d *decoder) decodeCustomDurationTag(v reflect.Value) error {
 	// Per SurrealDB spec:
 	// - CustomDuration is encoded as [optional seconds, optional nanoseconds]
 	// - Empty array represents duration of 0
+	if v.Type() == reflect.TypeOf(models.CustomDurationString("")) {
+		return d.decodeDurationString(v)
+	}
 	var arr [2]int64
 	if err := d.decodeValue(reflect.ValueOf(&arr).Elem()); err != nil {
 		return fmt.Errorf("failed to decode duration array: %w", err)
@@ -267,9 +272,26 @@ func (d *decoder) decodeCustomDurationTag(v reflect.Value) error {
 		v.Set(reflect.ValueOf(models.CustomDuration{Duration: duration}))
 	} else if v.Kind() == reflect.Interface {
 		v.Set(reflect.ValueOf(models.CustomDuration{Duration: duration}))
+	} else if v.Kind() == reflect.Int64 {
+		v.SetInt(int64(duration))
 	} else {
-		v.Set(reflect.ValueOf(duration))
+		return fmt.Errorf("cannot decode a duration into %s", v.Type())
 	}
+	return nil
+}
+
+// decodeDurationString decodes the content of tag 14 into a
+// CustomDurationString. It formats the seconds and the nanoseconds directly, so
+// a duration longer than a time.Duration can hold, about 292 years, is kept.
+func (d *decoder) decodeDurationString(v reflect.Value) error {
+	var arr [2]uint64
+	if err := d.decodeValue(reflect.ValueOf(&arr).Elem()); err != nil {
+		return fmt.Errorf("failed to decode duration array: %w", err)
+	}
+	if arr[1] >= uint64(time.Second) {
+		return fmt.Errorf("invalid duration: %d nanoseconds is not below a second", arr[1])
+	}
+	v.SetString(cborwire.FormatDuration(arr[0], uint32(arr[1]))) //nolint:gosec // below a second, checked above
 	return nil
 }
 
@@ -356,10 +378,17 @@ func (d *decoder) decodeBinaryUUIDTag(v reflect.Value) error {
 	var uuid models.UUID
 	copy(uuid.UUID[:], uuidBytes[:])
 
-	if v.Type() == reflect.TypeOf(models.UUID{}) {
+	switch {
+	case v.Type() == reflect.TypeOf(models.UUID{}), v.Kind() == reflect.Interface:
 		v.Set(reflect.ValueOf(uuid))
-	} else if v.Kind() == reflect.Interface {
-		v.Set(reflect.ValueOf(uuid))
+	case v.Kind() == reflect.String:
+		// Such as models.UUIDString, which is sent as tag 37 too.
+		v.SetString(uuid.String())
+	case v.Kind() == reflect.Array && v.Len() == 16 && v.Type().Elem().Kind() == reflect.Uint8:
+		// Such as [16]byte, gofrs/uuid.UUID or google/uuid.UUID.
+		reflect.Copy(v, reflect.ValueOf(uuidBytes[:]))
+	default:
+		return fmt.Errorf("cannot decode a UUID into %s", v.Type())
 	}
 	return nil
 }
@@ -370,12 +399,13 @@ func (d *decoder) decodeStringTypeTag(v reflect.Value, targetType reflect.Type, 
 	if err := d.decodeValue(reflect.ValueOf(&str).Elem()); err != nil {
 		return err
 	}
-	if v.Type() == targetType {
+	switch {
+	case v.Type() == targetType, v.Kind() == reflect.Interface:
 		v.Set(makeValue(str))
-	} else if v.Kind() == reflect.Interface {
-		v.Set(makeValue(str))
-	} else {
-		v.Set(reflect.ValueOf(str))
+	case v.Kind() == reflect.String:
+		v.SetString(str)
+	default:
+		return fmt.Errorf("cannot decode %s into %s", targetType, v.Type())
 	}
 	return nil
 }
@@ -385,7 +415,45 @@ func (d *decoder) decodeStringUUIDTag(v reflect.Value) error {
 		func(s string) reflect.Value { return reflect.ValueOf(models.UUIDString(s)) })
 }
 
+// decodeStringDecimalTag decodes a decimal sent as text. Into an integer or
+// float it is parsed, since an integer outside the range of an i64, such as a
+// large uint64, travels as a decimal.
 func (d *decoder) decodeStringDecimalTag(v reflect.Value) error {
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		var str string
+		if err := d.decodeValue(reflect.ValueOf(&str).Elem()); err != nil {
+			return err
+		}
+		n, err := strconv.ParseInt(str, 10, v.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("cannot decode decimal %q into %s: %w", str, v.Type(), err)
+		}
+		v.SetInt(n)
+		return nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		var str string
+		if err := d.decodeValue(reflect.ValueOf(&str).Elem()); err != nil {
+			return err
+		}
+		n, err := strconv.ParseUint(str, 10, v.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("cannot decode decimal %q into %s: %w", str, v.Type(), err)
+		}
+		v.SetUint(n)
+		return nil
+	case reflect.Float32, reflect.Float64:
+		var str string
+		if err := d.decodeValue(reflect.ValueOf(&str).Elem()); err != nil {
+			return err
+		}
+		f, err := strconv.ParseFloat(str, v.Type().Bits())
+		if err != nil {
+			return fmt.Errorf("cannot decode decimal %q into %s: %w", str, v.Type(), err)
+		}
+		v.SetFloat(f)
+		return nil
+	}
 	return d.decodeStringTypeTag(v, reflect.TypeOf(models.DecimalString("")),
 		func(s string) reflect.Value { return reflect.ValueOf(models.DecimalString(s)) })
 }

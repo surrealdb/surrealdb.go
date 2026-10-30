@@ -65,6 +65,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/surrealdb/surrealdb.go/internal/cborwire"
 )
 
 // globalFieldResolver is a shared field resolver used by Unmarshal functions
@@ -140,7 +142,11 @@ func NewDecoderWithBufferSize(r io.Reader, bufSize int) *Decoder {
 // Marshal uses fxamacker/cbor for marshaling with proper tag registration
 func Marshal(v any) ([]byte, error) {
 	em := getEncMode()
-	return em.Marshal(v)
+	data, err := em.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return cborwire.Normalize(data)
 }
 
 // NewEncoder creates an encoder that writes to w
