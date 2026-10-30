@@ -43,6 +43,10 @@ func (d *decoder) decodeSpecificTag(tagNum uint64, v reflect.Value) error {
 	if tagNum == models.TagSet {
 		return d.decodeSetTag(v)
 	}
+	// Sized numbers (cbor.2 only)
+	if models.IsSizedNumberTag(tagNum) {
+		return d.decodeSizedNumberTag(tagNum, v)
+	}
 	// Range/Bound types
 	if tagNum >= 49 && tagNum <= 51 {
 		return d.decodeRangeBoundTag(tagNum, v)
@@ -237,9 +241,16 @@ func (d *decoder) decodeRecordIDTag(v reflect.Value) error {
 	}
 	if len(arr) == 2 {
 		table, _ := arr[0].(string)
+		key := arr[1]
+		if d.v2() {
+			var err error
+			if key, err = recordIDKey(key); err != nil {
+				return err
+			}
+		}
 		recordID := models.RecordID{
 			Table: table,
-			ID:    arr[1],
+			ID:    key,
 		}
 		if v.Type() == reflect.TypeOf(models.RecordID{}) {
 			v.Set(reflect.ValueOf(recordID))
@@ -616,7 +627,11 @@ func (d *decoder) decodeUnknownTag(v reflect.Value) error {
 		return err
 	}
 	if v.Kind() == reflect.Interface {
-		v.Set(reflect.ValueOf(content))
+		if content == nil {
+			v.Set(reflect.Zero(v.Type()))
+		} else {
+			v.Set(reflect.ValueOf(content))
+		}
 	}
 	return nil
 }

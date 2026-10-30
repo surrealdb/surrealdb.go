@@ -110,6 +110,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The shared CBOR conformance vectors, for surrealcbor's
+      # TestConformanceVectors, pinned by the commit the tag points at. Keep
+      # it in step with scripts/fetch-surrealdb-protocol.sh.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: surrealdb/surrealdb-protocol
+          ref: 46cef3eeab5922b526440f7d89c7ef47e6621518 # v0.14.0
+          path: .surrealdb-protocol
+          persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: ${{ matrix.go-version }}
@@ -135,6 +144,7 @@ jobs:
           SURREALDB_CONNECTION_IMPL: ${{ matrix.surrealdb-connection-impl }}
           SURREALDB_CBOR_IMPL: ${{ matrix.surrealdb-cbor-impl }}
           SURREALDB_RECONNECTION_CHECK_INTERVAL: ${{ matrix.surrealdb-reconnection-check-interval }}
+          SURREALDB_PROTOCOL_DIR: ${{ github.workspace }}/.surrealdb-protocol
           GO_TEST_FLAGS: ${{ matrix.go-test-flags }}
 
   surrealnote-e2e:

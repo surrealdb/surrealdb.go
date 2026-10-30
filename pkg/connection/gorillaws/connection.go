@@ -30,6 +30,10 @@ import (
 // It uses the default gorilla dialer as of gorilla/websocket v1.5.0 with the following modifications:
 // - EnableCompression is set to true
 // - Subprotocols is set to ["cbor"]
+//
+// Connect does not use the Subprotocols of DefaultDialer: it offers "cbor.2"
+// and "cbor" when the codec speaks cbor.2 (see [connection.CBORVersion]),
+// else "cbor".
 var DefaultDialer = &gorilla.Dialer{
 	Proxy:             gorilla.DefaultDialer.Proxy,
 	HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
@@ -89,8 +93,9 @@ func New(p *connection.Config) *Connection {
 		Toolkit: connection.Toolkit{
 			BaseURL: p.BaseURL,
 
-			Marshaler:   p.Marshaler,
-			Unmarshaler: p.Unmarshaler,
+			Marshaler:     p.Marshaler,
+			Unmarshaler:   p.Unmarshaler,
+			DisableCBORv2: p.DisableCBORv2,
 
 			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
 			NotificationChannels: make(map[string]chan connection.Notification),
@@ -111,7 +116,9 @@ func (c *Connection) IsClosed() bool {
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
 func (c *Connection) Connect(ctx context.Context) error {
-	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
+	dialer := *DefaultDialer
+	dialer.Subprotocols = c.CBORSubprotocols()
+	conn, res, err := dialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -122,6 +129,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
+	c.UseCBORSubprotocol(conn.Subprotocol())
 	c.Conn = conn
 
 	for _, option := range c.Option {

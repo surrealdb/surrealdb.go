@@ -227,6 +227,16 @@ func FromEndpointURLStringWithOptions(ctx context.Context, connectionURL string,
 // Public methods
 // --------------------------------------------------
 
+// CBORVersion returns the CBOR protocol version the connection negotiated
+// with the server: connection.CBORv2 (cbor.2, which keeps SurrealDB 4.0's
+// sized numbers) or connection.CBORv1 (plain CBOR). See connection.CBORVersion.
+func (db *DB) CBORVersion() connection.CBORVersion {
+	if v, ok := db.con.(connection.CBORVersioner); ok {
+		return v.CBORVersion()
+	}
+	return connection.CBORv1
+}
+
 // Deprecated: WithContext is deprecated and does nothing. Use context parameters in individual method calls instead.
 func (db *DB) WithContext(ctx context.Context) *DB {
 	return db

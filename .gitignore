@@ -37,3 +37,6 @@ Temporary Items
 
 # scripts/test-all-versions.sh output
 testlog
+
+# scripts/fetch-surrealdb-protocol.sh checkout
+.surrealdb-protocol

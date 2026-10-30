@@ -44,6 +44,26 @@ To connect to SurrealDB and perform data operations, please refer to [example](h
 
 To use the SDK, please refer to the [documentation](https://pkg.go.dev/github.com/surrealdb/surrealdb.go#section-documentation).
 
+### SurrealDB 4.0 and cbor.2
+
+SurrealDB 4.0 adds cbor.2, a version of the CBOR protocol that keeps its sized
+numbers (`i8` to `u64`, `f16` and `f32`). The SDK negotiates it on its own and
+falls back to plain CBOR with servers before 4.0:
+
+- WebSocket connections offer the subprotocols `cbor.2` and `cbor`, and use
+  whichever the server picks.
+- HTTP connections ask for `application/cbor; v=2` responses, and send cbor.2
+  requests once the server has answered in it.
+
+Over cbor.2, Go's `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32` and
+`float32` values are sent as the matching sized kinds, `uint64` values above
+the `int64` range as `u64`, and `models.Float16` as `f16`; decoding into `any`
+gives back those Go types. `db.CBORVersion()` says which version a connection
+negotiated, and `connection.Config.DisableCBORv2` turns cbor.2 off. The
+deprecated `models.CborMarshaler` and `models.CborUnmarshaler` only speak
+plain CBOR. See the [`surrealcbor.Codec`](https://pkg.go.dev/github.com/surrealdb/surrealdb.go/surrealcbor#Codec)
+documentation for the details.
+
 ## Contributing
 
 You can run the Makefile commands to run and build the project:
@@ -54,6 +74,15 @@ make lint test
 
 You also need to be running SurrealDB alongside the tests.
 We recommend using the nightly build, as development may rely on the latest functionality.
+
+The CBOR codec is also tested against the shared conformance vectors in
+[surrealdb-protocol](https://github.com/surrealdb/surrealdb-protocol). Those
+tests skip unless you check the vectors out first:
+
+```shell
+eval "$(scripts/fetch-surrealdb-protocol.sh)"
+go test ./surrealcbor -run TestConformanceVectors
+```
 
 ## Links
 

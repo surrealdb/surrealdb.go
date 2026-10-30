@@ -38,6 +38,18 @@
 //	| 92  | Geometry MultiLine  | Collection of geographic lines       |
 //	| 93  | Geometry MultiPolygon | Collection of geographic polygons  |
 //	| 94  | Geometry Collection | Mixed collection of geometries       |
+//	| 180 | i8 (cbor.2 only)    | 8-bit signed integer                 |
+//	| 181 | u8 (cbor.2 only)    | 8-bit unsigned integer               |
+//	| 182 | i16 (cbor.2 only)   | 16-bit signed integer                |
+//	| 183 | u16 (cbor.2 only)   | 16-bit unsigned integer              |
+//	| 184 | i32 (cbor.2 only)   | 32-bit signed integer                |
+//	| 185 | u32 (cbor.2 only)   | 32-bit unsigned integer              |
+//	| 186 | u64 (cbor.2 only)   | 64-bit unsigned integer              |
+//	| 187 | f16 (cbor.2 only)   | Half-precision float                 |
+//	| 188 | f32 (cbor.2 only)   | Single-precision float               |
+//
+// Tags 180 to 188 are SurrealDB 4.0's sized numbers, which only exist in the
+// cbor.2 version of the protocol. See [Codec] for how they map to Go types.
 //
 // # Why our own CBOR implementation?
 //

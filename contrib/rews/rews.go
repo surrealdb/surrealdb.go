@@ -222,8 +222,13 @@ func New[C connection.WebSocketConnection](
 		unmarshaler:   unmarshaler,
 	}
 
-	// Initialize reliableLQ with the unmarshaler
-	c.reliableLQ = newReliableLQ(log, unmarshaler)
+	// Initialize reliableLQ with an unmarshaler that follows the CBOR version
+	// each connection negotiates
+	var rlqUnmarshaler codec.Unmarshaler
+	if unmarshaler != nil {
+		rlqUnmarshaler = connUnmarshaler[C]{c}
+	}
+	c.reliableLQ = newReliableLQ(log, rlqUnmarshaler)
 
 	return c
 }
