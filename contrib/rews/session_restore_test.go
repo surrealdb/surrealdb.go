@@ -18,6 +18,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 // newServerConnection connects a rews.Connection to the test server.
@@ -74,6 +75,52 @@ func TestReconnect_afterInvalidate(t *testing.T) {
 
 	_, err = surrealdb.Query[any](ctx, db, "INFO FOR ROOT", nil)
 	require.Error(t, err, "a reconnection must not sign the session back in")
+}
+
+// TestReconnect_afterReset checks that a session which was reset is not
+// restored by a reconnection: it stays signed out, with no namespace, database
+// or variables, and the live queries the reset killed stay ended.
+func TestReconnect_afterReset(t *testing.T) {
+	ctx := context.Background()
+	ns, database, table := "rews_reset", "rews_reset", "rews_reset"
+
+	root, err := testenv.New(ns, database, table)
+	require.NoError(t, err)
+	defer root.Close(ctx)
+	_, err = surrealdb.Query[any](ctx, root, "DEFINE TABLE "+table, nil)
+	require.NoError(t, err)
+
+	conn, db := newServerConnection(t)
+	_, err = db.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
+	require.NoError(t, err)
+	require.NoError(t, db.Use(ctx, ns, database))
+	require.NoError(t, db.Let(ctx, "greeting", "hello"))
+	live, err := surrealdb.Live(ctx, db, models.Table(table), false)
+	require.NoError(t, err)
+	notifications, err := db.LiveNotifications(live.String())
+	require.NoError(t, err)
+
+	require.NoError(t, db.Reset(ctx))
+	_, err = surrealdb.Query[any](ctx, db, "INFO FOR ROOT", nil)
+	require.Error(t, err, "signed out")
+	select {
+	case _, open := <-notifications:
+		require.False(t, open, "the reset ends the live query")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the channel of a live query killed by the reset stayed open")
+	}
+
+	dropAndAwaitReconnection(t, conn)
+
+	_, err = surrealdb.Query[any](ctx, db, "INFO FOR ROOT", nil)
+	require.Error(t, err, "a reconnection must not sign the session back in")
+
+	_, err = db.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
+	require.NoError(t, err)
+	res, err := surrealdb.Query[[]any](ctx, db, "RETURN [session::ns(), session::db(), $greeting]", nil)
+	require.NoError(t, err)
+	require.Equal(t, []any{nil, nil, nil}, (*res)[0].Result,
+		"a reconnection must not restore the namespace, database or variables")
 }
 
 // TestReconnect_restoresRefreshSignin checks that a reconnection restores a

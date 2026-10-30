@@ -17,6 +17,8 @@ func (arws *Connection[C]) Send(ctx context.Context, method string, params ...an
 	switch method {
 	case "refresh", "revoke":
 		return arws.sendTokenChange(ctx, method, params)
+	case "reset":
+		return arws.sendReset(ctx, params)
 	}
 
 	// Let handleSend intercept and potentially handle the send
@@ -78,6 +80,31 @@ func (arws *Connection[C]) sendTokenChange(
 			arws.sessionRefresh = ""
 		}
 	}
+	return res, nil
+}
+
+// sendReset sends a reset, which returns the session to the state it was in
+// when the socket connected: signed out, with no namespace, database or
+// variables, and with its live queries killed. It forgets that session too, so
+// that a reconnection does not restore what the caller reset.
+func (arws *Connection[C]) sendReset(
+	ctx context.Context, params []any,
+) (*connection.RPCResponse[cbor.RawMessage], error) {
+	ctx, conn, release, err := arws.lockSessionSocket(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	res, err := conn.Send(ctx, "reset", params...)
+	if err != nil {
+		return nil, socketErr(ctx, err)
+	}
+
+	arws.sessionNS, arws.sessionDB = "", ""
+	clear(arws.sessionVars)
+	arws.setToken("", "", nil)
+	arws.reliableLQ.reset(conn, arws.logger)
 	return res, nil
 }
 

@@ -88,8 +88,9 @@ type LiveQueryInfo struct {
 	// Params are the parameters used to create the live query
 	Params []any
 
-	// ended is set once the live query has ended with a KILLED notification.
-	// It is not restored after reconnection.
+	// ended is set once the live query has ended with a KILLED notification,
+	// or was killed by a reset of the session. It is not restored after
+	// reconnection.
 	ended bool
 }
 
@@ -272,8 +273,8 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 	rlq.liveQueriesMu.RUnlock()
 
 	// Close notifications on the underlying connection. Those of a live query
-	// which ended with KILLED are already closed, and may belong to a
-	// connection which has since been replaced.
+	// which ended, with KILLED or a reset, are already closed, and may belong
+	// to a connection which has since been replaced.
 	var err error
 	if !ended {
 		err = closer.CloseLiveNotifications(externalID)
@@ -288,6 +289,34 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 	rlq.liveQueriesMu.Unlock()
 
 	return err
+}
+
+// reset ends every live query, which the server kills, without a KILLED
+// notification, when the session is reset: it is not restored on the next
+// connection, and its notifications are closed, those closer holds and those
+// the caller reads. Like a live query ended with KILLED, it is forgotten when
+// its notifications are closed.
+func (rlq *reliableLQ) reset(closer NotificationCloser, log logger.Logger) {
+	ended := map[string]string{} // internal ID -> external ID
+	rlq.liveQueriesMu.Lock()
+	for id, info := range rlq.liveQueries {
+		if !info.ended {
+			info.ended = true
+			ended[id] = info.ExternalID
+		}
+	}
+	rlq.liveQueriesMu.Unlock()
+
+	for internalID, externalID := range ended {
+		rlq.router.endRoute(internalID)
+		if err := closer.CloseLiveNotifications(externalID); err != nil {
+			// As it is when the caller never asked for its notifications.
+			log.Debug("Failed to close the notifications of a live query killed by a reset",
+				"internal_id", internalID,
+				"external_id", externalID,
+				"error", err)
+		}
+	}
 }
 
 // restored records the new external ID of a restored live query and routes

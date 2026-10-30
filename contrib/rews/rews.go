@@ -161,12 +161,12 @@ type Connection[C connection.WebSocketConnection] struct {
 	// context: see lockSession.
 	//
 	// It is held across each session-changing RPC (Use, Let, Unset, SignIn,
-	// SignUp, Authenticate, Invalidate and the refresh variants) together with
-	// the update of the fields, and across the whole replay of the session onto
-	// a new socket. That serializes the two: a replay never applies a state
-	// older than one a caller has already been told is in effect, and a session
-	// change made while a replay is running waits for it and then applies on
-	// top of the restored session.
+	// SignUp, Authenticate, Invalidate, reset and the refresh variants)
+	// together with the update of the fields, and across the whole replay of
+	// the session onto a new socket. That serializes the two: a replay never
+	// applies a state older than one a caller has already been told is in
+	// effect, and a session change made while a replay is running waits for it
+	// and then applies on top of the restored session.
 	//
 	// The replay takes it only once the new socket is in place, so a session
 	// RPC holding it is never waiting for a socket that only the replay would
