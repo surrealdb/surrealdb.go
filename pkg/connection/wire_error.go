@@ -76,3 +76,150 @@ func (r *wireError) As(err any) bool {
 	}
 	return false
 }
+
+// DecodeErrorDetails decodes the CBOR-encoded details of a failed statement in
+// the result of the query RPC method as the details of an RPC error are
+// decoded, whatever codec the connection uses: maps become map[string]any, as
+// the detail helpers such as IsTransactionConflict expect. It returns nil for
+// no details.
+func DecodeErrorDetails(data []byte) (any, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var details any
+	if err := wireDecMode.Unmarshal(data, &details); err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
+// NewStatementError returns the error of a failed statement in the result of
+// the query RPC method, given the message, kind and details SurrealDB reports
+// for it (SurrealDB v2 reports only the message). It is the *RPCError an RPC
+// method returns, so it can also be extracted as a *ServerError.
+//
+// A statement's error carries no code, so its code is the one SurrealDB
+// assigns an RPC error of that kind and details: -32009 for a transaction
+// conflict, -32006 for a THROW, and so on. An error whose kind has no code of
+// its own, or that has no kind (SurrealDB v2), gets -32000.
+//
+// The CRUD functions of the surrealdb package, which compile to queries,
+// return it so that their errors stay those of the RPC methods they replace.
+func NewStatementError(message, kind string, details any) error {
+	code := statementErrorCode(kind, details)
+	return &RPCError{
+		Code:    code,
+		Message: message,
+		wire: &wireError{
+			Code:    code,
+			Message: message,
+			Kind:    kind,
+			Details: details,
+		},
+	}
+}
+
+// RPC error codes SurrealDB v3 assigns to an error of a given kind and
+// details. They mirror the code module and the kind constructors of the
+// server's surrealdb/types/src/error.rs, which Error::from_wire dispatches
+// through to rebuild an error from its kind and details.
+const (
+	codeParseError               = -32700
+	codeInvalidRequest           = -32600
+	codeMethodNotFound           = -32601
+	codeMethodNotAllowed         = -32602
+	codeInvalidParams            = -32603
+	codeLiveQueryNotSupported    = -32604
+	codeBadLiveQueryConfig       = -32605
+	codeBadGraphQLConfig         = -32606
+	codeDialectNotSupported      = -32607
+	codeInternalError            = -32000
+	codeClientSideError          = -32001
+	codeInvalidAuth              = -32002
+	codeQueryNotExecuted         = -32003
+	codeQueryTimedOut            = -32004
+	codeQueryCancelled           = -32005
+	codeThrown                   = -32006
+	codeSerializationError       = -32007
+	codeDeserializationError     = -32008
+	codeQueryTransactionConflict = -32009
+)
+
+// detailErrorCodes maps a kind and the kind of its details to the RPC error
+// code SurrealDB assigns them, for the kinds whose code depends on their
+// details.
+var detailErrorCodes = map[string]map[string]int{
+	KindQuery: {
+		detailKindNotExecuted:         codeQueryNotExecuted,
+		detailKindTimedOut:            codeQueryTimedOut,
+		detailKindCancelled:           codeQueryCancelled,
+		detailKindTransactionConflict: codeQueryTransactionConflict,
+	},
+	KindValidation: {
+		detailKindParse:    codeParseError,
+		"InvalidRequest":   codeInvalidRequest,
+		"InvalidParams":    codeInvalidParams,
+		"NamespaceEmpty":   codeInvalidRequest,
+		"DatabaseEmpty":    codeInvalidRequest,
+		"InvalidParameter": codeInvalidRequest,
+		"InvalidContent":   codeInvalidRequest,
+		"InvalidMerge":     codeInvalidRequest,
+	},
+	KindConfiguration: {
+		detailKindLiveQueryNotSupported: codeLiveQueryNotSupported,
+		"BadLiveQueryConfig":            codeBadLiveQueryConfig,
+		"BadGraphqlConfig":              codeBadGraphQLConfig,
+		"DialectNotSupported":           codeDialectNotSupported,
+	},
+	KindSerialization: {
+		"Serialization":           codeSerializationError,
+		detailKindDeserialization: codeDeserializationError,
+	},
+	KindNotAllowed: {
+		"Method":            codeMethodNotAllowed,
+		detailKindScripting: codeMethodNotAllowed,
+		"Function":          codeMethodNotAllowed,
+		"Target":            codeMethodNotAllowed,
+	},
+	KindNotFound: {
+		"Method": codeMethodNotFound,
+	},
+}
+
+// authErrorCodes maps the kind of the details of a NotAllowed/Auth error to
+// the RPC error code SurrealDB assigns it. SessionExpired has none.
+var authErrorCodes = map[string]int{
+	detailKindTokenExpired: codeInvalidAuth,
+	detailKindInvalidAuth:  codeInvalidAuth,
+	"UnexpectedAuth":       codeInvalidAuth,
+	"MissingUserOrPass":    codeInvalidAuth,
+	"NoSigninTarget":       codeInvalidAuth,
+	"InvalidPass":          codeInvalidAuth,
+	"TokenMakingFailed":    codeInvalidAuth,
+	"InvalidSignup":        codeInvalidAuth,
+	"InvalidRole":          codeInvalidAuth,
+	"NotAllowed":           codeInvalidAuth,
+}
+
+// statementErrorCode returns the RPC error code SurrealDB assigns an error of
+// the given kind and details, or -32000 when it assigns none: for an unknown
+// kind or detail kind, for kinds such as NotFound (other than a missing
+// method) and AlreadyExists, and for a SurrealDB v2 error, which has no kind.
+func statementErrorCode(kind string, details any) int {
+	switch kind {
+	case KindThrown:
+		return codeThrown
+	case KindConnection:
+		return codeClientSideError
+	}
+	detail, _ := detailKind(details)
+	codes := detailErrorCodes[kind]
+	if kind == KindNotAllowed && detail == detailKindAuth {
+		detail, _ = detailKind(nestedDetails(details))
+		codes = authErrorCodes
+	}
+	if code, ok := codes[detail]; ok {
+		return code
+	}
+	return codeInternalError
+}

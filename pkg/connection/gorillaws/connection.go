@@ -30,6 +30,10 @@ import (
 // It uses the default gorilla dialer as of gorilla/websocket v1.5.0 with the following modifications:
 // - EnableCompression is set to true
 // - Subprotocols is set to ["cbor"]
+//
+// Connect does not use the Subprotocols of DefaultDialer: it offers "cbor.2"
+// and "cbor" when the codec speaks cbor.2 (see [connection.CBORVersion]),
+// else "cbor".
 var DefaultDialer = &gorilla.Dialer{
 	Proxy:             gorilla.DefaultDialer.Proxy,
 	HandshakeTimeout:  gorilla.DefaultDialer.HandshakeTimeout,
@@ -64,7 +68,7 @@ type Connection struct {
 
 	// connCloseCh signals that the connection is being closed.
 	// It is used to stop the readLoop goroutine and prevent Send from writing to a closed (i.e. nil) connection.
-	connCloseCh chan int
+	connCloseCh chan struct{}
 
 	// connCloseError stores the error that caused the connection to close.
 	// Protected by closeMutex for thread-safe access.
@@ -89,8 +93,9 @@ func New(p *connection.Config) *Connection {
 		Toolkit: connection.Toolkit{
 			BaseURL: p.BaseURL,
 
-			Marshaler:   p.Marshaler,
-			Unmarshaler: p.Unmarshaler,
+			Marshaler:     p.Marshaler,
+			Unmarshaler:   p.Unmarshaler,
+			DisableCBORv2: p.DisableCBORv2,
 
 			ResponseChannels:     make(map[string]chan connection.RPCResponse[cbor.RawMessage]),
 			NotificationChannels: make(map[string]chan connection.Notification),
@@ -111,7 +116,9 @@ func (c *Connection) IsClosed() bool {
 // This method must be called from tryConnecting to prevent
 // multiple goroutines from trying to connect at the same time.
 func (c *Connection) Connect(ctx context.Context) error {
-	conn, res, err := DefaultDialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
+	dialer := *DefaultDialer
+	dialer.Subprotocols = c.CBORSubprotocols()
+	conn, res, err := dialer.DialContext(ctx, fmt.Sprintf("%s/rpc", c.BaseURL), nil)
 	if err != nil {
 		return err
 	}
@@ -122,6 +129,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
+	c.UseCBORSubprotocol(conn.Subprotocol())
 	c.Conn = conn
 
 	for _, option := range c.Option {
@@ -130,7 +138,7 @@ func (c *Connection) Connect(ctx context.Context) error {
 		}
 	}
 
-	c.connCloseCh = make(chan int)
+	c.connCloseCh = make(chan struct{})
 
 	// Start a goroutine to read messages from the WebSocket connection.
 	// This will run in the background and handle incoming messages,
@@ -312,11 +320,18 @@ func (c *Connection) Unset(ctx context.Context, key string) error {
 	return connection.Send[any](c, ctx, nil, "unset", key)
 }
 
+// HTTPEndpoint returns the server's base URL and the HTTP client to reach it
+// with, which connects as [DefaultDialer] does. The client has no timeout of
+// its own, as a bulk transfer may take long; the request's context bounds it.
+func (c *Connection) HTTPEndpoint() (baseURL string, client *http.Client) {
+	return c.BaseURL, httpClientFor(DefaultDialer, 0)
+}
+
 // Health asks the server whether it is healthy, with GET /health over HTTP.
 // The request reaches the server as the WebSocket does, through the proxy,
 // TLS configuration and dialers of [DefaultDialer].
 func (c *Connection) Health(ctx context.Context) error {
-	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer), c.BaseURL)
+	return connection.CheckHealth(ctx, httpClientFor(DefaultDialer, connection.DefaultHealthClient.Timeout), c.BaseURL)
 }
 
 // baseTransport returns a copy of http.DefaultTransport, or a transport with
@@ -337,8 +352,9 @@ func baseTransport() *http.Transport {
 }
 
 // httpClientFor returns an HTTP client which connects as a WebSocket dialer
-// does. It keeps no idle connections, as it is made for one request.
-func httpClientFor(d *gorilla.Dialer) *http.Client {
+// does, with the given timeout, or none if it is 0. It keeps no idle
+// connections, as it is made for one request.
+func httpClientFor(d *gorilla.Dialer, timeout time.Duration) *http.Client {
 	t := baseTransport()
 	t.DisableKeepAlives = true
 	t.Proxy = d.Proxy
@@ -363,11 +379,18 @@ func httpClientFor(d *gorilla.Dialer) *http.Client {
 	if d.NetDialTLSContext != nil {
 		t.DialTLSContext = d.NetDialTLSContext
 	}
-	return &http.Client{Transport: t, Timeout: connection.DefaultHealthClient.Timeout}
+	// Cookies the WebSocket handshake sends, such as a proxy's session, go
+	// with these requests too.
+	return &http.Client{Transport: t, Timeout: timeout, Jar: d.Jar}
 }
 
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
+}
+
+// GetMarshaler returns the marshaler the connection encodes requests with.
+func (c *Connection) GetMarshaler() codec.Marshaler {
+	return c.Marshaler
 }
 
 // Send sends a request to SurrealDB and expects a response.
@@ -441,6 +464,41 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 		}
 		return &res, nil
 	}
+}
+
+// CallStream sends a request answered by many responses, such as
+// query_stream, and returns the stream they arrive on.
+func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	select {
+	case <-c.connCloseCh:
+		return nil, c.closeErr()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if req.ID == nil || req.ID == "" {
+		req.ID = rand.NewRequestID(constants.RequestIDLength)
+	}
+
+	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), c.connCloseCh, c.closeErr)
+	if err != nil {
+		return nil, err
+	}
+	stream.FirstResponseTimeout = c.Timeout
+	if err := c.write(req); err != nil {
+		stream.Close()
+		return nil, err
+	}
+	return stream, nil
+}
+
+// closeErr is the error for a request on the closed connection: never nil,
+// even after a clean Close.
+func (c *Connection) closeErr() error {
+	c.closeMutex.RLock()
+	defer c.closeMutex.RUnlock()
+	return connection.ClosedError(c.connCloseError)
 }
 
 func (c *Connection) write(v any) error {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -196,8 +197,11 @@ type Connection[C connection.WebSocketConnection] struct {
 }
 
 var _ connection.Connection = (*Connection[connection.WebSocketConnection])(nil)
-var _ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
-var _ connection.HealthChecker = (*Connection[connection.WebSocketConnection])(nil)
+var (
+	_ connection.WebSocketConnection = (*Connection[connection.WebSocketConnection])(nil)
+	_ connection.Streamer            = (*Connection[connection.WebSocketConnection])(nil)
+	_ connection.HealthChecker       = (*Connection[connection.WebSocketConnection])(nil)
+)
 
 // New creates a new auto-reconnecting WebSocket connection.
 //
@@ -218,8 +222,13 @@ func New[C connection.WebSocketConnection](
 		unmarshaler:   unmarshaler,
 	}
 
-	// Initialize reliableLQ with the unmarshaler
-	c.reliableLQ = newReliableLQ(log, unmarshaler)
+	// Initialize reliableLQ with an unmarshaler that follows the CBOR version
+	// each connection negotiates
+	var rlqUnmarshaler codec.Unmarshaler
+	if unmarshaler != nil {
+		rlqUnmarshaler = connUnmarshaler[C]{c}
+	}
+	c.reliableLQ = newReliableLQ(log, rlqUnmarshaler)
 
 	return c
 }
@@ -450,18 +459,57 @@ func (arws *Connection[C]) reconnect(ctx context.Context) error {
 	return nil
 }
 
+// current returns the connection in use, which a reconnection replaces.
+func (arws *Connection[C]) current() connection.WebSocketConnection {
+	arws.connMu.RLock()
+	defer arws.connMu.RUnlock()
+	return arws.WebSocketConnection
+}
+
+// HTTPEndpoint returns the HTTP endpoint of the connection in use, for the
+// server's endpoints which have no RPC method, such as /import and /export.
+// It returns no base URL if that connection does not know one.
+func (arws *Connection[C]) HTTPEndpoint() (baseURL string, client *http.Client) {
+	if e, ok := arws.current().(connection.HTTPEndpoint); ok {
+		return e.HTTPEndpoint()
+	}
+	return "", nil
+}
+
+// CallStream sends a streaming request on the current connection, so that
+// [surrealdb.QueryStream] streams through a reconnecting connection too. A
+// request in flight when the connection drops fails; it is not resent.
+func (arws *Connection[C]) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	streamer, ok := arws.current().(connection.Streamer)
+	if !ok {
+		return nil, fmt.Errorf("%w: query_stream", constants.ErrMethodNotAvailable)
+	}
+	return streamer.CallStream(ctx, req)
+}
+
 // Health asks the server whether it is healthy, through the connection in use,
 // so that [surrealdb.DB.Health] works through a reconnecting connection too. It
 // needs no open socket, so it also answers while the connection reconnects.
 func (arws *Connection[C]) Health(ctx context.Context) error {
+	if hc, ok := arws.current().(connection.HealthChecker); ok {
+		return hc.Health(ctx)
+	}
+	return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+}
+
+// GetMarshaler returns the marshaler of the connection in use, so that
+// [surrealdb.DB.Let] encodes a value once through a reconnecting connection
+// too, as it does through the built-in ones. It returns nil when that
+// connection does not expose one.
+func (arws *Connection[C]) GetMarshaler() codec.Marshaler {
 	arws.connMu.RLock()
 	conn := arws.WebSocketConnection
 	arws.connMu.RUnlock()
-	hc, ok := any(conn).(connection.HealthChecker)
+	m, ok := any(conn).(interface{ GetMarshaler() codec.Marshaler })
 	if !ok {
-		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+		return nil
 	}
-	return hc.Health(ctx)
+	return m.GetMarshaler()
 }
 
 // restoreAuth authenticates a new connection as the old one was. When the access

@@ -58,7 +58,7 @@ func (d *decoder) decodeFloat16(v reflect.Value) error {
 	d.pos += 2
 	f := float16ToFloat32(bits)
 	if v.Kind() == reflect.Interface {
-		v.Set(reflect.ValueOf(f))
+		d.setNarrowFloatInterface(v, f)
 		return nil
 	}
 	return setFloatValue(v, float64(f), "float16")
@@ -96,6 +96,18 @@ func float16ToFloat32(bits uint16) float32 {
 	return math.Float32frombits(sign | (uint32(exp) << 23) | (mant << 13))
 }
 
+// setNarrowFloatInterface stores a plain CBOR half- or single-width float in an
+// interface. Plain cbor keeps the historical float32. cbor.2 uses float64,
+// because there float32 means SurrealDB's f32 kind (tag 188), and a plain
+// float is always SurrealDB's f64 whatever width the server picked for it.
+func (d *decoder) setNarrowFloatInterface(v reflect.Value, f float32) {
+	if d.v2() {
+		v.Set(reflect.ValueOf(float64(f)))
+		return
+	}
+	v.Set(reflect.ValueOf(f))
+}
+
 func (d *decoder) decodeFloat32(v reflect.Value) error {
 	d.pos++
 	if d.pos+3 >= len(d.data) {
@@ -105,7 +117,7 @@ func (d *decoder) decodeFloat32(v reflect.Value) error {
 	d.pos += 4
 	f := math.Float32frombits(bits)
 	if v.Kind() == reflect.Interface {
-		v.Set(reflect.ValueOf(f))
+		d.setNarrowFloatInterface(v, f)
 		return nil
 	}
 	return setFloatValue(v, float64(f), "float32")

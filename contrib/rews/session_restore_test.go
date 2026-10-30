@@ -144,3 +144,63 @@ func TestReconnect_restoresRefreshSignin(t *testing.T) {
 		t.Log("the server still accepts the expired token; the refresh path was not exercised")
 	}
 }
+
+// TestFork_afterRefreshOnReconnect checks that DB.Fork signs the fork in with
+// the access token a reconnection refreshed, which the client does not record,
+// rather than refusing to fork because the token it recorded has expired.
+func TestFork_afterRefreshOnReconnect(t *testing.T) {
+	ctx := context.Background()
+	ns, database := "rews_fork", "rews_fork"
+
+	root, err := testenv.New(ns, database, "user")
+	require.NoError(t, err)
+	defer root.Close(ctx)
+
+	v, err := testenv.GetVersion(ctx, root)
+	require.NoError(t, err)
+	if !v.IsV3OrLater() {
+		t.Skip("WITH REFRESH and sessions need SurrealDB v3")
+	}
+
+	_, err = surrealdb.Query[any](ctx, root, `
+		DEFINE TABLE OVERWRITE user SCHEMALESS PERMISSIONS FOR select WHERE id = $auth.id;
+		DEFINE ACCESS OVERWRITE user_access ON DATABASE TYPE RECORD
+			SIGNIN (SELECT * FROM user WHERE name = $user AND crypto::argon2::compare(pass, $pass))
+			SIGNUP (CREATE user SET name = $user, pass = crypto::argon2::generate($pass))
+			WITH REFRESH
+			DURATION FOR TOKEN 3s, FOR SESSION 1h;
+	`, nil)
+	require.NoError(t, err)
+
+	conn, db := newServerConnection(t)
+	require.NoError(t, db.Use(ctx, ns, database))
+
+	_, err = db.SignUpWithRefresh(ctx, map[string]any{
+		"NS": ns, "DB": database, "AC": "user_access",
+		"user": fmt.Sprintf("u-%s", uuid.Must(uuid.NewV4())), "pass": "secret",
+	})
+	require.NoError(t, err)
+
+	whoami := func(res *[]surrealdb.QueryResult[any], err error) any {
+		require.NoError(t, err)
+		return (*res)[0].Result
+	}
+	me := whoami(surrealdb.Query[any](ctx, db, "RETURN $auth.id", nil))
+	require.NotNil(t, me)
+	before := conn.SessionToken()
+
+	// Expiry is checked in whole seconds, so wait past the next second boundary but one.
+	time.Sleep(4200 * time.Millisecond)
+	dropAndAwaitReconnection(t, conn)
+	require.Equal(t, me, whoami(surrealdb.Query[any](ctx, db, "RETURN $auth.id", nil)),
+		"the session is refreshed after reconnecting with an expired token")
+	if conn.SessionToken() == before {
+		t.Skip("the server still accepts the expired token; the refresh path was not exercised")
+	}
+
+	fork, err := db.Fork(ctx)
+	require.NoError(t, err)
+	defer func() { _ = fork.Detach(ctx) }()
+	require.Equal(t, me, whoami(surrealdb.Query[any](ctx, fork, "RETURN $auth.id", nil)),
+		"the fork is signed in with the refreshed token")
+}

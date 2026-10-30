@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/internal/codec"
@@ -70,6 +71,11 @@ type Config struct {
 	Logger      logger.Logger
 
 	URL url.URL
+
+	// DisableCBORv2 makes the connection offer only plain CBOR, as it did
+	// before SurrealDB 4.0, even when the codec and the server speak cbor.2.
+	// See [CBORVersion].
+	DisableCBORv2 bool
 }
 
 // Toolkit contains common fields and methods that is useful to
@@ -87,12 +93,53 @@ type Toolkit struct {
 	// response, under ResponseChannelsLock.
 	delivered map[string]struct{}
 
+	// responseStreams are the requests answered by many responses, such as
+	// query_stream, by ID. ResponseChannelsLock guards it too.
+	responseStreams map[string]*ResponseStream
+
 	// NotificationChannels maps the id of each live query with a subscription to
 	// the channel its notifications are delivered on.
 	NotificationChannels     map[string]chan Notification
 	NotificationChannelsLock sync.RWMutex
 
 	live liveState
+
+	// DisableCBORv2 makes the connection offer only plain CBOR. See [Config.DisableCBORv2].
+	DisableCBORv2 bool
+
+	// cborVersion is the negotiated CBORVersion; zero until Connect has negotiated one.
+	cborVersion atomic.Int32
+}
+
+// CBORSubprotocols returns the WebSocket subprotocols to offer the server:
+// "cbor.2" and "cbor" when the codecs speak cbor.2 and it is not disabled,
+// else just "cbor".
+func (bc *Toolkit) CBORSubprotocols() []string {
+	return CBORSubprotocols(!bc.DisableCBORv2 && CanSpeakCBORv2(bc.Marshaler, bc.Unmarshaler))
+}
+
+// UseCBORSubprotocol records the subprotocol the server picked in the
+// WebSocket handshake and switches Marshaler and Unmarshaler to the codecs
+// for its CBOR version. Call it in Connect, before the connection is used.
+func (bc *Toolkit) UseCBORSubprotocol(subprotocol string) {
+	v := CBORVersionFromSubprotocol(subprotocol)
+	m, u, ok := CBORCodecs(bc.Marshaler, bc.Unmarshaler, v)
+	if !ok || (v == CBORv2 && bc.DisableCBORv2) {
+		// The server picked a version we did not offer; stay on plain CBOR.
+		v = CBORv1
+		m, u, _ = CBORCodecs(bc.Marshaler, bc.Unmarshaler, v)
+	}
+	bc.Marshaler, bc.Unmarshaler = m, u
+	bc.cborVersion.Store(int32(v))
+}
+
+// CBORVersion returns the CBOR protocol version negotiated with the server:
+// CBORv2 when the server picked cbor.2, else CBORv1 (also before Connect).
+func (bc *Toolkit) CBORVersion() CBORVersion {
+	if CBORVersion(bc.cborVersion.Load()) == CBORv2 {
+		return CBORv2
+	}
+	return CBORv1
 }
 
 // GetMarshaler returns the marshaler requests are encoded with, so that a
@@ -106,6 +153,11 @@ func (bc *Toolkit) CreateResponseChannel(id string) (chan RPCResponse[cbor.RawMe
 	defer bc.ResponseChannelsLock.Unlock()
 
 	if _, ok := bc.ResponseChannels[id]; ok {
+		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
+	}
+	// Responses for an ID go to its stream first, so it cannot also have a
+	// one-shot channel.
+	if _, ok := bc.responseStreams[id]; ok {
 		return nil, fmt.Errorf("%w: %v", constants.ErrIDInUse, id)
 	}
 
@@ -135,8 +187,15 @@ func (bc *Toolkit) RemoveResponseChannel(id string) {
 // is buffered for exactly one response. A caller that timed out and stopped
 // listening therefore never stalls the goroutine delivering responses.
 //
+// A response to a request answered by many, registered with
+// OpenResponseStream, is added to its stream instead.
+//
 // It returns false if no caller is waiting for id.
 func (bc *Toolkit) DeliverResponse(id string, res RPCResponse[cbor.RawMessage]) bool {
+	if bc.deliverToStream(id, res) {
+		return true
+	}
+
 	bc.ResponseChannelsLock.Lock()
 	ch, ok := bc.ResponseChannels[id]
 	if ok {

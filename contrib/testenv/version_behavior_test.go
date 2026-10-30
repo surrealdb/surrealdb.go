@@ -151,15 +151,18 @@ func TestBehavior_CreateWithTable_v2(t *testing.T) {
 	_, err := surrealdb.Query[any](ctx, db, "DEFINE TABLE users", nil)
 	require.NoError(t, err)
 
-	// In SurrealDB 2.x, CREATE with a table returns a single object
-	user, err := surrealdb.Create[testUser](ctx, db, models.Table("users"), testUser{
+	// The create RPC of SurrealDB 2.x returned a single object for a table, but
+	// Create compiles to CREATE $what, which returns an array on every version,
+	// as the create RPC of SurrealDB 3.x does.
+	users, err := surrealdb.Create[[]testUser](ctx, db, models.Table("users"), testUser{
 		Username: "johnny",
 		Password: "123",
 	})
 
 	require.NoError(t, err, "v2.x CREATE with table should succeed")
-	require.NotNil(t, user)
-	require.Equal(t, "johnny", user.Username)
+	require.NotNil(t, users)
+	require.Len(t, *users, 1)
+	require.Equal(t, "johnny", (*users)[0].Username)
 }
 
 func TestBehavior_CreateWithTable_v3(t *testing.T) {
