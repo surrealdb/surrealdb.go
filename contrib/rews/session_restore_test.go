@@ -117,10 +117,15 @@ func TestReconnect_afterReset(t *testing.T) {
 
 	_, err = db.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
 	require.NoError(t, err)
-	res, err := surrealdb.Query[[]any](ctx, db, "RETURN [session::ns(), session::db(), $greeting]", nil)
+	res, err := surrealdb.Query[[]any](ctx, db, "RETURN [session::ns(), session::db()]", nil)
 	require.NoError(t, err)
-	require.Equal(t, []any{nil, nil, nil}, (*res)[0].Result,
-		"a reconnection must not restore the namespace, database or variables")
+	require.Equal(t, []any{nil, nil}, (*res)[0].Result, "a reconnection must not restore the namespace and database")
+
+	// Reading a variable needs a namespace and database.
+	require.NoError(t, db.Use(ctx, ns, database))
+	greeting, err := surrealdb.Query[any](ctx, db, "RETURN $greeting", nil)
+	require.NoError(t, err)
+	require.Nil(t, (*greeting)[0].Result, "a reconnection must not restore the variables")
 }
 
 // TestReconnect_restoresRefreshSignin checks that a reconnection restores a
