@@ -370,6 +370,11 @@ func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }
 
+// GetMarshaler returns the marshaler the connection encodes requests with.
+func (c *Connection) GetMarshaler() codec.Marshaler {
+	return c.Marshaler
+}
+
 // Send sends a request to SurrealDB and expects a response.
 //
 // The `ctx` is wrapped with a timeout if `ws.Timeout` is set.

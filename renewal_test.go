@@ -258,9 +258,9 @@ func TestDB_closeStopsEveryRenewal(t *testing.T) {
 		calls.Add(1)
 		return nil, errors.New("unexpected")
 	}
-	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh), sessionRenewers: newRenewerSet()}
+	db := &DB{con: closeOnlyConnection{}, renew: newRenewer(time.Minute, refresh)}
 	session := newRenewer(time.Minute, refresh)
-	db.trackSessionRenewer(session)
+	db.sessions = &sessionRegistry{byID: map[models.UUID]*Session{{}: {renew: session}}}
 
 	pair := &Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"}
 	db.renew.set(pair)
@@ -333,12 +333,12 @@ func (c detachConnection) Call(ctx context.Context, req *connection.RPCRequest) 
 // Detaching a session cancels its renewal under way, and waits for it.
 func TestSession_detachCancelsAnInflightRenewal(t *testing.T) {
 	b := newBlockingRefresh()
-	db := &DB{con: detachConnection{refresh: b}, sessionRenewers: newRenewerSet()}
+	db := &DB{con: detachConnection{refresh: b}}
 	s := &Session{db: db, id: &models.UUID{}}
 	s.renew = newRenewer(time.Minute, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
 		return sessionCall[Tokens](ctx, s, connection.Refresh, tokens)
 	})
-	db.trackSessionRenewer(s.renew)
+	db.sessions = &sessionRegistry{byID: map[models.UUID]*Session{*s.id: s}}
 
 	s.renew.set(&Tokens{Access: jwtExpiringIn(time.Second), Refresh: "r"})
 	b.waitStarted(t)
