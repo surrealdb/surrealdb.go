@@ -248,7 +248,7 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable (v2 compat)")
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.True(t, errors.Is(err, &surrealdb.RPCError{}))
-	assert.Equal(t, -32000, rpcErr.Code)
+	assert.Equal(t, -32600, rpcErr.Code)
 	assert.Equal(t, "Couldn't coerce value for field `age` of `person:schema_test`: Expected `int` but found `'not a number'`", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
@@ -260,15 +260,15 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	// Message: describes the coercion failure, same as RPCError.Message.
 	assert.Equal(t, rpcErr.Message, se.Message)
 
-	// Kind: "Internal" — RPCError does NOT expose this.
-	assert.Equal(t, "Internal", se.Kind)
+	// Kind: "Validation" — RPCError does NOT expose this.
+	assert.Equal(t, "Validation", se.Kind)
 
 	// Code: same as RPCError.Code.
 	assert.Equal(t, rpcErr.Code, se.Code)
-	assert.Equal(t, -32000, se.Code)
+	assert.Equal(t, -32600, se.Code)
 
-	// Details: nil for schema coercion errors.
-	assert.Nil(t, se.Details, "schema coercion errors have no structured Details")
+	// Details: SurrealDB 4.0 reports a schema coercion error as an invalid request.
+	assert.Equal(t, map[string]any{"kind": "InvalidRequest"}, se.Details)
 
 	// Cause: nil — no nested cause chain for this error.
 	assert.Nil(t, se.Cause, "no cause chain for schema coercion errors")

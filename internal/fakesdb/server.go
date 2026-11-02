@@ -264,7 +264,7 @@ func (s *Server) SetGlobalFailures(failures []FailureConfig) {
 }
 
 // DefaultVersion is the version a Server reports when Version is empty.
-const DefaultVersion = "3.0.0"
+const DefaultVersion = "4.0.0"
 
 func (s *Server) versionString() string {
 	if s.Version == "" {

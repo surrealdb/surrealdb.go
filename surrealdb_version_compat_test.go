@@ -46,13 +46,8 @@ func TestVersionDetection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, v)
 
-	// Version should be either 2.x or 3.x
-	require.True(t, v.Major >= 2, "Expected major version >= 2, got %d", v.Major)
+	// The SDK supports SurrealDB 4.0 and later
+	require.True(t, v.Major >= 4, "Expected major version >= 4, got %d", v.Major)
 
-	// ThingOrRecordFn should return appropriate function name
-	if v.Major >= 3 {
-		require.Equal(t, "type::record", v.ThingOrRecordFn())
-	} else {
-		require.Equal(t, "type::thing", v.ThingOrRecordFn())
-	}
+	require.Equal(t, "type::record", v.ThingOrRecordFn())
 }
