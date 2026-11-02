@@ -19,7 +19,7 @@ import (
 //
 // The migration process:
 //   - For PostgreSQL: Uses GORM AutoMigrate to create/update tables, indexes, and constraints
-//   - For SurrealDB: Schema creation is implicit (tables are created automatically when data is inserted)
+//   - For SurrealDB: Defines the tables, so they can be read before anything is written to them
 //   - For CQRS: Runs migrations on both stores sequentially, failing if either store migration fails
 //
 // This method is safe to run multiple times - it only creates missing schema elements and
