@@ -14,6 +14,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
@@ -93,6 +94,10 @@ func (c *recordingConnection) Calls() []string {
 }
 
 func (c *recordingConnection) Connect(context.Context) error { return nil }
+
+// GetUnmarshaler decodes the responses Send encodes. rews decodes the live
+// queries it records with the unmarshaler of the connection in use.
+func (c *recordingConnection) GetUnmarshaler() codec.Unmarshaler { return surrealcbor.New() }
 func (c *recordingConnection) Close(context.Context) error {
 	c.mu.Lock()
 	c.closed = true

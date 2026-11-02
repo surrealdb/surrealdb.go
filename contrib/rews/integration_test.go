@@ -93,7 +93,7 @@ func TestIntegration(t *testing.T) {
 	})
 
 	// Normal select response
-	server.AddStubResponse(fakesdb.SimpleStubResponse("select", map[string]any{
+	server.AddStubResponse(fakesdb.QueryStubResponse(map[string]any{
 		"id":   cbor.Tag{Number: 8, Content: []any{"test", "1"}},
 		"name": "Test Record",
 	}))

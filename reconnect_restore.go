@@ -277,8 +277,8 @@ func (l *liveRouter) restore(ctx context.Context, con connection.Connection) []e
 
 	var errs []error
 	for _, q := range queries {
-		var serverID models.UUID
-		if err := callOnInto(ctx, con, q.session, &serverID, connection.Live, q.table, q.diff); err != nil {
+		serverID, err := restartLive(ctx, con, q)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("restarting live query %s: %w", q.id, err))
 			continue
 		}
@@ -300,4 +300,21 @@ func (l *liveRouter) restore(ctx context.Context, con connection.Connection) []e
 		l.mu.Unlock()
 	}
 	return errs
+}
+
+// restartLive starts a live query again on a connection, with the statement
+// [Live] started it with, and returns the ID the server gave it there.
+func restartLive(ctx context.Context, con connection.Connection, q *liveQuery) (models.UUID, error) {
+	var serverID models.UUID
+	var results []statementResult
+	vars := map[string]any{"what": q.table}
+	if err := callOnInto(ctx, con, q.session, &results, connection.Query, liveStatement(q.diff), vars); err != nil {
+		return serverID, err
+	}
+	raw, err := oneResult(&results, con.GetUnmarshaler())
+	if err != nil {
+		return serverID, err
+	}
+	err = con.GetUnmarshaler().Unmarshal(raw, &serverID)
+	return serverID, err
 }

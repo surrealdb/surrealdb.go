@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"net/http"
 	"sync"
 	"time"
 
@@ -118,6 +119,9 @@ type reconnector struct {
 var (
 	_ connection.WebSocketConnection = (*reconnector)(nil)
 	_ connection.HealthChecker       = (*reconnector)(nil)
+	_ connection.CBORVersioner       = (*reconnector)(nil)
+	_ connection.HTTPEndpoint        = (*reconnector)(nil)
+	_ connection.Streamer            = (*reconnector)(nil)
 )
 
 // canReconnect reports whether a connection can be reconnected by the client.
@@ -519,6 +523,41 @@ func (r *reconnector) Health(ctx context.Context) error {
 		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
 	}
 	return hc.Health(ctx)
+}
+
+// CBORVersion returns the CBOR protocol version the connection in use
+// negotiated. Each new connection negotiates again, so it can change when the
+// server is replaced by one of another version.
+func (r *reconnector) CBORVersion() connection.CBORVersion {
+	if v, ok := r.current().(connection.CBORVersioner); ok {
+		return v.CBORVersion()
+	}
+	return connection.CBORv1
+}
+
+// HTTPEndpoint returns the HTTP endpoint of the connection in use, for the
+// server's endpoints which have no RPC method, such as /import and /export.
+// It returns no base URL if that connection does not know one.
+func (r *reconnector) HTTPEndpoint() (baseURL string, client *http.Client) {
+	if e, ok := r.current().(connection.HTTPEndpoint); ok {
+		return e.HTTPEndpoint()
+	}
+	return "", nil
+}
+
+// CallStream sends a streaming request, such as query_stream, on the current
+// connection, waiting until the client is connected. A stream open when the
+// connection is lost fails; it is not sent again.
+func (r *reconnector) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	con, err := r.conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	streamer, ok := con.(connection.Streamer)
+	if !ok {
+		return nil, fmt.Errorf("%w: query_stream", constants.ErrMethodNotAvailable)
+	}
+	return streamer.CallStream(ctx, req)
 }
 
 func (r *reconnector) LiveNotifications(id string) (chan connection.Notification, error) {

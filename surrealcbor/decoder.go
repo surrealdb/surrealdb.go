@@ -55,6 +55,15 @@ type decoder struct {
 	pos            int
 	defaultMapType reflect.Type // Type of map to create when decoding to interface{}
 	fieldResolver  FieldResolver
+
+	// cborVersion is the CBOR protocol version being decoded: 1 (plain cbor,
+	// the default when zero) or 2 (cbor.2, with the sized-number tags 180 to 188).
+	cborVersion int
+}
+
+// v2 reports whether d decodes cbor.2.
+func (d *decoder) v2() bool {
+	return d.cborVersion >= cborV2
 }
 
 func (d *decoder) decode(v any) error {

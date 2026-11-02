@@ -84,7 +84,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	var retryRequired bool
 
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher: fakesdb.MatchMethodWithParams("select", func(params []interface{}) bool {
+		Matcher: fakesdb.MatchMethodWithParams("query", func(params []interface{}) bool {
 			count := atomic.AddInt32(&selectCount, 1)
 			t.Logf("Select request #%d", count)
 
@@ -108,7 +108,7 @@ func testDoReconnect[C connection.WebSocketConnection](t *testing.T, newConnFunc
 	})
 
 	// Normal select response
-	server.AddStubResponse(fakesdb.SimpleStubResponse("select", map[string]interface{}{
+	server.AddStubResponse(fakesdb.QueryStubResponse(map[string]interface{}{
 		"id":   cbor.Tag{Number: 8, Content: []interface{}{"test", "1"}},
 		"name": "Test Record",
 	}))
@@ -260,7 +260,7 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 	// Drop connection on 2nd request
 	var selectCount int32
 	server.AddStubResponse(fakesdb.StubResponse{
-		Matcher: fakesdb.MatchMethodWithParams("select", func(params []interface{}) bool {
+		Matcher: fakesdb.MatchMethodWithParams("query", func(params []interface{}) bool {
 			count := atomic.AddInt32(&selectCount, 1)
 			return count == 2
 		}),
@@ -275,7 +275,7 @@ func TestDefaultWebSocketDoNotReconnect(t *testing.T) {
 	})
 
 	// Normal response
-	server.AddStubResponse(fakesdb.SimpleStubResponse("select", map[string]interface{}{
+	server.AddStubResponse(fakesdb.QueryStubResponse(map[string]interface{}{
 		"id": cbor.Tag{Number: 8, Content: []interface{}{"test", "1"}},
 	}))
 

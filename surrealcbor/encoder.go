@@ -6,6 +6,8 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
+
+	"github.com/surrealdb/surrealdb.go/internal/cborwire"
 )
 
 // getEncMode returns encoder mode using fxamacker/cbor
@@ -50,7 +52,7 @@ func getEncMode() cbor.EncMode {
 	}
 
 	em, err := cbor.EncOptions{
-		Time:    cbor.TimeRFC3339,
+		Time:    cbor.TimeRFC3339Nano,
 		TimeTag: cbor.EncTagRequired,
 	}.EncModeWithTags(tags)
 	if err != nil {
@@ -72,6 +74,10 @@ func (enc *Encoder) Encode(v any) error {
 	// - Types implementing cbor.Marshaler (including our Marshaler interface)
 	// - Built-in types and registered tags
 	data, err := enc.em.Marshal(v)
+	if err != nil {
+		return err
+	}
+	data, err = cborwire.Normalize(data)
 	if err != nil {
 		return err
 	}

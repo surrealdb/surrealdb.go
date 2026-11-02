@@ -38,6 +38,18 @@
 //	| 92  | Geometry MultiLine  | Collection of geographic lines       |
 //	| 93  | Geometry MultiPolygon | Collection of geographic polygons  |
 //	| 94  | Geometry Collection | Mixed collection of geometries       |
+//	| 180 | i8 (cbor.2 only)    | 8-bit signed integer                 |
+//	| 181 | u8 (cbor.2 only)    | 8-bit unsigned integer               |
+//	| 182 | i16 (cbor.2 only)   | 16-bit signed integer                |
+//	| 183 | u16 (cbor.2 only)   | 16-bit unsigned integer              |
+//	| 184 | i32 (cbor.2 only)   | 32-bit signed integer                |
+//	| 185 | u32 (cbor.2 only)   | 32-bit unsigned integer              |
+//	| 186 | u64 (cbor.2 only)   | 64-bit unsigned integer              |
+//	| 187 | f16 (cbor.2 only)   | Half-precision float                 |
+//	| 188 | f32 (cbor.2 only)   | Single-precision float               |
+//
+// Tags 180 to 188 are SurrealDB 4.0's sized numbers, which only exist in the
+// cbor.2 version of the protocol. See [Codec] for how they map to Go types.
 //
 // # Why our own CBOR implementation?
 //
@@ -65,6 +77,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"github.com/surrealdb/surrealdb.go/internal/cborwire"
 )
 
 // globalFieldResolver is a shared field resolver used by Unmarshal functions
@@ -140,7 +154,11 @@ func NewDecoderWithBufferSize(r io.Reader, bufSize int) *Decoder {
 // Marshal uses fxamacker/cbor for marshaling with proper tag registration
 func Marshal(v any) ([]byte, error) {
 	em := getEncMode()
-	return em.Marshal(v)
+	data, err := em.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return cborwire.Normalize(data)
 }
 
 // NewEncoder creates an encoder that writes to w

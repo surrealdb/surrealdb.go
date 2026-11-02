@@ -99,8 +99,12 @@ func (r *RecordID) UnmarshalCBOR(data []byte) error {
 	if !ok {
 		return fmt.Errorf("invalid RecordID format: table must be a string")
 	}
+	id, err := recordIDKeyFromTags(temp[1])
+	if err != nil {
+		return fmt.Errorf("invalid RecordID key: %w", err)
+	}
 	r.Table = tableStr
-	r.ID = temp[1]
+	r.ID = id
 
 	return nil
 }

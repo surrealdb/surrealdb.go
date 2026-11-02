@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,10 +106,11 @@ func (c *Connection) closedError() error {
 // configuration, for reconnecting after this one is lost.
 func (c *Connection) Redial() connection.Connection {
 	n := New(&connection.Config{
-		BaseURL:     c.BaseURL,
-		Marshaler:   c.Marshaler,
-		Unmarshaler: c.Unmarshaler,
-		Logger:      c.Logger,
+		BaseURL:       c.BaseURL,
+		Marshaler:     c.Marshaler,
+		Unmarshaler:   c.Unmarshaler,
+		Logger:        c.Logger,
+		DisableCBORv2: c.DisableCBORv2,
 	})
 	n.Timeout = c.Timeout
 	return n
@@ -215,6 +217,7 @@ func New(params *connection.Config) *Connection {
 	conn.BaseURL = params.BaseURL
 	conn.Marshaler = params.Marshaler
 	conn.Unmarshaler = params.Unmarshaler
+	conn.DisableCBORv2 = params.DisableCBORv2
 	conn.ResponseChannels = make(map[string]chan connection.RPCResponse[cbor.RawMessage])
 	conn.NotificationChannels = make(map[string]chan connection.Notification)
 	conn.Logger = params.Logger
@@ -289,8 +292,13 @@ func (c *Connection) Connect(ctx context.Context) error {
 
 	option := &gws.ClientOption{
 		Addr: fmt.Sprintf("%s/rpc", c.BaseURL),
+		// The header name is deliberately not canonicalised. gws looks the
+		// offered subprotocols up by the canonical name to check the server
+		// picked one, and that check would refuse a server that picks none,
+		// which this connection has always tolerated. The response header
+		// says which one the server picked.
 		RequestHeader: http.Header{
-			"Sec-WebSocket-Protocol": []string{"cbor"},
+			"Sec-WebSocket-Protocol": []string{strings.Join(c.CBORSubprotocols(), ", ")},
 		},
 		PermessageDeflate: gws.PermessageDeflate{
 			Enabled: true,
@@ -298,6 +306,10 @@ func (c *Connection) Connect(ctx context.Context) error {
 	}
 
 	conn, resp, err := gws.NewClient(c.handler, option)
+	var subprotocol string
+	if resp != nil {
+		subprotocol = resp.Header.Get("Sec-WebSocket-Protocol")
+	}
 	if resp != nil {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			c.logError("failed to close response body", "error", closeErr)
@@ -310,12 +322,18 @@ func (c *Connection) Connect(ctx context.Context) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 
+	c.UseCBORSubprotocol(subprotocol)
 	c.conn = conn
 
 	// Start reading messages
 	go conn.ReadLoop()
 
 	return nil
+}
+
+// HTTPEndpoint returns the server's base URL and the HTTP client to reach it with.
+func (c *Connection) HTTPEndpoint() (baseURL string, client *http.Client) {
+	return c.BaseURL, nil
 }
 
 // Health asks the server whether it is healthy, with GET /health over HTTP.
@@ -433,6 +451,39 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 		}
 		return &rpcRes, nil
 	}
+}
+
+// CallStream sends a request answered by many responses, such as
+// query_stream, and returns the stream they arrive on.
+func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest) (*connection.ResponseStream, error) {
+	select {
+	case <-c.done:
+		return nil, c.closeErr()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	if req.ID == nil || req.ID == "" {
+		req.ID = rand.NewRequestID(constants.RequestIDLength)
+	}
+
+	stream, err := c.OpenResponseStream(fmt.Sprintf("%v", req.ID), c.done, c.closeErr)
+	if err != nil {
+		return nil, err
+	}
+	stream.FirstResponseTimeout = c.Timeout
+	if err := c.write(req); err != nil {
+		stream.Close()
+		return nil, err
+	}
+	return stream, nil
+}
+
+// closeErr is the error for a request on the closed connection: never nil,
+// even after a clean Close.
+func (c *Connection) closeErr() error {
+	return connection.ClosedError(c.CloseError())
 }
 
 // Unset implements connection.Connection.

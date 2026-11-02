@@ -84,3 +84,21 @@ func TestEncode_durationBinary(t *testing.T) {
 ```
 
 Some `encode*_test.go` files may occasionally import `github.com/fxamacker/cbor/v2` for verification purposes (e.g., to inspect the raw CBOR structure of encoded data). This is used only for test assertions and debugging, not for the actual encoding/decoding being tested.
+
+## Conformance vectors
+
+`conformance_vectors_test.go` runs the shared CBOR test vectors from
+[surrealdb-protocol](https://github.com/surrealdb/surrealdb-protocol)
+(`spec/vectors/cbor.yaml` and `spec/vectors/cbor2.yaml`) through the plain
+cbor codec (`New`) and the cbor.2 codec (`NewV2`). The vectors are not
+vendored here; check out the pinned tag and point `SURREALDB_PROTOCOL_DIR` at it:
+
+```shell
+eval "$(scripts/fetch-surrealdb-protocol.sh)"
+go test ./surrealcbor -run TestConformanceVectors -v
+```
+
+Without `SURREALDB_PROTOCOL_DIR` the test skips. CI checks out the same tag.
+Vectors the codec does not pass yet are listed with the reason in
+`knownVectorGaps`; they skip, and a listed vector that starts passing fails
+the test so the list stays accurate.

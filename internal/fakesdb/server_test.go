@@ -35,7 +35,7 @@ func TestAuthenticationFlow(t *testing.T) {
 		server := NewServer("127.0.0.1:0")
 		server.TokenSignIn = "test_token_signin"
 
-		server.AddStubResponse(SimpleStubResponse("select", map[string]any{
+		server.AddStubResponse(QueryStubResponse(map[string]any{
 			"id":   "test:1",
 			"name": "Test Record",
 		}))
@@ -95,7 +95,7 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		// Add stub responses - don't stub signin/authenticate to test the built-in behavior
 		server.AddStubResponse(SimpleStubResponse("let", nil))
-		server.AddStubResponse(SimpleStubResponse("select", map[string]any{
+		server.AddStubResponse(QueryStubResponse(map[string]any{
 			"id":   "test:1",
 			"name": "Test Record",
 		}))
@@ -153,7 +153,7 @@ func TestAuthenticationFlow(t *testing.T) {
 
 		// Add stub responses - don't stub authenticate to test the built-in behavior
 		server.AddStubResponse(SimpleStubResponse("let", nil))
-		server.AddStubResponse(SimpleStubResponse("select", map[string]any{
+		server.AddStubResponse(QueryStubResponse(map[string]any{
 			"id":   "test:1",
 			"name": "Test Record",
 		}))

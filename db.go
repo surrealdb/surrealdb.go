@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofrs/uuid"
 
 	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
@@ -49,8 +50,8 @@ type DB struct {
 	// renew keeps the token pair of the default session fresh. It is nil when
 	// token renewal is turned off.
 	renew *renewer
-	// state is what the default session holds, for setting it again on a new
-	// connection.
+	// state is what the default session holds, for Fork, and for setting it
+	// again on a new connection.
 	state *sessionState
 	// sessions are the sessions attached with this client.
 	//
@@ -132,6 +133,21 @@ func heldTokens(ctx context.Context, conn connection.Connection, tokens Tokens) 
 		return tokens
 	}
 	return held
+}
+
+// heldAccess returns the access token the connection holds, if it holds one,
+// as it may have replaced the pair since the client recorded it, and token
+// otherwise.
+func heldAccess(ctx context.Context, conn connection.Connection, token string) string {
+	holder, ok := conn.(tokenHolder)
+	if !ok {
+		return token
+	}
+	held, err := holder.Tokens(ctx)
+	if err != nil || held.Access == "" {
+		return token
+	}
+	return held.Access
 }
 
 // Deprecated: Use FromEndpointURLString instead.
@@ -218,6 +234,16 @@ func FromEndpointURLStringWithOptions(ctx context.Context, connectionURL string,
 // --------------------------------------------------
 // Public methods
 // --------------------------------------------------
+
+// CBORVersion returns the CBOR protocol version the connection negotiated
+// with the server: connection.CBORv2 (cbor.2, which keeps SurrealDB 4.0's
+// sized numbers) or connection.CBORv1 (plain CBOR). See connection.CBORVersion.
+func (db *DB) CBORVersion() connection.CBORVersion {
+	if v, ok := db.con.(connection.CBORVersioner); ok {
+		return v.CBORVersion()
+	}
+	return connection.CBORv1
+}
 
 // Deprecated: WithContext is deprecated and does nothing. Use context parameters in individual method calls instead.
 func (db *DB) WithContext(ctx context.Context) *DB {
@@ -620,10 +646,10 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 
 // Let sets a variable in the session.
 //
-// Over WebSocket, the client keeps the variable, to set it again on a new
-// connection. It encodes the value once, before it sends it, so that changing
-// the value after Let returns changes neither the variable nor the one set
-// again.
+// Over WebSocket, the client keeps the variable for [DB.Fork], and to set it
+// again on a new connection. It encodes the value once, before it sends it, so
+// that changing the value after Let returns changes neither the variable, nor
+// a later fork, nor the one set again.
 func (db *DB) Let(ctx context.Context, key string, val any) error {
 	val, err := letValue(db.con, val)
 	if err != nil {
@@ -759,16 +785,20 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 	case *Session:
 		db = v.db
 	}
-	var err error
+	var con connection.Connection
+	serverID := id
 	if db != nil && db.rc != nil {
-		var con connection.Connection
-		if con, err = db.rc.conn(ctx); err == nil {
-			_, err = sendOn[any](ctx, s, con, "kill", db.rc.lives.serverID(id))
+		var err error
+		if con, err = db.rc.conn(ctx); err != nil {
+			return err
 		}
-	} else {
-		_, err = send[any](ctx, s, "kill", id)
+		serverID = db.rc.lives.serverID(id)
 	}
-	if err != nil {
+	var liveID any = serverID
+	if u, err := uuid.FromString(serverID); err == nil {
+		liveID = models.UUID{UUID: u}
+	}
+	if _, err := queryOneOn[any](ctx, s, con, "KILL $id", map[string]any{"id": liveID}); err != nil {
 		return err
 	}
 
@@ -785,10 +815,13 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 // Live starts a live query on a table.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
 //
+// With diff, notifications carry the JSON Patch operations that changed each
+// record rather than the record.
+//
 // When the client reconnects, the live query is started again on the new
 // connection, and keeps the ID returned here.
 func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
-	id, err := send[models.UUID](ctx, s, "live", table, diff)
+	id, err := queryOne[models.UUID](ctx, s, liveStatement(diff), map[string]any{"what": table})
 	if err != nil || id == nil {
 		return id, err
 	}
@@ -803,6 +836,16 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 		}
 	}
 	return id, nil
+}
+
+// liveStatement is the statement that starts a live query on the table bound
+// to $what, for [Live] and for starting it again on a new connection.
+func liveStatement(diff bool) string {
+	fields := "*"
+	if diff {
+		fields = "DIFF"
+	}
+	return "LIVE SELECT " + fields + " FROM $what"
 }
 
 // Status returns the status of the client's connection. A client which does not
@@ -949,7 +992,14 @@ func (db *DB) OnStatus(fn func(StatusEvent)) (stop func()) {
 // you may get no [RPCError], but a [QueryError] saying so, enabling you to easily diferentiate
 // between retriable and non-retriable errors.
 func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*[]QueryResult[TResult], error) {
-	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, "query", sql, vars)
+	return queryWith[TResult](ctx, s, "query", sql, vars)
+}
+
+// queryWith sends a query with the query or gql method, whose results have the same form.
+func queryWith[TResult any, S sendable](
+	ctx context.Context, s S, method, sql string, vars map[string]any,
+) (*[]QueryResult[TResult], error) {
+	res, err := send[[]QueryResult[cbor.RawMessage]](ctx, s, method, sql, vars)
 	if err != nil {
 		return nil, err
 	}
@@ -1008,104 +1058,6 @@ func Query[TResult any, S sendable](ctx context.Context, s S, sql string, vars m
 	}
 
 	return &qr, errs
-}
-
-// Create creates a new record in the database.
-// S can be *DB, *Session, or *Transaction.
-func Create[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, s, "create", what, data)
-}
-
-// Select retrieves records from the database.
-// S can be *DB, *Session, or *Transaction.
-func Select[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat) (*TResult, error) {
-	return send[TResult](ctx, s, "select", what)
-}
-
-// Patch applies patches to records in the database.
-// S can be *DB, *Session, or *Transaction.
-func Patch[TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, patches []PatchData) (*[]PatchData, error) {
-	return send[[]PatchData](ctx, s, "patch", what, patches, true)
-}
-
-// Delete removes records from the database.
-// S can be *DB, *Session, or *Transaction.
-func Delete[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat) (*TResult, error) {
-	return send[TResult](ctx, s, "delete", what)
-}
-
-// Upsert creates or updates a record in the database.
-// S can be *DB, *Session, or *Transaction.
-func Upsert[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, s, "upsert", what, data)
-}
-
-// Update replaces a record in the database like a PUT request.
-// S can be *DB, *Session, or *Transaction.
-func Update[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, s, "update", what, data)
-}
-
-// Merge merges data into a record in the database like a PATCH request.
-// S can be *DB, *Session, or *Transaction.
-func Merge[TResult any, TWhat TableOrRecord, S sendable](ctx context.Context, s S, what TWhat, data any) (*TResult, error) {
-	return send[TResult](ctx, s, "merge", what, data)
-}
-
-// Insert creates records with either specified IDs or generated IDs.
-// S can be *DB, *Session, or *Transaction.
-//
-// Insert cannot create a relationship. If you want to create a relationship,
-// use InsertRelation if you need to specify the ID of the relationship,
-// or use Relate if you want to create a relationship with a generated ID.
-func Insert[TResult any, S sendable](ctx context.Context, s S, what models.Table, data any) (*[]TResult, error) {
-	return send[[]TResult](ctx, s, "insert", what, data)
-}
-
-// Relate creates a relationship between two records in the table
-// with a generated relationship ID.
-// S can be *DB, *Session, or *Transaction.
-//
-// The relation needs to be specified via the `Relation` field of the Relationship struct.
-//
-// A relation is basically a table, so you can query it directly using SELECT
-// if needed.
-//
-// Although the Relationship struct allows you to specify the ID,
-// it is ignored when you use Relate, and the ID is generated by SurrealDB.
-//
-// In other words, Relationship.ID is meant for unmarshaling the relation from the database to the Relationship struct,
-// in which case the ID is set to the ID of the relation record generated by SurrealDB.
-//
-// In case you only care about the returned relationship's ID,
-// use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func Relate[TResult any, S sendable](ctx context.Context, s S, rel *Relationship) (*TResult, error) {
-	return send[TResult](ctx, s, "relate", rel.In, rel.Relation, rel.Out, rel.Data)
-}
-
-// InsertRelation inserts a relation between two records in the database.
-// S can be *DB, *Session, or *Transaction.
-//
-// It creates a relationship from relationship.In to relationship.Out.
-//
-// The resulting relationship will have an autogenerated ID in case the Relationship.ID is nil,
-// or the ID specified in the Relationship.ID field.
-//
-// In case you only care about the returned relationship's ID,
-// use `connection.ResponseID[models.RecordID]` for the TResult type parameter.
-func InsertRelation[TResult any, S sendable](ctx context.Context, s S, relationship *Relationship) (*TResult, error) {
-	rel := map[string]any{
-		"in":  relationship.In,
-		"out": relationship.Out,
-	}
-	if relationship.ID != nil {
-		rel["id"] = relationship.ID
-	}
-	for k, v := range relationship.Data {
-		rel[k] = v
-	}
-
-	return send[TResult](ctx, s, "insert_relation", relationship.Relation, rel)
 }
 
 // QueryRaw composes a query from the provided QueryStmt objects,

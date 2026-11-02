@@ -5,6 +5,8 @@ import (
 	"sync"
 
 	"github.com/fxamacker/cbor/v2"
+
+	"github.com/surrealdb/surrealdb.go/internal/cborwire"
 )
 
 const (
@@ -91,7 +93,11 @@ type CborMarshaler struct {
 
 func (c *CborMarshaler) Marshal(v any) ([]byte, error) {
 	v = replacerBeforeEncode(v)
-	return c.cborEncMode().Marshal(v)
+	data, err := c.cborEncMode().Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return cborwire.Normalize(data)
 }
 
 func (c *CborMarshaler) cborEncMode() cbor.EncMode {
@@ -141,7 +147,7 @@ func (c *CborUnmarshaler) cborDecMode() cbor.DecMode {
 func getCborEncoder() cbor.EncMode {
 	tags := registerCborTags()
 	em, err := cbor.EncOptions{
-		Time:    cbor.TimeRFC3339,
+		Time:    cbor.TimeRFC3339Nano,
 		TimeTag: cbor.EncTagRequired,
 	}.EncModeWithTags(tags)
 	if err != nil {

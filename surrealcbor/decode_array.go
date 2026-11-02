@@ -82,6 +82,19 @@ func (d *decoder) readLength(dst *int) error {
 }
 
 func (d *decoder) decodeIndefiniteArray(v reflect.Value) error {
+	if v.Kind() == reflect.Interface {
+		// Decode into []any, as a definite-length array would be.
+		var arr []any
+		if err := d.decodeIndefiniteArray(reflect.ValueOf(&arr).Elem()); err != nil {
+			return err
+		}
+		v.Set(reflect.ValueOf(arr))
+		return nil
+	}
+	if v.Kind() != reflect.Slice {
+		return fmt.Errorf("cannot decode an indefinite-length array into %v", v.Type())
+	}
+
 	var elements []reflect.Value
 
 	for {

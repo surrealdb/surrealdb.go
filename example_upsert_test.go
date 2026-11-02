@@ -228,8 +228,11 @@ func ExampleUpsert_rpc_error() {
 		// As of v3.0.0-beta.2 (format changed)
 		case "Couldn't coerce value for field `name` of `person:a`: Expected `string` but found `123`":
 			fmt.Println("Encountered expected error for SurrealDB 2.x or 3.x")
-		// As of v2.3.7
+		// As of v2.3.7, from the upsert RPC method
 		case "There was a problem with the database: Found 123 for field `name`, with record `person:a`, but expected a string":
+			fmt.Println("Encountered expected error for SurrealDB 2.x or 3.x")
+		// SurrealDB 2.x, from the UPSERT statement Upsert now sends
+		case "Found 123 for field `name`, with record `person:a`, but expected a string":
 			fmt.Println("Encountered expected error for SurrealDB 2.x or 3.x")
 		default:
 			fmt.Printf("Unknown Error: %v\n", err)
