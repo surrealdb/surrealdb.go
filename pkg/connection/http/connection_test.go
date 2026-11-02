@@ -411,6 +411,29 @@ func TestWithVariables_otherStringKeyedMaps(t *testing.T) {
 	}
 }
 
+// Variables bound with Let are merged into those of a gql request, as the
+// server merges the session's variables into them over a WebSocket.
+func TestWithVariables_gql(t *testing.T) {
+	con, sent, _ := recordingConnection(t, surrealcbor.New())
+
+	ctx := context.Background()
+	require.NoError(t, con.Let(ctx, "min", 30))
+
+	const query = "MATCH (p:person) WHERE p.age >= $min AND p.age < $max RETURN p.name AS name"
+	for _, given := range []any{map[string]any{"max": 40}, nil} {
+		_, err := con.Send(ctx, "gql", query, given)
+		require.NoError(t, err)
+		assert.Equal(t, "gql", sent.Method)
+		require.Len(t, sent.Params, 2)
+		vars, isMap := sent.Params[1].(map[string]any)
+		require.True(t, isMap, "%T", sent.Params[1])
+		assert.EqualValues(t, 30, vars["min"], "%v", given)
+		if given != nil {
+			assert.EqualValues(t, 40, vars["max"])
+		}
+	}
+}
+
 type namedString string
 
 // Values of a defined string type, encoded as strings, are taken as strings:
@@ -448,6 +471,88 @@ func TestNamedStrings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ns", header.Get("Surreal-NS"))
 	assert.Empty(t, header.Get("Surreal-DB"), "a nil pointer is null")
+}
+
+// TestRefreshAndReset_changeConnectionState checks that the token of a
+// refreshed pair is sent from then on, and that reset forgets everything
+// without a request.
+func TestRefreshAndReset_changeConnectionState(t *testing.T) {
+	c := surrealcbor.New()
+
+	var sent connection.RPCRequest
+	var header http.Header
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header = req.Header
+		body, _ := io.ReadAll(req.Body)
+		sent = connection.RPCRequest{}
+		_ = c.Unmarshal(body, &sent)
+
+		var result any = []any{}
+		if sent.Method == "refresh" {
+			result = map[string]any{"access": "new-access", "refresh": "new-refresh"}
+		}
+		res, _ := c.Marshal(map[string]any{"id": sent.ID, "result": result})
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(res)), Header: http.Header{}}
+	}))
+
+	ctx := context.Background()
+	require.NoError(t, con.Use(ctx, "ns", "db"))
+	require.NoError(t, con.Let(ctx, "x", 1))
+	require.NoError(t, con.Authenticate(ctx, "old-access"))
+
+	_, err := con.Send(ctx, "refresh", connection.Tokens{Access: "old-access", Refresh: "old-refresh"})
+	require.NoError(t, err)
+	_, err = con.Send(ctx, "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer new-access", header.Get("Authorization"))
+
+	sent = connection.RPCRequest{}
+	_, err = con.Send(ctx, "reset")
+	require.NoError(t, err)
+	assert.Empty(t, sent.Method, "reset needs no request")
+
+	_, err = con.Send(ctx, "query", "RETURN $x")
+	require.NoError(t, err)
+	assert.Empty(t, header.Get("Authorization"))
+	assert.Empty(t, header.Get("Surreal-NS"))
+	assert.Empty(t, header.Get("Surreal-DB"))
+	assert.Len(t, sent.Params, 1, "no variables are sent")
+}
+
+// The answer to a refresh canceled while it arrived is not applied, so that a
+// renewal stopped by Close does not change the token.
+func TestCall_canceledRefreshChangesNoToken(t *testing.T) {
+	c := surrealcbor.New()
+	pair, err := c.Marshal(map[string]any{"id": "abc", "result": map[string]any{"access": "new-access", "refresh": "new-refresh"}})
+	require.NoError(t, err)
+	ok, err := c.Marshal(map[string]any{"id": "abc", "result": []any{}})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var header http.Header
+	con := New(&connection.Config{BaseURL: "http://test.surreal", Marshaler: c, Unmarshaler: c})
+	con.SetHTTPClient(NewTestClient(func(req *http.Request) *http.Response {
+		header = req.Header
+		var sent connection.RPCRequest
+		body, _ := io.ReadAll(req.Body)
+		_ = c.Unmarshal(body, &sent)
+		res := ok
+		if sent.Method == "refresh" {
+			cancel()
+			res = pair
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(res)), Header: http.Header{}}
+	}))
+
+	require.NoError(t, con.Authenticate(context.Background(), "old-access"))
+	_, err = con.Send(ctx, "refresh", connection.Tokens{Access: "old-access", Refresh: "old-refresh"})
+	require.ErrorIs(t, err, context.Canceled)
+
+	_, err = con.Send(context.Background(), "query", "RETURN 1")
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer old-access", header.Get("Authorization"))
 }
 
 func newStaticResponseConnection(status int, contentType, body string) *Connection {

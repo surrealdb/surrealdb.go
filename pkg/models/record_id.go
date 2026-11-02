@@ -63,6 +63,12 @@ func (r *RecordID) MarshalCBOR() ([]byte, error) {
 	if r.Table == "" || r.ID == nil {
 		return nil, fmt.Errorf("cannot marshal RecordID with empty table or ID: want <table>:<identifier> but got %s:%v", r.Table, r.ID)
 	}
+	// A range whose bound is NULL or NONE fails the same way.
+	if rng, ok := r.ID.(interface{ validateRecordIDRange() error }); ok && !isNilBound(r.ID) {
+		if err := rng.validateRecordIDRange(); err != nil {
+			return nil, fmt.Errorf("cannot marshal RecordID %s:%v: %w", r.Table, r.ID, err)
+		}
+	}
 	return cbor.Marshal(cbor.Tag{
 		Number:  TagRecordID,
 		Content: []any{r.Table, r.ID},

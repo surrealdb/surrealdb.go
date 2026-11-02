@@ -179,6 +179,10 @@ type Server struct {
 	// This is used to verify that the SignIn operation works correctly.
 	TokenSignIn string
 
+	// Version is the version answered to the version method, without the
+	// "surrealdb-" prefix. DefaultVersion when empty.
+	Version string
+
 	// sessionIdCounter is used to generate unique session IDs
 	sessionIdCounter int
 }
@@ -257,6 +261,16 @@ func (s *Server) SetGlobalFailures(failures []FailureConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.globalFailures = failures
+}
+
+// DefaultVersion is the version a Server reports when Version is empty.
+const DefaultVersion = "3.0.0"
+
+func (s *Server) versionString() string {
+	if s.Version == "" {
+		return DefaultVersion
+	}
+	return s.Version
 }
 
 // Start starts the server and begins accepting WebSocket connections.
@@ -359,6 +373,16 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 
 	// Handle authentication-related methods with default behavior
 	switch req.Method {
+	case "version":
+		// Like the real server, version needs no authentication. Clients ask for
+		// it on connecting, to check that they support the server.
+		if matchedStub == nil {
+			h.sendResponse(socket, req.ID, "surrealdb-"+h.server.versionString())
+			return
+		}
+		// A stubbed version needs no authentication either.
+		h.answerStub(socket, &req, matchedStub)
+		return
 	case "use":
 		h.handleUse(socket, &req)
 		return
@@ -409,19 +433,7 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 
 	// If we have a stub, use it regardless of the method
 	if matchedStub != nil {
-		for _, failure := range matchedStub.Failures {
-			if shouldTriggerFailure(failure.Probability) {
-				if err := h.applyFailure(socket, failure, &req, matchedStub); err != nil {
-					return
-				}
-			}
-		}
-
-		if matchedStub.Error != nil {
-			h.sendError(socket, req.ID, matchedStub.Error.Code, matchedStub.Error.Message)
-		} else {
-			h.sendResponse(socket, req.ID, matchedStub.Result)
-		}
+		h.answerStub(socket, &req, matchedStub)
 		return
 	}
 
@@ -431,6 +443,23 @@ func (h *Handler) OnMessage(socket *gws.Conn, message *gws.Message) {
 		"method":  req.Method,
 		"params":  req.Params,
 	})
+}
+
+// answerStub answers req as stub says, after applying the stub's failures.
+func (h *Handler) answerStub(socket *gws.Conn, req *connection.RPCRequest, stub *StubResponse) {
+	for _, failure := range stub.Failures {
+		if shouldTriggerFailure(failure.Probability) {
+			if err := h.applyFailure(socket, failure, req, stub); err != nil {
+				return
+			}
+		}
+	}
+
+	if stub.Error != nil {
+		h.sendError(socket, req.ID, stub.Error.Code, stub.Error.Message)
+	} else {
+		h.sendResponse(socket, req.ID, stub.Result)
+	}
 }
 
 //nolint:gocyclo,funlen

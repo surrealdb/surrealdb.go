@@ -81,6 +81,11 @@ func (c *Connection) SetHTTPClient(client *http.Client) *Connection {
 	return c
 }
 
+// Health asks the server whether it is healthy, with GET /health.
+func (c *Connection) Health(ctx context.Context) error {
+	return connection.CheckHealth(ctx, c.httpClient, c.BaseURL)
+}
+
 func (c *Connection) GetUnmarshaler() codec.Unmarshaler {
 	return c.Unmarshaler
 }
@@ -120,7 +125,9 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return res, err
 	}
 
-	if request.Method == string(connection.Query) {
+	// The server merges the session's variables into those of query and gql,
+	// so the variables set with Let are merged into them here.
+	if request.Method == string(connection.Query) || request.Method == methodGQL {
 		request = c.withVariables(request)
 	}
 
@@ -151,6 +158,11 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 		return nil, res.Error
 	}
 
+	// A request canceled while its answer arrived changes no state, so that
+	// the answer to a canceled refresh, for one, is not applied.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	c.trackAuth(request, res.Result)
 
 	return &res, nil
@@ -167,14 +179,18 @@ const (
 	methodInvalidate = "invalidate"
 )
 
+// methodGQL runs an ISO GQL query, whose parameters have the form of a query's.
+const methodGQL = "gql"
+
 // sendsOwnCredentials reports whether a method carries the credentials it is
 // checked with, so is sent without the token the connection keeps. The server
 // checks the Authorization header of every request, and answers 401 to one
 // whose token it no longer accepts, so sending the stored token would keep a
-// connection whose token has expired from signing in again.
+// connection whose token has expired from signing in again, or from refreshing
+// or revoking its tokens.
 func sendsOwnCredentials(method string) bool {
 	switch method {
-	case "signin", "signup", "authenticate":
+	case "signin", "signup", "refresh", "revoke", "authenticate":
 		return true
 	}
 	return false
@@ -427,7 +443,7 @@ func stringKeyedMap(v any) (map[string]any, bool) {
 	return m, true
 }
 
-// withVariables returns a copy of a query request whose variables include
+// withVariables returns a copy of a query or gql request whose variables include
 // those set with Let, which the variables given with the query take precedence over.
 func (c *Connection) withVariables(request *connection.RPCRequest) *connection.RPCRequest {
 	if len(request.Params) == 0 {
@@ -498,11 +514,11 @@ func (c *Connection) variablesObject(v any) (map[string]any, bool) {
 	return m, true
 }
 
-// trackAuth keeps the token of a successful signin, signup or authenticate
-// request, however it was sent.
+// trackAuth keeps the token of a successful signin, signup, refresh or
+// authenticate request, however it was sent.
 func (c *Connection) trackAuth(request *connection.RPCRequest, result *cbor.RawMessage) {
 	switch request.Method {
-	case "signin", "signup":
+	case "signin", "signup", "refresh":
 		if result == nil {
 			return
 		}

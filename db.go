@@ -17,6 +17,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
 	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
@@ -41,7 +42,15 @@ type VersionData struct {
 
 // DB is a client for the SurrealDB database that holds the connection.
 type DB struct {
-	con connection.Connection
+	con  connection.Connection
+	opts options
+	// renew keeps the token pair of the default session fresh. It is nil when
+	// token renewal is turned off.
+	renew *renewer
+
+	// sessionRenewers are the renewers of the attached sessions, which Close
+	// stops. It is a pointer so that DB stays comparable and holds no lock.
+	sessionRenewers *renewerSet
 }
 
 // New creates a new SurrealDB client.
@@ -55,12 +64,64 @@ func New(connectionURL string) (*DB, error) {
 //
 // Note that this function calls `conn.Connect(ctx)` for you,
 // so you don't need to call it manually.
+//
+// To pass options, such as [WithVersionCheck], use [FromConnectionWithOptions].
 func FromConnection(ctx context.Context, conn connection.Connection) (*DB, error) {
+	return FromConnectionWithOptions(ctx, conn)
+}
+
+// FromConnectionWithOptions creates a new SurrealDB client using the provided
+// connection, configured by opts. With no options it does what [FromConnection]
+// does.
+//
+// With [WithVersionCheck](true), it then checks that the server's version is
+// one this SDK supports, and fails with an [UnsupportedVersionError] if not. The
+// check sends a version request, so it adds a round trip to every connect,
+// which matters to code that connects for each request.
+func FromConnectionWithOptions(ctx context.Context, conn connection.Connection, opts ...Option) (*DB, error) {
+	o := applyOptions(opts)
+
 	if err := conn.Connect(ctx); err != nil {
 		return nil, err
 	}
 
-	return &DB{con: conn}, nil
+	db := &DB{con: conn, opts: o, sessionRenewers: newRenewerSet()}
+	if o.tokenRenewal {
+		db.renew = newRenewer(o.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
+			return rpc.Refresh(conn, ctx, heldTokens(ctx, conn, tokens))
+		})
+	}
+
+	if o.versionCheck {
+		if err := db.checkVersion(ctx); err != nil {
+			_ = conn.Close(ctx)
+			return nil, err
+		}
+	}
+
+	return db, nil
+}
+
+// tokenHolder is a connection which holds the session's token pair itself, and
+// may replace it, as one from contrib/rews does when a reconnection refreshes
+// an expired access token.
+type tokenHolder interface {
+	Tokens(ctx context.Context) (connection.Tokens, error)
+}
+
+// heldTokens returns the pair to renew: the one the connection holds, if it
+// holds one with a refresh token, as it may have replaced tokens since the
+// client recorded them, and tokens otherwise.
+func heldTokens(ctx context.Context, conn connection.Connection, tokens Tokens) Tokens {
+	holder, ok := conn.(tokenHolder)
+	if !ok {
+		return tokens
+	}
+	held, err := holder.Tokens(ctx)
+	if err != nil || held.Refresh == "" {
+		return tokens
+	}
+	return held
 }
 
 // Deprecated: Use FromEndpointURLString instead.
@@ -104,7 +165,19 @@ func Connect(ctx context.Context, connectionURL string) (*DB, error) {
 // or for a secure connection
 //
 //	db, err := surrealdb.FromEndpointURLString(ctx, "https://localhost:8000")
+//
+// To pass options, such as [WithVersionCheck], use [FromEndpointURLStringWithOptions].
 func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, error) {
+	return FromEndpointURLStringWithOptions(ctx, connectionURL)
+}
+
+// FromEndpointURLStringWithOptions creates a new SurrealDB client and connects
+// to the database, configured by opts. With no options it does what
+// [FromEndpointURLString] does.
+//
+//	db, err := surrealdb.FromEndpointURLStringWithOptions(ctx, "ws://localhost:8000",
+//		surrealdb.WithVersionCheck(true))
+func FromEndpointURLStringWithOptions(ctx context.Context, connectionURL string, opts ...Option) (*DB, error) {
 	u, err := url.ParseRequestURI(connectionURL)
 	if err != nil {
 		return nil, err
@@ -129,7 +202,7 @@ func FromEndpointURLString(ctx context.Context, connectionURL string) (*DB, erro
 		return nil, fmt.Errorf("invalid connection url")
 	}
 
-	return FromConnection(ctx, con)
+	return FromConnectionWithOptions(ctx, con, opts...)
 }
 
 // --------------------------------------------------
@@ -143,7 +216,31 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close(ctx context.Context) error {
+	db.renew.stop()
+	db.sessionRenewers.stopAll()
 	return db.con.Close(ctx)
+}
+
+// trackSessionRenewer keeps a session's renewer, for Close to stop.
+func (db *DB) trackSessionRenewer(r *renewer) {
+	db.sessionRenewers.add(r)
+}
+
+// forgetSessionRenewer stops keeping a detached session's renewer.
+func (db *DB) forgetSessionRenewer(r *renewer) {
+	db.sessionRenewers.remove(r)
+}
+
+// Health checks that the server is up, with GET /health over HTTP. It works
+// whichever transport the client uses, needs no authentication, and returns nil
+// if the server answers with a 2xx status. If the server answers with another
+// status, it returns a [*HealthError], which holds the status and the body.
+func (db *DB) Health(ctx context.Context) error {
+	hc, ok := db.con.(connection.HealthChecker)
+	if !ok {
+		return fmt.Errorf("%w: health", constants.ErrMethodNotAvailable)
+	}
+	return hc.Health(ctx)
 }
 
 // Use is a method to select the namespace and table to use.
@@ -186,7 +283,16 @@ func (db *DB) Info(ctx context.Context) (map[string]any, error) {
 //	  "pass": "VerySecurePassword123!",
 //	})
 func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
-	return db.con.SignUp(ctx, authData)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return "", err
+	}
+	defer db.renew.unlockAuth()
+
+	token, err := db.con.SignUp(ctx, authData)
+	if err == nil {
+		db.renew.clear()
+	}
+	return token, err
 }
 
 // SignUpWithRefresh signs up a new user using a TYPE RECORD access method with WITH REFRESH enabled.
@@ -209,7 +315,16 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 // Note: Use this method instead of SignUp when the access method has WITH REFRESH enabled.
 // For access methods without WITH REFRESH, use SignUp instead.
 func (db *DB) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
-	return db.con.SignUpWithRefresh(ctx, authData)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer db.renew.unlockAuth()
+
+	tokens, err := db.con.SignUpWithRefresh(ctx, authData)
+	if err == nil {
+		db.renew.set(tokens)
+	}
+	return tokens, err
 }
 
 // SignIn signs in an existing user.
@@ -300,7 +415,16 @@ func (db *DB) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, err
 // Note: The "key" parameter is exclusively for bearer access grants.
 // For TYPE RECORD access methods with WITH REFRESH, use SignInWithRefresh instead.
 func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
-	return db.con.SignIn(ctx, authData)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return "", err
+	}
+	defer db.renew.unlockAuth()
+
+	token, err := db.con.SignIn(ctx, authData)
+	if err == nil {
+		db.renew.clear()
+	}
+	return token, err
 }
 
 // Tokens contains the access token and refresh token returned by SignInWithRefresh.
@@ -341,16 +465,105 @@ type Tokens = connection.Tokens
 // For bearer access methods, use SignIn with the "key" parameter.
 // For other access methods (system users, record users without refresh), use SignIn.
 //
+// With token renewal turned on by [WithTokenRenewal], the client then renews
+// the pair before the access token expires; see [DB.Tokens].
+//
 // The server replaces a refresh token once it is used. On a connection from
 // contrib/rews, a reconnection after the access token has expired signs in with
 // the refresh token, so the one returned here then no longer works: read the new
 // pair with rews.Connection.Tokens, or set rews.Connection.OnTokensRefreshed.
 func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, error) {
-	return db.con.SignInWithRefresh(ctx, authData)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer db.renew.unlockAuth()
+
+	tokens, err := db.con.SignInWithRefresh(ctx, authData)
+	if err == nil {
+		db.renew.set(tokens)
+	}
+	return tokens, err
 }
 
+// Refresh exchanges a token pair, from SignInWithRefresh or SignUpWithRefresh,
+// for a new one, and authenticates the session with it. The server revokes
+// the refresh token it is given, so only the returned pair can be refreshed
+// again. Refresh needs SurrealDB v3+.
+//
+// With token renewal turned on by [WithTokenRenewal], the client renews the
+// pair it holds by itself, and Refresh is then mostly for pairs kept
+// elsewhere, such as one stored between runs of a program.
+func (db *DB) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return nil, err
+	}
+	defer db.renew.unlockAuth()
+
+	next, err := rpc.Refresh(db.con, ctx, tokens)
+	if err == nil {
+		db.renew.set(next)
+	}
+	return next, err
+}
+
+// Revoke revokes the refresh token of a token pair, so that it can no longer
+// be used to obtain new tokens. It leaves the session signed in. Revoke needs
+// SurrealDB v3+.
+func (db *DB) Revoke(ctx context.Context, tokens Tokens) error {
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer db.renew.unlockAuth()
+
+	if err := rpc.Revoke(db.con, ctx, tokens); err != nil {
+		return err
+	}
+	if current := db.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		db.renew.clear()
+	}
+	return nil
+}
+
+// Tokens returns the token pair the session holds, which changes each time the
+// client renews it, or nil when the session holds no pair or token renewal is
+// off, as it is unless [WithTokenRenewal] turns it on.
+//
+// On a connection from contrib/rews, a reconnection after the access token has
+// expired replaces the pair, which the client then renews. Until it does,
+// Tokens returns the pair it replaced: read rews.Connection.Tokens instead.
+func (db *DB) Tokens() *Tokens {
+	return db.renew.current()
+}
+
+// Invalidate signs the session out.
 func (db *DB) Invalidate(ctx context.Context) error {
-	return db.con.Invalidate(ctx)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer db.renew.unlockAuth()
+
+	if err := db.con.Invalidate(ctx); err != nil {
+		return err
+	}
+	db.renew.clear()
+	return nil
+}
+
+// Reset returns the session to the state it was in when the connection was
+// made: signed out, with no namespace, database or variables, and with its
+// live queries killed. Over HTTP, where the client keeps that state itself,
+// Reset clears it without calling the server.
+func (db *DB) Reset(ctx context.Context) error {
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer db.renew.unlockAuth()
+
+	if err := rpc.Reset(db.con, ctx); err != nil {
+		return err
+	}
+	db.renew.clear()
+	return nil
 }
 
 // Authenticate authenticates the current connection with the provided token.
@@ -370,7 +583,16 @@ func (db *DB) Invalidate(ctx context.Context) error {
 //     This means that even if you create a new connection to another server,
 //     as long as you call this method on the new connection, the requests will be authenticated.
 func (db *DB) Authenticate(ctx context.Context, token string) error {
-	return db.con.Authenticate(ctx, token)
+	if err := db.renew.lockAuth(ctx); err != nil {
+		return err
+	}
+	defer db.renew.unlockAuth()
+
+	if err := db.con.Authenticate(ctx, token); err != nil {
+		return err
+	}
+	db.renew.clear()
+	return nil
 }
 
 func (db *DB) Let(ctx context.Context, key string, val any) error {
@@ -385,6 +607,9 @@ func (db *DB) Version(ctx context.Context) (*VersionData, error) {
 	ver, err := send[any](ctx, db, "version")
 	if err != nil {
 		return nil, err
+	}
+	if ver == nil {
+		return nil, errors.New("unexpected version data: none")
 	}
 
 	switch v := (*ver).(type) {
