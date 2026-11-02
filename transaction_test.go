@@ -15,11 +15,6 @@ import (
 
 // TestTransaction_Begin tests transaction creation on WebSocket connections.
 func TestTransaction_Begin(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	db := mustNewWS("txn_test", "begin_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -42,11 +37,6 @@ func TestTransaction_Begin(t *testing.T) {
 
 // TestTransaction_BeginHTTPError tests that Begin returns an error on HTTP connections.
 func TestTransaction_BeginHTTPError(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	db := testenv.MustNewHTTP("begin_http_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -60,11 +50,6 @@ func TestTransaction_BeginHTTPError(t *testing.T) {
 
 // TestTransaction_Commit tests successful transaction commit.
 func TestTransaction_Commit(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_test", "commit_test", "items")
 
 	db := mustNewWS("txn_test", "commit_test", "items")
@@ -100,11 +85,6 @@ func TestTransaction_Commit(t *testing.T) {
 
 // TestTransaction_Cancel tests successful transaction cancellation (rollback).
 func TestTransaction_Cancel(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_test", "cancel_test", "items")
 
 	db := mustNewWS("txn_test", "cancel_test", "items")
@@ -130,7 +110,7 @@ func TestTransaction_Cancel(t *testing.T) {
 	assert.True(t, tx.IsClosed(), "Transaction should be closed after Cancel")
 
 	// Verify data was NOT persisted
-	// Note: In SurrealDB v3, the table may not exist after cancellation, so we use IF EXISTS
+	// Note: The table may not exist after cancellation, so we use IF EXISTS
 	results, err := surrealdb.Query[[]Item](ctx, db, "SELECT * FROM items WHERE id = items:cancel_item", nil)
 	// Ignore table doesn't exist error - that's expected after cancel if the table was created in the transaction
 	if err != nil && strings.Contains(err.Error(), "does not exist") {
@@ -145,11 +125,6 @@ func TestTransaction_Cancel(t *testing.T) {
 
 // TestTransaction_DoubleCommit tests that committing a committed transaction returns an error.
 func TestTransaction_DoubleCommit(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	db := mustNewWS("txn_test", "double_commit_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -170,11 +145,6 @@ func TestTransaction_DoubleCommit(t *testing.T) {
 
 // TestTransaction_DoubleCancel tests that canceling a canceled transaction returns an error.
 func TestTransaction_DoubleCancel(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	db := mustNewWS("txn_test", "double_cancel_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -195,11 +165,6 @@ func TestTransaction_DoubleCancel(t *testing.T) {
 
 // TestTransaction_Isolation tests that uncommitted changes are not visible to other connections.
 func TestTransaction_Isolation(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_test", "isolation_test", "records")
 
 	db1 := mustNewWS("txn_test", "isolation_test", "records")
@@ -224,7 +189,7 @@ func TestTransaction_Isolation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check from db2 - should NOT see uncommitted data
-	// Note: In SurrealDB v3, the table may not exist yet since it's only created inside the uncommitted transaction
+	// Note: The table may not exist yet since it's only created inside the uncommitted transaction
 	results, err := surrealdb.Query[[]Record](ctx, db2, "SELECT * FROM records WHERE id = records:isolated", nil)
 	if err != nil && strings.Contains(err.Error(), "does not exist") {
 		// Table doesn't exist yet, which is correct - the transaction hasn't committed
@@ -251,11 +216,6 @@ func TestTransaction_Isolation(t *testing.T) {
 
 // TestTransaction_CRUD_Query tests Create, Select, Update, Delete operations within a transaction using Query.
 func TestTransaction_CRUD_Query(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_crud", "crud_test", "products")
 
 	db := mustNewWS("txn_crud", "crud_test", "products")
@@ -320,11 +280,6 @@ func TestTransaction_CRUD_Query(t *testing.T) {
 
 // TestTransaction_CRUD_RPCs tests Create, Select, Update, Delete operations within a transaction using RPC methods.
 func TestTransaction_CRUD_RPCs(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_crud_rpc", "crud_rpc_test", "products")
 
 	db := mustNewWS("txn_crud_rpc", "crud_rpc_test", "products")
@@ -362,7 +317,7 @@ func TestTransaction_CRUD_RPCs(t *testing.T) {
 	assert.Equal(t, "Transaction RPC Widget", selectedProduct.Name)
 
 	// Upsert using surrealdb.Upsert
-	// Note: In SurrealDB v3 transactions, the Update RPC may fail with
+	// Note: In transactions, the Update RPC may fail with
 	// "Expected a single result output when using the ONLY keyword" even when
 	// the record exists. Upsert works reliably in both session and transaction contexts.
 	updatedProduct, err := surrealdb.Upsert[Product](ctx, tx, recordID, map[string]any{
@@ -392,11 +347,6 @@ func TestTransaction_CRUD_RPCs(t *testing.T) {
 
 // TestTransaction_QueryWithVariables tests Query with variables within a transaction.
 func TestTransaction_QueryWithVariables(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_test", "query_vars_test", "users")
 
 	db := mustNewWS("txn_test", "query_vars_test", "users")
@@ -432,11 +382,6 @@ func TestTransaction_QueryWithVariables(t *testing.T) {
 
 // TestTransaction_InSession tests transactions started within a session.
 func TestTransaction_InSession(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions/transactions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("txn_session", "session_txn_test", "items")
 
 	db := mustNewWS("txn_session", "session_txn_test", "items")

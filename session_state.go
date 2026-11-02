@@ -194,7 +194,7 @@ func (db *DB) forgetSession(id models.UUID) {
 
 // Sessions lists the sessions attached to the connection, other than its
 // default one, as the Session objects that [DB.Attach] and [DB.Fork] return.
-// It needs SurrealDB v3+ over WebSocket.
+// It needs a WebSocket connection.
 //
 // A session attached on the connection without this client, such as with
 // [connection.Call] on the connection itself, is listed too. The client does not know its namespace, database,
@@ -249,7 +249,7 @@ func (db *DB) Sessions(ctx context.Context) ([]*Session, error) {
 // keeps the value itself instead, so a value passed to Let must not be
 // changed afterwards.
 //
-// Fork needs SurrealDB v3+ over WebSocket.
+// Fork needs a WebSocket connection.
 func (db *DB) Fork(ctx context.Context) (*Session, error) {
 	return db.fork(ctx, db.snapshot(ctx))
 }

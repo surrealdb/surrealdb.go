@@ -13,7 +13,7 @@ import (
 // Unlike text-based transactions (BEGIN TRANSACTION; ... COMMIT;), interactive transactions
 // allow executing statements one at a time and conditionally committing or canceling.
 //
-// Transactions are only supported on WebSocket connections (SurrealDB v3+).
+// Transactions are only supported on WebSocket connections.
 //
 // Transaction satisfies the sendable constraint, so all surrealdb.Query,
 // surrealdb.Create, etc. functions work with transactions directly.
@@ -30,7 +30,7 @@ type Transaction struct {
 }
 
 // Begin starts a new interactive transaction on the default session.
-// Interactive transactions are only supported on WebSocket connections (SurrealDB v3+).
+// Interactive transactions are only supported on WebSocket connections.
 //
 // Example:
 //

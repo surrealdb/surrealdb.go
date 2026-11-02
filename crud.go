@@ -41,7 +41,7 @@ func (m ReturnMode) valid() bool {
 }
 
 // statementResult is one result of the query RPC method, with the structured
-// error fields SurrealDB v3 adds to a failed statement. Details is decoded by
+// error fields SurrealDB adds to a failed statement. Details is decoded by
 // connection.DecodeErrorDetails rather than the connection's codec.
 type statementResult struct {
 	Status  string          `json:"status"`
@@ -55,7 +55,7 @@ type statementResult struct {
 //
 // A failed statement is returned as the error its RPC method would have
 // returned: an *RPCError that unwraps to a *ServerError carrying the kind and
-// details SurrealDB v3 reports.
+// details SurrealDB reports.
 func queryOne[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*TResult, error) {
 	return queryOneOn[TResult](ctx, s, nil, sql, vars)
 }
@@ -248,8 +248,7 @@ func PatchWithResult[TResult any, TWhat TableOrRecord, S sendable](
 	if output == ReturnNone {
 		// Nothing is returned, so there is nothing to decode: the server's
 		// NONE would decode to a pointer to a zero TResult with some codecs.
-		// ONLY is left out as SurrealDB 2.x and 3.0 reject it with RETURN
-		// NONE, and it only shapes the result.
+		// ONLY is left out, as it only shapes the result.
 		sql := withData("UPDATE "+target(what, vars), "PATCH", patches, vars)
 		_, err := execOne(ctx, s, sql+" RETURN NONE", vars)
 		return nil, err

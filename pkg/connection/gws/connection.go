@@ -401,7 +401,7 @@ func (c *Connection) Send(ctx context.Context, method string, params ...any) (*c
 
 // Call implements connection.Connection.
 // Unlike Send, Call accepts an RPCRequest directly, allowing you to set
-// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+// Session and Txn fields for session-scoped or transaction-scoped operations.
 func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*connection.RPCResponse[cbor.RawMessage], error) {
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc

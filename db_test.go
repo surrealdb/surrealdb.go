@@ -73,9 +73,8 @@ func TestSurrealDBSuite(t *testing.T) {
 
 // SetupTest is called before each test
 func (s *SurrealDBTestSuite) SetupTest() {
-	// Create tables that tests expect to exist
-	// SurrealDB 3.x requires tables to exist before querying them,
-	// while 2.x does not.
+	// Create tables that tests expect to exist, as SurrealDB requires tables
+	// to exist before querying them.
 	tables := []string{"users", "persons", "knows", "person", "newuser"}
 	for _, table := range tables {
 		_, _ = surrealdb.Query[any](context.Background(), s.db, "DEFINE TABLE "+table, nil)
@@ -84,9 +83,8 @@ func (s *SurrealDBTestSuite) SetupTest() {
 
 // TearDownTest is called after each test
 func (s *SurrealDBTestSuite) TearDownTest() {
-	// Use Query with REMOVE TABLE IF EXISTS for cleanup
-	// SurrealDB 3.x returns errors when deleting from non-existent tables using Delete RPC method,
-	// while 2.x does not.
+	// Use Query with REMOVE TABLE IF EXISTS for cleanup, as the Delete RPC
+	// method returns an error for a table that does not exist.
 	tables := []string{"users", "persons", "knows", "person", "newuser"}
 	for _, table := range tables {
 		_, _ = surrealdb.Query[any](context.Background(), s.db, "REMOVE TABLE IF EXISTS "+table, nil)
@@ -112,7 +110,7 @@ func (s *SurrealDBTestSuite) SetupSuite() {
 
 	_ = signIn(s)
 
-	// SurrealDB 3.x requires the namespace/database to exist before it can be used.
+	// SurrealDB requires the namespace/database to exist before it can be used.
 	// Explicitly define them after signing in as root to ensure they exist.
 	db = testenv.MustNew("test", "test", "users")
 	s.Require().NoError(testenv.DefineSchemalessTables(db, "users"))
@@ -227,12 +225,10 @@ func (s *SurrealDBTestSuite) TestUpdate() {
 		{Username: "Mat", Password: "555"},
 	}
 
-	// Create users using RecordID (not Table) for cross-version compatibility.
+	// Create users using RecordID (not Table), which returns a single object.
 	// "Create with Table" means specifying only the table name (e.g., models.Table("users"))
-	// and letting SurrealDB generate record IDs automatically.
-	// In SurrealDB 2.x, Create with Table returns a single object.
-	// In SurrealDB 3.x, Create with Table returns an array, causing unmarshal errors.
-	// Using RecordID works consistently across both versions (returns a single object).
+	// and letting SurrealDB generate record IDs automatically. It returns an array,
+	// which does not unmarshal into a single testUser.
 	var createdUsers []testUser
 	for i, v := range users {
 		recordID := models.NewRecordID("users", fmt.Sprintf("user%d", i))
@@ -397,14 +393,9 @@ func (s *SurrealDBTestSuite) TestConcurrentOperations() {
 			go func(j int) {
 				defer wg.Done()
 				// The table "missing" was never defined with DEFINE TABLE
-				user, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("missing", j))
-				// SurrealDB 2.x: SELECT from undefined table returns nil with no error
-				// SurrealDB 3.x: SELECT from undefined table returns error "The table 'missing' does not exist"
-				if err != nil {
-					s.Require().Contains(err.Error(), "does not exist")
-				} else {
-					s.Require().Nil(user)
-				}
+				_, err := surrealdb.Select[testUser](context.Background(), s.db, models.NewRecordID("missing", j))
+				s.Require().Error(err)
+				s.Require().Contains(err.Error(), "does not exist")
 			}(i)
 		}
 		wg.Wait()
@@ -692,9 +683,7 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 
 	s.Run("a failed transaction", func() {
 		// Once THROW fails the transaction, the server runs neither the statements
-		// nor the markers after it, and returns an error in place of each. Some
-		// versions return no result for BEGIN, or for the COMMIT or CANCEL after a
-		// failure.
+		// nor the markers after it, and returns an error in place of each.
 		for _, end := range []string{"COMMIT", "CANCEL"} {
 			queries := []surrealdb.QueryStmt{
 				{SQL: "BEGIN"},
@@ -741,16 +730,13 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 		}
 	})
 
-	s.Run("RETURN before COMMIT", func() {
-		// SurrealDB 2.x returns only the RETURN for the whole transaction.
-		if !getVersion(s.T()).IsV3OrLater() {
-			s.T().Skip("SurrealDB 2.x returns one result for a transaction with a RETURN")
-		}
-		// SurrealDB 3.0 to 3.3 skip the marker after a RETURN in a transaction.
+	s.Run("RETURN in a transaction", func() {
+		// The statements after a RETURN in a transaction still run.
 		queries := []surrealdb.QueryStmt{
 			{SQL: "BEGIN"},
 			{SQL: "UPSERT users:queryraw_return"},
 			{SQL: "RETURN true"},
+			{SQL: "UPSERT users:queryraw_after_return"},
 			{SQL: "COMMIT"},
 			{SQL: "RETURN 7"},
 		}
@@ -758,9 +744,10 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 		var ok bool
 		s.Require().NoError(queries[2].GetResult(&ok))
 		s.True(ok)
-		s.Equal("OK", queries[3].Result.Status, "COMMIT")
+		s.Equal("OK", queries[3].Result.Status, "UPSERT after RETURN")
+		s.Equal("OK", queries[4].Result.Status, "COMMIT")
 		var seven int
-		s.Require().NoError(queries[4].GetResult(&seven))
+		s.Require().NoError(queries[5].GetResult(&seven))
 		s.Equal(7, seven)
 	})
 

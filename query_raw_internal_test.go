@@ -19,8 +19,8 @@ func rawRow(t *testing.T, status string, v any) QueryResult[cbor.RawMessage] {
 	return QueryResult[cbor.RawMessage]{Status: status, Result: b}
 }
 
-// TestSplitRawResults feeds splitRawResults the results each version of SurrealDB
-// returns for the statements given, each followed by the marker.
+// TestSplitRawResults feeds splitRawResults the results SurrealDB returns for the
+// statements given, each followed by the marker.
 func TestSplitRawResults(t *testing.T) {
 	const marker = "QueryRaw-test"
 
@@ -33,7 +33,7 @@ func TestSplitRawResults(t *testing.T) {
 		mark     = row{statusOK, marker}
 		failed   = row{statusERR, errFailedTransaction}
 		canceled = row{statusERR, errCancelledTransaction}
-		aborted  = row{statusERR, errAbortedCommit}
+		aborted  = row{statusERR, "Cannot COMMIT: the transaction was aborted due to a prior error"}
 		thrown   = row{statusERR, "An error occurred: x"}
 		created  = row{statusOK, []any{map[string]any{"id": "person:1"}}}
 		yes      = row{statusOK, true}
@@ -53,97 +53,49 @@ func TestSplitRawResults(t *testing.T) {
 			want:  []row{yes, created},
 		},
 		{
-			name:  "a transaction, 3.x",
+			name:  "a transaction",
 			stmts: []string{"BEGIN", "CREATE person:1", "COMMIT"},
 			rows:  []row{none, mark, created, mark, none, mark},
 			want:  []row{none, created, none},
 		},
 		{
-			name:  "a transaction, 2.x: BEGIN and COMMIT yield nothing",
-			stmts: []string{"begin transaction;", "CREATE person:1", "commit transaction"},
-			rows:  []row{mark, created, mark, mark},
-			want:  []row{none, created, none},
-		},
-		{
-			name:  "RETURN before COMMIT, 3.0 to 3.3: the marker after RETURN is skipped",
-			stmts: []string{"BEGIN", "CREATE person:1", "RETURN true", "COMMIT"},
-			rows:  []row{none, mark, created, mark, yes, none, mark},
-			want:  []row{none, created, yes, none},
-		},
-		{
-			name:  "RETURN before COMMIT, later versions",
+			name:  "RETURN before COMMIT",
 			stmts: []string{"BEGIN", "CREATE person:1", "RETURN true", "COMMIT"},
 			rows:  []row{none, mark, created, mark, yes, mark, none, mark},
 			want:  []row{none, created, yes, none},
 		},
 		{
-			name:  "RETURN before CANCEL, 3.0 to 3.3",
+			name:  "a statement after RETURN in a transaction",
+			stmts: []string{"BEGIN", "RETURN true", "CREATE person:1", "COMMIT"},
+			rows:  []row{none, mark, yes, mark, created, mark, none, mark},
+			want:  []row{none, yes, created, none},
+		},
+		{
+			name:  "RETURN before CANCEL",
 			stmts: []string{"BEGIN", "CREATE person:1", "RETURN true", "CANCEL"},
-			rows:  []row{none, canceled, canceled, canceled, canceled, none, mark},
+			rows:  []row{none, canceled, canceled, canceled, canceled, canceled, none, mark},
 			want:  []row{none, canceled, canceled, none},
 		},
 		{
-			name:  "a statement after RETURN in a transaction, 3.0 to 3.3",
-			stmts: []string{"BEGIN", "RETURN true", "CREATE person:1", "COMMIT"},
-			rows:  []row{none, mark, yes, none, mark},
-			err:   "statement 1 did not yield exactly one result",
-		},
-		{
-			name:  "RETURN in a transaction, 2.x: the transaction yields only the RETURN",
-			stmts: []string{"BEGIN", "CREATE person:1", "RETURN true", "COMMIT"},
-			rows:  []row{yes, mark},
-			err:   "did not yield exactly one result",
-		},
-		{
-			name:  "a failure before COMMIT, 3.0: COMMIT yields nothing",
-			stmts: []string{"BEGIN", "CREATE person:1", "THROW 'x'", "COMMIT"},
-			rows:  []row{none, failed, failed, failed, thrown, canceled, mark},
-			want:  []row{none, failed, thrown, aborted},
-		},
-		{
-			name:  "a failure before COMMIT, 3.3",
+			name:  "a failure before COMMIT",
 			stmts: []string{"BEGIN", "CREATE person:1", "THROW 'x'", "COMMIT"},
 			rows:  []row{none, failed, failed, failed, thrown, canceled, aborted, mark},
 			want:  []row{none, failed, thrown, aborted},
 		},
 		{
-			name:  "a failure before COMMIT, 2.x",
-			stmts: []string{"BEGIN", "CREATE person:1", "THROW 'x'", "COMMIT"},
-			rows:  []row{failed, failed, failed, thrown, failed, mark},
-			want:  []row{none, failed, thrown, aborted},
-		},
-		{
-			name:  "a failure before CANCEL, 3.x: CANCEL yields nothing",
-			stmts: []string{"BEGIN", "THROW 'x'", "CANCEL"},
-			rows:  []row{none, failed, thrown, canceled, mark},
-			want:  []row{none, thrown, none},
-		},
-		{
-			name:  "a failure before CANCEL, later versions",
+			name:  "a failure before CANCEL",
 			stmts: []string{"BEGIN", "THROW 'x'", "CANCEL"},
 			rows:  []row{none, failed, thrown, canceled, none, mark},
 			want:  []row{none, thrown, none},
 		},
 		{
-			name:  "a failure before CANCEL, 2.x",
-			stmts: []string{"BEGIN", "THROW 'x'", "CANCEL"},
-			rows:  []row{failed, thrown, failed, mark},
-			want:  []row{none, thrown, none},
-		},
-		{
-			name:  "CANCEL, 3.x",
+			name:  "CANCEL",
 			stmts: []string{"BEGIN", "CREATE person:1", "CANCEL"},
 			rows:  []row{none, canceled, canceled, canceled, none, mark},
 			want:  []row{none, canceled, none},
 		},
 		{
-			name:  "CANCEL, 2.x",
-			stmts: []string{"BEGIN", "CREATE person:1", "CANCEL"},
-			rows:  []row{canceled, canceled, canceled, mark},
-			want:  []row{none, canceled, none},
-		},
-		{
-			name:  "a transaction that times out, 3.3: the results stop",
+			name:  "results that stop after an error",
 			stmts: []string{"BEGIN", "CREATE person:1", "SLEEP 2s", "COMMIT", "RETURN 5"},
 			rows: []row{
 				none,
@@ -157,13 +109,19 @@ func TestSplitRawResults(t *testing.T) {
 			name:  "two statements in one before COMMIT",
 			stmts: []string{"BEGIN", "CREATE person:1; RETURN true", "COMMIT"},
 			rows:  []row{none, mark, created, yes, mark, none, mark},
-			err:   "2 results more than expected",
+			err:   "statement 1 did not yield exactly one result",
 		},
 		{
 			name:  "a statement that yields nothing",
 			stmts: []string{"RETURN true", "-- nothing"},
 			rows:  []row{yes, mark, mark},
 			err:   "statement 1 did not yield exactly one result",
+		},
+		{
+			name:  "more results than statements",
+			stmts: []string{"RETURN true"},
+			rows:  []row{yes, mark, yes, mark},
+			err:   "2 results more than expected",
 		},
 	}
 
@@ -173,12 +131,8 @@ func TestSplitRawResults(t *testing.T) {
 			for i, r := range tt.rows {
 				res[i] = rawRow(t, r.status, r.value)
 			}
-			kinds := make([]rawStmtKind, len(tt.stmts))
-			for i, sql := range tt.stmts {
-				kinds[i] = rawStmtKindOf(sql)
-			}
 
-			got, err := splitRawResults(&res, kinds, marker, surrealcbor.New())
+			got, err := splitRawResults(&res, len(tt.stmts), marker, surrealcbor.New())
 			if tt.err != "" {
 				require.ErrorContains(t, err, tt.err)
 				return

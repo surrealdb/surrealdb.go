@@ -17,7 +17,7 @@ import (
 // Session represents an additional SurrealDB session on a WebSocket connection.
 // Sessions scope live notifications and can have their own transactions.
 //
-// Sessions are only supported on WebSocket connections (SurrealDB v3+).
+// Sessions are only supported on WebSocket connections.
 // Each session starts unauthenticated and without a selected namespace/database,
 // so you must call SignIn/Authenticate and Use after creating a session.
 //
@@ -40,7 +40,7 @@ type Session struct {
 }
 
 // Attach creates a new session on the WebSocket connection.
-// Sessions are only supported on WebSocket connections (SurrealDB v3+).
+// Sessions are only supported on WebSocket connections.
 //
 // The new session starts unauthenticated and without a selected namespace/database.
 // You must call SignIn/Authenticate and Use on the session before making queries.
@@ -201,7 +201,7 @@ func (s *Session) detach(ctx context.Context) error {
 }
 
 // Begin starts a new interactive transaction in this session.
-// Interactive transactions are only supported on WebSocket connections (SurrealDB v3+).
+// Interactive transactions are only supported on WebSocket connections.
 func (s *Session) Begin(ctx context.Context) (*Transaction, error) {
 	s.mu.RLock()
 	if s.closed {

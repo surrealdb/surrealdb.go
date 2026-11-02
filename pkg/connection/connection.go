@@ -20,7 +20,7 @@ type LiveHandler interface {
 }
 
 // Tokens contains access and refresh tokens returned by SignInWithRefresh/SignUpWithRefresh.
-// This is only returned when using TYPE RECORD access methods with WITH REFRESH enabled (SurrealDB v3+).
+// This is only returned when using TYPE RECORD access methods with WITH REFRESH enabled.
 type Tokens struct {
 	// Access is the JWT token used for authentication.
 	// Use this with Authenticate() to establish a session on a new connection.
@@ -41,7 +41,7 @@ type Connection interface {
 	Send(ctx context.Context, method string, params ...any) (*RPCResponse[cbor.RawMessage], error)
 	// Call sends a custom RPC request to SurrealDB and expects a response.
 	// Unlike Send, Call accepts an RPCRequest directly, allowing you to set
-	// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+	// Session and Txn fields for session-scoped or transaction-scoped operations.
 	//
 	// The `req` is the RPC request to send. The ID field will be set automatically if empty.
 	// The `ctx` is used to cancel the request if the context is canceled.

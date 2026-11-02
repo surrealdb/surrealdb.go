@@ -88,13 +88,13 @@ func (r *RPCError) As(err any) bool {
 }
 
 // RPCRequest represents an incoming JSON-RPC request.
-// For SurrealDB v3+, Session and Txn can be set to scope the request to a specific session or transaction.
+// Session and Txn can be set to scope the request to a specific session or transaction.
 type RPCRequest struct {
 	ID      any    `json:"id"`
 	Method  string `json:"method,omitempty"`
 	Params  []any  `json:"params,omitempty"`
-	Session any    `json:"session,omitempty"` // SurrealDB v3: session UUID for session-scoped operations
-	Txn     any    `json:"txn,omitempty"`     // SurrealDB v3: transaction UUID for transaction-scoped operations
+	Session any    `json:"session,omitempty"` // session UUID for session-scoped operations
+	Txn     any    `json:"txn,omitempty"`     // transaction UUID for transaction-scoped operations
 }
 
 // RPCResponse represents an outgoing JSON-RPC response
@@ -144,7 +144,7 @@ var (
 	Patch        RPCFunction = "patch"
 	Delete       RPCFunction = "delete"
 
-	// SurrealDB v3+ session and transaction methods
+	// Session and transaction methods
 	Attach RPCFunction = "attach"
 	Detach RPCFunction = "detach"
 	// Sessions lists the sessions attached to the connection, other than its

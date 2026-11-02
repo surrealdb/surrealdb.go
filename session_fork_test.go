@@ -21,7 +21,6 @@ import (
 )
 
 func TestSessions_listsAttached(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	db := mustNewWS("sessions", "list", "t")
 	defer db.Close(ctx)
@@ -52,7 +51,6 @@ func sessionView[S *surrealdb.DB | *surrealdb.Session](t *testing.T, s S) []any 
 }
 
 func TestFork(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	db := mustNewWS("sessions", "fork", "t")
 	defer db.Close(ctx)
@@ -126,7 +124,6 @@ func defineRootUser(t *testing.T, name, tokenDuration string) {
 // signed in with the token, so Fork fails once the token has expired, without
 // attaching a session.
 func TestFork_tokenExpired(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	defineRootUser(t, "fork_expiring", "2s")
 
@@ -146,7 +143,6 @@ func TestFork_tokenExpired(t *testing.T) {
 
 // A fork whose restore fails is detached.
 func TestFork_failedRestoreDetaches(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	defineRootUser(t, "fork_removed", "1h")
 
@@ -168,7 +164,6 @@ func TestFork_failedRestoreDetaches(t *testing.T) {
 // A Fork whose context ends while the session is restored detaches the fork
 // all the same.
 func TestFork_cancelledDetaches(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	db := mustNewWS("sessions", "fork_cancel")
 	defer db.Close(ctx)
@@ -187,7 +182,6 @@ func TestFork_cancelledDetaches(t *testing.T) {
 // An Attach whose context ends while the server attaches the session does not
 // leave the session attached.
 func TestAttach_cancelledDetaches(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	db := mustNewWS("sessions", "attach_cancel")
 	defer db.Close(ctx)
@@ -207,7 +201,6 @@ func TestAttach_cancelledDetaches(t *testing.T) {
 // Let keeps the value as it was when it was set, so a later change to it does
 // not reach a fork. So does a reconnecting connection.
 func TestFork_letValueChangedAfterwards(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 
 	reconnecting := testenv.MustNewConfig("sessions", "fork_let", "fork_let")
@@ -240,7 +233,6 @@ func TestFork_letValueChangedAfterwards(t *testing.T) {
 // After Revoke, the session stays signed in with the last renewed token, and
 // so does its fork.
 func TestFork_afterRevoke(t *testing.T) {
-	skipBeforeV3(t)
 	defineRefreshAccess(t, "6s")
 	ctx := context.Background()
 
@@ -302,7 +294,6 @@ func TestFork_afterRevoke(t *testing.T) {
 
 // Sessions run alongside Attach returns the Session object Attach returned.
 func TestSessions_attachRace(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	db := mustNewWS("sessions", "race")
 	defer db.Close(ctx)
@@ -337,7 +328,6 @@ func TestSessions_attachRace(t *testing.T) {
 // A session attached on the connection without the client is listed, but
 // cannot be forked, as the client does not know its state.
 func TestFork_untrackedSession(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
 	require.NoError(t, err)
