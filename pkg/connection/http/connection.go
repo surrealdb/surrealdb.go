@@ -154,6 +154,24 @@ func (c *Connection) sendCBORVersion() connection.CBORVersion {
 	return connection.CBORv1
 }
 
+// recordResponseVersion records the CBOR version of a response, as
+// makeRequest returns it: 0 when there was no response. Any response but a
+// cbor.2 one, an error included, sends the next request in plain CBOR: the
+// server behind the URL may not speak cbor.2.
+func (c *Connection) recordResponseVersion(v connection.CBORVersion) {
+	if v == 0 {
+		return
+	}
+	send := int32(connection.CBORv1)
+	if v == connection.CBORv2 {
+		// Results are decoded later with GetUnmarshaler, so switch before
+		// returning, and before the next request can be sent in cbor.2.
+		c.cborVersion.Store(int32(connection.CBORv2))
+		send = int32(connection.CBORv2)
+	}
+	c.sendVersion.Store(send)
+}
+
 // offersCBORv2 reports whether requests ask for cbor.2 responses.
 func (c *Connection) offersCBORv2() bool {
 	return !c.DisableCBORv2 && connection.CanSpeakCBORv2(c.Marshaler, c.Unmarshaler)
@@ -255,18 +273,7 @@ func (c *Connection) Call(ctx context.Context, request *connection.RPCRequest) (
 	c.setSessionHeaders(req, sendsOwnCredentials(request.Method))
 
 	respData, respVersion, err := c.makeRequest(req)
-	if respVersion != 0 {
-		// Any response but a cbor.2 one, an error included, sends the next
-		// request in plain CBOR: the server behind the URL may not speak cbor.2.
-		send := int32(connection.CBORv1)
-		if respVersion == connection.CBORv2 {
-			// Results are decoded later with GetUnmarshaler, so switch before
-			// returning, and before the next request can be sent in cbor.2.
-			c.cborVersion.Store(int32(connection.CBORv2))
-			send = int32(connection.CBORv2)
-		}
-		c.sendVersion.Store(send)
-	}
+	c.recordResponseVersion(respVersion)
 	if err != nil {
 		return nil, err
 	}

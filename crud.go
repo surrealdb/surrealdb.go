@@ -162,7 +162,7 @@ func isRecord(what any) bool {
 }
 
 // isKeyRange reports whether a record ID key is a range of keys. models.Range
-// is generic, so it is recognised by its GetJoinString method rather than by
+// is generic, so it is recognized by its GetJoinString method rather than by
 // its type.
 func isKeyRange(id any) bool {
 	_, ok := id.(interface{ GetJoinString() string })
