@@ -236,13 +236,6 @@ func TestDumpAndRestore(t *testing.T) {
 
 //nolint:gocyclo // End-to-end test requires comprehensive validation
 func TestE2E_IncrementalDumpAndRestore(t *testing.T) {
-	// surrealql's SinceVersionstamp shifts the versionstamp right by 16 bits,
-	// but SurrealDB 4.0 reads SHOW CHANGES SINCE in the same units it returns.
-	// The dump then holds the table's whole change feed, with the changes of
-	// earlier runs, and the restore brings their records back. The test passes
-	// only on a server that has no earlier change feed history for the table.
-	t.Skip("surrealdump reads the whole change feed on SurrealDB 4.0 (SinceVersionstamp shifts the versionstamp by 16 bits), so a rerun restores stale records")
-
 	db, ctx := setupTestDB(t)
 	defer db.Close(ctx)
 
