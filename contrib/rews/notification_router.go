@@ -118,6 +118,25 @@ func (nr *NotificationRouter) routeEnded(r *route) {
 	}
 }
 
+// endRoute ends the route of a live query which ended without a KILLED
+// notification, as those of a session which is reset do. It stops routing,
+// discarding what was not routed yet, and closes the internal channel, as
+// KILLED does. Like a route ended with KILLED, it stays until RemoveRoute, and
+// SetupRouting returns its closed channel, so a route is made for a live query
+// whose notifications were not asked for yet.
+func (nr *NotificationRouter) endRoute(internalID string) {
+	nr.routesMu.Lock()
+	defer nr.routesMu.Unlock()
+
+	r, exists := nr.routes[internalID]
+	if !exists {
+		r = newRoute(internalID)
+		nr.routes[internalID] = r
+	}
+	r.stop()
+	r.ended.Store(true)
+}
+
 // RemoveRoute removes a routing entry and stops its goroutine
 func (nr *NotificationRouter) RemoveRoute(internalID string) {
 	nr.routesMu.Lock()
