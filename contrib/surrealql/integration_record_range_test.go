@@ -114,13 +114,16 @@ func TestIntegration_RecordRange(t *testing.T) {
 	})
 
 	t.Run("legacy type::thing / type::record workaround", func(t *testing.T) {
-		// SurrealDB 2.x uses type::thing; 3.x uses type::record.
+		// SurrealDB 2.x uses type::thing; 3.x and later use type::record.
 		r := models.Range[int, models.BoundIncluded[int], models.BoundIncluded[int]]{
 			Begin: &models.BoundIncluded[int]{Value: 1},
 			End:   &models.BoundIncluded[int]{Value: 1},
 		}
+		// The table is a string, not a models.Table: given a table value,
+		// SurrealDB 4.0's type::record names the record's table after the
+		// value's SurrealQL, as in `type::table('person')`:1..=1.
 		params := map[string]any{
-			"tb":     models.Table("person"),
+			"tb":     "person",
 			"recrng": r,
 		}
 		sql := fmt.Sprintf("SELECT * FROM %s($tb, $recrng)", ver.ThingOrRecordFn())

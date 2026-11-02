@@ -229,7 +229,20 @@ func TestStructuredErrors_DuplicateRecord(t *testing.T) {
 func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	db := setupStructuredErrorTest(t)
 
-	_, err := surrealdb.Query[any](context.Background(), db,
+	v, err := GetVersion(context.Background(), db)
+	require.NoError(t, err)
+
+	// SurrealDB 3.x reports a value of the wrong type for a field as an
+	// internal error with no details. 4.0 reports it as a validation error,
+	// an invalid request, with the RPC code of an invalid request.
+	wantCode, wantKind := -32000, "Internal"
+	var wantDetails any
+	if v.Major >= 4 {
+		wantCode, wantKind = -32600, "Validation"
+		wantDetails = map[string]any{"kind": "InvalidRequest"}
+	}
+
+	_, err = surrealdb.Query[any](context.Background(), db,
 		`DEFINE TABLE person SCHEMAFUL;
 		 DEFINE FIELD age ON person TYPE int;`, nil)
 	require.NoError(t, err)
@@ -248,7 +261,7 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable (v2 compat)")
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.True(t, errors.Is(err, &surrealdb.RPCError{}))
-	assert.Equal(t, -32000, rpcErr.Code)
+	assert.Equal(t, wantCode, rpcErr.Code)
 	assert.Equal(t, "Couldn't coerce value for field `age` of `person:schema_test`: Expected `int` but found `'not a number'`", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
@@ -260,15 +273,15 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	// Message: describes the coercion failure, same as RPCError.Message.
 	assert.Equal(t, rpcErr.Message, se.Message)
 
-	// Kind: "Internal" — RPCError does NOT expose this.
-	assert.Equal(t, "Internal", se.Kind)
+	// Kind: "Internal" on 3.x, "Validation" on 4.0 — RPCError does NOT expose this.
+	assert.Equal(t, wantKind, se.Kind)
 
 	// Code: same as RPCError.Code.
 	assert.Equal(t, rpcErr.Code, se.Code)
-	assert.Equal(t, -32000, se.Code)
+	assert.Equal(t, wantCode, se.Code)
 
-	// Details: nil for schema coercion errors.
-	assert.Nil(t, se.Details, "schema coercion errors have no structured Details")
+	// Details: nil on 3.x; on 4.0, the kind of validation error.
+	assert.Equal(t, wantDetails, se.Details)
 
 	// Cause: nil — no nested cause chain for this error.
 	assert.Nil(t, se.Cause, "no cause chain for schema coercion errors")
