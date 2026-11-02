@@ -43,6 +43,8 @@ type recordingConnection struct {
 	tokens *connection.Tokens
 	// live holds the notifications of the live queries started with Send.
 	live map[string]chan connection.Notification
+	// watched holds the live queries whose notifications were asked for.
+	watched map[string]bool
 }
 
 func (c *recordingConnection) fails(method string) error {
@@ -187,21 +189,29 @@ func (c *recordingConnection) Send(ctx context.Context, method string, params ..
 func (c *recordingConnection) LiveNotifications(id string) (chan connection.Notification, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if ch, ok := c.live[id]; ok {
-		return ch, nil
+	ch, ok := c.live[id]
+	if !ok {
+		return nil, fmt.Errorf("live query %s not found", id)
 	}
-	return nil, fmt.Errorf("live query %s not found", id)
+	if c.watched == nil {
+		c.watched = map[string]bool{}
+	}
+	c.watched[id] = true
+	return ch, nil
 }
 
+// CloseLiveNotifications closes the notifications of a live query. Like
+// connection.Toolkit, it fails for one whose notifications were never asked for.
 func (c *recordingConnection) CloseLiveNotifications(id string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ch, ok := c.live[id]
-	if !ok {
-		return fmt.Errorf("live query %s not found", id)
+	if !ok || !c.watched[id] {
+		return fmt.Errorf("notification channel not found for live query ID: %s", id)
 	}
 	close(ch)
 	delete(c.live, id)
+	delete(c.watched, id)
 	return nil
 }
 
@@ -269,6 +279,8 @@ func TestReset_forgetsSession(t *testing.T) {
 	watched := startLive(t, conn, "watched")
 	notifications, err := conn.LiveNotifications(watched)
 	require.NoError(t, err)
+	// The socket refuses to close the notifications of this one, which nobody
+	// asked for. The reset must end it all the same.
 	unwatched := startLive(t, conn, "unwatched")
 
 	// As DB.Reset sends it.

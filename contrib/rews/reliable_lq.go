@@ -296,6 +296,11 @@ func (rlq *reliableLQ) closeLiveNotifications(closer NotificationCloser, id stri
 // connection, and its notifications are closed, those closer holds and those
 // the caller reads. Like a live query ended with KILLED, it is forgotten when
 // its notifications are closed.
+//
+// It ends the live queries recorded so far. One started at the same time as
+// the reset may be recorded only after this, as live is sent without the
+// session lock. It is then restored like any other, although the server may
+// have killed it.
 func (rlq *reliableLQ) reset(closer NotificationCloser, log logger.Logger) {
 	ended := map[string]string{} // internal ID -> external ID
 	rlq.liveQueriesMu.Lock()

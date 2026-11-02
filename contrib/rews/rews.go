@@ -161,12 +161,13 @@ type Connection[C connection.WebSocketConnection] struct {
 	// context: see lockSession.
 	//
 	// It is held across each session-changing RPC (Use, Let, Unset, SignIn,
-	// SignUp, Authenticate, Invalidate, reset and the refresh variants)
-	// together with the update of the fields, and across the whole replay of
-	// the session onto a new socket. That serializes the two: a replay never
-	// applies a state older than one a caller has already been told is in
-	// effect, and a session change made while a replay is running waits for it
-	// and then applies on top of the restored session.
+	// SignUp, Authenticate, Invalidate and the refresh variants, and the
+	// refresh, revoke and reset RPCs sent through Send) together with the
+	// update of the fields, and across the whole replay of the session onto a
+	// new socket. That serializes the two: a replay never applies a state
+	// older than one a caller has already been told is in effect, and a
+	// session change made while a replay is running waits for it and then
+	// applies on top of the restored session.
 	//
 	// The replay takes it only once the new socket is in place, so a session
 	// RPC holding it is never waiting for a socket that only the replay would
@@ -839,8 +840,7 @@ func (arws *Connection[C]) Invalidate(ctx context.Context) error {
 
 	// Forget the tokens even if the RPC fails, as it does when the socket has
 	// dropped, so that the next reconnection cannot sign the session back in
-	// Forget the tokens even if the RPC fails, so that the next reconnection
-	// cannot sign a session back in after the caller signed it out.
+	// after the caller signed it out.
 	arws.setToken("", "", nil)
 	if err := conn.Invalidate(ctx); err != nil {
 		return fmt.Errorf("rews.Connection failed to invalidate: %w", socketErr(ctx, err))
