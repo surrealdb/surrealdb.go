@@ -95,10 +95,12 @@ func TestFileAndSet_server(t *testing.T) {
 			models.NewFile("b", "//"),
 			models.NewFile("", "/path"),
 			models.NewFile("bucket", "/"),
+			models.NewFile("hello world", "/foo bar/test.json"),
 			models.NewFile("buck et", `/a"b\c:d`),
-			models.NewFile("it's", `/"q"`),
-			models.NewFile("b", `/it's "q"`),
+			models.NewFile("it's", `/it's "q"`),
+			models.NewFile("b/c", "/é d"),
 			models.NewFile("b", "/\x00\r\t\n\b\f"),
+			models.NewFile("b", "/😀"),
 			// The server adds the leading slash to a key that has none.
 			{Bucket: "bucket", Key: "a"},
 			{Bucket: "bucket"},
@@ -107,11 +109,11 @@ func TestFileAndSet_server(t *testing.T) {
 			res, err := surrealdb.Query[string](ctx, db, "RETURN <string>$f", map[string]any{"f": f})
 			require.NoError(t, err)
 			got := (*res)[0].Result
-			if strings.HasPrefix(f.String(), "type::file(") && strings.HasPrefix(got, `f"`) {
-				// Older servers write a file outside the file string grammar
-				// as an f-string with backslash escapes, which does not parse
-				// back.
-				t.Logf("server writes %v as %s, the older form", f, got)
+			if strings.HasPrefix(got, "type::file(") {
+				// SurrealDB 4.0 writes a file that needs escapes as the
+				// function that builds it. String keeps the JavaScript SDK's
+				// escaped file string.
+				t.Logf("server writes %v as %s, the SurrealDB 4.0 form", f, got)
 				continue
 			}
 			assert.Equal(t, got, f.String(), "String matches the server's own formatting")
@@ -119,19 +121,12 @@ func TestFileAndSet_server(t *testing.T) {
 	})
 
 	t.Run("file literal", func(t *testing.T) {
-		for _, f := range []models.File{
-			models.NewFile("my_bucket-1.x", "/dir/sub-dir/file_name.v2.tar.gz"),
-			models.NewFile("buck et", `/it's "a\b:c"`),
-		} {
-			res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
-			// The f-string fails to parse and type::file fails to run without
-			// the flag, with different messages.
-			if err != nil && (strings.Contains(err.Error(), "experimental files feature") ||
-				strings.Contains(err.Error(), "Experimental feature files is not enabled")) {
-				t.Skip("parsing a file literal needs --allow-experimental files")
-			}
-			require.NoError(t, err, f.String())
-			assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
+		f := models.NewFile("my_bucket-1.x", "/dir/sub-dir/file_name.v2.tar.gz")
+		res, err := surrealdb.Query[models.File](ctx, db, "RETURN "+f.String(), nil)
+		if err != nil && strings.Contains(err.Error(), "experimental files feature") {
+			t.Skip("parsing a file literal needs --allow-experimental files")
 		}
+		require.NoError(t, err, f.String())
+		assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
 	})
 }

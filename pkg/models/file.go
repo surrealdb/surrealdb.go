@@ -33,82 +33,44 @@ func NewFile(bucket, key string) File {
 	return File{Bucket: bucket, Key: key}
 }
 
-// String returns the file pointer as SurrealQL, the way SurrealDB writes it.
+// String returns the file pointer as a file string, f"bucket:/key", escaped
+// the way FileRef in the SurrealDB JavaScript SDK escapes it. It always has
+// this one form.
 //
-// A file whose bucket and key fit a file string is written f"bucket:/key".
-// That needs a non-empty bucket of ASCII letters, digits, '_', '-' and '.',
-// and a key of a '/' followed by at least one of those characters or '/'.
-// A file string has no escapes, so any other file is written as the function
-// that builds it, type::file('bucket', '/key'), with both arguments quoted as
-// SurrealQL strings.
+// Each character of the bucket and key is written as it is if it is an ASCII
+// letter or digit, '_', '-' or '.', or a '/' in the key. Any other character,
+// a '/' in the bucket included, is written with a backslash before it. A key
+// with no leading slash is written with one, as NewFile adds it.
 //
-// Either form parses back into the same File. A key with no leading slash is
-// written with one, as NewFile and the server add it, so it parses back with
-// the slash. To send a File in a query, bind it as a parameter rather than
-// formatting it into the query text.
+// A file string has no escape syntax, so SurrealDB parses the result back
+// into the same File only when no character needed a backslash. Otherwise the
+// result is for display only. To send a File in a query, bind it as a
+// parameter rather than formatting it into the query text.
 func (f File) String() string {
 	key := f.Key
 	if !strings.HasPrefix(key, "/") {
 		key = "/" + key
 	}
-	if fileStringAdmits(f.Bucket, key) {
-		return `f"` + f.Bucket + ":" + key + `"`
-	}
-	return "type::file(" + quoteString(f.Bucket) + ", " + quoteString(key) + ")"
-}
-
-// fileStringAdmits reports whether the file string f"bucket:key" reads back as
-// bucket and key.
-func fileStringAdmits(bucket, key string) bool {
-	rest, ok := strings.CutPrefix(key, "/")
-	return bucket != "" && isFileWord(bucket, false) && ok && rest != "" && isFileWord(rest, true)
-}
-
-// isFileWord reports whether s holds only ASCII letters, digits, '_', '-' and
-// '.', and '/' if allowSlash is set.
-func isFileWord(s string, allowSlash bool) bool {
-	for _, ch := range s {
-		if !isASCIIAlphanumeric(ch) && ch != '_' && ch != '-' && ch != '.' && (!allowSlash || ch != '/') {
-			return false
-		}
-	}
-	return true
-}
-
-// quoteString writes s as a SurrealQL string, as the server does: in single
-// quotes, or in double quotes if s holds a single quote. Backslashes, the
-// quote, and the control characters with short escapes are escaped.
-func quoteString(s string) string {
-	quote := '\''
-	if strings.ContainsRune(s, '\'') {
-		quote = '"'
-	}
 
 	var b strings.Builder
-	b.WriteRune(quote)
-	for _, ch := range s {
-		switch ch {
-		case 0:
-			b.WriteString(`\0`)
-		case '\r':
-			b.WriteString(`\r`)
-		case '\t':
-			b.WriteString(`\t`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\b':
-			b.WriteString(`\u{8}`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\\':
-			b.WriteString(`\\`)
-		case quote:
-			b.WriteByte('\\')
-			b.WriteRune(ch)
-		default:
-			b.WriteRune(ch)
-		}
-	}
-	b.WriteRune(quote)
+	b.WriteString(`f"`)
+	writeFilePart(&b, f.Bucket, false)
+	b.WriteByte(':')
+	writeFilePart(&b, key, true)
+	b.WriteByte('"')
 	return b.String()
+}
+
+// writeFilePart writes s with a backslash before each character that a file
+// string does not hold, as the JavaScript SDK's fmtInner does. JavaScript
+// escapes each UTF-16 code unit, so it writes two backslashes for a character
+// outside the Basic Multilingual Plane; a Go string holds code points, so
+// that character gets one, as SurrealDB 3 writes it.
+func writeFilePart(b *strings.Builder, s string, allowSlash bool) {
+	for _, ch := range s {
+		if !isASCIIAlphanumeric(ch) && ch != '_' && ch != '-' && ch != '.' && (!allowSlash || ch != '/') {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(ch)
+	}
 }
