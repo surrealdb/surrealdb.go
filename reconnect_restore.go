@@ -44,8 +44,9 @@ func (db *DB) restore(ctx context.Context, con connection.Connection) error {
 // restoreSession sets the state of a session on a connection: its token
 // first, since SurrealDB 2.x refuses variables to an anonymous session, then
 // its namespace and database, and its variables. A token pair whose access
-// token has expired is exchanged for a new one first. It carries on past what
-// fails, and returns all of it.
+// token has expired is exchanged for a new one first, when the client holds
+// the pair, as it does with [WithTokenRenewal]. It carries on past what fails,
+// and returns all of it.
 func restoreSession(ctx context.Context, con connection.Connection, session *models.UUID, state *sessionState, renew *renewer) error {
 	snap := state.snapshot(renew)
 	var errs []error

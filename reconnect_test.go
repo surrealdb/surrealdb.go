@@ -431,7 +431,7 @@ func TestReconnect_renewsAnExpiredToken(t *testing.T) {
 	defineRefreshAccess(t, "2s")
 
 	p := newDropProxy(t)
-	db := connectThrough(t, p)
+	db := connectThrough(t, p, surrealdb.WithTokenRenewal(true))
 	status := watchStatus(db)
 	require.NoError(t, db.Use(ctx, refreshNS, refreshDB))
 	user := uniq()
