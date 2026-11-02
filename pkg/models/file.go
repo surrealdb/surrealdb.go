@@ -33,27 +33,39 @@ func NewFile(bucket, key string) File {
 	return File{Bucket: bucket, Key: key}
 }
 
-// String returns the file pointer as SurrealDB displays it, such as
-// f"bucket:/key".
+// String returns the file pointer as a file string, f"bucket:/key", escaped
+// the way FileRef in the SurrealDB JavaScript SDK escapes it. It always has
+// this one form.
 //
-// The result is a SurrealQL literal that the server parses back into the same
-// File only when the bucket uses ASCII letters, digits, '_', '-' and '.', and
-// the key uses those and '/'. SurrealQL has no escape syntax inside a file
-// pointer, so any other character is written with a backslash before it, as
-// the server's own <string> cast does, and the result is for display only.
-// Bind such a File as a query parameter instead of formatting it into a query.
+// Each character of the bucket and key is written as it is if it is an ASCII
+// letter or digit, '_', '-' or '.', or a '/' in the key. Any other character,
+// a '/' in the bucket included, is written with a backslash before it. A key
+// with no leading slash is written with one, as NewFile adds it.
+//
+// A file string has no escape syntax, so SurrealDB parses the result back
+// into the same File only when no character needed a backslash. Otherwise the
+// result is for display only. To send a File in a query, bind it as a
+// parameter rather than formatting it into the query text.
 func (f File) String() string {
+	key := f.Key
+	if !strings.HasPrefix(key, "/") {
+		key = "/" + key
+	}
+
 	var b strings.Builder
 	b.WriteString(`f"`)
 	writeFilePart(&b, f.Bucket, false)
 	b.WriteByte(':')
-	writeFilePart(&b, f.Key, true)
+	writeFilePart(&b, key, true)
 	b.WriteByte('"')
 	return b.String()
 }
 
-// writeFilePart writes s, putting a backslash before each character a file
-// pointer literal does not allow. This matches the server's formatting.
+// writeFilePart writes s with a backslash before each character that a file
+// string does not hold, as the JavaScript SDK's fmtInner does. JavaScript
+// escapes each UTF-16 code unit, so it writes two backslashes for a character
+// outside the Basic Multilingual Plane; a Go string holds code points, so
+// that character gets one, as SurrealDB 3 writes it.
 func writeFilePart(b *strings.Builder, s string, allowSlash bool) {
 	for _, ch := range s {
 		if !isASCIIAlphanumeric(ch) && ch != '_' && ch != '-' && ch != '.' && (!allowSlash || ch != '/') {

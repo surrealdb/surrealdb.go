@@ -21,53 +21,63 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
+            surrealdb-start-flags: '--allow-experimental files'
           # Latest 3.x, gws
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-connection-impl: 'gws'
           # Latest 3.x, gorilla/websocket, fxamackercbor (legacy)
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-cbor-impl: 'fxamackercbor'
           # Latest 3.x, gorilla/websocket, reconnection
           - surrealdb-version: 'v3'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-reconnection-check-interval: '1s'
           # Latest 3.x with the oldest supported Go
           - surrealdb-version: 'v3'
             go-version: '1.24.6'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
           # Nightly: the next release line (4.0). Reported, but does not block a merge.
           - surrealdb-version: 'nightly'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
             experimental: true
           - surrealdb-version: 'nightly'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
+            surrealdb-start-flags: '--allow-experimental files'
             experimental: true
           # Oldest 3.x
           - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
           - surrealdb-version: 'v3.0.1'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
+            surrealdb-start-flags: '--allow-experimental files'
             # SurrealDB 3.0.x keeps one shared session for all HTTP /rpc requests, so
             # concurrent requests can run in each other's namespace and database
             # (fixed in 3.1.0). Run the test packages one at a time.
@@ -101,7 +111,7 @@ jobs:
           cache-dependency-path: go.sum
       - name: Start SurrealDB
         run: |
-          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:${{ matrix.surrealdb-version }} start --user root --pass root
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:${{ matrix.surrealdb-version }} start --user root --pass root ${{ matrix.surrealdb-start-flags }}
           docker run --rm surrealdb/surrealdb:${{ matrix.surrealdb-version }} version
           # Wait for SurrealDB to be ready
           for i in {1..30}; do

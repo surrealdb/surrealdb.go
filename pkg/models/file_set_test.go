@@ -52,19 +52,30 @@ func TestFile_string(t *testing.T) {
 		file models.File
 		want string
 	}{
-		// A valid SurrealQL literal: only letters, digits, '_', '-', '.' and,
-		// in the key, '/'.
+		// Letters, digits, '_', '-' and '.', and '/' in the key, are written as
+		// they are.
 		{models.NewFile("bucket", "/a/b.txt"), `f"bucket:/a/b.txt"`},
 		{models.NewFile("my_bucket-1.x", "dir/file_name.v2.tar.gz"), `f"my_bucket-1.x:/dir/file_name.v2.tar.gz"`},
-		{models.NewFile("", "/"), `f":/"`},
-		// Display only, as SurrealDB 3.3.4 formats them with <string>: the
-		// parser accepts none of these characters, escaped or not.
-		{models.NewFile("b", `"q"\`), `f"b:/\"q\"\\"`},
-		{models.NewFile("buck et", `/a"b`), `f"buck\ et:/a\"b"`},
-		{models.NewFile("bucket", "a:b"), `f"bucket:/a\:b"`},
+		{models.NewFile("b", "//"), `f"b://"`},
+		{models.NewFile("", "/path"), `f":/path"`},
+		{models.NewFile("bucket", "/"), `f"bucket:/"`},
+		// The JavaScript SDK's FileRef formatting test: any other character
+		// gets a backslash before it.
+		{models.NewFile("hello world", "/foo bar/test.json"), `f"hello\ world:/foo\ bar/test.json"`},
+		{models.NewFile("buck et", `/a"b\c:d`), `f"buck\ et:/a\"b\\c\:d"`},
+		{models.NewFile("it's", `/it's "q"`), `f"it\'s:/it\'s\ \"q\""`},
+		// A '/' is escaped in the bucket but not in the key.
 		{models.NewFile("b/c", "/é d"), `f"b\/c:/\é\ d"`},
+		// Control characters and characters outside the Basic Multilingual
+		// Plane are escaped once, as code points.
+		{models.NewFile("b", "/\x00\r\t\n\b\f"), "f\"b:/\\\x00\\\r\\\t\\\n\\\b\\\f\""},
+		{models.NewFile("b", "/😀"), `f"b:/\😀"`},
+		// A key with no leading slash is written with one, as NewFile adds it.
+		{models.File{Bucket: "bucket", Key: "a"}, `f"bucket:/a"`},
+		{models.File{Bucket: "bucket"}, `f"bucket:/"`},
+		{models.File{}, `f":/"`},
 	} {
-		assert.Equal(t, tt.want, tt.file.String())
+		assert.Equal(t, tt.want, tt.file.String(), "%#v", tt.file)
 	}
 }
 
