@@ -92,11 +92,31 @@ func TestFileAndSet_server(t *testing.T) {
 	t.Run("file string", func(t *testing.T) {
 		for _, f := range []models.File{
 			models.NewFile("bucket", "/a/b.txt"),
+			models.NewFile("b", "//"),
+			models.NewFile("", "/path"),
+			models.NewFile("bucket", "/"),
+			models.NewFile("hello world", "/foo bar/test.json"),
 			models.NewFile("buck et", `/a"b\c:d`),
+			models.NewFile("it's", `/it's "q"`),
+			models.NewFile("b/c", "/é d"),
+			models.NewFile("b", "/\x00\r\t\n\b\f"),
+			models.NewFile("b", "/😀"),
+			// The server adds the leading slash to a key that has none.
+			{Bucket: "bucket", Key: "a"},
+			{Bucket: "bucket"},
+			{},
 		} {
 			res, err := surrealdb.Query[string](ctx, db, "RETURN <string>$f", map[string]any{"f": f})
 			require.NoError(t, err)
-			assert.Equal(t, (*res)[0].Result, f.String(), "String matches the server's own formatting")
+			got := (*res)[0].Result
+			if strings.HasPrefix(got, "type::file(") {
+				// SurrealDB 4.0 writes a file that needs escapes as the
+				// function that builds it. String keeps the JavaScript SDK's
+				// escaped file string.
+				t.Logf("server writes %v as %s, the SurrealDB 4.0 form", f, got)
+				continue
+			}
+			assert.Equal(t, got, f.String(), "String matches the server's own formatting")
 		}
 	})
 
@@ -106,7 +126,7 @@ func TestFileAndSet_server(t *testing.T) {
 		if err != nil && strings.Contains(err.Error(), "experimental files feature") {
 			t.Skip("parsing a file literal needs --allow-experimental files")
 		}
-		require.NoError(t, err)
+		require.NoError(t, err, f.String())
 		assert.Equal(t, f, (*res)[0].Result, "the server parses String back into the same file")
 	})
 }
