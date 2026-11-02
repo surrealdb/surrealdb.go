@@ -10,10 +10,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
+	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/require"
 
+	"github.com/surrealdb/surrealdb.go/internal/codec"
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
@@ -37,6 +42,10 @@ type recordingConnection struct {
 	failMethods []string
 	// tokens, if set, is the pair the refresh variants return.
 	tokens *connection.Tokens
+	// live holds the notifications of the live queries started with Send.
+	live map[string]chan connection.Notification
+	// watched holds the live queries whose notifications were asked for.
+	watched map[string]bool
 }
 
 func (c *recordingConnection) fails(method string) error {
@@ -85,6 +94,10 @@ func (c *recordingConnection) Calls() []string {
 }
 
 func (c *recordingConnection) Connect(context.Context) error { return nil }
+
+// GetUnmarshaler decodes the responses Send encodes. rews decodes the live
+// queries it records with the unmarshaler of the connection in use.
+func (c *recordingConnection) GetUnmarshaler() codec.Unmarshaler { return surrealcbor.New() }
 func (c *recordingConnection) Close(context.Context) error {
 	c.mu.Lock()
 	c.closed = true
@@ -146,6 +159,75 @@ func (c *recordingConnection) SignUpWithRefresh(ctx context.Context, _ any) (*co
 	return c.pair(), nil
 }
 
+// Send records the RPCs sent through it, and answers live with the id of a new
+// live query, whose notifications LiveNotifications returns.
+func (c *recordingConnection) Send(ctx context.Context, method string, params ...any) (*connection.RPCResponse[cbor.RawMessage], error) {
+	call := method
+	if method == methodLive && len(params) > 0 {
+		call = fmt.Sprintf("live %v", params[0])
+	}
+	if err := c.record(ctx, call); err != nil {
+		return nil, err
+	}
+	if err := c.fails(method); err != nil {
+		return nil, err
+	}
+	if method != methodLive {
+		return &connection.RPCResponse[cbor.RawMessage]{}, nil
+	}
+
+	id := uuid.Must(uuid.NewV4())
+	data, err := cbor.Marshal(models.UUID{UUID: id})
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	if c.live == nil {
+		c.live = map[string]chan connection.Notification{}
+	}
+	c.live[id.String()] = make(chan connection.Notification, 1)
+	c.mu.Unlock()
+	result := cbor.RawMessage(data)
+	return &connection.RPCResponse[cbor.RawMessage]{Result: &result}, nil
+}
+
+func (c *recordingConnection) LiveNotifications(id string) (chan connection.Notification, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch, ok := c.live[id]
+	if !ok {
+		return nil, fmt.Errorf("live query %s not found", id)
+	}
+	if c.watched == nil {
+		c.watched = map[string]bool{}
+	}
+	c.watched[id] = true
+	return ch, nil
+}
+
+// CloseLiveNotifications closes the notifications of a live query. Like
+// connection.Toolkit, it fails for one whose notifications were never asked for.
+func (c *recordingConnection) CloseLiveNotifications(id string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ch, ok := c.live[id]
+	if !ok || !c.watched[id] {
+		return fmt.Errorf("notification channel not found for live query ID: %s", id)
+	}
+	close(ch)
+	delete(c.live, id)
+	delete(c.watched, id)
+	return nil
+}
+
+// isLive reports whether the socket holds the notifications of live query id.
+func (c *recordingConnection) isLive(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.live[id]
+	return ok
+}
+
 // TestInvalidate_failureStillForgetsTokens checks that a reconnection after an
 // Invalidate whose RPC failed, as it does on a dropped socket, does not sign the
 // session back in.
@@ -167,6 +249,87 @@ func TestInvalidate_failureStillForgetsTokens(t *testing.T) {
 
 	require.NoError(t, conn.reconnect(ctx))
 	require.Equal(t, []string{"use ns db"}, next.Calls())
+}
+
+// startLive starts a live query on table through conn, as surrealdb.Live
+// does, and returns its id.
+func startLive(t *testing.T, conn *Connection[*recordingConnection], table string) string {
+	t.Helper()
+	res, err := conn.Send(context.Background(), methodLive, table, false)
+	require.NoError(t, err)
+	var id models.UUID
+	require.NoError(t, surrealcbor.New().Unmarshal(*res.Result, &id))
+	return id.String()
+}
+
+// TestReset_forgetsSession checks that a reconnection after a reset does not
+// restore the session the caller reset, and that the live queries the server
+// killed end.
+func TestReset_forgetsSession(t *testing.T) {
+	ctx := context.Background()
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	next := &recordingConnection{}
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 0, surrealcbor.New(), log)
+	old := &recordingConnection{}
+	conn.WebSocketConnection = old
+	conn.state = StateConnected
+
+	require.NoError(t, conn.Use(ctx, "ns", "db"))
+	_, err := conn.SignInWithRefresh(ctx, map[string]any{"NS": "ns", "DB": "db", "AC": "ac"})
+	require.NoError(t, err)
+	require.NoError(t, conn.Let(ctx, "k", "v"))
+	watched := startLive(t, conn, "watched")
+	notifications, err := conn.LiveNotifications(watched)
+	require.NoError(t, err)
+	// The socket refuses to close the notifications of this one, which nobody
+	// asked for. The reset must end it all the same.
+	unwatched := startLive(t, conn, "unwatched")
+
+	// As DB.Reset sends it.
+	require.NoError(t, rpc.Reset(conn, ctx))
+
+	tokens, err := conn.Tokens(ctx)
+	require.NoError(t, err)
+	require.Equal(t, connection.Tokens{}, tokens)
+	_, open := receiveNotification(t, notifications)
+	require.False(t, open, "the channel of a live query killed by the reset is closed")
+	require.False(t, old.isLive(watched), "the socket's notifications are closed too")
+	later, err := conn.LiveNotifications(unwatched)
+	require.NoError(t, err)
+	_, open = receiveNotification(t, later)
+	require.False(t, open, "so is the channel of one whose notifications are asked for later")
+
+	require.NoError(t, conn.reconnect(ctx))
+	require.Empty(t, next.Calls(), "the reconnection restores nothing the reset cleared")
+
+	require.NoError(t, conn.CloseLiveNotifications(watched))
+	require.NoError(t, conn.CloseLiveNotifications(unwatched))
+}
+
+// TestReset_failureKeepsSession checks that a reset the server refuses leaves
+// the session to be restored as it was.
+func TestReset_failureKeepsSession(t *testing.T) {
+	ctx := context.Background()
+	log := logger.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	next := &recordingConnection{}
+	conn := New(func(context.Context) (*recordingConnection, error) {
+		return next, nil
+	}, 0, surrealcbor.New(), log)
+	conn.WebSocketConnection = &recordingConnection{failMethods: []string{"reset"}}
+	conn.state = StateConnected
+
+	require.NoError(t, conn.Use(ctx, "ns", "db"))
+	require.NoError(t, conn.Authenticate(ctx, "token"))
+	require.NoError(t, conn.Let(ctx, "k", "v"))
+	startLive(t, conn, "t")
+	require.Error(t, rpc.Reset(conn, ctx))
+
+	require.NoError(t, conn.reconnect(ctx))
+	require.Equal(t, []string{"use ns db", "authenticate token", "let k v", "live t"}, next.Calls())
 }
 
 // TestReconnect_refreshTellsTheCaller checks that when a reconnection signs in
@@ -243,6 +406,12 @@ func TestReconnect_serialisesReplayWithSessionChanges(t *testing.T) {
 			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Let(ctx, "k", "v2") },
 			want:   []string{"use ns db", "authenticate token", "let k v2"},
 		},
+		{
+			name:   "Reset",
+			block:  "reset",
+			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return rpc.Reset(c, ctx) },
+			want:   nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -304,6 +473,7 @@ func TestSessionChange_honorsContextWhileWaiting(t *testing.T) {
 		"Unset":        func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Unset(ctx, "k") },
 		"Authenticate": func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Authenticate(ctx, "t") },
 		"Invalidate":   func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Invalidate(ctx) },
+		"Reset":        func(ctx context.Context, c *Connection[*recordingConnection]) error { return rpc.Reset(c, ctx) },
 		"SignIn": func(ctx context.Context, c *Connection[*recordingConnection]) error {
 			_, err := c.SignIn(ctx, map[string]any{})
 			return err

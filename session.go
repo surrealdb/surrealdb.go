@@ -31,7 +31,8 @@ type Session struct {
 	// renew keeps the token pair of this session fresh. It is nil when token
 	// renewal is turned off.
 	renew *renewer
-	// state is what this session holds, for Fork.
+	// state is what this session holds, for Fork, and for setting it again on
+	// a new connection.
 	state sessionState
 	// tracked is whether the client knows state, as it does for a session it
 	// attached, unlike one that Sessions found.
@@ -193,6 +194,9 @@ func (s *Session) detach(ctx context.Context) error {
 	}
 
 	s.closed = true
+	if s.db.rc != nil {
+		s.db.rc.lives.forgetSession(s.id, s.db.rc.current())
+	}
 	return nil
 }
 
@@ -379,6 +383,10 @@ func (s *Session) Reset(ctx context.Context) error {
 	}
 	s.renew.clear()
 	s.state.reset()
+	// The server killed the session's live queries: stop restarting them.
+	if s.db.rc != nil {
+		s.db.rc.lives.forgetSession(s.id, s.db.rc.current())
+	}
 	return nil
 }
 

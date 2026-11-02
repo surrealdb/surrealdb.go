@@ -17,8 +17,8 @@ import (
 )
 
 // sessionState is what a session holds on the server that the client can set
-// again on another session: its namespace and database, its variables and the
-// token it is authenticated with.
+// again on another session or on a new connection: its namespace and database,
+// its variables and the token it is authenticated with.
 type sessionState struct {
 	mu        sync.Mutex
 	namespace string
@@ -115,8 +115,9 @@ type marshalerGetter interface {
 
 // letValue returns the value for Let to send and record. Over a WebSocket
 // connection which exposes its marshaler, that is the value encoded once, so
-// that a later change to the value reaches neither the server nor a fork.
-// Otherwise it is the value itself.
+// that a later change to the value reaches neither the server, nor a fork, nor
+// the variable the client sets again on a new connection. Otherwise it is the
+// value itself.
 func letValue(con connection.Connection, val any) (any, error) {
 	if _, ok := con.(connection.WebSocketConnection); !ok {
 		return val, nil

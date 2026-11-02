@@ -57,7 +57,15 @@ type statementResult struct {
 // returned: an *RPCError that unwraps to a *ServerError carrying the kind and
 // details SurrealDB v3 reports.
 func queryOne[TResult any, S sendable](ctx context.Context, s S, sql string, vars map[string]any) (*TResult, error) {
-	raw, err := execOne(ctx, s, sql, vars)
+	return queryOneOn[TResult](ctx, s, nil, sql, vars)
+}
+
+// queryOneOn is queryOne on a given connection, or on the client's when con
+// is nil.
+func queryOneOn[TResult any, S sendable](
+	ctx context.Context, s S, con connection.Connection, sql string, vars map[string]any,
+) (*TResult, error) {
+	raw, err := execOneOn(ctx, s, con, sql, vars)
 	if err != nil || len(raw) == 0 {
 		return nil, err
 	}
@@ -72,10 +80,22 @@ func queryOne[TResult any, S sendable](ctx context.Context, s S, sql string, var
 // execOne runs a single statement and returns its result undecoded, or the
 // error of a failed statement as queryOne does.
 func execOne[S sendable](ctx context.Context, s S, sql string, vars map[string]any) (cbor.RawMessage, error) {
-	results, err := send[[]statementResult](ctx, s, "query", sql, vars)
+	return execOneOn(ctx, s, nil, sql, vars)
+}
+
+// execOneOn is execOne on a given connection, or on the client's when con is
+// nil.
+func execOneOn[S sendable](ctx context.Context, s S, con connection.Connection, sql string, vars map[string]any) (cbor.RawMessage, error) {
+	results, err := sendOn[[]statementResult](ctx, s, con, "query", sql, vars)
 	if err != nil {
 		return nil, err
 	}
+	return oneResult(results, unmarshalerFor(s))
+}
+
+// oneResult returns the result of the one statement a query ran, undecoded,
+// or the error of a failed statement as queryOne does.
+func oneResult(results *[]statementResult, u interface{ Unmarshal([]byte, any) error }) (cbor.RawMessage, error) {
 	if results == nil || len(*results) != 1 {
 		n := 0
 		if results != nil {
@@ -91,7 +111,7 @@ func execOne[S sendable](ctx context.Context, s S, sql string, vars map[string]a
 
 	var message string
 	if len(res.Result) > 0 {
-		if err = unmarshalerFor(s).Unmarshal(res.Result, &message); err != nil {
+		if err := u.Unmarshal(res.Result, &message); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal error message: %w", err)
 		}
 	}
