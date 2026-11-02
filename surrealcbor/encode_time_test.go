@@ -29,7 +29,7 @@ func rawTag12(t *testing.T, v any, sec, ns int64) {
 		case int64:
 			return n
 		case uint64:
-			return int64(n)
+			return int64(n) //nolint:gosec // the test's values fit an int64
 		}
 		t.Fatalf("not an integer: %#v", x)
 		return 0
@@ -84,7 +84,7 @@ func TestBareTimeEncodesAsTag12(t *testing.T) {
 			if err := surrealcbor.Unmarshal(b, &wrapped); err != nil {
 				t.Fatal(err)
 			}
-			if !wrapped.At.Time.Equal(at) {
+			if !wrapped.At.Equal(at) {
 				t.Fatalf("CustomDateTime round trip: got %v, want %v", wrapped.At.Time, at)
 			}
 		})
@@ -108,7 +108,7 @@ func TestZeroAndWrappedTimeUnchanged(t *testing.T) {
 		t.Fatalf("zero time %x != zero CustomDateTime %x", zero, wrappedZero)
 	}
 	var raw map[string]any
-	if err := cbor.Unmarshal(zero, &raw); err != nil {
+	if err = cbor.Unmarshal(zero, &raw); err != nil {
 		t.Fatal(err)
 	}
 	if tag, ok := raw["at"].(cbor.Tag); !ok || tag.Number != models.TagNone {

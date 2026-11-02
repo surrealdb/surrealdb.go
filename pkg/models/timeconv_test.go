@@ -1,6 +1,7 @@
 package models_test
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -50,13 +51,13 @@ func tag12(t *testing.T, raw any, wantSec, wantNs int64) {
 	case int64:
 		sec = s
 	case uint64:
-		sec = int64(s)
+		sec = int64(s) //nolint:gosec // the test's seconds fit an int64
 	}
 	switch n := arr[1].(type) {
 	case int64:
 		ns = n
 	case uint64:
-		ns = int64(n)
+		ns = int64(n) //nolint:gosec // below a second
 	}
 	if sec != wantSec || ns != wantNs {
 		t.Fatalf("got [%d, %d], want [%d, %d]", sec, ns, wantSec, wantNs)
@@ -152,7 +153,7 @@ func TestPrepareForEncode_ZeroTimeEncodesAsNone(t *testing.T) {
 	wb, _ := (&CborMarshaler{}).Marshal(struct {
 		At CustomDateTime `cbor:"at"`
 	}{})
-	if string(wb) != string(b) {
+	if !bytes.Equal(wb, b) {
 		t.Fatalf("bare zero %x != wrapped zero %x", b, wb)
 	}
 }
@@ -169,7 +170,7 @@ func TestPrepareForEncode_TopLevelAndWrappedUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(bare) != string(wrapped) {
+	if !bytes.Equal(bare, wrapped) {
 		t.Fatalf("bare %x != wrapped %x", bare, wrapped)
 	}
 	// Tag 12 header (0xcc) then a 2-element array.
@@ -217,7 +218,7 @@ func TestPrepareForEncode_DecodesBackIntoTimeAndCustomDateTime(t *testing.T) {
 	if err := (&CborUnmarshaler{}).Unmarshal(b, &wrapped); err != nil {
 		t.Fatal(err)
 	}
-	if !wrapped.At.Time.Equal(at) {
+	if !wrapped.At.Equal(at) {
 		t.Fatalf("got %v, want %v", wrapped.At.Time, at)
 	}
 }

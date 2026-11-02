@@ -20,7 +20,7 @@ import (
 // Values are returned unchanged (same value, no copy) when they contain no
 // time.Time. Types that implement cbor.Marshaler, cbor.Tag, cbor.RawTag and
 // all types declared in this package are left alone, so CustomDateTime is
-// never wrapped twice and its zero-time behaviour (tag 6) is preserved.
+// never wrapped twice and its zero-time behavior (tag 6) is preserved.
 //
 // A struct is rebuilt as an anonymous struct type (reflect.StructOf) that keeps
 // the field names and tags. Unexported fields are dropped, as the encoder
@@ -51,7 +51,6 @@ type plan struct {
 
 var (
 	timeType      = reflect.TypeOf(time.Time{})
-	timePtrType   = reflect.TypeOf((*time.Time)(nil))
 	customDTType  = reflect.TypeOf(CustomDateTime{})
 	marshalerType = reflect.TypeOf((*cbor.Marshaler)(nil)).Elem()
 	cborTagType   = reflect.TypeOf(cbor.Tag{})
@@ -122,6 +121,8 @@ func mayContain(t reflect.Type, seen map[reflect.Type]bool) bool {
 // hasTime reports whether v actually holds a time.Time, looking through
 // interfaces. It never allocates, and skips whole subtrees whose static type
 // cannot hold a time.
+//
+//nolint:gocyclo // one case per kind
 func hasTime(v reflect.Value) bool {
 	t := v.Type()
 	if t == timeType {
@@ -196,6 +197,7 @@ func planFor(t reflect.Type, building map[reflect.Type]bool) (p *plan) {
 	return buildPlan(t, building)
 }
 
+//nolint:gocyclo,funlen // one case per kind
 func buildPlan(t reflect.Type, building map[reflect.Type]bool) *plan {
 	switch {
 	case t == timeType:
