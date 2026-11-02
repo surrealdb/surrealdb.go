@@ -44,13 +44,18 @@ type VersionData struct {
 type DB struct {
 	con  connection.Connection
 	opts options
+	// rc is con when the client reconnects, and nil otherwise.
+	rc *reconnector
 	// renew keeps the token pair of the default session fresh. It is nil when
 	// token renewal is turned off.
 	renew *renewer
-
-	// sessionRenewers are the renewers of the attached sessions, which Close
-	// stops. It is a pointer so that DB stays comparable and holds no lock.
-	sessionRenewers *renewerSet
+	// state is what the default session holds, for setting it again on a new
+	// connection.
+	state *sessionState
+	// sessions are the sessions attached with this client.
+	//
+	// Both are pointers, so that DB stays comparable and holds no lock.
+	sessions *sessionRegistry
 }
 
 // New creates a new SurrealDB client.
@@ -85,16 +90,21 @@ func FromConnectionWithOptions(ctx context.Context, conn connection.Connection, 
 		return nil, err
 	}
 
-	db := &DB{con: conn, opts: o, sessionRenewers: newRenewerSet()}
+	db := &DB{con: conn, opts: o, state: &sessionState{}, sessions: &sessionRegistry{}}
+	if o.reconnect && canReconnect(conn) {
+		db.rc = newReconnector(conn, &o)
+		db.rc.restore = db.restore
+		db.con = db.rc
+	}
 	if o.tokenRenewal {
 		db.renew = newRenewer(o.expiryMargin, func(ctx context.Context, tokens Tokens) (*Tokens, error) {
-			return rpc.Refresh(conn, ctx, heldTokens(ctx, conn, tokens))
+			return rpc.Refresh(db.con, ctx, heldTokens(ctx, db.con, tokens))
 		})
 	}
 
 	if o.versionCheck {
 		if err := db.checkVersion(ctx); err != nil {
-			_ = conn.Close(ctx)
+			_ = db.con.Close(ctx)
 			return nil, err
 		}
 	}
@@ -217,18 +227,12 @@ func (db *DB) WithContext(ctx context.Context) *DB {
 // Close closes the underlying WebSocket connection.
 func (db *DB) Close(ctx context.Context) error {
 	db.renew.stop()
-	db.sessionRenewers.stopAll()
+	// The renewers are stopped outside the lock, as stopping one waits for
+	// a renewal under way.
+	for _, s := range db.sessions.all() {
+		s.renew.stop()
+	}
 	return db.con.Close(ctx)
-}
-
-// trackSessionRenewer keeps a session's renewer, for Close to stop.
-func (db *DB) trackSessionRenewer(r *renewer) {
-	db.sessionRenewers.add(r)
-}
-
-// forgetSessionRenewer stops keeping a detached session's renewer.
-func (db *DB) forgetSessionRenewer(r *renewer) {
-	db.sessionRenewers.remove(r)
 }
 
 // Health checks that the server is up, with GET /health over HTTP. It works
@@ -245,7 +249,11 @@ func (db *DB) Health(ctx context.Context) error {
 
 // Use is a method to select the namespace and table to use.
 func (db *DB) Use(ctx context.Context, ns, database string) error {
-	return db.con.Use(ctx, ns, database)
+	if err := db.con.Use(ctx, ns, database); err != nil {
+		return err
+	}
+	db.state.use(ns, database)
+	return nil
 }
 
 func (db *DB) Info(ctx context.Context) (map[string]any, error) {
@@ -291,6 +299,7 @@ func (db *DB) SignUp(ctx context.Context, authData any) (string, error) {
 	token, err := db.con.SignUp(ctx, authData)
 	if err == nil {
 		db.renew.clear()
+		db.state.setToken(token)
 	}
 	return token, err
 }
@@ -323,6 +332,7 @@ func (db *DB) SignUpWithRefresh(ctx context.Context, authData any) (*Tokens, err
 	tokens, err := db.con.SignUpWithRefresh(ctx, authData)
 	if err == nil {
 		db.renew.set(tokens)
+		db.state.setTokens(tokens)
 	}
 	return tokens, err
 }
@@ -423,6 +433,7 @@ func (db *DB) SignIn(ctx context.Context, authData any) (string, error) {
 	token, err := db.con.SignIn(ctx, authData)
 	if err == nil {
 		db.renew.clear()
+		db.state.setToken(token)
 	}
 	return token, err
 }
@@ -481,6 +492,7 @@ func (db *DB) SignInWithRefresh(ctx context.Context, authData any) (*Tokens, err
 	tokens, err := db.con.SignInWithRefresh(ctx, authData)
 	if err == nil {
 		db.renew.set(tokens)
+		db.state.setTokens(tokens)
 	}
 	return tokens, err
 }
@@ -502,6 +514,7 @@ func (db *DB) Refresh(ctx context.Context, tokens Tokens) (*Tokens, error) {
 	next, err := rpc.Refresh(db.con, ctx, tokens)
 	if err == nil {
 		db.renew.set(next)
+		db.state.setTokens(next)
 	}
 	return next, err
 }
@@ -519,6 +532,9 @@ func (db *DB) Revoke(ctx context.Context, tokens Tokens) error {
 		return err
 	}
 	if current := db.renew.current(); current != nil && current.Refresh == tokens.Refresh {
+		// The session stays signed in with the latest access token, which
+		// may be newer than the one recorded when the pair was obtained.
+		db.state.setToken(current.Access)
 		db.renew.clear()
 	}
 	return nil
@@ -546,6 +562,7 @@ func (db *DB) Invalidate(ctx context.Context) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.setToken("")
 	return nil
 }
 
@@ -563,6 +580,11 @@ func (db *DB) Reset(ctx context.Context) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.reset()
+	// The server killed the session's live queries: stop restarting them.
+	if db.rc != nil {
+		db.rc.lives.forgetSession(nil, db.rc.current())
+	}
 	return nil
 }
 
@@ -592,15 +614,34 @@ func (db *DB) Authenticate(ctx context.Context, token string) error {
 		return err
 	}
 	db.renew.clear()
+	db.state.setToken(token)
 	return nil
 }
 
+// Let sets a variable in the session.
+//
+// Over WebSocket, the client keeps the variable, to set it again on a new
+// connection. It encodes the value once, before it sends it, so that changing
+// the value after Let returns changes neither the variable nor the one set
+// again.
 func (db *DB) Let(ctx context.Context, key string, val any) error {
-	return db.con.Let(ctx, key, val)
+	val, err := letValue(db.con, val)
+	if err != nil {
+		return err
+	}
+	if err := db.con.Let(ctx, key, val); err != nil {
+		return err
+	}
+	db.state.let(key, val)
+	return nil
 }
 
 func (db *DB) Unset(ctx context.Context, key string) error {
-	return db.con.Unset(ctx, key)
+	if err := db.con.Unset(ctx, key); err != nil {
+		return err
+	}
+	db.state.unset(key)
+	return nil
 }
 
 func (db *DB) Version(ctx context.Context) (*VersionData, error) {
@@ -707,8 +748,26 @@ func (db *DB) CloseLiveNotifications(liveQueryID string) error {
 // Kill terminates a live query and closes the notification channel.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
 func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
-	// First kill the live query on the server
-	_, err := send[any](ctx, s, "kill", id)
+	// First kill the live query on the server, by the ID the server knows it
+	// by on the connection the request is sent on. Reconnecting starts the
+	// query again under a new ID before it hands over the new connection, so
+	// the ID is looked up only once the connection is in hand.
+	var db *DB
+	switch v := any(s).(type) {
+	case *DB:
+		db = v
+	case *Session:
+		db = v.db
+	}
+	var err error
+	if db != nil && db.rc != nil {
+		var con connection.Connection
+		if con, err = db.rc.conn(ctx); err == nil {
+			_, err = sendOn[any](ctx, s, con, "kill", db.rc.lives.serverID(id))
+		}
+	} else {
+		_, err = send[any](ctx, s, "kill", id)
+	}
 	if err != nil {
 		return err
 	}
@@ -725,8 +784,52 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 
 // Live starts a live query on a table.
 // S can be *DB or *Session (not *Transaction, as live queries are session-scoped).
+//
+// When the client reconnects, the live query is started again on the new
+// connection, and keeps the ID returned here.
 func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
-	return send[models.UUID](ctx, s, "live", table, diff)
+	id, err := send[models.UUID](ctx, s, "live", table, diff)
+	if err != nil || id == nil {
+		return id, err
+	}
+	switch v := any(s).(type) {
+	case *DB:
+		if v.rc != nil {
+			v.rc.lives.track(*id, nil, table, diff)
+		}
+	case *Session:
+		if v.db.rc != nil {
+			v.db.rc.lives.track(*id, v.id, table, diff)
+		}
+	}
+	return id, nil
+}
+
+// Status returns the status of the client's connection. A client which does not
+// reconnect is [StatusConnected] until it is closed.
+func (db *DB) Status() ConnectionStatus {
+	if db.rc != nil {
+		return db.rc.Status()
+	}
+	if ws, ok := db.con.(connection.WebSocketConnection); ok && ws.IsClosed() {
+		return StatusClosed
+	}
+	return StatusConnected
+}
+
+// OnStatus calls fn with each change of the status of the client's connection,
+// until the returned function is called: when the connection is lost, at each
+// attempt to reconnect and its outcome, and when the client closes. Only
+// clients which reconnect report changes; see [WithReconnect].
+//
+// Events are passed to fn one at a time, in the order they happened, on a
+// goroutine other than the one which reconnects: fn may make requests on the
+// client, or close it, though while it runs, the events after it wait.
+func (db *DB) OnStatus(fn func(StatusEvent)) (stop func()) {
+	if db.rc == nil {
+		return func() {}
+	}
+	return db.rc.onStatus(fn)
 }
 
 // Query executes a query against the SurrealDB database.
@@ -1329,28 +1432,42 @@ func unmarshalerOf[S sendable](s S) codec.Unmarshaler {
 //   - *Session: uses connection.Call with session UUID
 //   - *Transaction: uses connection.Call with session and txn UUIDs
 func send[TResult any, S sendable](ctx context.Context, s S, method string, params ...any) (*TResult, error) {
+	return sendOn[TResult](ctx, s, nil, method, params...)
+}
+
+// sendOn is send on a given connection, or on the client's when con is nil.
+func sendOn[TResult any, S sendable](ctx context.Context, s S, con connection.Connection, method string, params ...any) (*TResult, error) {
 	var res connection.RPCResponse[TResult]
 
 	switch v := any(s).(type) {
 	case *DB:
-		if err := connection.Send(v.con, ctx, &res, method, params...); err != nil {
+		if con == nil {
+			con = v.con
+		}
+		if err := connection.Send(con, ctx, &res, method, params...); err != nil {
 			return nil, err
 		}
 	case *Session:
 		if v.isClosed() {
 			return nil, constants.ErrSessionClosed
 		}
+		if con == nil {
+			con = v.db.con
+		}
 		req := &connection.RPCRequest{
 			Method:  method,
 			Params:  params,
 			Session: v.id,
 		}
-		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+		if err := connection.Call(con, ctx, &res, req); err != nil {
 			return nil, err
 		}
 	case *Transaction:
 		if v.IsClosed() {
 			return nil, constants.ErrTransactionClosed
+		}
+		if con == nil {
+			con = v.db.con
 		}
 		req := &connection.RPCRequest{
 			Method:  method,
@@ -1358,7 +1475,7 @@ func send[TResult any, S sendable](ctx context.Context, s S, method string, para
 			Session: v.sessionID,
 			Txn:     v.id,
 		}
-		if err := connection.Call(v.db.con, ctx, &res, req); err != nil {
+		if err := connection.Call(con, ctx, &res, req); err != nil {
 			return nil, err
 		}
 	}

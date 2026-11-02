@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,15 +40,24 @@ func TestHTTP_withoutUse(t *testing.T) {
 	assert.Contains(t, (*res)[0].Result, "namespaces")
 
 	// A root user can create a namespace and database without having chosen one.
-	_, err = surrealdb.Query[any](ctx, db, `
-		DEFINE NAMESPACE IF NOT EXISTS http_without_use;
-		USE NS http_without_use;
-		DEFINE DATABASE IF NOT EXISTS http_without_use;
-	`, nil)
+	// Other test packages define namespaces and databases on the same server at
+	// the same time, which can fail with a transaction conflict, so retry as
+	// testenv.DefineNamespaceAndDatabase does.
+	const maxRetries = 5
+	for i := 0; i < maxRetries; i++ {
+		_, err = surrealdb.Query[any](ctx, db, `
+			DEFINE NAMESPACE IF NOT EXISTS http_without_use;
+			USE NS http_without_use;
+			DEFINE DATABASE IF NOT EXISTS http_without_use;
+		`, nil)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Duration(10*(i+1)) * time.Millisecond)
+	}
 	require.NoError(t, err)
 
 	// Once a namespace and database are chosen, they are used.
 	require.NoError(t, db.Use(ctx, "http_without_use", "http_without_use"))
-	_, err = surrealdb.Query[any](ctx, db, "DEFINE TABLE IF NOT EXISTS thing", nil)
-	require.NoError(t, err)
+	require.NoError(t, testenv.DefineSchemalessTables(db, "thing"))
 }
