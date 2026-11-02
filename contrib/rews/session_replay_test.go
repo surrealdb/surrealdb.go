@@ -389,6 +389,12 @@ func TestReconnect_serialisesReplayWithSessionChanges(t *testing.T) {
 			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Let(ctx, "k", "v2") },
 			want:   []string{"use ns db", "authenticate token", "let k v2"},
 		},
+		{
+			name:   "Reset",
+			block:  "reset",
+			change: func(ctx context.Context, c *Connection[*recordingConnection]) error { return rpc.Reset(c, ctx) },
+			want:   nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -450,6 +456,7 @@ func TestSessionChange_honorsContextWhileWaiting(t *testing.T) {
 		"Unset":        func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Unset(ctx, "k") },
 		"Authenticate": func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Authenticate(ctx, "t") },
 		"Invalidate":   func(ctx context.Context, c *Connection[*recordingConnection]) error { return c.Invalidate(ctx) },
+		"Reset":        func(ctx context.Context, c *Connection[*recordingConnection]) error { return rpc.Reset(c, ctx) },
 		"SignIn": func(ctx context.Context, c *Connection[*recordingConnection]) error {
 			_, err := c.SignIn(ctx, map[string]any{})
 			return err
