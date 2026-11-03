@@ -13,7 +13,7 @@ the client and the backend.
 
 See the [documetation on data models](https://surrealdb.com/docs/surrealql/datamodel) on data types supported in SurrealQL, and the below for ones supported in the [surrealdb] package.
 
-[surrealdb]: https://pkg.go.dev/github.com/surrealdb/surrealdb.go
+[surrealdb]: https://pkg.go.dev/github.com/surrealdb/surrealdb.go/v2
 
 | CBOR Type                        | Go Representation                                                                                           | Example                                                                                |
 | -------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |

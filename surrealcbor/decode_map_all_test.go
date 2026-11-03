@@ -7,7 +7,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // TestDecode_map_withAllSupportedTypes tests that all map value types

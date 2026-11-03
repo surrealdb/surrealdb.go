@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/surrealdb/surrealdb.go/memory"
+	"github.com/surrealdb/surrealdb.go/v2/memory"
 )
 
 // ExampleClient_Remember demonstrates the canonical remember-then-recall

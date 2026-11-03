@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // Refresh exchanges a token pair for a new one, using the refresh RPC. The

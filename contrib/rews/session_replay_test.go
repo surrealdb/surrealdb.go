@@ -14,12 +14,12 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/rpc"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // recordingConnection is a socket that records the session RPCs it is sent,

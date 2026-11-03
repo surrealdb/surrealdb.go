@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // authToken sends an RPC method that returns a string token (like signin/signup without WITH REFRESH).

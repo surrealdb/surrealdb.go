@@ -73,7 +73,7 @@ type Bound[T any] interface {
 // for example []any{"London", None}.
 //
 // For convenient constructors (open and closed forms), use the helpers in
-// github.com/surrealdb/surrealdb.go/contrib/surrealql.
+// github.com/surrealdb/surrealdb.go/v2/contrib/surrealql.
 type Range[T any, TBeg Bound[T], TEnd Bound[T]] struct {
 	Begin *TBeg
 	End   *TEnd

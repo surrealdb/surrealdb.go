@@ -3,8 +3,8 @@ package surrealql_test
 import (
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // ExampleSelect_modelsTable demonstrates using models.Table for type-safe table selection

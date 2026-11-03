@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // TestHTTP_letAndUnset checks that variables defined with Let are visible to

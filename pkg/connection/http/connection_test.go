@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 type RoundTripFunc func(req *http.Request) *http.Response

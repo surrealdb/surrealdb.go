@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	. "github.com/surrealdb/surrealdb.go/pkg/models"
+	. "github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 type convInner struct {

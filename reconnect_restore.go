@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // restore sets what the client holds on a new connection, after the one before

@@ -7,8 +7,8 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/suite"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 )
 
 type WsTestSuite struct {

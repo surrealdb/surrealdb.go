@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	surrealhttp "github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	surrealhttp "github.com/surrealdb/surrealdb.go/v2/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 )
 
 const (

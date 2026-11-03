@@ -7,7 +7,7 @@ import (
 	"reflect"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // errNoUnmarshaler is a sentinel error indicating that no custom unmarshaler was found

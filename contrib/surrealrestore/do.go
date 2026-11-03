@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealdump"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump"
 )
 
 // Do executes the restore operation based on the configuration.

@@ -33,8 +33,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 func setupStructuredErrorTest(t *testing.T) *surrealdb.DB {

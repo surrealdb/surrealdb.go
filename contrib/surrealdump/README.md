@@ -33,7 +33,7 @@ Without Change Feeds enabled, full dumps will be inconsistent and incremental du
 ## Installation
 
 ```bash
-go install github.com/surrealdb/surrealdb.go/contrib/surrealdump/cmd/surrealdump@latest
+go install github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump/cmd/surrealdump@latest
 ```
 
 ## Usage

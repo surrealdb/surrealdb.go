@@ -2,10 +2,10 @@ package surrealdb
 
 import (
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // Deprecated: Use [ServerError] instead on SurrealDB v3 for richer error information.

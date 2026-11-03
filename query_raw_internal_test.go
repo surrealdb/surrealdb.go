@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // rawRow returns a result with the status and value given, encoded as CBOR.

@@ -7,7 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/stretchr/testify v1.11.1
-	github.com/surrealdb/surrealdb.go v0.10.0
+	github.com/surrealdb/surrealdb.go/v2 v2.0.0
 	gorm.io/driver/postgres v1.5.6
 	gorm.io/gorm v1.25.7
 )
@@ -30,4 +30,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/surrealdb/surrealdb.go => ../..
+replace github.com/surrealdb/surrealdb.go/v2 => ../..

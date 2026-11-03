@@ -15,14 +15,14 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
-	surrealhttp "github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gorillaws"
+	surrealhttp "github.com/surrealdb/surrealdb.go/v2/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // These tests explore the actual SurrealDB RPC behavior for sessions and transactions.

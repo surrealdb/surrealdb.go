@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/internal/rand"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 type State int

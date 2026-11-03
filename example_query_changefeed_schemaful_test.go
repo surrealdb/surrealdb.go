@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
 )
 
 // ExampleQuery_changeFeedSchemafull demonstrates how to use Change Feeds with a schemaful table in SurrealDB.

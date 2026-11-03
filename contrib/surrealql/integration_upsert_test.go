@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
 )
 
 func TestIntegration_UpsertSet(t *testing.T) {

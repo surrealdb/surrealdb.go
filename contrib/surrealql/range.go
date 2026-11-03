@@ -1,6 +1,6 @@
 package surrealql
 
-import "github.com/surrealdb/surrealdb.go/pkg/models"
+import "github.com/surrealdb/surrealdb.go/v2/pkg/models"
 
 // RangeOpen returns a fully open range (`..`): both sides have no limit.
 // Useful as a high sentinel inside array-style record ids, for example

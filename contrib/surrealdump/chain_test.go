@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealdump"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump"
 )
 
 func TestChain(t *testing.T) {

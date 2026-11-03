@@ -6,7 +6,7 @@
 //
 // Provide a proper SurrealDB endpoint URL to [FromEndpointURLString] so that it chooses the right backend for you.
 //
-// For WebSocket connections that require reliability, consider using [github.com/surrealdb/surrealdb.go/contrib/rews],
+// For WebSocket connections that require reliability, consider using [github.com/surrealdb/surrealdb.go/v2/contrib/rews],
 // which provides automatic reconnection with session restoration. This is particularly important because SurrealDB's
 // RPC Protocol over WebSocket is stateful - authentication, namespace/database selection, and live queries must be
 // restored after reconnection.
@@ -14,13 +14,13 @@
 // # Data Models
 //
 // The [surrealdb] package facilitates communication between client and the backend service using the SurrealDB CBOR Protocol.
-// The protocol encoding/decoding is handled by [github.com/surrealdb/surrealdb.go/surrealcbor].
+// The protocol encoding/decoding is handled by [github.com/surrealdb/surrealdb.go/v2/surrealcbor].
 //
 // The most commonly used data type is [models.RecordID], which represents a SurrealDB record identifier which is a pair of
 // table name and an identifier within that table.
 //
 // For more information on CBOR and how it relates to SurrealDB's
-// data models, please refer to the [github.com/surrealdb/surrealdb.go/pkg/models] package.
+// data models, please refer to the [github.com/surrealdb/surrealdb.go/v2/pkg/models] package.
 //
 // # Use Query for most use cases
 //
@@ -28,7 +28,8 @@
 //
 // [Query] is recommended for both simple and complex queries, transactions, and when you need full control over your database operations.
 //
-// To ease writing queries for [Query] with more type-safety, you can use the [github.com/surrealdb/surrealdb.go/contrib/surrealql] package.
+// To ease writing queries for [Query] with more type-safety, you can use the
+// [github.com/surrealdb/surrealdb.go/v2/contrib/surrealql] package.
 //
 // # Use Send for low-level control
 //
@@ -38,7 +39,7 @@
 //
 // # Examples and Experimental Packages
 //
-// The [github.com/surrealdb/surrealdb.go/contrib] directory contains examples and experimental packages
+// The [github.com/surrealdb/surrealdb.go/v2/contrib] directory contains examples and experimental packages
 // that are not covered by the SDK's backward compatibility guarantee.
 //
 // [SurrealDB RPC Protcol]: https://surrealdb.com/docs/surrealdb/integration/rpc

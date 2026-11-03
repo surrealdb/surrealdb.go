@@ -7,7 +7,7 @@ import (
 	"math"
 	"reflect"
 
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // sizedTagName names the SurrealDB kind each sized-number tag carries.

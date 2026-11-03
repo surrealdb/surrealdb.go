@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )
 
 // SurrealDBVersion represents a parsed SurrealDB version.

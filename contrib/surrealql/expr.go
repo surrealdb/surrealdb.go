@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // Expr creates an expression with optional placeholders for use in various queries.

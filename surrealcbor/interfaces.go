@@ -69,7 +69,7 @@ package surrealcbor
 //	    return nil
 //	}
 //
-// Note: Types from the github.com/surrealdb/surrealdb.go/pkg/models package
+// Note: Types from the github.com/surrealdb/surrealdb.go/v2/pkg/models package
 // (RecordID, CustomDateTime, etc.) do NOT use this interface. They are handled
 // via CBOR tags for proper SurrealDB protocol compatibility.
 type Unmarshaler interface {
@@ -136,7 +136,7 @@ type Unmarshaler interface {
 //	    return cbor.Marshal(compact)
 //	}
 //
-// Note: Types from the github.com/surrealdb/surrealdb.go/pkg/models package
+// Note: Types from the github.com/surrealdb/surrealdb.go/v2/pkg/models package
 // (RecordID, CustomDateTime, etc.) do NOT use this interface. They are handled
 // via CBOR tags for proper SurrealDB protocol compatibility.
 type Marshaler interface {

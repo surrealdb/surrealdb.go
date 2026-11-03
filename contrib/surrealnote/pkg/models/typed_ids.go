@@ -7,7 +7,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/google/uuid"
-	surrealdb_models "github.com/surrealdb/surrealdb.go/pkg/models"
+	surrealdb_models "github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // WorkspaceID is a typed ID for workspaces

@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 func BenchmarkNewRequestID1(b *testing.B) {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // heldConnection holds a token pair, as a connection from contrib/rews does.

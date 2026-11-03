@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/surrealdb/surrealdb.go/internal/wstest"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
+	"github.com/surrealdb/surrealdb.go/v2/internal/wstest"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gws"
 )
 
 func connect(t *testing.T, srv *wstest.Server) *gws.Connection {

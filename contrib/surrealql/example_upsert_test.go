@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 func ExampleUpsert_noContent() {

@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // NewConfig creates a new Config with the SurrealDB endpoint specified by the URL.

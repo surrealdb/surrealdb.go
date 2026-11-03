@@ -3,7 +3,7 @@ package rpc
 import (
 	"context"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 func Authenticate(c connection.Connection, ctx context.Context, token string) error {

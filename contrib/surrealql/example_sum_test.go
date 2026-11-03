@@ -3,7 +3,7 @@ package surrealql_test
 import (
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
 )
 
 func ExampleSelect_aggregate() {

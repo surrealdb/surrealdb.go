@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // Send overrides the WebSocketConnection's Send method to intercept live queries

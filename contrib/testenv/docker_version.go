@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	surrealdb "github.com/surrealdb/surrealdb.go"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )
 
 // SetupVersionTest starts a SurrealDB Docker container for the given version tag

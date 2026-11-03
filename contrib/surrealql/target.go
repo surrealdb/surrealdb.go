@@ -1,7 +1,7 @@
 package surrealql
 
 import (
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // Thing creates a target for a SurrealQL query.

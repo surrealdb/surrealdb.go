@@ -3,9 +3,9 @@ package surrealcbor
 import (
 	"github.com/fxamacker/cbor/v2"
 
-	"github.com/surrealdb/surrealdb.go/internal/cborwire"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 const (

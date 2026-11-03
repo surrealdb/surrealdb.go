@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // MyCustomType demonstrates a custom type with its own CBOR marshaling/unmarshaling logic

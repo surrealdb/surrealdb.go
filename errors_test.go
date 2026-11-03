@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	surrealdb "github.com/surrealdb/surrealdb.go"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )
 
 // TestErrorKindHelpers_ReExports is a pure unit test (no live server needed)

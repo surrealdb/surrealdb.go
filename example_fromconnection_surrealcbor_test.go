@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gws"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // FromConnection can take any connection.Connection implementation with

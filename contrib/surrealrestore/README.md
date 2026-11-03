@@ -19,7 +19,7 @@ A Go-based tool for restoring SurrealDB databases from CBOR format dumps created
 ## Installation
 
 ```bash
-go install github.com/surrealdb/surrealdb.go/contrib/surrealrestore/cmd/surrealrestore@latest
+go install github.com/surrealdb/surrealdb.go/v2/contrib/surrealrestore/cmd/surrealrestore@latest
 ```
 
 ## Usage

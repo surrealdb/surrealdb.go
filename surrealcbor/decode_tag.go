@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/internal/cborwire"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 func (d *decoder) decodeTag(v reflect.Value) error {

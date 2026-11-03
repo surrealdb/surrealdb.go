@@ -5,7 +5,7 @@ A type-safe query builder for SurrealDB's SurrealQL language. This package provi
 ## Installation
 
 ```go
-import "github.com/surrealdb/surrealdb.go/contrib/surrealql"
+import "github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
 ```
 
 ## Usage

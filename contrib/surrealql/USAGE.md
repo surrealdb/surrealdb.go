@@ -271,9 +271,9 @@ The `surrealql` library integrates seamlessly with the main `surrealdb.go` packa
 ```go
 import (
     "context"
-    "github.com/surrealdb/surrealdb.go"
-    "github.com/surrealdb/surrealdb.go/contrib/surrealql"
-    "github.com/surrealdb/surrealdb.go/pkg/models"
+    "github.com/surrealdb/surrealdb.go/v2"
+    "github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
+    "github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // Define your model

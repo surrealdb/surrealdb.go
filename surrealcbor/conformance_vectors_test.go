@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 

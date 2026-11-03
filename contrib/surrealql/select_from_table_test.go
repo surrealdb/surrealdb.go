@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 func TestSelect_fromTable(t *testing.T) {
