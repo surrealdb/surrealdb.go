@@ -1,8 +1,3 @@
-// Note: These examples use type::thing() which is the SurrealDB 2.x syntax.
-// For SurrealDB 3.x, use type::record() instead. The function signature is identical:
-//   - SurrealDB 2.x: type::thing("table", $id)
-//   - SurrealDB 3.x: type::record("table", $id)
-
 package surrealql_test
 
 import (
@@ -15,7 +10,7 @@ import (
 )
 
 func ExampleFor_insideTransaction() {
-	createUser := surrealql.Create("user").Set(`id = type::thing("user", $name)`).Set("name = $name")
+	createUser := surrealql.Create("user").Set(`id = type::record("user", $name)`).Set("name = $name")
 	createUsers := surrealql.For("name", `["Tobie", "Jaime"]`).Do(createUser)
 	tx := surrealql.Begin().Do(createUsers)
 	sql, vars := tx.Build()
@@ -30,7 +25,7 @@ func ExampleFor_insideTransaction() {
 	// Output:
 	// BEGIN TRANSACTION;
 	// FOR $name IN ["Tobie", "Jaime"] {
-	// CREATE user SET id = type::thing("user", $name), name = $name;
+	// CREATE user SET id = type::record("user", $name), name = $name;
 	// };
 	// COMMIT TRANSACTION;
 }
@@ -41,7 +36,7 @@ func ExampleForStatement_Do_raw() {
 		// Note that we can specify parameters using the "?" placeholder syntax
 		// and provide the corresponding arguments after the SQL string.
 		// The Var function is used to reference the loop variable within the raw statement.
-		Raw("CREATE type::thing('person', $name) SET name = ?, note = ?", surrealql.Var("name"), "created in loop")
+		Raw("CREATE type::record('person', $name) SET name = ?, note = ?", surrealql.Var("name"), "created in loop")
 
 	sql, vars := st.Build()
 	fmt.Println(sql)
@@ -54,13 +49,13 @@ func ExampleForStatement_Do_raw() {
 
 	// Output:
 	// FOR $name IN ["Tobie", "Jaime"] {
-	// CREATE type::thing('person', $name) SET name = $name, note = $param_1;
+	// CREATE type::record('person', $name) SET name = $name, note = $param_1;
 	// }
 	// Var param_1: created in loop
 }
 
 func ExampleForStatement_goSliceAsIterable() {
-	createUser := surrealql.Create("type::thing('person', $name)").Set("name = $name")
+	createUser := surrealql.Create("type::record('person', $name)").Set("name = $name")
 
 	statement := surrealql.For("name", "?", []any{"Tobie", "Jaime"}).
 		Do(createUser)
@@ -76,7 +71,7 @@ func ExampleForStatement_goSliceAsIterable() {
 
 	// Output:
 	// FOR $name IN $param_1 {
-	// CREATE type::thing('person', $name) SET name = $name;
+	// CREATE type::record('person', $name) SET name = $name;
 	// }
 	// Var param_1: [Tobie Jaime]
 }

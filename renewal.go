@@ -237,8 +237,7 @@ func retryBackoff(attempt int) time.Duration {
 // refusedByServer reports whether err is the server's answer to a request,
 // rather than a failure to get one, such as a lost connection or a timeout. A
 // gateway's 5xx answer, and a 408 or 429, count as failures to get one. The
-// server's answer arrives as an *RPCError, which also holds a *ServerError on
-// SurrealDB v3.
+// server's answer arrives as an *RPCError, which also holds a *ServerError.
 func refusedByServer(err error) bool {
 	var rpcErr *connection.RPCError //nolint:staticcheck // the server's answer arrives as an RPCError
 	if errors.As(err, &rpcErr) {

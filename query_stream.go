@@ -60,10 +60,10 @@ type StreamFrame[T any] struct {
 }
 
 // QueryStream runs a query and yields its answer frame by frame while it runs,
-// with the query_stream method of SurrealDB 3.3+ over WebSocket. Leaving the
-// loop early cancels the query on the server. In a transaction, leaving the
-// loop waits for the server to end the canceled query, so that the
-// transaction's Commit or Cancel comes after it. The statements which ran
+// with the query_stream method over WebSocket. Leaving the loop early cancels
+// the query on the server. In a transaction, leaving the loop waits for the
+// server to end the canceled query, so that the transaction's Commit or Cancel
+// comes after it. The statements which ran
 // before the cancel stay in the transaction, even one whose Done frame was
 // not read: call Cancel rather than Commit to discard them.
 //
@@ -75,9 +75,9 @@ type StreamFrame[T any] struct {
 // the loop reads them are buffered without bound, so a slow reader can hold
 // the whole result in memory, as Query does.
 //
-// When the connection or the server cannot stream, such as over HTTP or with an
-// older server, the query runs with the query method instead and its buffered
-// results are yielded as frames in the same form. The query is only re-sent
+// When the connection or the server cannot stream, such as over HTTP or when
+// the server refuses the method, the query runs with the query method instead
+// and its buffered results are yielded as frames in the same form. The query is only re-sent
 // when the server refused to stream it before running it.
 //
 // An error which belongs to no single statement ends the iteration: it retracts

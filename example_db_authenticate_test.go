@@ -79,9 +79,8 @@ func ExampleDB_Authenticate_jwt_databaseLevelUser() {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
 	}
 
-	// Create the user table and a test user record for SurrealDB 3.x
-	// SurrealDB 3.x requires the table to exist before querying,
-	// while SurrealDB 2.x does not.
+	// Create the user table and a test user record, as SurrealDB requires the
+	// table to exist before querying.
 	_, err = surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE user SCHEMAFULL;
 		DEFINE FIELD name ON user TYPE string;
@@ -198,9 +197,8 @@ func ExampleDB_Authenticate_jwt_hs512_databaseLevelUser() {
 		panic(fmt.Sprintf("Failed to define JWT access: %v", err))
 	}
 
-	// Create the user table and a test user record for SurrealDB 3.x
-	// SurrealDB 3.x requires the table to exist before querying,
-	// while SurrealDB 2.x does not.
+	// Create the user table and a test user record, as SurrealDB requires the
+	// table to exist before querying.
 	_, err = surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE user SCHEMAFULL;
 		DEFINE FIELD name ON user TYPE string;
@@ -320,8 +318,7 @@ func ExampleDB_Authenticate_jwt_hs512_namespaceLevelUser() {
 	}
 
 	// Create a database and user table/record for the namespace-level auth test
-	// SurrealDB 3.x requires the table to exist before querying,
-	// while SurrealDB 2.x does not.
+	// SurrealDB requires the table to exist before querying.
 	// First remove the database if it exists to ensure clean state
 	_, _ = surrealdb.Query[any](ctx, db, `REMOVE DATABASE IF EXISTS testdb`, nil)
 	_, err = surrealdb.Query[any](ctx, db, `
@@ -431,8 +428,7 @@ func ExampleDB_Authenticate_jwt_hs512_rootLevelUser() {
 	}
 
 	// Create the namespace, database, table, and test user for root-level auth test
-	// SurrealDB 3.x requires the table to exist before querying,
-	// while SurrealDB 2.x does not.
+	// SurrealDB requires the table to exist before querying.
 	// First remove namespace if it exists to ensure clean state
 	_, _ = surrealdb.Query[any](ctx, db, fmt.Sprintf(`REMOVE NAMESPACE IF EXISTS %s`, ns), nil)
 	_, err = surrealdb.Query[any](ctx, db, fmt.Sprintf(`

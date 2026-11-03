@@ -102,10 +102,6 @@ func TestQueryStream(t *testing.T) {
 }
 
 func TestQueryStream_session(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("SurrealDB %s has no sessions", v)
-	}
 	ctx := context.Background()
 	db := mustNewWS("query_stream", "session", "person")
 	defer db.Close(ctx)
@@ -169,8 +165,7 @@ func (r *streamRecorder) Send(ctx context.Context, method string, params ...any)
 	return r.Connection.Send(ctx, method, params...)
 }
 
-func TestQueryStream_fallsBackWhenServerCannotStream(t *testing.T) {
-	v := getVersion(t)
+func TestQueryStream_streamsRatherThanQuerying(t *testing.T) {
 	ctx := context.Background()
 
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())
@@ -184,14 +179,10 @@ func TestQueryStream_fallsBackWhenServerCannotStream(t *testing.T) {
 	require.NoError(t, db.Use(ctx, "query_stream", "fallback"))
 	rec.queried.Store(false)
 
-	sql := "RETURN 1; RETURN [2, 3]"
-	wantSingles := map[int]bool{0: true, 1: false}
-	if v.Major >= 3 {
-		// A set arrives as CBOR tag 56 rather than an array, so it is a
-		// single value whether it streams or not, where an array is rows.
-		sql += "; RETURN <set>[4, 5]"
-		wantSingles[2] = true
-	}
+	// A set arrives as CBOR tag 56 rather than an array, so it is a
+	// single value whether it streams or not, where an array is rows.
+	sql := "RETURN 1; RETURN [2, 3]; RETURN <set>[4, 5]"
+	wantSingles := map[int]bool{0: true, 1: false, 2: true}
 
 	values := map[int][]any{}
 	singles := map[int]bool{}
@@ -207,15 +198,11 @@ func TestQueryStream_fallsBackWhenServerCannotStream(t *testing.T) {
 	}
 	assert.Equal(t, []any{uint64(1)}, values[0])
 	assert.Equal(t, []any{uint64(2), uint64(3)}, values[1])
-	if v.Major >= 3 {
-		assert.Equal(t, []any{models.Set{uint64(4), uint64(5)}}, values[2])
-	}
+	assert.Equal(t, []any{models.Set{uint64(4), uint64(5)}}, values[2])
 	assert.Equal(t, wantSingles, singles)
 
 	assert.True(t, rec.streamed.Load(), "streaming is tried first")
-	streams := v.Major > 3 || (v.Major == 3 && v.Minor >= 3)
-	assert.Equal(t, !streams, rec.queried.Load(),
-		"SurrealDB %s streams: %v; the query is re-sent only when it does not", v, streams)
+	assert.False(t, rec.queried.Load(), "the server streams, so the query is not re-sent")
 }
 
 func TestQueryStream_http(t *testing.T) {
@@ -251,10 +238,6 @@ func TestQueryStream_afterClose(t *testing.T) {
 
 // A connection wrapped by contrib/rews still streams.
 func TestQueryStream_throughRews(t *testing.T) {
-	v := getVersion(t)
-	if v.Major < 3 || (v.Major == 3 && v.Minor < 3) {
-		t.Skipf("SurrealDB %s cannot stream", v)
-	}
 	ctx := context.Background()
 
 	u, err := url.ParseRequestURI(testenv.GetSurrealDBWSURL())

@@ -1,30 +1,29 @@
-// structured error integration tests for SurrealDB v3.
+// structured error integration tests.
 //
-// These tests run against a live SurrealDB v3 server and verify the SDK's
+// These tests run against a live SurrealDB server and verify the SDK's
 // error handling architecture:
 //
 // Error type hierarchy:
 //
-//	RPCError  (v2 backward compat — Code, Message, Description)
-//	   └── Unwrap() → ServerError  (v3 rich info — Kind, Details, Cause chain)
+//	RPCError  (deprecated, backward compat — Code, Message, Description)
+//	   └── Unwrap() → ServerError  (rich info — Kind, Details, Cause chain)
 //
 //	QueryError  (per-statement errors from Query results — Message only)
 //
 // When should you use which?
 //
-//   - RPCError is kept ONLY for v2 backward compatibility. On SurrealDB v3,
-//     RPCError still works via errors.As/Is, but it carries fewer fields than
-//     ServerError (no Kind, no Details, no Cause chain). The Description field
-//     is always empty on v3 servers.
+//   - RPCError is kept ONLY for backward compatibility. RPCError still works
+//     via errors.As/Is, but it carries fewer fields than ServerError (no Kind,
+//     no Details, no Cause chain). The Description field is always empty.
 //
-//   - ServerError is the v3 replacement. Extract it with errors.As(err, &se)
+//   - ServerError is the replacement. Extract it with errors.As(err, &se)
 //     from any *RPCError. It provides Kind (e.g. "NotAllowed", "Validation"),
 //     Details (structured info like table names, record IDs), and a Cause chain.
 //
 //   - QueryError is returned for per-statement failures in multi-statement
 //     queries (e.g. THROW, duplicate records). It contains only Message.
-//     Query-level parse errors on v3 are RPC-level errors (*RPCError), not
-//     QueryError, because v3 rejects the entire RPC call.
+//     Query-level parse errors are RPC-level errors (*RPCError), not
+//     QueryError, because the server rejects the entire RPC call.
 package testenv
 
 import (
@@ -48,15 +47,6 @@ func setupStructuredErrorTest(t *testing.T) *surrealdb.DB {
 
 	t.Cleanup(func() { db.Close(context.Background()) })
 
-	v, err := GetVersion(context.Background(), db)
-	if err != nil {
-		t.Skipf("Could not get SurrealDB version: %v", err)
-	}
-
-	if !v.IsV3OrLater() {
-		t.Skipf("Structured errors require SurrealDB v3+, got %s", v)
-	}
-
 	return db
 }
 
@@ -64,7 +54,7 @@ func setupStructuredErrorTest(t *testing.T) *surrealdb.DB {
 // failures are returned as *RPCError, but *ServerError (via Unwrap) carries
 // strictly more information: Kind, and Details with auth-specific context.
 //
-// RPCError gives you: Code (-32002), Message, Description (empty on v3).
+// RPCError gives you: Code (-32002), Message, Description (always empty).
 // ServerError gives you: Code, Message, Kind ("NotAllowed"), Details ({Auth: InvalidAuth}), Cause (nil).
 func TestStructuredErrors_InvalidCredentials(t *testing.T) {
 	db := setupStructuredErrorTest(t)
@@ -77,17 +67,17 @@ func TestStructuredErrors_InvalidCredentials(t *testing.T) {
 	require.Error(t, err)
 
 	// --- v2 backward compat: RPCError still works, but has less information ---
-	// RPCError exposes only Code, Message, and Description (v2-only, empty on v3).
+	// RPCError exposes only Code, Message, and Description (deprecated, always empty).
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	var rpcErr *surrealdb.RPCError
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable (v2 compat)")
 	assert.Equal(t, -32002, rpcErr.Code)
 	assert.Equal(t, "There was a problem with authentication", rpcErr.Message)
-	// On v3, Description is always empty — it's a v2-only field.
+	// Description is deprecated and always empty.
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
-	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
+	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
 
-	// --- v3 migration path: ServerError has strictly more information ---
+	// --- migration path: ServerError has strictly more information ---
 	// ServerError exposes all five public fields: Message, Kind, Code, Details, Cause.
 	var se surrealdb.ServerError
 	require.True(t, errors.As(err, &se), "ServerError should be extractable via Unwrap chain")
@@ -111,12 +101,10 @@ func TestStructuredErrors_InvalidCredentials(t *testing.T) {
 	assert.Nil(t, se.Cause, "no cause chain for auth errors")
 }
 
-// TestStructuredErrors_InvalidSyntax demonstrates that on SurrealDB v3,
-// parse errors are RPC-level failures (*RPCError → *ServerError), NOT
-// per-statement *QueryError. The server rejects the entire RPC call because
-// the SurrealQL cannot be parsed.
-//
-// This is different from v2 behavior where parse errors might be per-statement.
+// TestStructuredErrors_InvalidSyntax demonstrates that parse errors are
+// RPC-level failures (*RPCError → *ServerError), NOT per-statement
+// *QueryError. The server rejects the entire RPC call because the SurrealQL
+// cannot be parsed.
 func TestStructuredErrors_InvalidSyntax(t *testing.T) {
 	db := setupStructuredErrorTest(t)
 
@@ -124,10 +112,10 @@ func TestStructuredErrors_InvalidSyntax(t *testing.T) {
 
 	require.Error(t, err)
 
-	// On v3, parse errors are RPC-level: *RPCError wrapping *ServerError.
+	// Parse errors are RPC-level: *RPCError wrapping *ServerError.
 	// They are NOT *QueryError because the server rejects the entire call.
 	var qe *surrealdb.QueryError
-	assert.False(t, errors.As(err, &qe), "parse errors on v3 are RPC-level, not QueryError")
+	assert.False(t, errors.As(err, &qe), "parse errors are RPC-level, not QueryError")
 
 	// --- v2 backward compat: RPCError works but gives minimal info ---
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
@@ -135,9 +123,9 @@ func TestStructuredErrors_InvalidSyntax(t *testing.T) {
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable")
 	assert.Equal(t, "Parse error: Unexpected token `an identifier`, expected Eof\n --> [1:5]\n  |\n1 | SEL ECT * FORM person\n  |     ^^^\n", rpcErr.Message) //nolint:misspell // intentionally malformed SurrealQL
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
-	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
+	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
 
-	// --- v3 migration path: ServerError gives all five fields ---
+	// --- migration path: ServerError gives all five fields ---
 	var se surrealdb.ServerError
 	require.True(t, errors.As(err, &se), "ServerError should be extractable via Unwrap chain")
 
@@ -224,7 +212,7 @@ func TestStructuredErrors_DuplicateRecord(t *testing.T) {
 // method) returns *RPCError when the schema is violated. This test shows the
 // key difference: RPCError has 3 fields, ServerError has 5.
 //
-//	RPCError:    Code + Message + Description(empty on v3)
+//	RPCError:    Code + Message + Description(always empty)
 //	ServerError: Code + Message + Kind + Details + Cause
 func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	db := setupStructuredErrorTest(t)
@@ -248,27 +236,27 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable (v2 compat)")
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.True(t, errors.Is(err, &surrealdb.RPCError{}))
-	assert.Equal(t, -32000, rpcErr.Code)
+	assert.Equal(t, -32600, rpcErr.Code)
 	assert.Equal(t, "Couldn't coerce value for field `age` of `person:schema_test`: Expected `int` but found `'not a number'`", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
-	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
+	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
 
-	// --- v3 migration path: ServerError has strictly more information ---
+	// --- migration path: ServerError has strictly more information ---
 	var se *surrealdb.ServerError
 	require.True(t, errors.As(err, &se), "ServerError should be extractable via Unwrap chain")
 
 	// Message: describes the coercion failure, same as RPCError.Message.
 	assert.Equal(t, rpcErr.Message, se.Message)
 
-	// Kind: "Internal" — RPCError does NOT expose this.
-	assert.Equal(t, "Internal", se.Kind)
+	// Kind: "Validation" — RPCError does NOT expose this.
+	assert.Equal(t, "Validation", se.Kind)
 
 	// Code: same as RPCError.Code.
 	assert.Equal(t, rpcErr.Code, se.Code)
-	assert.Equal(t, -32000, se.Code)
+	assert.Equal(t, -32600, se.Code)
 
-	// Details: nil for schema coercion errors.
-	assert.Nil(t, se.Details, "schema coercion errors have no structured Details")
+	// Details: SurrealDB 4.0 reports a schema coercion error as an invalid request.
+	assert.Equal(t, map[string]any{"kind": "InvalidRequest"}, se.Details)
 
 	// Cause: nil — no nested cause chain for this error.
 	assert.Nil(t, se.Cause, "no cause chain for schema coercion errors")
@@ -305,9 +293,9 @@ func TestStructuredErrors_AlreadyExists_RPC(t *testing.T) {
 	assert.Equal(t, -32000, rpcErr.Code)
 	assert.Equal(t, "Database record `person:already_exists_test` already exists", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
-	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
+	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
 
-	// --- v3 migration path: ServerError ---
+	// --- migration path: ServerError ---
 	var se *surrealdb.ServerError
 	require.True(t, errors.As(err, &se), "ServerError should be extractable via Unwrap chain")
 
@@ -349,9 +337,9 @@ func TestStructuredErrors_NotFound_RPC(t *testing.T) {
 	assert.Equal(t, -32000, rpcErr.Code)
 	assert.Equal(t, "The table 'nonexistent_table_for_test' does not exist", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
-	assert.Empty(t, rpcErr.Description, "Description is a v2-only field, empty on v3")
+	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
 
-	// --- v3 migration path: ServerError ---
+	// --- migration path: ServerError ---
 	var se *surrealdb.ServerError
 	require.True(t, errors.As(err, &se), "ServerError should be extractable via Unwrap chain")
 

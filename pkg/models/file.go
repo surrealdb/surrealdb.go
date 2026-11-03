@@ -8,7 +8,7 @@ import (
 // SurrealQL. It is encoded as CBOR tag 55 holding [bucket, key].
 //
 // The key keeps its leading slash, as in "/path/to/file.txt". Files are an
-// experimental feature of SurrealDB 3 (--allow-experimental files), but File
+// experimental feature of SurrealDB (--allow-experimental files), but File
 // values are always decoded.
 //
 // To send a File in a query, bind it as a parameter (RETURN $f with

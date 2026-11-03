@@ -27,19 +27,13 @@ func ExampleFromConnection_alternativeWebSocketLibrary_gws() {
 	db, err := surrealdb.FromConnection(context.Background(), conn)
 	fmt.Println("FromConnection error:", err)
 
-	// normalizeAuthError normalizes authentication error messages for version compatibility
-	// SurrealDB 2.x: "There was a problem with the database: There was a problem with authentication"
-	// SurrealDB 3.x: "There was a problem with authentication"
+	// normalizeAuthError shortens the authentication error message.
 	normalizeAuthError := func(err error) string {
 		if err == nil {
 			return "<nil>"
 		}
 		errMsg := err.Error()
-		//nolint:goconst // Keeping error messages inline for readability in examples
-		switch errMsg {
-		case "There was a problem with the database: There was a problem with authentication":
-			return "authentication failed"
-		case "There was a problem with authentication":
+		if errMsg == "There was a problem with authentication" {
 			return "authentication failed"
 		}
 		return errMsg

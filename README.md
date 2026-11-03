@@ -44,6 +44,14 @@ To connect to SurrealDB and perform data operations, please refer to [example](h
 
 To use the SDK, please refer to the [documentation](https://pkg.go.dev/github.com/surrealdb/surrealdb.go#section-documentation).
 
+### Supported SurrealDB versions
+
+The SDK supports SurrealDB 4.0 and later 4.x versions, including pre-releases
+such as 4.0.0-beta.1. `surrealdb.MinimumServerVersion` and
+`surrealdb.MaximumServerVersion` give the range. To make connecting fail when
+the server is outside it, pass `surrealdb.WithVersionCheck(true)`. The check is
+off by default.
+
 ### SurrealDB 4.0 and cbor.2
 
 SurrealDB 4.0 adds cbor.2, a version of the CBOR protocol that keeps its sized

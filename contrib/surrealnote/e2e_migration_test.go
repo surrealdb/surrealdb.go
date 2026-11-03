@@ -644,6 +644,12 @@ func testStage2DataMigration(t *testing.T) {
 
 	ctx := context.Background()
 
+	// Define the SurrealDB tables, as the migrate command does, so that tables
+	// nothing is written to, such as comments, can still be read by the syncs.
+	if err := sdbStore.Migrate(ctx); err != nil {
+		t.Fatalf("Failed to migrate the SurrealDB schema: %v", err)
+	}
+
 	// Migrate all users
 	t.Log("Migrating users...")
 	if stage1Data.User1 != nil {

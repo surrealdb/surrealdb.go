@@ -14,8 +14,7 @@ import (
 //nolint:staticcheck // v2 backward compat with RPCError
 type RPCError = connection.RPCError
 
-// ServerError represents a structured error from SurrealDB v3.
-// Only use this when you know you are running against a SurrealDB v3 server.
+// ServerError represents a structured error from SurrealDB.
 //
 // Extract from RPC errors using errors.As:
 //

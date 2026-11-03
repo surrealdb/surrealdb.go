@@ -1,7 +1,6 @@
 package connection
 
-// ServerError represents a structured error from SurrealDB v3.
-// Only use this when you know you are running against a SurrealDB v3 server.
+// ServerError represents a structured error from SurrealDB.
 //
 // Extract from RPC errors using errors.As:
 //
@@ -25,12 +24,10 @@ type ServerError struct {
 	// See the Kind* constants (e.g. KindNotFound) for the known values.
 	Kind string
 
-	// Details contains kind-specific structured error details.
-	// SurrealDB v3 only. nil for v2 servers.
+	// Details contains kind-specific structured error details, or nil when the
+	// error has none.
 	//
-	// In SurrealDB v3, this follows the { "kind": "...", "details": ... } format (internally-tagged).
-	// In older versions, this may be a string (unit variants) or a map with the
-	// variant name as key (externally-tagged format).
+	// It follows the { "kind": "...", "details": ... } format (internally-tagged).
 	Details any
 
 	// Cause is the underlying error in the cause chain.

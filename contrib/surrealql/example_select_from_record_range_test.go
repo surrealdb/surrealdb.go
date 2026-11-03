@@ -66,9 +66,8 @@ func ExampleSelect_recordIDRange_open() {
 
 // ExampleSelect_recordIDRange_nestedOpenRange shows open `..` as a bound value.
 //
-// A whole bound of `..`, as in person:1..=.., needs SurrealDB 3.x. SurrealDB 2.x
-// can't decode it, so the request fails. On both versions, `..` works as a
-// part of an array-style id (ExampleSelect_recordIDRange_compositeID).
+// A whole bound can be `..`, as in `person:1..=..`. `..` also works as a part
+// of an array-style id (ExampleSelect_recordIDRange_compositeID).
 func ExampleSelect_recordIDRange_nestedOpenRange() {
 	sql, vars := surrealql.Select(models.RecordID{
 		Table: "person",

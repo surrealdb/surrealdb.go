@@ -40,7 +40,7 @@ func TestIntegrationDefineTable(t *testing.T) {
 			t.Fatalf("DEFINE FIELD timestamp failed: %v", err)
 		}
 
-		// Define action field (needed for SCHEMAFULL table in SurrealDB 3.x)
+		// Define action field (needed for the SCHEMAFULL table)
 		actionFieldQuery := surrealql.DefineField("action", "events").
 			Type("string")
 

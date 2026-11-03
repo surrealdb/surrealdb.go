@@ -11,11 +11,10 @@ import (
 )
 
 // ExampleUpsert_server_error demonstrates extracting a *ServerError from
-// an RPC error on SurrealDB v3 using errors.As.
+// an RPC error using errors.As.
 //
-// On SurrealDB v2, the error is still an *RPCError (backward compatible),
-// but errors.As(err, &se) also works because RPCError.Unwrap() returns
-// a *ServerError. On v2 servers, se.Kind will be empty.
+// The error is still an *RPCError (backward compatible), and
+// errors.As(err, &se) works because RPCError.Unwrap() returns a *ServerError.
 func ExampleUpsert_server_error() {
 	db := testenv.MustNew("surrealdbexamples", "server_error", "person")
 
@@ -43,10 +42,10 @@ func ExampleUpsert_server_error() {
 		},
 	)
 	if err != nil {
-		// v2 backward compat: RPCError is still matchable
+		// Backward compat: RPCError is still matchable
 		fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
 
-		// v3 migration path: extract ServerError for structured info
+		// Extract ServerError for structured info
 		fmt.Printf("Error is ServerError: %v\n", errors.Is(err, surrealdb.ServerError{}))
 	}
 

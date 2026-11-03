@@ -103,8 +103,7 @@ func TestImport_reportsFailedStatements(t *testing.T) {
 	}
 }
 
-// An import of many records, which SurrealDB 2.x answers with every one of
-// them, reports only the statement which failed.
+// An import of many records reports only the statement which failed.
 func TestImport_manyRecords(t *testing.T) {
 	ctx := context.Background()
 

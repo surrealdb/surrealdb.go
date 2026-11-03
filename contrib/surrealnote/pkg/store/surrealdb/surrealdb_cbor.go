@@ -209,31 +209,30 @@ func NewSurrealStoreCBOR(wsURL, namespace, database, username, password string) 
 	}, nil
 }
 
-// Migrate performs schema migration for SurrealDB, which is essentially a no-op.
-// Unlike traditional SQL databases, SurrealDB is schemaless and creates tables
-// automatically when data is first inserted. This design eliminates the need
-// for explicit table creation or schema migration commands.
+// surrealTables are the tables the store reads and writes.
+var surrealTables = []string{"users", "workspaces", "pages", "blocks", "comments", "permissions"}
+
+// Migrate defines the tables the store uses, as schemaless tables.
 //
-// SurrealDB's automatic schema behavior:
-//   - Tables are created implicitly when the first record is inserted
-//   - Field types are inferred from the data being stored
-//   - No need to define columns, constraints, or relationships upfront
-//   - Schema evolution happens naturally as new fields are added to documents
+// SurrealDB creates a table when the first record is written to it, but
+// selecting from a table which does not exist is an error. So a table must be
+// defined before it is read, as when syncing changes to comments before any
+// comment was written. Defining a table which exists already does nothing, so
+// Migrate is safe to run more than once.
 //
-// While SurrealDB supports optional schema definitions for data validation
-// and optimization, this implementation uses the schemaless approach for
-// maximum flexibility during the database migration demonstration.
-//
-// The method returns nil (success) immediately since no schema operations
-// are required. This allows the CQRS store to complete migration on both
-// PostgreSQL and SurrealDB without errors.
-//
-// In a production system, you might want to:
+// The tables stay schemaless: field types are not checked, and documents can
+// gain new fields at any time. In a production system, you might want to:
 //   - Define explicit schemas for data validation
 //   - Create indexes for query performance
 //   - Set up database-level permissions and access controls
 func (s *SurrealStoreCBOR) Migrate(ctx context.Context) error {
-	// SurrealDB automatically creates tables when data is inserted
+	var query strings.Builder
+	for _, table := range surrealTables {
+		fmt.Fprintf(&query, "DEFINE TABLE IF NOT EXISTS %s SCHEMALESS;\n", table)
+	}
+	if _, err := surrealdb.Query[any](ctx, s.db, query.String(), nil); err != nil {
+		return fmt.Errorf("failed to define tables: %w", err)
+	}
 	return nil
 }
 
@@ -763,7 +762,7 @@ func (s *SurrealStoreCBOR) DeletePermission(ctx context.Context, id models.Permi
 }
 
 func (s *SurrealStoreCBOR) CheckPermission(ctx context.Context, userID models.UserID, resourceType models.ResourceType, resourceID models.ResourceID, level models.PermissionLevel) (bool, error) {
-	query := `SELECT * FROM permission
+	query := `SELECT * FROM permissions
 		WHERE user_id = $user_id
 		AND resource_type = $resource_type
 		AND resource_id = $resource_id

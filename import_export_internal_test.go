@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -92,8 +91,7 @@ func TestExport_acceptsTextPlain(t *testing.T) {
 	assert.Equal(t, "OPTION IMPORT;", out.String())
 }
 
-// The answers /import gives, from each server version, and what Import makes
-// of them.
+// The answers /import gives, and what Import makes of them.
 func TestImport_answers(t *testing.T) {
 	const failed = `{"details":{"details":{"id":"a:1"},"kind":"Record"},"kind":"AlreadyExists",` +
 		`"result":"Database record ` + "`a:1`" + ` already exists","status":"ERR","time":"50.917µs","type":null}`
@@ -106,25 +104,7 @@ func TestImport_answers(t *testing.T) {
 		err      string
 	}{
 		{
-			name:   "2.x answers with every statement's result",
-			status: 200,
-			body: `[{"result":[{"id":"a:1","name":"one"}],"status":"OK","time":"1ms"},` +
-				`{"result":"Database record ` + "`a:1`" + ` already exists","status":"ERR","time":"1ms"}]`,
-			failures: 1,
-		},
-		{
-			name:   "3.0 answers with OK for OPTION IMPORT",
-			status: 200,
-			body:   `[{"result":null,"status":"OK","time":"1ms","type":null}]`,
-		},
-		{
-			name:     "3.2 lists only the failures",
-			status:   200,
-			body:     "[" + failed + "]",
-			failures: 1,
-		},
-		{
-			name:     "3.3.1 and later list the failures with 422",
+			name:     "the failures, listed with 422",
 			status:   422,
 			body:     "[" + failed + "," + failed + "]",
 			failures: 2,
@@ -188,57 +168,6 @@ func TestImport_answers(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Import reads the answer one statement result at a time and keeps only the
-// failures, so that the records SurrealDB 2.x echoes back are not held in
-// memory.
-func TestImport_streamsTheAnswer(t *testing.T) {
-	element := `{"result":[` + strings.Repeat(`{"id":"t:1","name":"`+strings.Repeat("x", 1000)+`"},`, 63) +
-		`{"id":"t:1"}],"status":"OK","time":"1ms"},`
-	const elements = 1024
-	size := uint64(len(element) * elements)
-
-	db := fakeServer(t, func(w nethttp.ResponseWriter, r *nethttp.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
-		_, _ = io.WriteString(w, "[")
-		for range elements {
-			_, _ = io.WriteString(w, element)
-		}
-		_, _ = io.WriteString(w, `{"result":"Database record `+"`t:1`"+` already exists","status":"ERR",`+
-			`"kind":"AlreadyExists","details":{"kind":"Record","details":{"id":"t:1"}}}]`)
-	})
-
-	runtime.GC()
-	var stats runtime.MemStats
-	runtime.ReadMemStats(&stats)
-
-	done := make(chan struct{})
-	peak := make(chan uint64)
-	go func() {
-		var high uint64
-		ticker := time.NewTicker(time.Millisecond)
-		defer ticker.Stop()
-		for {
-			var s runtime.MemStats
-			runtime.ReadMemStats(&s)
-			high = max(high, s.HeapAlloc)
-			select {
-			case <-done:
-				peak <- high
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
-	err := db.Import(context.Background(), strings.NewReader("OPTION IMPORT;"))
-	close(done)
-	grown := <-peak - stats.HeapAlloc
-
-	var importErr *ImportError
-	require.True(t, errors.As(err, &importErr), "%T: %v", err, err)
-	require.Len(t, importErr.Failures, 1)
-	assert.Less(t, grown, size/4, "the heap grew by %d MiB for an answer of %d MiB", grown>>20, size>>20)
 }
 
 // Import leaves the document open, so that the caller can rewind it and try

@@ -20,12 +20,6 @@ func TestFileAndSet_server(t *testing.T) {
 	db := testenv.MustNew("file_set", "file_set", "t")
 	defer db.Close(ctx)
 
-	v, err := testenv.GetVersion(ctx, db)
-	require.NoError(t, err)
-	if !v.IsV3OrLater() {
-		t.Skip("files and sets need SurrealDB v3")
-	}
-
 	t.Run("set from the server", func(t *testing.T) {
 		res, err := surrealdb.Query[models.Set](ctx, db, "RETURN <set>[3, 1, 1, 2]", nil)
 		require.NoError(t, err)
