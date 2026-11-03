@@ -17,7 +17,7 @@
     &nbsp;
     <a href="https://pkg.go.dev/github.com/surrealdb/surrealdb.go/v2"><img src="https://img.shields.io/github/go-mod/go-version/surrealdb/surrealdb.go?style=flat-square&label=go"></a>
 	&nbsp;
-	<a href="https://goreportcard.com/report/github.com/surrealdb/surrealdb.go"><img src="https://goreportcard.com/badge/github.com/surrealdb/surrealdb.go?style=flat-square"></a>
+	<a href="https://goreportcard.com/report/github.com/surrealdb/surrealdb.go/v2"><img src="https://goreportcard.com/badge/github.com/surrealdb/surrealdb.go/v2?style=flat-square"></a>
 </p>
 
 <p align="center">

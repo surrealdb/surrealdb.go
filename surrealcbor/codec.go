@@ -5,6 +5,7 @@ import (
 
 	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
 	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 const (
@@ -98,6 +99,9 @@ func (c *Codec) Marshal(v any) ([]byte, error) {
 	if em == nil {
 		em = getEncMode()
 	}
+	// tagSizedNumbers walks data alongside v, so it must see the value that
+	// was encoded, not the one passed in.
+	v = models.PrepareForEncode(v)
 	data, err := em.Marshal(v)
 	if err != nil {
 		return nil, err
