@@ -15,8 +15,7 @@ type smallIntConfig struct {
 }
 
 func TestIntegration_SmallIntsDecodeToIntFields(t *testing.T) {
-	db, cleanup := testenv.SetupVersionTest(t, "v3.0.4")
-	defer cleanup()
+	db := testenv.MustNew("surrealqlexamples", "surrealql_test", "config")
 
 	ctx := context.Background()
 

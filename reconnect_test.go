@@ -205,9 +205,6 @@ func TestReconnect_gws(t *testing.T) {
 }
 
 func TestReconnect_restoresAttachedSessions(t *testing.T) {
-	if v := getVersion(t); !v.IsV3OrLater() {
-		t.Skipf("SurrealDB %s has no sessions", v)
-	}
 	ctx := context.Background()
 	p := newDropProxy(t)
 	db := connectThrough(t, p)
@@ -426,7 +423,6 @@ func TestReconnect_closeStopsReconnecting(t *testing.T) {
 }
 
 func TestReconnect_renewsAnExpiredToken(t *testing.T) {
-	skipBeforeV3(t)
 	ctx := context.Background()
 	defineRefreshAccess(t, "2s")
 
@@ -451,9 +447,6 @@ func TestReconnect_renewsAnExpiredToken(t *testing.T) {
 }
 
 func TestReconnect_detachWhileDisconnected(t *testing.T) {
-	if v := getVersion(t); !v.IsV3OrLater() {
-		t.Skipf("SurrealDB %s has no sessions", v)
-	}
 	ctx := context.Background()
 	p := newDropProxy(t)
 	db := connectThrough(t, p)
@@ -563,9 +556,6 @@ func TestReconnect_resetForgetsLiveQueries(t *testing.T) {
 }
 
 func TestReconnect_sessionResetForgetsLiveQueries(t *testing.T) {
-	if v := getVersion(t); !v.IsV3OrLater() {
-		t.Skipf("SurrealDB %s has no sessions", v)
-	}
 	ctx := context.Background()
 	p := newDropProxy(t)
 	db := connectThrough(t, p)

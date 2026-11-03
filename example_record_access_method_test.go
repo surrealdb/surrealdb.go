@@ -9,7 +9,7 @@ import (
 )
 
 // Example_recordAccessMethodWithRefresh_v3 demonstrates TYPE RECORD access method
-// with WITH REFRESH in SurrealDB v3 using SignInWithRefresh.
+// with WITH REFRESH in SurrealDB using SignInWithRefresh.
 //
 // WITH REFRESH enables refresh token functionality for record access methods:
 // - SignInWithRefresh returns a Tokens with "Access" (JWT) and "Refresh" tokens
@@ -18,9 +18,6 @@ import (
 // Key differences from bearer access:
 // - Bearer access uses "key" parameter with SignIn (format: surreal-bearer-...)
 // - Record access with refresh uses "refresh" parameter with SignInWithRefresh
-//
-// This example only runs against SurrealDB v3.x. In v2.x, WITH REFRESH syntax is
-// accepted but not implemented (signin still returns string token).
 //
 //nolint:gocyclo // Example functions are intentionally verbose for documentation
 func Example_recordAccessMethodWithRefresh_v3() {
@@ -50,21 +47,6 @@ func Example_recordAccessMethodWithRefresh_v3() {
 		panic(fmt.Sprintf("Use failed: %v", err))
 	}
 
-	// Check SurrealDB version - WITH REFRESH is only fully implemented in v3+
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(fmt.Sprintf("GetVersion failed: %v", err))
-	}
-
-	if !v.IsV3OrLater() {
-		// Skip gracefully on v2 to avoid output verification failures
-		fmt.Println("Record access with refresh demonstrated successfully")
-		return
-	}
-
-	// Get the appropriate function name for the version
-	recordFn := v.ThingOrRecordFn()
-
 	// =========================================================================
 	// Record Access Method with WITH REFRESH
 	// =========================================================================
@@ -82,18 +64,18 @@ func Example_recordAccessMethodWithRefresh_v3() {
 
 	// 2. Define record access method WITH REFRESH
 	// This enables refresh token functionality
-	defineQuery := fmt.Sprintf(`
+	defineQuery := `
 		DEFINE ACCESS IF NOT EXISTS user_access ON DATABASE TYPE RECORD
 			SIGNIN (
-				SELECT * FROM %s("user", $user) WHERE crypto::argon2::compare(password, $pass)
+				SELECT * FROM type::record("user", $user) WHERE crypto::argon2::compare(password, $pass)
 			)
 			SIGNUP (
-				CREATE %s("user", $user) CONTENT {
+				CREATE type::record("user", $user) CONTENT {
 					password: crypto::argon2::generate($pass)
 				}
 			)
 			WITH REFRESH
-	`, recordFn, recordFn)
+	`
 
 	_, err = surrealdb.Query[any](ctx, db, defineQuery, nil)
 	if err != nil {

@@ -25,11 +25,11 @@ import (
 	"github.com/surrealdb/surrealdb.go/surrealcbor"
 )
 
-// These tests explore the actual SurrealDB v3 RPC behavior for sessions and transactions.
+// These tests explore the actual SurrealDB RPC behavior for sessions and transactions.
 // They use low-level connection.Send to understand the exact parameter formats.
 
 // RPCRequestInTransaction is a request that includes a transaction ID.
-// SurrealDB v3 expects the txn field at the top level of the CBOR-encoded request.
+// SurrealDB expects the txn field at the top level of the CBOR-encoded request.
 //
 // Transactions are CONNECTION-scoped, not session-scoped. Any session on the same
 // connection can use, commit, or cancel any transaction started on that connection.
@@ -42,7 +42,7 @@ type RPCRequestInTransaction struct {
 }
 
 // RPCRequestInSession is a request that includes a session ID.
-// SurrealDB v3 expects the session field at the top level of the CBOR-encoded request.
+// SurrealDB expects the session field at the top level of the CBOR-encoded request.
 //
 // Sessions scope authentication state, namespace/database selection, and live notifications.
 // New sessions start unauthenticated and must call signin and use before executing queries.
@@ -395,16 +395,6 @@ func sendHTTPInTransaction[T any](
 	return sendCustomHTTPRPC[T](info, ctx, method, nil, txnID, params...)
 }
 
-// getVersion gets and checks the SurrealDB version via a separate DB connection
-func getVersion(t *testing.T) *SurrealDBVersion {
-	t.Helper()
-	db := MustNew("version_check", "version_check", "dummy")
-	v, err := GetVersion(context.Background(), db)
-	require.NoError(t, err)
-	_ = db.Close(context.Background())
-	return v
-}
-
 // TestExplore_HTTPConnection_Sessions tests whether session RPCs work over HTTP
 // when using custom RPC requests with the session field at the CBOR top level.
 // This test verifies the actual SurrealDB behavior for sessions over HTTP.
@@ -412,11 +402,6 @@ func getVersion(t *testing.T) *SurrealDBVersion {
 // DISCOVERY: Sessions DO work over HTTP when using custom CBOR requests with
 // the session field at the top level!
 func TestExplore_HTTPConnection_Sessions(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_http", "session_test", "test_table")
 
 	info := setupHTTPConnectionInfo(t, "explore_http", "session_test")
@@ -486,11 +471,6 @@ func TestExplore_HTTPConnection_Sessions(t *testing.T) {
 // TestExplore_HTTPConnection_Transactions tests whether transaction RPCs work over HTTP.
 // This test verifies the actual SurrealDB behavior for interactive transactions over HTTP.
 func TestExplore_HTTPConnection_Transactions(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_http", "txn_test", "test_table")
 
 	info := setupHTTPConnectionInfo(t, "explore_http", "txn_test")
@@ -624,11 +604,6 @@ func TestExplore_HTTPConnection_QueryWorks(t *testing.T) {
 // - What type is returned (UUID? string?)
 // - The Go type mapping
 func TestExplore_AttachRPC(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	// Ensure namespace/database exist
 	_ = MustNew("explore_sessions", "attach_test", "test_table")
 
@@ -683,11 +658,6 @@ func TestExplore_AttachRPC(t *testing.T) {
 // 2. query with session ID at top level → uses session
 // 3. detach with session ID at top level → deletes session
 func TestExplore_SessionWorkflow(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_sessions", "workflow_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_sessions", "workflow_test")
@@ -772,11 +742,6 @@ func TestExplore_SessionWorkflow(t *testing.T) {
 // - What parameters it expects (session UUID format)
 // - Error behavior for invalid session
 func TestExplore_DetachRPC(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_sessions", "detach_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_sessions", "detach_test")
@@ -817,11 +782,6 @@ func TestExplore_DetachRPC(t *testing.T) {
 // - What type is returned (transaction UUID)
 // - How session parameter works
 func TestExplore_BeginRPC(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn", "begin_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "begin_test")
@@ -879,11 +839,6 @@ func TestExplore_BeginRPC(t *testing.T) {
 // TestExplore_CommitRPC tests the commit RPC method to understand:
 // - Parameter format (txn key in map, or direct param)
 func TestExplore_CommitRPC(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn", "commit_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "commit_test")
@@ -920,11 +875,6 @@ func TestExplore_CommitRPC(t *testing.T) {
 // TestExplore_CancelRPC tests the cancel RPC method to understand:
 // - Parameter format (params array vs map)
 func TestExplore_CancelRPC(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn", "cancel_test", "test_table")
 
 	conn := setupWSConnection(t, "explore_txn", "cancel_test")
@@ -960,11 +910,6 @@ func TestExplore_CancelRPC(t *testing.T) {
 
 // TestExplore_TransactionIsolation tests if transaction isolation works as expected
 func TestExplore_TransactionIsolation(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn", "isolation_test", "users")
 
 	conn := setupWSConnection(t, "explore_txn", "isolation_test")
@@ -1054,11 +999,6 @@ func TestExplore_TransactionIsolation(t *testing.T) {
 
 // TestExplore_TransactionAutoCommit tests if transactions without txn param auto-commit
 func TestExplore_TransactionAutoCommit(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn", "autocommit_test", "items")
 
 	conn := setupWSConnection(t, "explore_txn", "autocommit_test")
@@ -1141,11 +1081,6 @@ func TestExplore_TransactionAutoCommit(t *testing.T) {
 
 // TestExplore_CRUDInTransaction tests CRUD operations within a transaction
 func TestExplore_CRUDInTransaction(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_crud_txn", "crud_test", "products")
 
 	conn := setupWSConnection(t, "explore_crud_txn", "crud_test")
@@ -1201,13 +1136,8 @@ func TestExplore_CRUDInTransaction(t *testing.T) {
 }
 
 // TestExplore_QueryWithTxnTopLevel tests query with txn as a top-level CBOR field
-// This is the key test to verify that SurrealDB v3 expects txn at the request level, not in params
+// This is the key test to verify that SurrealDB expects txn at the request level, not in params
 func TestExplore_QueryWithTxnTopLevel(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn_toplevel", "txn_toplevel_test", "records")
 
 	conn := setupWSConnection(t, "explore_txn_toplevel", "txn_toplevel_test")
@@ -1365,11 +1295,6 @@ func TestExplore_QueryWithTxnTopLevel(t *testing.T) {
 // - txn at top-level CBOR field for queries
 // - txn as direct param for commit/cancel
 func TestExplore_MultipleTransactions(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support interactive transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_multi_txn", "multi_txn_test", "accounts")
 
 	conn := setupWSConnection(t, "explore_multi_txn", "multi_txn_test")
@@ -1447,11 +1372,6 @@ func TestExplore_MultipleTransactions(t *testing.T) {
 // TestExplore_TransactionOwnership tests what happens when trying to use a transaction
 // started in one session from another session (transaction takeover attempt).
 func TestExplore_TransactionOwnership(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions/transactions (requires v3+)", v)
-	}
-
 	_ = MustNew("explore_txn_ownership", "ownership_test", "items")
 
 	conn := setupWSConnection(t, "explore_txn_ownership", "ownership_test")

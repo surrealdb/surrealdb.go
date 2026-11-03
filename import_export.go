@@ -39,9 +39,8 @@ func (e *ImportError) Unwrap() []error {
 // ExportOptions chooses what [DB.Export] writes. The zero value is what the
 // server exports by default: every definition and every record.
 //
-// There is no option for the history of versioned tables: SurrealDB 3.0 to
-// 3.3.0 accept the export's versions flag but ignore it, and later versions
-// refuse it, so no export over HTTP holds that history.
+// There is no option for the history of versioned tables: the server refuses
+// the export's versions flag, so no export over HTTP holds that history.
 type ExportOptions struct {
 	ExcludeUsers     bool
 	ExcludeAccesses  bool
@@ -91,12 +90,12 @@ func (o *ExportOptions) config() map[string]any {
 // system users: once it expires, Import fails with 401 Unauthorized while
 // queries still work. Sign in or authenticate again to get a new token.
 //
-// SurrealDB 3.x requires the document to start with OPTION IMPORT;, as an
+// The server requires the document to start with OPTION IMPORT;, as an
 // export does. Import does not close the document; that is for the caller.
 //
 // When statements fail, Import returns an *ImportError listing them, read from
-// the server's answer: SurrealDB 3.0.5 and later list the failed statements,
-// with status 422 from 3.3.1. The statements which succeeded are kept.
+// the server's answer, which lists the failed statements with status 422. The
+// statements which succeeded are kept.
 func (db *DB) Import(ctx context.Context, document io.Reader) error {
 	// The transport closes a body which is an io.Closer, and the document
 	// is the caller's to close.
@@ -150,9 +149,7 @@ func startsWithArray(r *bufio.Reader) bool {
 }
 
 // failedStatements reads the array of statement results /import answers with,
-// one at a time, and returns the error of each that failed. SurrealDB 2.x
-// answers with the result of every statement, which holds every imported
-// record, so only the failures are kept.
+// one at a time, and returns the error of each that failed.
 func failedStatements(r io.Reader) ([]error, error) {
 	dec := json.NewDecoder(r)
 	if _, err := dec.Token(); err != nil {

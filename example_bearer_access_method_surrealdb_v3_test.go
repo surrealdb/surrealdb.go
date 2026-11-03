@@ -9,7 +9,7 @@ import (
 )
 
 // Example_bearerAccessMethod_v3_systemUser demonstrates bearer access method
-// authentication for system users in SurrealDB v3.
+// authentication for system users in SurrealDB.
 //
 // Bearer access methods allow generating bearer grants with an associated key
 // that can be used to authenticate as a specific system user or record user.
@@ -17,9 +17,6 @@ import (
 // - Stronger security guarantees than passwords
 // - Auditable and revocable credentials
 // - No need to work with JWT directly
-//
-// This example only runs against SurrealDB v3.x. When run against v2.x, it
-// skips with a message since bearer access requires experimental flag in v2.
 func Example_bearerAccessMethod_v3_systemUser() {
 	ctx := context.Background()
 
@@ -45,19 +42,6 @@ func Example_bearerAccessMethod_v3_systemUser() {
 	err = db.Use(ctx, "example_bearer_v3", "testdb")
 	if err != nil {
 		panic(fmt.Sprintf("Use failed: %v", err))
-	}
-
-	// Check SurrealDB version - this example is v3+ only
-	// In v2.x, bearer access requires --allow-experimental bearer_access flag
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(fmt.Sprintf("GetVersion failed: %v", err))
-	}
-
-	if !v.IsV3OrLater() {
-		// Skip gracefully on v2 to avoid output verification failures
-		fmt.Println("Bearer access demonstrated successfully")
-		return
 	}
 
 	// =========================================================================
@@ -127,7 +111,7 @@ func Example_bearerAccessMethod_v3_systemUser() {
 }
 
 // Example_bearerAccessMethod_v3_recordUser demonstrates bearer access method
-// authentication for record users in SurrealDB v3.
+// authentication for record users in SurrealDB.
 //
 // Record user bearer grants work similarly to system user grants, but authenticate
 // as a specific database record instead of a system user. This is useful when you
@@ -157,18 +141,6 @@ func Example_bearerAccessMethod_v3_recordUser() {
 	err = db.Use(ctx, "example_bearer_record_v3", "testdb")
 	if err != nil {
 		panic(fmt.Sprintf("Use failed: %v", err))
-	}
-
-	// Check SurrealDB version - this example is v3+ only
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(fmt.Sprintf("GetVersion failed: %v", err))
-	}
-
-	if !v.IsV3OrLater() {
-		// Skip gracefully on v2 to avoid output verification failures
-		fmt.Println("Bearer record access demonstrated successfully")
-		return
 	}
 
 	// =========================================================================

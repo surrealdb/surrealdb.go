@@ -25,7 +25,7 @@ func getVersion(t *testing.T) *testenv.SurrealDBVersion {
 // mustNewWS creates a WebSocket connection for testing.
 // It uses GetSurrealDBWSURL() to always get a WebSocket URL,
 // even if SURREALDB_URL is set to an HTTP URL (e.g., in CI).
-// It also defines the specified tables for SurrealDB v3 compatibility.
+// It also defines the specified tables, as SurrealDB requires them to exist.
 func mustNewWS(namespace, database string, tables ...string) *surrealdb.DB {
 	wsURL := testenv.GetSurrealDBWSURL()
 	db, err := surrealdb.FromEndpointURLString(context.Background(), wsURL)
@@ -38,7 +38,7 @@ func mustNewWS(namespace, database string, tables ...string) *surrealdb.DB {
 		panic("Failed to initialize test environment: " + err.Error())
 	}
 
-	// SurrealDB v3 requires explicit table definitions before use
+	// SurrealDB requires explicit table definitions before use
 	if err = testenv.DefineSchemalessTables(db, tables...); err != nil {
 		panic("Failed to define tables: " + err.Error())
 	}
@@ -48,11 +48,6 @@ func mustNewWS(namespace, database string, tables ...string) *surrealdb.DB {
 
 // TestSession_Attach tests session creation on WebSocket connections.
 func TestSession_Attach(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	db := mustNewWS("session_test", "attach_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -72,11 +67,6 @@ func TestSession_Attach(t *testing.T) {
 
 // TestSession_AttachHTTPError tests that Attach returns an error on HTTP connections.
 func TestSession_AttachHTTPError(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	db := testenv.MustNewHTTP("session_test", "attach_http_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -90,11 +80,6 @@ func TestSession_AttachHTTPError(t *testing.T) {
 
 // TestSession_Detach tests session cleanup.
 func TestSession_Detach(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	db := mustNewWS("session_test", "detach_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -109,11 +94,6 @@ func TestSession_Detach(t *testing.T) {
 
 // TestSession_DoubleDetach tests that double detach returns an error.
 func TestSession_DoubleDetach(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	db := mustNewWS("session_test", "double_detach_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -134,11 +114,6 @@ func TestSession_DoubleDetach(t *testing.T) {
 
 // TestSession_BeginTransaction tests starting a transaction within a session.
 func TestSession_BeginTransaction(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	db := mustNewWS("session_test", "begin_txn_test", "test_table")
 	defer db.Close(context.Background())
 
@@ -172,11 +147,6 @@ func TestSession_BeginTransaction(t *testing.T) {
 
 // TestSession_Query tests executing queries within a session.
 func TestSession_Query(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("session_test", "query_test", "users")
 
 	db := mustNewWS("session_test", "query_test", "users")
@@ -219,11 +189,6 @@ func TestSession_Query(t *testing.T) {
 
 // TestSession_Isolation_Namespace tests that sessions can have independent namespace/database selections.
 func TestSession_Isolation_Namespace(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	// Create two different databases
 	_ = mustNewWS("session_isolation", "db1", "items")
 	_ = mustNewWS("session_isolation", "db2", "items")
@@ -285,11 +250,6 @@ func TestSession_Isolation_Namespace(t *testing.T) {
 
 // TestSession_Isolation_Variables tests that sessions can have independent variables.
 func TestSession_Isolation_Variables(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("session_isolation", "var_test", "test_table")
 
 	db := mustNewWS("session_isolation", "var_test", "test_table")
@@ -341,11 +301,6 @@ func TestSession_Isolation_Variables(t *testing.T) {
 
 // TestSession_CRUD_Query tests Create, Select, Update, Delete operations within a session using Query.
 func TestSession_CRUD_Query(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("session_crud", "crud_test", "products")
 
 	db := mustNewWS("session_crud", "crud_test", "products")
@@ -362,7 +317,7 @@ func TestSession_CRUD_Query(t *testing.T) {
 	err = session.Use(ctx, "session_crud", "crud_test")
 	require.NoError(t, err)
 
-	// SurrealDB v3 requires explicit table definition within the session context
+	// SurrealDB requires explicit table definition within the session context
 	defineRes, err := surrealdb.Query[any](ctx, session, "DEFINE TABLE IF NOT EXISTS products SCHEMALESS", nil)
 	require.NoError(t, err)
 	require.NotNil(t, defineRes)
@@ -421,11 +376,6 @@ func TestSession_CRUD_Query(t *testing.T) {
 
 // TestSession_CRUD_RPCs tests Create, Select, Update, Delete operations within a session using RPC methods.
 func TestSession_CRUD_RPCs(t *testing.T) {
-	v := getVersion(t)
-	if !v.IsV3OrLater() {
-		t.Skipf("Skipping: SurrealDB version %s does not support sessions (requires v3+)", v)
-	}
-
 	_ = mustNewWS("session_crud_rpc", "crud_rpc_test", "products")
 
 	db := mustNewWS("session_crud_rpc", "crud_rpc_test", "products")
@@ -442,7 +392,7 @@ func TestSession_CRUD_RPCs(t *testing.T) {
 	err = session.Use(ctx, "session_crud_rpc", "crud_rpc_test")
 	require.NoError(t, err)
 
-	// SurrealDB v3 requires explicit table definition within the session context
+	// SurrealDB requires explicit table definition within the session context
 	defineRes, err := surrealdb.Query[any](ctx, session, "DEFINE TABLE IF NOT EXISTS products SCHEMALESS", nil)
 	require.NoError(t, err)
 	require.NotNil(t, defineRes)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	surrealdb "github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/testenv"
@@ -16,16 +15,8 @@ func ExampleQuery_transaction_return() {
 	db := config.MustNew()
 	ctx := context.Background()
 
-	// Detect version to handle result format differences
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(err)
-	}
-
-	// Transaction result format changed between v2 and v3:
-	// - v2.x: Returns only the RETURN result (1 result)
-	// - v3.x: Returns results for all statements (5 results: BEGIN, CREATE, CREATE, RETURN, COMMIT)
-	// For v3.x, use []any to avoid decode error when the type varies per result
+	// A transaction returns results for all statements (5 results: BEGIN, CREATE, CREATE, RETURN, COMMIT).
+	// Use any to avoid decode error when the type varies per result
 	results, err := surrealdb.Query[any](
 		ctx,
 		db,
@@ -36,14 +27,8 @@ func ExampleQuery_transaction_return() {
 		panic(err)
 	}
 
-	var resultBool bool
-	if v.IsV3OrLater() {
-		// In v3, the RETURN result is at index 3 (after BEGIN, CREATE, CREATE)
-		resultBool = (*results)[3].Result.(bool)
-	} else {
-		// In v2, only the RETURN result is returned
-		resultBool = (*results)[0].Result.(bool)
-	}
+	// The RETURN result is at index 3 (after BEGIN, CREATE, CREATE)
+	resultBool := (*results)[3].Result.(bool)
 	fmt.Printf("Status: %v\n", (*results)[0].Status)
 	fmt.Printf("Result: %v\n", resultBool)
 
@@ -52,6 +37,7 @@ func ExampleQuery_transaction_return() {
 	// Result: true
 }
 
+//nolint:misspell // the output holds the server's spelling of canceled
 func ExampleQuery_transaction_throw() {
 	db := testenv.MustNew("surrealdbexamples", "query", "person")
 
@@ -89,67 +75,34 @@ func ExampleQuery_transaction_throw() {
 		nil,
 	)
 
-	// Normalize error messages for version compatibility.
-	//
-	// v2.x: "failed transaction"
-	// v3.x: uses British spelling in error messages
-	//
-	// Post surrealdb/surrealdb#7275 (fix for #7207) also emits a dedicated
-	// "Cannot COMMIT: the transaction was aborted due to a prior error" row
-	// for the failed COMMIT. That change is not yet in a released tag (latest
-	// is v3.0.5), so we strip the line here to keep the example output stable
-	// across v2.x, released v3.0.x and post-#7275 builds from main.
-	normalizeTransactionError := func(err error) string {
-		if err == nil {
-			return "<nil>"
-		}
-		s := err.Error()
-		s = strings.ReplaceAll(s, "cancelled transaction", "failed transaction") //nolint:misspell
-		s = strings.ReplaceAll(s, "canceled transaction", "failed transaction")
-		lines := strings.Split(s, "\n")
-		kept := lines[:0]
-		for _, line := range lines {
-			if strings.HasPrefix(line, "Cannot COMMIT:") {
-				continue
-			}
-			kept = append(kept, line)
-		}
-		return strings.Join(kept, "\n")
-	}
-
-	// Filter to only show ERR results (v3 adds OK results for BEGIN).
-	// Also skip the post-#7275 "Cannot COMMIT: ..." row for the same reason
-	// as above, so errResults length stays at 2 across SurrealDB versions.
+	// Filter to only show ERR results, as BEGIN returns an OK result.
 	var errResults []surrealdb.QueryResult[*int]
 	for _, r := range *queryResults {
-		if r.Status != "ERR" {
-			continue
+		if r.Status == "ERR" {
+			errResults = append(errResults, r)
 		}
-		if r.Error != nil && strings.HasPrefix(r.Error.Error(), "Cannot COMMIT:") {
-			continue
-		}
-		errResults = append(errResults, r)
 	}
 
 	fmt.Printf("# of ERR results: %d\n", len(errResults))
 	fmt.Println("=== Func error ===")
-	fmt.Printf("Error: %v\n", normalizeTransactionError(err))
+	fmt.Printf("Error: %v\n", err)
 	fmt.Printf("Error is RPCError: %v\n", errors.Is(err, &surrealdb.RPCError{}))
 	fmt.Printf("Error is QueryError: %v\n", errors.Is(err, &surrealdb.QueryError{}))
 	for i, r := range errResults {
 		fmt.Printf("=== QueryResult[%d] ===\n", i)
 		fmt.Printf("Status: %v\n", r.Status)
 		fmt.Printf("Result: %v\n", r.Result)
-		fmt.Printf("Error: %v\n", normalizeTransactionError(r.Error))
+		fmt.Printf("Error: %v\n", r.Error)
 		fmt.Printf("Error is RPCError: %v\n", errors.Is(r.Error, &surrealdb.RPCError{}))
 		fmt.Printf("Error is QueryError: %v\n", errors.Is(r.Error, &surrealdb.QueryError{}))
 	}
 
 	// Output:
-	// # of ERR results: 2
+	// # of ERR results: 3
 	// === Func error ===
 	// Error: An error occurred: test
-	// The query was not executed due to a failed transaction
+	// The query was not executed due to a cancelled transaction
+	// Cannot COMMIT: the transaction was aborted due to a prior error
 	// Error is RPCError: false
 	// Error is QueryError: true
 	// === QueryResult[0] ===
@@ -161,7 +114,13 @@ func ExampleQuery_transaction_throw() {
 	// === QueryResult[1] ===
 	// Status: ERR
 	// Result: <nil>
-	// Error: The query was not executed due to a failed transaction
+	// Error: The query was not executed due to a cancelled transaction
+	// Error is RPCError: false
+	// Error is QueryError: true
+	// === QueryResult[2] ===
+	// Status: ERR
+	// Result: <nil>
+	// Error: Cannot COMMIT: the transaction was aborted due to a prior error
 	// Error is RPCError: false
 	// Error is QueryError: true
 }
@@ -171,12 +130,6 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 	config := testenv.MustNewConfig("surrealdbexamples", "query", "t")
 	db := config.MustNew()
 	ctx := context.Background()
-
-	// Detect version to handle result format differences
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(err)
-	}
 
 	// Note that you are returning before committing the transaction.
 	// In this case, you get the uncommitted result of the CREATE,
@@ -198,17 +151,9 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 		panic(err)
 	}
 
-	// Transaction result format changed between v2 and v3:
-	// - v2.x: Returns only the RETURN result (1 result)
-	// - v3.x: Returns results for all statements (5 results: BEGIN, CREATE, LET, RETURN, COMMIT)
-	var returnResult surrealdb.QueryResult[any]
-	if v.IsV3OrLater() {
-		// In v3, the RETURN result is at index 3 (after BEGIN, CREATE, LET)
-		returnResult = (*queryResults)[3]
-	} else {
-		// In v2, only the RETURN result is returned
-		returnResult = (*queryResults)[0]
-	}
+	// A transaction returns results for all statements (5 results: BEGIN, CREATE, LET, RETURN, COMMIT).
+	// The RETURN result is at index 3 (after BEGIN, CREATE, LET)
+	returnResult := (*queryResults)[3]
 
 	rs := returnResult.Result.([]any)
 	r := rs[0].(map[string]any)
@@ -216,7 +161,7 @@ func ExampleQuery_transaction_issue_177_return_before_commit() {
 	fmt.Printf("Status: %v\n", returnResult.Status)
 	fmt.Printf("r.name: %v\n", r["name"])
 	if id := r["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
-		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
+		panic(fmt.Errorf("expected id to be empty or 's', got %v", id))
 	}
 
 	// Output:
@@ -229,12 +174,6 @@ func ExampleQuery_transaction_issue_177_commit() {
 	config := testenv.MustNewConfig("surrealdbexamples", "query", "t")
 	db := config.MustNew()
 	ctx := context.Background()
-
-	// Detect version to handle result format differences
-	v, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		panic(err)
-	}
 
 	queryResults, err := surrealdb.Query[any](ctx, db,
 		`BEGIN;
@@ -251,18 +190,10 @@ func ExampleQuery_transaction_issue_177_commit() {
 
 	fmt.Printf("Status: %v\n", (*queryResults)[0].Status)
 
-	// Transaction result format changed between v2 and v3:
-	// - v2.x: Returns only statement results (3 results: CREATE, CREATE, SELECT)
-	// - v3.x: Returns results for all statements (5 results: BEGIN, CREATE, CREATE, SELECT, COMMIT)
-	// Extract only the statement results (CREATE, CREATE, SELECT)
-	var statementResults []surrealdb.QueryResult[any]
-	if v.IsV3OrLater() {
-		// In v3, skip BEGIN (index 0) and COMMIT (last index)
-		statementResults = (*queryResults)[1:4]
-	} else {
-		// In v2, all results are statement results
-		statementResults = *queryResults
-	}
+	// A transaction returns results for all statements (5 results: BEGIN, CREATE, CREATE, SELECT, COMMIT).
+	// Extract only the statement results (CREATE, CREATE, SELECT):
+	// skip BEGIN (index 0) and COMMIT (last index)
+	statementResults := (*queryResults)[1:4]
 
 	if len(statementResults) != 3 {
 		panic(fmt.Errorf("expected 3 statement results, got %d", len(statementResults)))
@@ -288,7 +219,7 @@ func ExampleQuery_transaction_issue_177_commit() {
 	fmt.Printf("result[1].id: %v\n", records[1]["id"])
 	fmt.Printf("result[1].name: %v\n", records[1]["name"])
 	if id := records[2]["id"]; id != nil && id != (models.RecordID{Table: "t", ID: "s"}) {
-		panic(fmt.Errorf("expected id to be empty for SurrealDB v3.0.0-alpha.7, or 's' for v2.3.7, got %v", id))
+		panic(fmt.Errorf("expected id to be empty or 's', got %v", id))
 	}
 	fmt.Printf("result[2].name: %v\n", records[2]["name"])
 

@@ -139,12 +139,6 @@ func TestReconnect_restoresRefreshSignin(t *testing.T) {
 	require.NoError(t, err)
 	defer root.Close(ctx)
 
-	v, err := testenv.GetVersion(ctx, root)
-	require.NoError(t, err)
-	if !v.IsV3OrLater() {
-		t.Skip("WITH REFRESH needs SurrealDB v3")
-	}
-
 	_, err = surrealdb.Query[any](ctx, root, `
 		DEFINE TABLE OVERWRITE user SCHEMALESS PERMISSIONS FOR select WHERE id = $auth.id;
 		DEFINE ACCESS OVERWRITE user_access ON DATABASE TYPE RECORD
@@ -207,12 +201,6 @@ func TestFork_afterRefreshOnReconnect(t *testing.T) {
 	root, err := testenv.New(ns, database, "user")
 	require.NoError(t, err)
 	defer root.Close(ctx)
-
-	v, err := testenv.GetVersion(ctx, root)
-	require.NoError(t, err)
-	if !v.IsV3OrLater() {
-		t.Skip("WITH REFRESH and sessions need SurrealDB v3")
-	}
 
 	_, err = surrealdb.Query[any](ctx, root, `
 		DEFINE TABLE OVERWRITE user SCHEMALESS PERMISSIONS FOR select WHERE id = $auth.id;

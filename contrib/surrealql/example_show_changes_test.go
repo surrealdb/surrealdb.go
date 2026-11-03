@@ -46,17 +46,17 @@ func ExampleShowChangesForTable_sinceRawVersionstamp() {
 
 func ExampleShowChangesForTable_sinceVersionstamp() {
 	// Show changes since a specific versionstamp
-	// Note: If you pass a versionstamp from a previous SHOW CHANGES result (e.g., 6553600),
-	// this method automatically adjusts it by shifting right 16 bits (to 100 in this case)
-	// to get the logical version for the SINCE clause
+	// Note: Pass a versionstamp from a previous SHOW CHANGES result as it is.
+	// SurrealDB reads SINCE in the same units, and the result starts with the
+	// change at that versionstamp.
 	q := surrealql.ShowChangesForTable("events").
-		SinceVersionstamp(6553600). // This will be automatically adjusted to 100
+		SinceVersionstamp(117547994162855936).
 		Limit(50)
 
 	sql, _ := q.Build()
 	fmt.Println(sql)
 	// Output:
-	// SHOW CHANGES FOR TABLE events SINCE 100 LIMIT 50
+	// SHOW CHANGES FOR TABLE events SINCE 117547994162855936 LIMIT 50
 }
 
 func ExampleShowChangesForTable_noLimit() {
