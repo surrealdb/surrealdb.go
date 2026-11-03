@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 func ExampleRelate() {

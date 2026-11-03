@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 
 	"github.com/fxamacker/cbor/v2"
 )

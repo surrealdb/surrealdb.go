@@ -8,8 +8,8 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofrs/uuid"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 const testToken = "test-token"

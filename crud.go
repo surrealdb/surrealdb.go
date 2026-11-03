@@ -7,8 +7,8 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // The CRUD functions compile to SurrealQL sent with the query RPC method,

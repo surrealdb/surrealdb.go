@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	surrealhttp "github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	surrealhttp "github.com/surrealdb/surrealdb.go/v2/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // jwtExpiringIn returns an unsigned JWT whose exp claim is d from now.

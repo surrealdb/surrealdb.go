@@ -9,7 +9,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 // Streamer is implemented by connections which can send a request that is

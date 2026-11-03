@@ -14,13 +14,13 @@ import (
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofrs/uuid"
 
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/http"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/rpc"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/http"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/rpc"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 // sendable is a constraint for types that can send RPC requests.
@@ -1081,7 +1081,7 @@ func queryWith[TResult any, S sendable](
 // The variables of all the statements are sent together, so two statements must
 // not give one name different values.
 //
-// You may want to use [Query] with [github.com/surrealdb/surrealdb.go/contrib/surrealql] instead.
+// You may want to use [Query] with [github.com/surrealdb/surrealdb.go/v2/contrib/surrealql] instead.
 func QueryRaw[S sendable](ctx context.Context, s S, queries *[]QueryStmt) error {
 	if queries == nil || len(*queries) == 0 {
 		return fmt.Errorf("no query to run")

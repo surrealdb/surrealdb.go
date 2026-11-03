@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/contrib/rews"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/rews"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 func ExampleConnection_withExponentialBackoff() {

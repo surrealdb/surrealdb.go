@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealdump"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gws"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // TestGetCurrentVersionstamp_integration verifies that GetCurrentVersionstamp works correctly

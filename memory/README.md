@@ -4,7 +4,7 @@ Go client for [Agent Memory](https://surrealdb.com/agent-memory), bundled with
 `surrealdb.go`.
 
 ```go
-import "github.com/surrealdb/surrealdb.go/memory"
+import "github.com/surrealdb/surrealdb.go/v2/memory"
 
 client, err := memory.New("acme-prod", "https://api.memory.example", "sk-spec-...")
 if err != nil {
@@ -33,7 +33,7 @@ is a diff against a known baseline.
 ## Install
 
 ```
-go get github.com/surrealdb/surrealdb.go/memory
+go get github.com/surrealdb/surrealdb.go/v2/memory
 ```
 
 ### Migrating from `spectron`
@@ -45,7 +45,7 @@ find-and-replace:
 
 ```diff
 -import "github.com/surrealdb/surrealdb.go/spectron"
-+import "github.com/surrealdb/surrealdb.go/memory"
++import "github.com/surrealdb/surrealdb.go/v2/memory"
 
 -client, err := spectron.New(ctx, endpoint, key)
 +client, err := memory.New(ctx, endpoint, key)

@@ -30,7 +30,7 @@ This approach ensures that our decoder can correctly unmarshal CBOR data encoded
 // In decode_simple_test.go
 import (
     "github.com/fxamacker/cbor/v2"  // For encoding
-    "github.com/surrealdb/surrealdb.go/surrealcbor"  // For decoding
+    "github.com/surrealdb/surrealdb.go/v2/surrealcbor"  // For decoding
 )
 
 func TestDecode_float64(t *testing.T) {
@@ -67,7 +67,7 @@ This approach performs full round-trip testing, ensuring that data encoded by su
 ```go
 // In encode_tag_durationbinary_test.go
 import (
-    "github.com/surrealdb/surrealdb.go/surrealcbor"  // For both encoding and decoding
+    "github.com/surrealdb/surrealdb.go/v2/surrealcbor"  // For both encoding and decoding
 )
 
 func TestEncode_durationBinary(t *testing.T) {

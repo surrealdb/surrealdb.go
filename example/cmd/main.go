@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/example"
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/example"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
 //nolint:funlen

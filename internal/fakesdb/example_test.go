@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/internal/fakesdb"
+	"github.com/surrealdb/surrealdb.go/v2/internal/fakesdb"
 )
 
 func ExampleServer() {

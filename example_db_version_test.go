@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
 )
 
 //nolint:lll,govet

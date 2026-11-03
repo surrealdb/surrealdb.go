@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealql"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealql"
 )
 
 func ExampleInsert() {

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 // ImportError is returned by [DB.Import] when statements of the imported

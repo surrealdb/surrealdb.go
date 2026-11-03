@@ -3,7 +3,7 @@ package rews
 import (
 	"context"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // CurrentConnection returns the socket in use, for tests outside the package.

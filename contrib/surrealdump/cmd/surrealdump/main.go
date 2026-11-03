@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealdump"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump"
 )
 
 func main() {

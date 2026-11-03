@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
 )
 
 // a simple user struct for testing

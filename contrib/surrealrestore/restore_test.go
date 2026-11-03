@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealdump"
-	"github.com/surrealdb/surrealdb.go/contrib/surrealrestore"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gws"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealdump"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealrestore"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gws"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 //nolint:gocyclo // Test requires complex validation of different dump formats

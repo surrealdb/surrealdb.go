@@ -78,7 +78,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/surrealdb/surrealdb.go/internal/cborwire"
+	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
 )
 
 // globalFieldResolver is a shared field resolver used by Unmarshal functions

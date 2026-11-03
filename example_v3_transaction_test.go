@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
 )
 
 // ExampleDB_Begin demonstrates starting an interactive transaction.

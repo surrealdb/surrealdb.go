@@ -3,8 +3,8 @@ package rews
 import (
 	"sync"
 
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/logger"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/logger"
 )
 
 // NotificationProvider is an interface for getting live notification channels

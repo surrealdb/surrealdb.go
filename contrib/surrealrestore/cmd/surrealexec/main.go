@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/surrealdb/surrealdb.go"
+	"github.com/surrealdb/surrealdb.go/v2"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/surrealdb/surrealdb.go/contrib/surrealrestore"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/surrealrestore"
 )
 
 func main() {

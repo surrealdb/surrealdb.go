@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go/pkg/constants"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 )
 
 const (

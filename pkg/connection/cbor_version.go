@@ -4,7 +4,7 @@ import (
 	"mime"
 	"strings"
 
-	"github.com/surrealdb/surrealdb.go/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 )
 
 // CBORVersion is the CBOR protocol version a connection negotiated with the server.

@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/lxzan/gws"
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // cryptoRandInt generates a cryptographically secure random integer in [0, max)

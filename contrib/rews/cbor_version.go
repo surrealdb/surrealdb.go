@@ -1,8 +1,8 @@
 package rews
 
 import (
-	"github.com/surrealdb/surrealdb.go/internal/codec"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 var _ connection.CBORVersioner = (*Connection[connection.WebSocketConnection])(nil)

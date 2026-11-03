@@ -131,12 +131,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/surrealdb/surrealdb.go"
 	"github.com/surrealdb/surrealdb.go/contrib/surrealnote/pkg/models"
 	"github.com/surrealdb/surrealdb.go/contrib/surrealnote/pkg/store"
-	"github.com/surrealdb/surrealdb.go/pkg/connection"
-	"github.com/surrealdb/surrealdb.go/pkg/connection/gorillaws"
-	"github.com/surrealdb/surrealdb.go/surrealcbor"
+	"github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/gorillaws"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 // SurrealStoreCBOR implements the Store interface using SurrealDB with proper CBOR handling.

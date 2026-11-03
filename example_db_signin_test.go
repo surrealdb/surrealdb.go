@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	surrealdb "github.com/surrealdb/surrealdb.go"
-	"github.com/surrealdb/surrealdb.go/contrib/testenv"
+	surrealdb "github.com/surrealdb/surrealdb.go/v2"
+	"github.com/surrealdb/surrealdb.go/v2/contrib/testenv"
 )
 
 func ExampleDB_SignIn_rootLevelUser() {
