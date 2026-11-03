@@ -56,13 +56,6 @@ func whoAmI(t *testing.T, db *surrealdb.DB) any {
 	return (*res)[0].Result
 }
 
-func skipBeforeV3(t *testing.T) {
-	t.Helper()
-	if v := getVersion(t); !v.IsV3OrLater() {
-		t.Skipf("SurrealDB %s has no refresh tokens (requires v3+)", v)
-	}
-}
-
 // newClient returns a client with token renewal on, unless opts turn it off.
 func newClient(t *testing.T, endpoint string, opts ...surrealdb.Option) *surrealdb.DB {
 	t.Helper()
@@ -75,7 +68,6 @@ func newClient(t *testing.T, endpoint string, opts ...surrealdb.Option) *surreal
 }
 
 func TestRefreshAndRevoke(t *testing.T) {
-	skipBeforeV3(t)
 	defineRefreshAccess(t, "1h")
 	ctx := context.Background()
 
@@ -107,7 +99,6 @@ func TestRefreshAndRevoke(t *testing.T) {
 // TestRefresh_afterExpiry refreshes and revokes pairs whose access token has
 // expired, a token the server answers 401 to over HTTP.
 func TestRefresh_afterExpiry(t *testing.T) {
-	skipBeforeV3(t)
 	defineRefreshAccess(t, "1s")
 	ctx := context.Background()
 
@@ -161,7 +152,6 @@ func TestReset(t *testing.T) {
 // TestTokenRenewal signs in with access tokens which live for 3 seconds and
 // checks that the client renews them before they expire.
 func TestTokenRenewal(t *testing.T) {
-	skipBeforeV3(t)
 	defineRefreshAccess(t, "3s")
 
 	for family, endpoint := range endpoints() {
@@ -198,7 +188,6 @@ func TestTokenRenewal(t *testing.T) {
 }
 
 func TestSession_refreshAndReset(t *testing.T) {
-	skipBeforeV3(t)
 	defineRefreshAccess(t, "3s")
 	ctx := context.Background()
 

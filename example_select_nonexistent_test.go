@@ -18,7 +18,7 @@ func ExampleSelect_nonExistentRecord_fxamackercbor() {
 	db := c.MustNew()
 	ctx := context.Background()
 
-	// Create the table first - SurrealDB 3.x requires the table to exist
+	// Create the table first - SurrealDB requires the table to exist
 	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE user`, nil)
 	if err != nil {
 		panic(err)
@@ -62,7 +62,7 @@ func ExampleSelect_nonExistentRecord_surrealcbor() {
 	db := c.MustNew()
 	ctx := context.Background()
 
-	// Create the table first - SurrealDB 3.x requires the table to exist
+	// Create the table first - SurrealDB requires the table to exist
 	_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE user`, nil)
 	if err != nil {
 		panic(err)

@@ -9,9 +9,10 @@ import (
 
 const (
 	// MinimumServerVersion is the oldest SurrealDB version this SDK supports.
-	MinimumServerVersion = "2.1.0"
+	// Its pre-releases, such as 4.0.0-beta.1, are supported too.
+	MinimumServerVersion = "4.0.0"
 	// MaximumServerVersion is the first SurrealDB version this SDK does not
-	// support. Every version before it, 4.x included, is supported.
+	// support. Every 4.x version is supported.
 	MaximumServerVersion = "5.0.0"
 )
 
@@ -34,7 +35,7 @@ func (e *UnsupportedVersionError) Error() string {
 }
 
 // IsVersionSupported reports whether this SDK supports a SurrealDB server of the
-// given version, such as "3.3.4", "surrealdb-2.6.0" or "3.4.0-nightly+20261014".
+// given version, such as "4.0.0", "surrealdb-4.1.2" or "4.1.0-nightly+20261014".
 // Only the major, minor and patch numbers are compared, so a pre-release of a
 // supported version is supported.
 func IsVersionSupported(version string) bool {
@@ -43,9 +44,9 @@ func IsVersionSupported(version string) bool {
 
 // IsVersionInRange reports whether a SurrealDB version is at least minimum and
 // below maximum, such as whether a server has a feature which first came in
-// 3.3.0:
+// 4.1.0:
 //
-//	surrealdb.IsVersionInRange(v.Version, "3.3.0", surrealdb.MaximumServerVersion)
+//	surrealdb.IsVersionInRange(v.Version, "4.1.0", surrealdb.MaximumServerVersion)
 //
 // Versions are compared as [IsVersionSupported] compares them. A version or
 // bound which cannot be read, such as "nonsense", is in no range.

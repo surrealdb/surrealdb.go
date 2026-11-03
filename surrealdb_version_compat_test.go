@@ -11,8 +11,7 @@ import (
 )
 
 // TestRecordIDAsVariable_WorksAcrossVersions verifies that using models.RecordID
-// as a query variable works on both SurrealDB 2.x and 3.x, avoiding the need
-// for type::thing() (2.x) or type::record() (3.x).
+// as a query variable works, avoiding the need for type::record().
 func TestRecordIDAsVariable_WorksAcrossVersions(t *testing.T) {
 	db := testenv.MustNew("test_version_compat", "test_db", "persons")
 	ctx := context.Background()
@@ -46,13 +45,6 @@ func TestVersionDetection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, v)
 
-	// Version should be either 2.x or 3.x
-	require.True(t, v.Major >= 2, "Expected major version >= 2, got %d", v.Major)
-
-	// ThingOrRecordFn should return appropriate function name
-	if v.Major >= 3 {
-		require.Equal(t, "type::record", v.ThingOrRecordFn())
-	} else {
-		require.Equal(t, "type::thing", v.ThingOrRecordFn())
-	}
+	// The SDK supports SurrealDB 4.0 and later
+	require.True(t, v.Major >= 4, "Expected major version >= 4, got %d", v.Major)
 }

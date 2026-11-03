@@ -42,16 +42,11 @@ func printPersonIDs(label string, rows []omitVsNonePerson) {
 	fmt.Printf("\n")
 }
 
-// queryRangeBound runs SELECT via type::thing (v2) / type::record (v3) so a
-// rejected range bound returns a clear error instead of hanging the connection.
+// queryRangeBound runs SELECT via type::record so a rejected range bound
+// returns a clear error instead of hanging the connection.
 func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any) error {
-	ver, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		return err
-	}
-	sql := fmt.Sprintf("SELECT * FROM %s($tb, $r)", ver.ThingOrRecordFn())
-	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, sql, map[string]any{
-		"tb": models.Table(table),
+	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, "SELECT * FROM type::record($tb, $r)", map[string]any{
+		"tb": table,
 		"r":  r,
 	})
 	if err != nil {

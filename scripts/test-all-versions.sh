@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSIONS=("v2.6.0" "v3.0.0-beta.2")
+VERSIONS=("v4.0.0-beta.1" "nightly")
 PROTOCOLS=("ws" "http")
 
 # Create logs directory

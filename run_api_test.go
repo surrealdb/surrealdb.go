@@ -114,9 +114,6 @@ func TestRun_refusesInvalidNames(t *testing.T) {
 }
 
 func TestAPI(t *testing.T) {
-	if v := getVersion(t); !v.IsV3OrLater() {
-		t.Skipf("DEFINE API needs SurrealDB v3+, got %s", v)
-	}
 	ctx := context.Background()
 	db := testenv.MustNew("api", "api", "t")
 	defer db.Close(ctx)

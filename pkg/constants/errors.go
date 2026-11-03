@@ -19,7 +19,7 @@ var (
 	ErrNoNamespaceOrDB    = errors.New("namespace or database or both are not set")
 	ErrMethodNotAvailable = errors.New("method not available on this connection")
 
-	// Session and transaction errors (SurrealDB v3+)
+	// Session and transaction errors
 	ErrSessionsNotSupported     = errors.New("sessions require WebSocket connection")
 	ErrTransactionsNotSupported = errors.New("interactive transactions require WebSocket connection")
 	ErrSessionClosed            = errors.New("session already detached")

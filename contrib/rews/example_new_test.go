@@ -45,19 +45,14 @@ func ExampleNew() {
 	db, err := surrealdb.FromConnection(context.Background(), conn)
 	fmt.Println("FromConnection error:", err)
 
-	// normalizeAuthError normalizes authentication error messages for version compatibility
-	// rews wraps SignIn errors with "rews.Connection failed to sign in:" prefix
-	// SurrealDB 2.x: "rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication"
-	// SurrealDB 3.x: "rews.Connection failed to sign in: There was a problem with authentication"
+	// normalizeAuthError shortens the authentication error message.
+	// rews wraps SignIn errors with the "rews.Connection failed to sign in:" prefix.
 	normalizeAuthError := func(err error) string {
 		if err == nil {
 			return "<nil>"
 		}
 		errMsg := err.Error()
-		switch errMsg {
-		case "rews.Connection failed to sign in: There was a problem with the database: There was a problem with authentication":
-			return "authentication failed"
-		case "rews.Connection failed to sign in: There was a problem with authentication":
+		if errMsg == "rews.Connection failed to sign in: There was a problem with authentication" {
 			return "authentication failed"
 		}
 		return errMsg

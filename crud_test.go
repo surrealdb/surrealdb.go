@@ -181,13 +181,10 @@ func TestCRUD_server(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("a string is a table, not a record ID", func(t *testing.T) {
-		// There is no table named person:tobie: v3 says so, v2 finds nothing in it.
-		got, err := surrealdb.Select[[]map[string]any](ctx, db, "person:tobie")
-		if err != nil {
-			assert.Contains(t, err.Error(), "table 'person:tobie' does not exist")
-		} else if got != nil {
-			assert.Empty(t, *got)
-		}
+		// There is no table named person:tobie.
+		_, err := surrealdb.Select[[]map[string]any](ctx, db, "person:tobie")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "table 'person:tobie' does not exist")
 
 		one, err := surrealdb.Select[map[string]any](ctx, db, tobie)
 		require.NoError(t, err)
@@ -227,7 +224,7 @@ func TestCRUD_server(t *testing.T) {
 		_, err := surrealdb.Query[any](ctx, db, `DEFINE TABLE thrower SCHEMALESS; DEFINE FIELD x ON thrower VALUE { THROW "boom" };`, nil)
 		require.NoError(t, err)
 
-		// The deprecated create RPC: SurrealDB v3 assigns a THROW -32006.
+		// The deprecated create RPC: SurrealDB assigns a THROW -32006.
 		//nolint:staticcheck // RPCError is what the create RPC returned
 		var want *surrealdb.RPCError
 		require.True(t, errors.As(surrealdb.Send[any](ctx, db, &connection.RPCResponse[any]{}, "create",
@@ -242,10 +239,8 @@ func TestCRUD_server(t *testing.T) {
 		var se *surrealdb.ServerError
 		require.True(t, errors.As(err, &se))
 		assert.Equal(t, want.Code, se.Code)
-		if se.Kind != "" { // SurrealDB v3
-			assert.Equal(t, surrealdb.KindThrown, se.Kind)
-			assert.Equal(t, -32006, rpcErr.Code)
-		}
+		assert.Equal(t, surrealdb.KindThrown, se.Kind)
+		assert.Equal(t, -32006, rpcErr.Code)
 	})
 
 	t.Run("delete returns the record as it was", func(t *testing.T) {

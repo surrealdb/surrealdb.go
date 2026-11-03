@@ -3,7 +3,7 @@ package connection
 import "errors"
 
 // Known values for ServerError.Kind, matching the top-level error kinds
-// returned by SurrealDB v3's structured error wire format ({ "kind": "...",
+// returned by SurrealDB's structured error wire format ({ "kind": "...",
 // "details": ... }).
 //
 // These mirror the ErrorKind map in surrealdb.js (packages/sdk/src/errors.ts)
@@ -24,7 +24,7 @@ const (
 )
 
 // Nested detail-kind values used to further discriminate within a top-level
-// Kind. On SurrealDB v3, ServerError.Details typically decodes to
+// Kind. ServerError.Details typically decodes to
 // map[string]any{"kind": "<detailKind>", "details": ...} (or, for
 // double-nested details such as auth failures, another map of the same
 // shape). These are unexported because, unlike the top-level Kind values,
@@ -61,7 +61,7 @@ func hasKind(err error, kind string) bool {
 
 // detailKind extracts the "kind" string from a details value shaped like
 // map[string]any{"kind": "...", "details": ...} -- the shape ServerError.Details
-// takes on SurrealDB v3 after CBOR/JSON decoding. ok is false if details is
+// takes after CBOR/JSON decoding. ok is false if details is
 // nil, isn't a map, or has no string "kind" entry.
 func detailKind(details any) (kind string, ok bool) {
 	m, isMap := details.(map[string]any)

@@ -20,7 +20,7 @@ func Send[Result any](c Connection, ctx context.Context, res *RPCResponse[Result
 
 // Call sends a custom RPC request to SurrealDB using the connection's Call method.
 // Unlike Send, Call accepts an RPCRequest directly, allowing you to set
-// Session and Txn fields for session-scoped or transaction-scoped operations (SurrealDB v3+).
+// Session and Txn fields for session-scoped or transaction-scoped operations.
 func Call[Result any](c Connection, ctx context.Context, res *RPCResponse[Result], req *RPCRequest) error {
 	rawRes, err := c.Call(ctx, req)
 	if err != nil {

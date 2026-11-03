@@ -12,7 +12,7 @@ import (
 // ExampleDB_Begin demonstrates starting an interactive transaction.
 // Interactive transactions allow executing statements one at a time
 // and conditionally committing or canceling based on results.
-// This feature requires SurrealDB v3+ and WebSocket connections.
+// This feature requires a WebSocket connection.
 func ExampleDB_Begin() {
 	ctx := context.Background()
 
@@ -86,7 +86,6 @@ func ExampleDB_Begin() {
 
 	fmt.Println("Transaction committed")
 
-	// Note: This example requires SurrealDB v3+ and will fail on earlier versions.
 	// Output is not verified because transaction IDs are dynamic.
 }
 
@@ -260,6 +259,4 @@ func ExampleTransaction_isolation() {
 	if len(*results) > 0 && len((*results)[0].Result) > 0 {
 		fmt.Println("After commit: db2 can see committed data")
 	}
-
-	// Note: This example requires SurrealDB v3+ and will fail on earlier versions.
 }

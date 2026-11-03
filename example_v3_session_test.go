@@ -11,9 +11,8 @@ import (
 
 // ExampleDB_Attach demonstrates creating and using an additional session.
 // Sessions allow independent authentication, namespace selection, and variable scope.
-// This feature requires SurrealDB v3+ and WebSocket connections.
+// This feature requires a WebSocket connection.
 func ExampleDB_Attach() {
-	// Skip if not v3+ (this is for documentation purposes)
 	ctx := context.Background()
 
 	// Connect using WebSocket (sessions require WebSocket)
@@ -72,7 +71,6 @@ func ExampleDB_Attach() {
 		fmt.Printf("Session variable $user_id: %s\n", (*results)[0].Result)
 	}
 
-	// Note: This example requires SurrealDB v3+ and will fail on earlier versions.
 	// Output is not verified because session IDs are dynamic.
 }
 
@@ -139,6 +137,5 @@ func ExampleSession_Begin() {
 
 	fmt.Println("Transaction committed successfully")
 
-	// Note: This example requires SurrealDB v3+ and will fail on earlier versions.
 	// Output is not verified because transaction IDs are dynamic.
 }

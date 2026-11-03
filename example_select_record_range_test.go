@@ -150,17 +150,12 @@ func printOmitVsNoneIDs(label string, rows []omitVsNonePerson) {
 	fmt.Printf("\n")
 }
 
-// queryRangeBound runs SELECT through type::thing (v2) / type::record (v3).
+// queryRangeBound runs SELECT through type::record.
 // SurrealDB rejects NONE/NULL as scalar record-id bounds; this path returns
 // the server's error. Select returns an error for such a range before sending
 // it (see models.RecordID.MarshalCBOR).
 func queryRangeBound(ctx context.Context, db *surrealdb.DB, table string, r any) error {
-	ver, err := testenv.GetVersion(ctx, db)
-	if err != nil {
-		return err
-	}
-	sql := fmt.Sprintf("SELECT * FROM %s($tb, $r)", ver.ThingOrRecordFn())
-	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, sql, map[string]any{
+	res, err := surrealdb.Query[[]omitVsNonePerson](ctx, db, "SELECT * FROM type::record($tb, $r)", map[string]any{
 		"tb": models.Table(table),
 		"r":  r,
 	})

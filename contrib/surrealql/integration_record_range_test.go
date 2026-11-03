@@ -2,7 +2,6 @@ package surrealql_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -20,15 +19,12 @@ func TestIntegration_RecordRange(t *testing.T) {
 	db := testenv.MustNew("surrealqlexamples", "rr_integration", "person", "temp", "temp3")
 	ctx := context.Background()
 
-	ver, err := testenv.GetVersion(ctx, db)
-	require.NoError(t, err)
-
 	type Person struct {
 		ID   models.RecordID `json:"id"`
 		Name string          `json:"name"`
 	}
 
-	_, err = surrealdb.Query[any](ctx, db, `
+	_, err := surrealdb.Query[any](ctx, db, `
 		DEFINE TABLE person;
 		DELETE person;
 		CREATE person:1 SET name = 'one';
@@ -113,17 +109,18 @@ func TestIntegration_RecordRange(t *testing.T) {
 		assert.Equal(t, "three", (*results)[0].Result[1].Name)
 	})
 
-	t.Run("legacy type::thing / type::record workaround", func(t *testing.T) {
-		// SurrealDB 2.x uses type::thing; 3.x uses type::record.
+	t.Run("type::record workaround", func(t *testing.T) {
+		// The table is passed by name: SurrealDB 4.0 reads a table value, such
+		// as models.Table("person"), as the name "type::table('person')".
 		r := models.Range[int, models.BoundIncluded[int], models.BoundIncluded[int]]{
 			Begin: &models.BoundIncluded[int]{Value: 1},
 			End:   &models.BoundIncluded[int]{Value: 1},
 		}
 		params := map[string]any{
-			"tb":     models.Table("person"),
+			"tb":     "person",
 			"recrng": r,
 		}
-		sql := fmt.Sprintf("SELECT * FROM %s($tb, $recrng)", ver.ThingOrRecordFn())
+		sql := "SELECT * FROM type::record($tb, $recrng)"
 		results, err := surrealdb.Query[[]Person](ctx, db, sql, params)
 		require.NoError(t, err)
 		require.Len(t, (*results)[0].Result, 1)

@@ -6,9 +6,9 @@ import (
 	"github.com/surrealdb/surrealdb.go/pkg/connection"
 )
 
-// Refresh exchanges a token pair for a new one, using the refresh RPC of
-// SurrealDB v3+. The server revokes the refresh token it is given, so only the
-// returned pair can be refreshed again.
+// Refresh exchanges a token pair for a new one, using the refresh RPC. The
+// server revokes the refresh token it is given, so only the returned pair can
+// be refreshed again.
 func Refresh(c connection.Connection, ctx context.Context, tokens connection.Tokens) (*connection.Tokens, error) {
 	return authWithRefresh(c, ctx, "refresh", tokens)
 }

@@ -25,6 +25,6 @@ func ExampleDB_Version() {
 
 	// You get something like below depending on your SurrealDB version:
 	//
-	// VersionData (WebSocket): &{Version:2.3.7 Build: Timestamp:}
-	// VersionData (HTTP): &{Version:2.3.7 Build: Timestamp:}
+	// VersionData (WebSocket): &{Version:4.0.0 Build: Timestamp:}
+	// VersionData (HTTP): &{Version:4.0.0 Build: Timestamp:}
 }
