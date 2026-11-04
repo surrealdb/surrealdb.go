@@ -87,3 +87,10 @@ LET $owner = r'person:tobie';
 THROW ivl'P1M';
 COMMIT TRANSACTION;`, sql)
 }
+
+// A nil pointer whose SurrealString method cannot take a nil receiver is
+// written with %v, as before, rather than panicking.
+func TestBegin_letNilSurrealStringer(t *testing.T) {
+	sql, _ := Begin().Let("owner", (*models.RecordID)(nil)).Throw((*models.CustomDateTime)(nil)).Build()
+	assert.Equal(t, "BEGIN TRANSACTION;\nLET $owner = <nil>;\nTHROW <nil>;\nCOMMIT TRANSACTION;", sql)
+}

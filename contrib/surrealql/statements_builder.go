@@ -64,8 +64,10 @@ func (t *StatementsBuilder[T]) If(condition string) *IfBuilder[T] {
 	return b
 }
 
-// Throw adds a THROW statement to the transaction. It writes err as Let
-// writes a value.
+// Throw adds a THROW statement to the transaction. A string is written
+// quoted, and a value with a SurrealString method, such as a models.PlainDate,
+// as the SurrealQL literal it returns. Any other value is written with fmt's
+// %v.
 func (t *StatementsBuilder[T]) Throw(err any) *T {
 	t.statements = append(t.statements, &ThrowStatement{
 		err: err,

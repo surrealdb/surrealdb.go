@@ -2,6 +2,7 @@ package surrealql
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -93,10 +94,8 @@ func (l *LetStatement) build(c *queryBuildContext, builder *strings.Builder) {
 		builder.WriteString("(")
 		v.build(c, builder)
 		builder.WriteString(")")
-	case surrealStringer:
-		builder.WriteString(v.SurrealString())
 	default:
-		fmt.Fprintf(builder, "%v", v)
+		writeValue(builder, v)
 	}
 }
 
@@ -104,6 +103,19 @@ func (l *LetStatement) build(c *queryBuildContext, builder *strings.Builder) {
 // such as a models.PlainDate, whose String method gives display text instead.
 type surrealStringer interface {
 	SurrealString() string
+}
+
+// writeValue writes v as the SurrealQL literal its SurrealString method
+// returns, or with fmt's %v when it has none. A nil pointer is written with
+// %v too, as its SurrealString method may not take a nil receiver.
+func writeValue(b *strings.Builder, v any) {
+	if s, ok := v.(surrealStringer); ok {
+		if rv := reflect.ValueOf(v); rv.Kind() != reflect.Pointer || !rv.IsNil() {
+			b.WriteString(s.SurrealString())
+			return
+		}
+	}
+	fmt.Fprintf(b, "%v", v)
 }
 
 func (i *IfStatement) build(c *queryBuildContext, builder *strings.Builder) {
@@ -135,10 +147,8 @@ func (t *ThrowStatement) build(c *queryBuildContext, b *strings.Builder) {
 	switch v := t.err.(type) {
 	case string:
 		fmt.Fprintf(b, "%q", v)
-	case surrealStringer:
-		b.WriteString(v.SurrealString())
 	default:
-		fmt.Fprintf(b, "%v", v)
+		writeValue(b, v)
 	}
 }
 
