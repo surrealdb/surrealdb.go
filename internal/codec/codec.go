@@ -18,8 +18,9 @@ type Codec interface {
 const (
 	// CBORv1 is plain CBOR: WebSocket subprotocol "cbor", HTTP "application/cbor".
 	CBORv1 = 1
-	// CBORv2 is SurrealDB 4.0's CBOR with sized numbers: WebSocket subprotocol
-	// "cbor.2", HTTP "application/cbor; v=2".
+	// CBORv2 is SurrealDB 4.0's CBOR, with tags for its sized numbers and its
+	// date, time, timestamp, interval, bigdecimal and regex kinds: WebSocket
+	// subprotocol "cbor.2", HTTP "application/cbor; v=2".
 	CBORv2 = 2
 )
 

@@ -72,6 +72,46 @@ deprecated `models.CborMarshaler` and `models.CborUnmarshaler` only speak
 plain CBOR. See the [`surrealcbor.Codec`](https://pkg.go.dev/github.com/surrealdb/surrealdb.go/v2/surrealcbor#Codec)
 documentation for the details.
 
+#### Dates, times, timestamps, intervals, bigdecimals and regexes
+
+SurrealDB 4.0 also adds kinds that it shares with PostgreSQL and MySQL. The
+`models` package has a type for each, named as in the JavaScript SDK:
+
+| SurrealQL | Go type | Holds |
+|---|---|---|
+| `date` | `models.PlainDate` | a calendar date with no time or zone |
+| `time` | `models.PlainTime` | a time of day with no date or zone, up to 24:00:00 |
+| `timestamp` | `models.Timestamp` | a wall-clock date and time with no zone, which is not an instant |
+| `interval` | `models.Interval` | months, days and microseconds, kept apart |
+| `bigdecimal` | `models.BigDecimal` | a decimal past the 28 digits of a `decimal`, as its text |
+| `regex` | `models.Regex` | the text of a pattern, in the syntax of the Rust `regex` crate |
+
+```go
+due := models.MustParsePlainDate("2024-02-29")
+res, err := surrealdb.Query[[]models.PlainDate](ctx, db, "RETURN [$due, pd'infinity']", map[string]any{"due": due})
+```
+
+Over cbor.2 each kind keeps its type both ways, and decoding into `any` gives
+these types. Into another Go type a value decodes as plain CBOR would carry
+it: a date into a `time.Time` is its midnight UTC. The zero value of each type
+is a real value, such as 1970-01-01, not NONE: for an optional field, use a
+pointer with `omitempty`. The SDK never compiles a `models.Regex`, as the
+syntax of Go's `regexp` differs from Rust's.
+
+Plain CBOR has none of these kinds. Over it, the server and the SDK send a
+date or a timestamp as a datetime, a time as a duration, an interval as its
+ISO 8601 text, and a bigdecimal as a decimal when it fits one and as text
+otherwise. A regex cannot be sent: encoding one fails with an error that wraps
+`constants.ErrNeedsCBOR2`.
+
+An HTTP connection sends plain CBOR until the server has answered it in
+cbor.2, and again after any answer that is not cbor.2, such as an error page.
+A value of these kinds in such a request is stored as its widened kind, and a
+regex fails before anything is sent. `Let` over HTTP keeps a plain CBOR copy
+of each variable, so it cannot hold a regex. To send cbor.2 from the first
+request, connect with `surrealdb.WithVersionCheck(true)`, which asks the
+server for its version on connect, or sign in first.
+
 ## Contributing
 
 You can run the Makefile commands to run and build the project:

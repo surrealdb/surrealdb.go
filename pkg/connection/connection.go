@@ -74,7 +74,9 @@ type Config struct {
 
 	// DisableCBORv2 makes the connection offer only plain CBOR, as it did
 	// before SurrealDB 4.0, even when the codec and the server speak cbor.2.
-	// See [CBORVersion].
+	// Over plain CBOR, SurrealDB 4.0's sized numbers, dates, times,
+	// timestamps, intervals and bigdecimals are widened to older kinds, and a
+	// models.Regex cannot be sent. See [CBORVersion].
 	DisableCBORv2 bool
 }
 

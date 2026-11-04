@@ -237,7 +237,8 @@ func FromEndpointURLStringWithOptions(ctx context.Context, connectionURL string,
 
 // CBORVersion returns the CBOR protocol version the connection negotiated
 // with the server: connection.CBORv2 (cbor.2, which keeps SurrealDB 4.0's
-// sized numbers) or connection.CBORv1 (plain CBOR). See connection.CBORVersion.
+// sized numbers and its date, time, timestamp, interval, bigdecimal and regex
+// kinds) or connection.CBORv1 (plain CBOR). See connection.CBORVersion.
 func (db *DB) CBORVersion() connection.CBORVersion {
 	if v, ok := db.con.(connection.CBORVersioner); ok {
 		return v.CBORVersion()
