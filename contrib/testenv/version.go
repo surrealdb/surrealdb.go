@@ -75,7 +75,7 @@ func ParseVersion(version string) (*SurrealDBVersion, error) {
 
 // IsV3OrLater returns true if the version is 3.0.0 or later.
 //
-// Deprecated: The SDK requires SurrealDB 4.0 or later, so this is always true
+// Deprecated: The SDK requires SurrealDB 3.3 or later, so this is always true
 // for a supported server.
 func (v *SurrealDBVersion) IsV3OrLater() bool {
 	return v.Major >= 3
@@ -84,13 +84,20 @@ func (v *SurrealDBVersion) IsV3OrLater() bool {
 // ThingOrRecordFn returns "type::thing" for v2.x and "type::record" for v3.x.
 // This is useful for composing version-appropriate SurrealQL queries.
 //
-// Deprecated: The SDK requires SurrealDB 4.0 or later, so this is always
+// Deprecated: The SDK requires SurrealDB 3.3 or later, so this is always
 // "type::record" for a supported server. Write type::record in the query.
 func (v *SurrealDBVersion) ThingOrRecordFn() string {
 	if v.IsV3OrLater() {
 		return "type::record"
 	}
 	return "type::thing"
+}
+
+// IsV4OrLater returns true if the version is 4.0.0 or later, including its
+// pre-releases. Tests use it for behavior that changed between SurrealDB 3.x
+// and 4.0.
+func (v *SurrealDBVersion) IsV4OrLater() bool {
+	return v.Major >= 4
 }
 
 // String returns the version as a string.

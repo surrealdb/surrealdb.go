@@ -71,13 +71,13 @@ func TestVersionCheck(t *testing.T) {
 		return surrealdb.FromConnectionWithOptions(ctx, gorillaws.New(connection.NewConfig(u)), opts...)
 	}
 
-	for _, v := range []string{"4.0.0-beta.1", "4.0.0", "4.1.0-nightly", "4.7.1"} {
+	for _, v := range []string{"3.3.0", "3.3.4", "4.0.0-beta.1", "4.0.0", "4.1.0-nightly", "4.7.1"} {
 		db, err := connect(t, v, check)
 		require.NoError(t, err, v)
 		_ = db.Close(ctx)
 	}
 
-	for _, v := range []string{"1.5.6", "2.6.0", "3.3.5", "5.0.0", "5.1.0-alpha"} {
+	for _, v := range []string{"1.5.6", "2.6.0", "3.2.6", "5.0.0", "5.1.0-alpha"} {
 		_, err := connect(t, v, check)
 		var unsupported *surrealdb.UnsupportedVersionError
 		require.ErrorAs(t, err, &unsupported, v)

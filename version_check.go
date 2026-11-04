@@ -9,8 +9,9 @@ import (
 
 const (
 	// MinimumServerVersion is the oldest SurrealDB version this SDK supports.
-	// Its pre-releases, such as 4.0.0-beta.1, are supported too.
-	MinimumServerVersion = "4.0.0"
+	// Its pre-releases are supported too. A 3.x server works with some
+	// limits; see "Supported SurrealDB versions" in the README.
+	MinimumServerVersion = "3.3.0"
 	// MaximumServerVersion is the first SurrealDB version this SDK does not
 	// support. Every 4.x version is supported.
 	MaximumServerVersion = "5.0.0"

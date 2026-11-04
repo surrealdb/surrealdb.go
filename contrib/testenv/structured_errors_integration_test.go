@@ -230,13 +230,23 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 
 	require.Error(t, err)
 
+	// SurrealDB 4.0 reports a schema coercion error as an invalid request.
+	// SurrealDB 3.x reports it as an internal error, without details.
+	var wantDetails any
+	wantCode, wantKind := -32000, "Internal"
+	v, verr := GetVersion(context.Background(), db)
+	require.NoError(t, verr)
+	if v.IsV4OrLater() {
+		wantCode, wantKind, wantDetails = -32600, "Validation", map[string]any{"kind": "InvalidRequest"}
+	}
+
 	// --- v2 backward compat: RPCError accessible with limited info ---
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	var rpcErr *surrealdb.RPCError
 	require.True(t, errors.As(err, &rpcErr), "RPCError should be extractable (v2 compat)")
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.True(t, errors.Is(err, &surrealdb.RPCError{}))
-	assert.Equal(t, -32600, rpcErr.Code)
+	assert.Equal(t, wantCode, rpcErr.Code)
 	assert.Equal(t, "Couldn't coerce value for field `age` of `person:schema_test`: Expected `int` but found `'not a number'`", rpcErr.Message)
 	//nolint:staticcheck // intentionally testing v2 backward compat with RPCError
 	assert.Empty(t, rpcErr.Description, "Description is deprecated and always empty")
@@ -248,15 +258,15 @@ func TestStructuredErrors_SchemaViolation_RPC(t *testing.T) {
 	// Message: describes the coercion failure, same as RPCError.Message.
 	assert.Equal(t, rpcErr.Message, se.Message)
 
-	// Kind: "Validation" — RPCError does NOT expose this.
-	assert.Equal(t, "Validation", se.Kind)
+	// Kind: "Validation" on 4.0 — RPCError does NOT expose this.
+	assert.Equal(t, wantKind, se.Kind)
 
 	// Code: same as RPCError.Code.
 	assert.Equal(t, rpcErr.Code, se.Code)
-	assert.Equal(t, -32600, se.Code)
+	assert.Equal(t, wantCode, se.Code)
 
-	// Details: SurrealDB 4.0 reports a schema coercion error as an invalid request.
-	assert.Equal(t, map[string]any{"kind": "InvalidRequest"}, se.Details)
+	// Details: {"kind": "InvalidRequest"} on 4.0, none on 3.x.
+	assert.Equal(t, wantDetails, se.Details)
 
 	// Cause: nil — no nested cause chain for this error.
 	assert.Nil(t, se.Cause, "no cause chain for schema coercion errors")

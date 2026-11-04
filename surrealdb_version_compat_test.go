@@ -45,6 +45,6 @@ func TestVersionDetection(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, v)
 
-	// The SDK supports SurrealDB 4.0 and later
-	require.True(t, v.Major >= 4, "Expected major version >= 4, got %d", v.Major)
+	// The SDK supports SurrealDB 3.3 and later.
+	require.True(t, v.Major >= 3, "Expected major version >= 3, got %d", v.Major)
 }
