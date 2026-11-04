@@ -20,7 +20,9 @@ import (
 //
 // Over cbor.2 a PlainDate is sent as tag 100 and decoded from it. Over plain
 // cbor it is sent as the datetime at its midnight UTC, the way the server
-// widens it, and decoded from such a datetime.
+// widens it, and decoded from such a datetime. The server widens infinity to
+// its latest datetime, +262142-12-31T23:59:59.999999999Z, rather than to
+// midnight, and so does the SDK.
 //
 // The zero value is 1970-01-01, a real date rather than NONE. For a field
 // that may be left out, use a *PlainDate with omitempty: omitempty never drops
@@ -58,16 +60,24 @@ func PlainDateFromDays(days int64) (PlainDate, error) {
 	return PlainDate{days: int32(days)}, nil //nolint:gosec // range-checked above
 }
 
-// PlainDateOf returns the date on which t falls in t's own location.
+// PlainDateOf returns the date on which t falls in t's own location. A time
+// on the first or the last day a date holds gives -infinity or infinity.
 func PlainDateOf(t time.Time) (PlainDate, error) {
-	return NewPlainDate(t.Date())
+	year, month, day := t.Date()
+	days, ok := daysOfCivil(year, month, day)
+	if !ok {
+		return PlainDate{}, fmt.Errorf("%v is outside the range of a date", t)
+	}
+	return PlainDateFromDays(days)
 }
 
-// ParsePlainDate parses a date as the server does: YYYY-MM-DD, where a year
-// outside 0000 to 9999 takes a sign, as in +10000-01-01 or -0001-12-31;
-// "infinity", "+infinity" or "-infinity" in any letter case; or "epoch" for
-// 1970-01-01. It ignores spaces around the text. Like the server, it refuses
-// the first and last days written as dates: write them as the infinities.
+// ParsePlainDate parses a date as the server does, reading YYYY-MM-DD as
+// chrono does: a year of up to four digits, or with a sign and more, as in
+// +10000-01-01 or -0001-12-31; a month and a day of one or two digits; and
+// spaces allowed around each number. It also reads "infinity", "+infinity"
+// or "-infinity" in any letter case, and "epoch" for 1970-01-01. Like the
+// server, it refuses the first and last days written as dates: write them as
+// the infinities.
 func ParsePlainDate(s string) (PlainDate, error) {
 	text := strings.TrimSpace(s)
 	switch sign := parseInfinity(text); {
@@ -197,7 +207,7 @@ func (d *PlainDate) UnmarshalCBOR(data []byte) error {
 // daysAtMidnight reads the content of a datetime (tag 12), which must be at
 // midnight UTC or be the server's latest datetime, as days since 1970-01-01.
 func daysAtMidnight(content []byte) (int64, error) {
-	sec, nsec, err := cborwire.ReadTimestamp(content)
+	sec, nsec, err := cborwire.ReadDatetime(content)
 	switch {
 	case err != nil:
 		return 0, err

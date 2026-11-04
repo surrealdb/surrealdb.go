@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
 )
@@ -123,32 +124,67 @@ func civilOfDays(days int64) (year int, month time.Month, day int) {
 	return time.Unix(days*secondsPerDay, 0).UTC().Date()
 }
 
-// parseCivilDate parses YYYY-MM-DD into days since 1970-01-01, where the year
-// may carry a sign and have four to six digits. The date must exist, and be
-// within the range of the date kind; its first and last days are allowed.
+// parseCivilDate parses a date into days since 1970-01-01 as the server does,
+// through chrono's NaiveDate::from_str: a year, '-', a month, '-' and a day,
+// with optional whitespace before each number and after the day. A year
+// without a sign has one to four digits, so a later year needs a sign; a
+// year with one may have any number. The month and the day have one or two
+// digits. The date must exist, and be within the range of the date kind; its
+// first and last days are allowed.
 func parseCivilDate(s string) (int64, error) {
-	i := 0
-	negative := i < len(s) && s[i] == '-'
-	if i < len(s) && (s[i] == '+' || s[i] == '-') {
-		i++
+	year, rest, ok := readYear(trimSpaceLeft(s))
+	var month, day int
+	if ok {
+		month, rest, ok = readDateField(rest)
 	}
-	yearEnd := scanDigits(s, i)
-	rest := s[yearEnd:]
-	if n := yearEnd - i; n < 4 || n > 6 || len(rest) != 6 || rest[0] != '-' || rest[3] != '-' ||
-		scanDigits(rest, 1) != 3 || scanDigits(rest, 4) != 6 {
-		return 0, fmt.Errorf("invalid date %q", s)
+	if ok {
+		day, rest, ok = readDateField(rest)
 	}
-	year, _ := strconv.Atoi(s[i:yearEnd])
-	if negative {
-		year = -year
+	if ok && trimSpaceLeft(rest) == "" {
+		if days, valid := daysOfCivil(year, time.Month(month), day); valid {
+			return days, nil
+		}
 	}
-	month, _ := strconv.Atoi(rest[1:3])
-	day, _ := strconv.Atoi(rest[4:6])
-	days, ok := daysOfCivil(year, time.Month(month), day)
-	if !ok {
-		return 0, fmt.Errorf("invalid date %q", s)
+	return 0, fmt.Errorf("invalid date %q", s)
+}
+
+// readYear reads a year as chrono does: with a sign, one or more digits;
+// without one, one to four.
+func readYear(s string) (year int, rest string, ok bool) {
+	sign, maxDigits := 1, 4
+	if s != "" && (s[0] == '+' || s[0] == '-') {
+		if s[0] == '-' {
+			sign = -1
+		}
+		s, maxDigits = s[1:], len(s)
 	}
-	return days, nil
+	end := min(scanDigits(s, 0), maxDigits)
+	digits := strings.TrimLeft(s[:end], "0")
+	if end == 0 || len(digits) > 7 { // past 7 digits a year is out of range anyway
+		return 0, "", false
+	}
+	year, _ = strconv.Atoi("0" + digits)
+	return sign * year, s[end:], true
+}
+
+// readDateField reads the month or the day after a year as chrono does:
+// optional whitespace, '-', optional whitespace, and one or two digits.
+func readDateField(s string) (field int, rest string, ok bool) {
+	s = trimSpaceLeft(s)
+	if !strings.HasPrefix(s, "-") {
+		return 0, "", false
+	}
+	s = trimSpaceLeft(s[1:])
+	end := min(scanDigits(s, 0), 2)
+	if end == 0 {
+		return 0, "", false
+	}
+	field, _ = strconv.Atoi(s[:end])
+	return field, s[end:], true
+}
+
+func trimSpaceLeft(s string) string {
+	return strings.TrimLeftFunc(s, unicode.IsSpace)
 }
 
 // appendCivilDate appends the date days after 1970-01-01 as YYYY-MM-DD, with a

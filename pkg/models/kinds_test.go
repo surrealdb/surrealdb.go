@@ -68,11 +68,27 @@ func TestPlainDate(t *testing.T) {
 	}
 
 	for _, bad := range []string{
-		"2023-02-29", "2024-13-01", "2024-00-10", "2024-01-00", "2024-1-01", "24-01-01", "2024-01-01T00:00",
-		"1234567-01-01", "", "infinite", "+262142-12-31", "-262143-01-01", "+262143-01-01",
+		"2023-02-29", "2024-13-01", "2024-00-10", "2024-01-00", "2024-01-01T00:00", "2024-001-01", "2024/01/01",
+		"1234567-01-01", "10000-01-01", "100000-01-01", "", "infinite", "+262142-12-31", "-262143-01-01", "+262143-01-01",
 	} {
 		_, err := ParsePlainDate(bad)
 		assert.Error(t, err, bad)
+	}
+
+	// The server reads a date with chrono, which also takes a short year
+	// without a sign, one-digit months and days, and spaces around each
+	// number. A year past 9999 needs a sign.
+	for text, want := range map[string]string{
+		"24-01-01":       "0024-01-01",
+		"2024-1-5":       "2024-01-05",
+		"+1-01-01":       "0001-01-01",
+		"2024 - 01 - 15": "2024-01-15",
+		"+0002024-01-15": "2024-01-15",
+		"-123456-1-2":    "-123456-01-02",
+	} {
+		d, err := ParsePlainDate(text)
+		require.NoError(t, err, text)
+		assert.Equal(t, want, d.String(), text)
 	}
 	for _, bad := range [][3]int{{2023, 2, 29}, {2024, 2, 30}, {2024, 13, 1}, {262142, 12, 31}, {-262143, 1, 1}, {300000, 1, 1}} {
 		_, err := NewPlainDate(bad[0], time.Month(bad[1]), bad[2])
@@ -109,6 +125,9 @@ func TestPlainDate_infinities(t *testing.T) {
 	_, err = PlainDateFromDays(-96465293)
 	assert.Error(t, err)
 
+	for _, inf := range []PlainDate{PlainDateInfinity, PlainDateNegInfinity} {
+		assert.Equal(t, inf, plainDateOf(t, inf.In(time.UTC)), "a time on an end day is that infinity")
+	}
 	assert.Equal(t, -1, PlainDateNegInfinity.Compare(PlainDate{}))
 	assert.Equal(t, 1, PlainDateInfinity.Compare(MustParsePlainDate("+10000-01-01")))
 	assert.Equal(t, 0, PlainDate{}.Compare(MustParsePlainDate("1970-01-01")))
@@ -196,10 +215,16 @@ func TestTimestamp(t *testing.T) {
 
 	for _, bad := range []string{
 		"2024-01-15T24:00:00", "2024-01-15", "2024-01-15t12:00", "2024-02-30T00:00", "+262142-12-31T23:59:59.999999999",
-		"-262143-01-01T00:00:00", "",
+		"-262143-01-01T00:00:00", "", "10000-01-01T00:00:00",
 	} {
 		_, err := ParseTimestamp(bad)
 		assert.Error(t, err, bad)
+	}
+	// The server trims the time after the T or the space.
+	for _, text := range []string{"2024-01-15T 12:00", "2024-01-15  12:00:00", "2024-1-15 12:00"} {
+		ts, err := ParseTimestamp(text)
+		require.NoError(t, err, text)
+		assert.Equal(t, "2024-01-15T12:00:00", ts.String(), text)
 	}
 
 	assert.Equal(t, "infinity", TimestampInfinity.String())
@@ -329,14 +354,25 @@ func TestRegex(t *testing.T) {
 	assert.Equal(t, "//", Regex{}.String())
 	assert.Equal(t, "<regex> ''", Regex{}.SurrealString(), "// starts a comment in SurrealQL")
 
-	for _, pattern := range []string{"", "a/b", `^\d+$`, `a\/b`, `\`} {
+	// SurrealString escapes only a slash the pattern does not escape, as the
+	// server's lexer skips an escape and the byte after it.
+	for pattern, want := range map[string]string{
+		"a/b":    `/a\/b/`,
+		`a\/b`:   `/a\/b/`,
+		`^\/api`: `/^\/api/`,
+		`\\/`:    `/\\\//`,
+		`\d+/\w`: `/\d+\/\w/`,
+		"é/x":    `/é\/x/`,
+	} {
+		assert.Equal(t, want, Regex{Pattern: pattern}.SurrealString(), pattern)
+	}
+
+	for _, pattern := range []string{"", "a/b", `^\d+$`, `a\/b`, `\`, `\\/`} {
 		var back Regex
 		text, err := Regex{Pattern: pattern}.MarshalText()
 		require.NoError(t, err)
 		require.NoError(t, back.UnmarshalText(text), pattern)
-		if pattern != `a\/b` { // \/ reads back as a slash, as on the server
-			assert.Equal(t, pattern, back.Pattern)
-		}
+		assert.Equal(t, pattern, back.Pattern)
 	}
 	var r Regex
 	assert.Error(t, r.UnmarshalText([]byte("a+")))

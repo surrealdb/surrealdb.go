@@ -17,7 +17,8 @@
 // and regex kinds as their cbor.2 tags (100 and 189 to 193). For [Plain]
 // cbor, which has no form for them, Normalize widens them as the server does:
 //
-//   - a date (tag 100) to a datetime at its midnight UTC;
+//   - a date (tag 100) to a datetime at its midnight UTC, and infinity to
+//     the latest datetime;
 //   - a time (tag 189) to a duration since midnight;
 //   - a timestamp (tag 190) to a datetime, reading the wall clock as UTC;
 //   - an interval (tag 191) to its ISO 8601 text;

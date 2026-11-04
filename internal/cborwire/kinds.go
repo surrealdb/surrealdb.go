@@ -266,22 +266,14 @@ func ReadInts(b []byte) (ints [3]int64, n int, err error) {
 	return ints, n, r.done()
 }
 
-// ReadTimestamp reads the content of a timestamp (tag 190) or of a datetime
-// (tag 12): [seconds, nanoseconds] since 1970-01-01T00:00:00. As the server
-// does, it takes nanoseconds up to the largest uint32 and carries the whole
-// seconds in them, so a leap second becomes the first instant of the next
-// second. Then the result must be within the range of a timestamp.
+// ReadTimestamp reads the content of a timestamp (tag 190): [seconds,
+// nanoseconds] since 1970-01-01T00:00:00. As the server does, it takes
+// nanoseconds up to the largest uint32 and carries the whole seconds in them,
+// so a leap second becomes the first instant of the next second. Then the
+// result must be within the range of a timestamp.
 func ReadTimestamp(content []byte) (sec, nsec int64, err error) {
-	ints, n, err := ReadInts(content)
-	if err != nil {
+	if sec, nsec, err = readSecondsNanos(content); err != nil {
 		return 0, 0, err
-	}
-	if n != 2 {
-		return 0, 0, fmt.Errorf("want an array of 2 integers, got %d", n)
-	}
-	sec, nsec = ints[0], ints[1]
-	if nsec < 0 || nsec > math.MaxUint32 {
-		return 0, 0, fmt.Errorf("nanoseconds %d are outside the range of a uint32", nsec)
 	}
 	if carry := nsec / nanosPerSecond; sec <= math.MaxInt64-carry {
 		sec += carry
@@ -293,6 +285,40 @@ func ReadTimestamp(content []byte) (sec, nsec int64, err error) {
 		return 0, 0, fmt.Errorf("%d seconds since 1970 is outside the range of a timestamp", sec)
 	}
 	return sec, nsec, nil
+}
+
+// ReadDatetime reads the content of a datetime (tag 12): [seconds,
+// nanoseconds] since 1970-01-01T00:00:00 UTC, as the server reads one. The
+// nanoseconds are below a second, except in a leap second, the last second
+// of a minute, where they are below two seconds; they are not carried. The
+// result must be within the range of a datetime, the same as a timestamp's.
+func ReadDatetime(content []byte) (sec, nsec int64, err error) {
+	if sec, nsec, err = readSecondsNanos(content); err != nil {
+		return 0, 0, err
+	}
+	switch {
+	case nsec >= 2*nanosPerSecond, nsec >= nanosPerSecond && (sec%60+60)%60 != 59:
+		return 0, 0, fmt.Errorf("%d nanoseconds are a second or more, outside a leap second", nsec)
+	case sec < MinTimestampSeconds || sec > MaxTimestampSeconds:
+		return 0, 0, fmt.Errorf("%d seconds since 1970 is outside the range of a datetime", sec)
+	}
+	return sec, nsec, nil
+}
+
+// readSecondsNanos reads [seconds, nanoseconds], exactly two integers, with
+// the nanoseconds within a uint32, as the server reads tags 12 and 190.
+func readSecondsNanos(content []byte) (sec, nsec int64, err error) {
+	ints, n, err := ReadInts(content)
+	if err != nil {
+		return 0, 0, err
+	}
+	if n != 2 {
+		return 0, 0, fmt.Errorf("want an array of 2 integers, got %d", n)
+	}
+	if ints[1] < 0 || ints[1] > math.MaxUint32 {
+		return 0, 0, fmt.Errorf("nanoseconds %d are outside the range of a uint32", ints[1])
+	}
+	return ints[0], ints[1], nil
 }
 
 // ReadDuration reads the content of a duration (tag 14), [seconds,

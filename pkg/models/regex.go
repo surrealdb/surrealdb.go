@@ -34,14 +34,33 @@ func (r Regex) String() string {
 	return "/" + strings.ReplaceAll(r.Pattern, "/", `\/`) + "/"
 }
 
-// SurrealString returns r as a SurrealQL regex literal, such as /a+/. The
-// empty pattern is a cast of the empty string instead, as // starts a comment
-// in SurrealQL.
+// SurrealString returns r as a SurrealQL regex literal, such as /a+/. It
+// escapes each slash the pattern does not escape already: the server reads an
+// escaped slash \/ in a literal as a plain slash, which matches the same
+// text. The empty pattern is a cast of the empty string instead, as //
+// starts a comment in SurrealQL.
 func (r Regex) SurrealString() string {
 	if r.Pattern == "" {
 		return "<regex> ''"
 	}
-	return r.String()
+	var b strings.Builder
+	b.Grow(len(r.Pattern) + 4)
+	b.WriteByte('/')
+	for i := 0; i < len(r.Pattern); i++ {
+		switch c := r.Pattern[i]; {
+		case c == '\\' && i+1 < len(r.Pattern):
+			// The server's lexer skips an escape and the byte after it.
+			b.WriteByte(c)
+			b.WriteByte(r.Pattern[i+1])
+			i++
+		case c == '/':
+			b.WriteString(`\/`)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('/')
+	return b.String()
 }
 
 // MarshalText returns r as String writes it.

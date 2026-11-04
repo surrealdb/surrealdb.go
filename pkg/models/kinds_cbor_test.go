@@ -169,6 +169,20 @@ func TestKinds_decodeOtherKinds(t *testing.T) {
 	assert.Error(t, regex.UnmarshalCBOR(mustDecodeHex(t, "63612e2a")), "plain cbor has no regex: text is not one")
 }
 
+// A datetime holds a leap second as chrono does, in the last second of a
+// minute, and the server refuses one anywhere else. A timestamp read from
+// one carries it into the next second.
+func TestKinds_decodeLeapSecondDatetimes(t *testing.T) {
+	var ts Timestamp
+	require.NoError(t, ts.UnmarshalCBOR(mustDecodeHex(t, "cc82183b1a59682f00"))) // 12([59, 1500000000])
+	assert.Equal(t, MustParseTimestamp("1970-01-01T00:01:00.5"), ts)
+	assert.Error(t, ts.UnmarshalCBOR(mustDecodeHex(t, "cc82001a3b9aca00")), "12([0, 1000000000]): not the end of a minute")
+	assert.Error(t, ts.UnmarshalCBOR(mustDecodeHex(t, "cc82183b1a77359400")), "12([59, 2000000000])")
+
+	var date PlainDate
+	assert.Error(t, date.UnmarshalCBOR(mustDecodeHex(t, "cc821a0001517f1a3b9aca00")), "12([86399, 1000000000]) is 23:59:60, not midnight")
+}
+
 func TestKinds_decodeLeapSeconds(t *testing.T) {
 	// As on SurrealDB 4.0.0 (commit 4cd688c), nanoseconds up to the largest
 	// uint32 carry into the seconds.
@@ -265,6 +279,12 @@ func TestKinds_fxamacker(t *testing.T) {
 	var back Range[PlainDate, BoundIncluded[PlainDate], BoundExcluded[PlainDate]]
 	require.NoError(t, back.UnmarshalCBOR(data))
 	assert.Equal(t, r, back)
+
+	// A bound held as any gets the models type too, as a record id key does.
+	var loose Range[any, BoundIncluded[any], BoundExcluded[any]]
+	require.NoError(t, loose.UnmarshalCBOR(data))
+	assert.Equal(t, MustParsePlainDate("1970-01-02"), loose.Begin.Value)
+	assert.Equal(t, MustParsePlainDate("1970-01-06"), loose.End.Value)
 }
 
 // The zero values are real values: omitempty keeps them, and omitzero drops

@@ -27,12 +27,10 @@ func (bi *BoundIncluded[T]) UnmarshalCBOR(data []byte) error {
 	}
 
 	var temp T
-	if err := cbor.Unmarshal(data, &temp); err != nil {
-		return err
+	if err = cbor.Unmarshal(data, &temp); err == nil {
+		bi.Value, err = withCBOR2Kinds(temp)
 	}
-
-	bi.Value = temp
-	return nil
+	return err
 }
 
 type BoundExcluded[T any] struct {
@@ -53,12 +51,24 @@ func (be *BoundExcluded[T]) UnmarshalCBOR(data []byte) error {
 	}
 
 	var temp T
-	if err := cbor.Unmarshal(data, &temp); err != nil {
-		return err
+	if err = cbor.Unmarshal(data, &temp); err == nil {
+		be.Value, err = withCBOR2Kinds(temp)
 	}
+	return err
+}
 
-	be.Value = temp
-	return nil
+// withCBOR2Kinds converts the cbor.2 tags that fxamacker/cbor leaves as
+// cbor.Tag values in an interface, such as a date in a Range[any] bound, into
+// their Go kinds and models types, as a record id key's are.
+func withCBOR2Kinds[T any](v T) (T, error) {
+	converted, err := cbor2TagToGo(any(v))
+	if err != nil {
+		return v, err
+	}
+	if c, ok := converted.(T); ok {
+		return c, nil
+	}
+	return v, nil
 }
 
 type Bound[T any] interface {

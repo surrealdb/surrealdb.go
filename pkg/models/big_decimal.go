@@ -107,10 +107,11 @@ func (b BigDecimal) Equal(o BigDecimal) bool {
 	return b.Compare(o) == 0
 }
 
-// FitsDecimal reports whether a SurrealDB decimal holds b exactly: once its
-// trailing zeros are stripped, at most 28 digits after the point and a
-// coefficient below 2^96. The server sends such a bigdecimal over plain cbor
-// as a decimal.
+// FitsDecimal reports whether a SurrealDB decimal holds b exactly: written
+// with no trailing zeros after the point, b has at most 28 digits after it,
+// and its digits, read as a whole number with the point dropped, are below
+// 2^96. So 1e28 fits, but 9e28 does not. The server sends such a bigdecimal
+// over plain cbor as a decimal.
 func (b BigDecimal) FitsDecimal() bool {
 	_, ok := cborwire.BigDecimalAsDecimal(b.String())
 	return ok

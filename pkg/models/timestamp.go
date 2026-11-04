@@ -76,13 +76,16 @@ func TimestampOf(t time.Time) (Timestamp, error) {
 	return TimestampFromUnix(sec+int64(offset), int64(t.Nanosecond()))
 }
 
-// ParseTimestamp parses a timestamp as the server does: a date as
-// [ParsePlainDate] reads one, then T or a space, then a time of day as
-// [ParsePlainTime] reads one, but before 24:00:00, as in
-// 2024-02-29T12:34:56.789; "infinity", "+infinity" or "-infinity" in any
-// letter case; or "epoch" for 1970-01-01T00:00:00. It ignores spaces around
-// the text. Like the server, it refuses the first and last instants written
-// as timestamps: write them as the infinities.
+// ParseTimestamp parses a timestamp as the server does: a date, then T or a
+// space, then a time of day before 24:00:00, as in 2024-02-29T12:34:56.789.
+// The date is read as chrono reads one for the server: a year of up to four
+// digits, or with a sign and more, a month and a day of one or two digits,
+// and the first and last days included. The time is H:MM, H:MM:SS or
+// H:MM:SS.fraction, with up to nine digits in the fraction. It also reads
+// "infinity", "+infinity" or "-infinity" in any letter case, and "epoch" for
+// 1970-01-01T00:00:00, and ignores spaces around the text and the time. Like
+// the server, it refuses the first and last instants written as timestamps:
+// write them as the infinities.
 func ParseTimestamp(s string) (Timestamp, error) {
 	text := strings.TrimSpace(s)
 	switch sign := parseInfinity(text); {
@@ -101,7 +104,7 @@ func ParseTimestamp(s string) (Timestamp, error) {
 	if err != nil {
 		return Timestamp{}, fmt.Errorf("invalid timestamp %q", s)
 	}
-	nanos, err := parseTimeOfDay(text[at+1:])
+	nanos, err := parseTimeOfDay(strings.TrimSpace(text[at+1:]))
 	if err != nil || nanos >= nsPerDay {
 		return Timestamp{}, fmt.Errorf("invalid timestamp %q", s)
 	}
@@ -162,9 +165,10 @@ func (ts Timestamp) Compare(o Timestamp) int {
 	return cmp.Compare(ts.nsec, o.nsec)
 }
 
-// String returns ts as the server writes it: the date as [PlainDate.String]
-// writes one, T, and the time of day as [PlainTime.String] writes one, such
-// as 2024-02-29T12:34:56.789, or "infinity" or "-infinity".
+// String returns ts as the server writes it: YYYY-MM-DD, with a sign and at
+// least four digits for a year outside 0000 to 9999, then T and HH:MM:SS
+// with a fraction of three, six or nine digits when ts has one, such as
+// 2024-02-29T12:34:56.789, or "infinity" or "-infinity".
 func (ts Timestamp) String() string {
 	switch ts {
 	case TimestampInfinity:
@@ -211,21 +215,31 @@ func (ts Timestamp) MarshalCBOR() ([]byte, error) {
 
 // UnmarshalCBOR decodes a timestamp (tag 190) into ts, or a datetime (tag 12),
 // which is how plain cbor carries one. As the server does, it carries
-// nanoseconds of a second or more, as a leap second holds, into the seconds.
-// A date decodes as its midnight. NULL and NONE leave ts as it is.
+// nanoseconds of a second or more, as a leap second holds, into the seconds;
+// a datetime may hold them only in a leap second, at the end of a minute. A
+// date decodes as its midnight. NULL and NONE leave ts as it is.
 func (ts *Timestamp) UnmarshalCBOR(data []byte) error {
 	const into = "models.Timestamp"
 	item, absent, err := readKindItem(data, TagTimestamp, into)
 	if err != nil || absent {
 		return err
 	}
-	if !item.tagged || item.tag != TagTimestamp && item.tag != TagCustomDatetime {
+	var sec, nsec int64
+	switch {
+	case item.tagged && item.tag == TagTimestamp:
+		sec, nsec, err = cborwire.ReadTimestamp(item.content)
+	case item.tagged && item.tag == TagCustomDatetime:
+		sec, nsec, err = cborwire.ReadDatetime(item.content)
+	default:
 		return item.mismatch(into)
 	}
-	sec, nsec, err := cborwire.ReadTimestamp(item.content)
+	var parsed Timestamp
+	if err == nil {
+		parsed, err = TimestampFromUnix(sec, nsec)
+	}
 	if err != nil {
 		return fmt.Errorf("cannot decode %s: %w", into, err)
 	}
-	*ts = Timestamp{sec: sec, nsec: int32(nsec)} //nolint:gosec // below a second
+	*ts = parsed
 	return nil
 }
