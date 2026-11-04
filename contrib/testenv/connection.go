@@ -178,6 +178,10 @@ type Config struct {
 	// CBORImpl specifies which CBOR implementation to use.
 	// Default is CBORImplDefault which uses the default from connection.NewConfig.
 	CBORImpl CBORImpl
+
+	// DisableCBORv2 makes the connection speak plain CBOR even with a server
+	// and a codec that speak cbor.2. See connection.Config.DisableCBORv2.
+	DisableCBORv2 bool
 }
 
 func MustNew(namespace, database string, tables ...string) *surrealdb.DB {
@@ -253,6 +257,7 @@ func (c *Config) New() (*surrealdb.DB, error) {
 	}
 
 	conf := connection.NewConfig(u)
+	conf.DisableCBORv2 = c.DisableCBORv2
 	switch c.CBORImpl {
 	case CBORImplFxamackerCBOR:
 		// Explicitly use fxamacker/cbor implementation

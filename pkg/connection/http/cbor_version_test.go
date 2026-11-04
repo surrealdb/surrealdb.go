@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
@@ -268,4 +269,35 @@ func TestCBORNegotiationStepsBack(t *testing.T) {
 		}
 		assert.Equal(t, wantTags, tags, "tags in request %d", i)
 	}
+}
+
+// TestCBORNegotiation_kindsBeforeCBOR2 pins what the 4.0 kinds do before an
+// HTTP connection speaks cbor.2. Its first request goes out as plain CBOR, so
+// a PlainDate in it is widened to a datetime and a Regex, which plain CBOR has
+// no form for, cannot be sent. Let always keeps a plain CBOR copy of a
+// variable, so it cannot hold a Regex at all.
+func TestCBORNegotiation_kindsBeforeCBOR2(t *testing.T) {
+	srv, seen := newCBOREchoServer(t, true)
+	c := surrealcbor.New()
+	conn := New(&connection.Config{BaseURL: srv.URL, Marshaler: c, Unmarshaler: c})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, conn.Use(ctx, "ns", "db"))
+
+	_, err := conn.Send(ctx, "echo", models.Regex{Pattern: "a"})
+	require.ErrorIs(t, err, constants.ErrNeedsCBOR2, "a regex cannot go out as plain CBOR")
+	assert.Empty(t, seen(), "nothing was sent")
+
+	date := models.MustParsePlainDate("2024-02-29")
+	var got any
+	for i, want := range []any{models.CustomDateTime{Time: time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC)}, date} {
+		res, err := conn.Send(ctx, "echo", date)
+		require.NoError(t, err)
+		require.NoError(t, conn.GetUnmarshaler().Unmarshal(*res.Result, &got))
+		assert.Equal(t, want, got, "request %d: widened to a datetime until the connection speaks cbor.2", i)
+	}
+	assert.Equal(t, connection.CBORv2, conn.CBORVersion())
+
+	require.ErrorIs(t, conn.Let(ctx, "re", models.Regex{Pattern: "a"}), constants.ErrNeedsCBOR2)
+	require.NoError(t, conn.Let(ctx, "due", date))
 }
