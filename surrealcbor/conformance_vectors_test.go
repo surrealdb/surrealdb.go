@@ -90,12 +90,19 @@ func loadVectors(t *testing.T, file string) []vector {
 	return vf.Vectors
 }
 
-// knownVectorGaps lists the vectors this codec does not pass yet, with why.
-// They are all about plain cbor, and so hold for cbor.2 as well: the codec
-// predates the vectors and decodes more leniently than SurrealDB 4.0 does.
-// A listed vector that starts passing fails the test, so the list stays true.
-// Keys are "<format>/<vector name>", or "*/<vector name>" for both formats.
+// knownVectorGaps lists the vectors this codec does not pass, with why. Most
+// are about plain cbor, and so hold for cbor.2 as well: the codec predates the
+// vectors and decodes more leniently than SurrealDB 4.0 does. A few follow the
+// released server where the vectors, written from a nightly before it,
+// differ. A listed vector that starts passing fails the test, so the list
+// stays true. Keys are "<format>/<vector name>", or "*/<vector name>" for both
+// formats.
 var knownVectorGaps = map[string]string{
+	// SurrealDB 4.0.0 (commit 4cd688c) carries the nanoseconds of a leap second
+	// into the next second rather than refusing them, and so does the codec.
+	"cbor.2/reject-timestamp-leap-second": "follows SurrealDB 4.0.0, which carries a leap second into the next second",
+	// Ranges decode as a plain array of their bounds' values, losing whether each bound is included.
+	"cbor.2/date-range": "ranges decode as a plain array of their bounds' values, losing whether each bound is included",
 	// Decoding into an interface turns NONE into nil, the same as NULL (by design, see issue 291).
 	"*/none":                    "decoding into an interface turns NONE into nil, the same as NULL (by design, see issue 291)",
 	"*/none-and-null-in-array":  "decoding into an interface turns NONE into nil, the same as NULL (by design, see issue 291)",
@@ -208,7 +215,7 @@ func TestConformanceVectors(t *testing.T) {
 			runVector(t, NewV2(), "cbor.2", &cbor2[i])
 		}
 	})
-	t.Run("cbor.2 accepts the sized-number tags plain cbor refuses", func(t *testing.T) {
+	t.Run("cbor.2 accepts the tags plain cbor refuses", func(t *testing.T) {
 		for i := range cbor1 {
 			v := &cbor1[i]
 			if v.Kind != "reject" || v.holdsFor("cbor.2") {
@@ -301,7 +308,8 @@ func typedKey(m map[string]any) (key string, val any, ok bool) {
 		switch k {
 		case "$none", "$int", "$float", "$i8", "$u8", "$i16", "$u16", "$i32", "$u32", "$u64", "$f16", "$f32",
 			"$decimal", "$string", "$bytes", "$uuid", "$datetime", "$duration", "$array", "$object", "$set",
-			"$table", "$record", "$range", "$file", "$geometry", "$regex":
+			"$table", "$record", "$range", "$file", "$geometry", "$regex",
+			"$date", "$time", "$timestamp", "$interval", "$bigdecimal":
 			return k, v, true
 		}
 	}
@@ -537,7 +545,7 @@ func matchTypedValue(key string, val, got any, v2 bool) error {
 		}
 		return nil
 	case "$datetime":
-		want, err := time.Parse(time.RFC3339Nano, fmt.Sprint(val))
+		want, err := parseVectorDatetime(fmt.Sprint(val))
 		if err != nil {
 			return err
 		}
@@ -609,9 +617,93 @@ func matchTypedValue(key string, val, got any, v2 bool) error {
 		return nil
 	case "$range":
 		return fmt.Errorf("ranges decode into an interface as a plain array of their bounds' values, losing which bounds are inclusive (got %#v)", got)
+	case "$date", "$time", "$timestamp", "$interval", "$bigdecimal", "$regex":
+		// The kinds compare with ==: a bigdecimal by its digits and scale, and
+		// an interval by its parts, as the vectors do, not by value.
+		want, err := typedKindToGo(key, val)
+		if err != nil {
+			return err
+		}
+		if got != want {
+			return fmt.Errorf("want %s %v, got %#v", key[1:], want, got)
+		}
+		return nil
 	default:
 		return fmt.Errorf("unsupported typed value %s", key)
 	}
+}
+
+// typedKindToGo builds the models value of a typed $date, $time, $timestamp,
+// $interval, $bigdecimal or $regex.
+func typedKindToGo(key string, val any) (any, error) {
+	text := fmt.Sprint(val)
+	switch key {
+	case "$date":
+		return models.ParsePlainDate(text)
+	case "$time":
+		return models.ParsePlainTime(text)
+	case "$timestamp":
+		return models.ParseTimestamp(text)
+	case "$bigdecimal":
+		return models.ParseBigDecimal(text)
+	case "$regex":
+		return models.Regex{Pattern: text}, nil
+	}
+	parts, ok := val.([]any)
+	if !ok || len(parts) != 3 {
+		return nil, fmt.Errorf("bad interval %#v", val)
+	}
+	var ints [3]int64
+	for i, p := range parts {
+		n, err := typedInt(p)
+		if err != nil {
+			return nil, err
+		}
+		if !n.IsInt64() {
+			return nil, fmt.Errorf("interval %v is out of range", val)
+		}
+		ints[i] = n.Int64()
+	}
+	if ints[0] != int64(int32(ints[0])) || ints[1] != int64(int32(ints[1])) { //nolint:gosec // checking the range
+		return nil, fmt.Errorf("interval %v is out of range", val)
+	}
+	return models.Interval{
+		Months:       int32(ints[0]), //nolint:gosec // range-checked above
+		Days:         int32(ints[1]), //nolint:gosec // range-checked above
+		Microseconds: ints[2],
+	}, nil
+}
+
+// parseVectorDatetime parses an RFC 3339 datetime. A year outside 0000 to
+// 9999 carries a sign and may have more digits, as in +262142-12-31T00:00:00Z,
+// which time.Parse cannot read, so the rest is parsed with a stand-in year
+// that has the same leap-year status, then moved to the real year.
+func parseVectorDatetime(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	sign, rest := 1, s
+	switch {
+	case strings.HasPrefix(s, "+"):
+		rest = s[1:]
+	case strings.HasPrefix(s, "-"):
+		sign, rest = -1, s[1:]
+	}
+	yearText, tail, found := strings.Cut(rest, "-")
+	year, err := strconv.Atoi(yearText)
+	if !found || err != nil {
+		return time.Time{}, fmt.Errorf("bad datetime %q", s)
+	}
+	year *= sign
+	standIn := 2001
+	if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+		standIn = 2000
+	}
+	t, err := time.Parse(time.RFC3339Nano, strconv.Itoa(standIn)+"-"+tail)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.AddDate(year-standIn, 0, 0), nil
 }
 
 func typedDuration(val any) (time.Duration, error) {
@@ -818,7 +910,7 @@ func typedValueToGo(key string, val any) (any, error) {
 		u, err := uuid.FromString(fmt.Sprint(val))
 		return models.UUID{UUID: u}, err
 	case "$datetime":
-		t, err := time.Parse(time.RFC3339Nano, fmt.Sprint(val))
+		t, err := parseVectorDatetime(fmt.Sprint(val))
 		return models.CustomDateTime{Time: t}, err
 	case "$duration":
 		d, err := typedDuration(val)
@@ -849,6 +941,8 @@ func typedValueToGo(key string, val any) (any, error) {
 		return models.File{Bucket: fmt.Sprint(f["bucket"]), Key: fmt.Sprint(f["key"])}, nil
 	case "$geometry":
 		return typedGeometry(val)
+	case "$date", "$time", "$timestamp", "$interval", "$bigdecimal", "$regex":
+		return typedKindToGo(key, val)
 	default:
 		return nil, fmt.Errorf("no Go value for %s", key)
 	}

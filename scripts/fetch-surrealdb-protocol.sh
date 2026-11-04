@@ -10,14 +10,14 @@
 # git), or to the directory given as the first argument. CI checks out the same
 # tag (see .github/workflows/test.yml); keep the two in step.
 #
-# The vectors are fetched rather than vendored because this release of
-# surrealdb-protocol is not under an open-source licence; they can be vendored
-# once a release is.
+# Releases of surrealdb-protocol from v0.15.0 are under the Apache License 2.0,
+# so the vectors could be vendored. They are still fetched, so that moving to a
+# new release stays a matter of changing the tag here and in CI.
 set -euo pipefail
 
-TAG="v0.14.0"
+TAG="v0.15.0"
 # The annotated tag object, so a moved tag is noticed.
-TAG_OBJECT="be258307dfd989a232ff81ace6f16a6bbcaf991d"
+TAG_OBJECT="0aedde2f8ca19486081d0e7600bc3a584da2b353"
 REPO="https://github.com/surrealdb/surrealdb-protocol.git"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
