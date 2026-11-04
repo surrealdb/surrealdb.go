@@ -93,9 +93,17 @@ func (l *LetStatement) build(c *queryBuildContext, builder *strings.Builder) {
 		builder.WriteString("(")
 		v.build(c, builder)
 		builder.WriteString(")")
+	case surrealStringer:
+		builder.WriteString(v.SurrealString())
 	default:
 		fmt.Fprintf(builder, "%v", v)
 	}
+}
+
+// surrealStringer is a value that can write itself as a SurrealQL literal,
+// such as a models.PlainDate, whose String method gives display text instead.
+type surrealStringer interface {
+	SurrealString() string
 }
 
 func (i *IfStatement) build(c *queryBuildContext, builder *strings.Builder) {
@@ -127,6 +135,8 @@ func (t *ThrowStatement) build(c *queryBuildContext, b *strings.Builder) {
 	switch v := t.err.(type) {
 	case string:
 		fmt.Fprintf(b, "%q", v)
+	case surrealStringer:
+		b.WriteString(v.SurrealString())
 	default:
 		fmt.Fprintf(b, "%v", v)
 	}
