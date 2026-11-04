@@ -8,6 +8,9 @@ import (
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
+// maxKindHeadLength is the most a tag and a text head can take before the text.
+const maxKindHeadLength = 3 + 9
+
 // decodeCBOR2KindTag decodes a date, time, timestamp, interval, bigdecimal or
 // regex (tags 100 and 189 to 193, which only cbor.2 carries) whose tagged item
 // starts at start. The tag number has been read.
@@ -24,6 +27,11 @@ func (d *decoder) decodeCBOR2KindTag(tagNum uint64, start int, v reflect.Value) 
 		return err
 	}
 	raw := d.data[start:d.pos]
+	// A bigdecimal or a regex is text: hold it to the limit other text has.
+	if uint64(len(raw)) > MaxCBORStringLength+maxKindHeadLength {
+		return fmt.Errorf("CBOR tag %d (%s) of %d bytes exceeds maximum allowed (%d)",
+			tagNum, cbor2TagName[tagNum], len(raw), MaxCBORStringLength)
+	}
 	switch {
 	case v.Kind() == reflect.Interface:
 		return setKindValue(v, tagNum, raw)

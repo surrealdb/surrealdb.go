@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -183,4 +184,29 @@ func TestDecode_cbor2KindsNoneAndNull(t *testing.T) {
 	row.Due = models.MustParsePlainDate("2024-02-29")
 	require.NoError(t, NewV2().Unmarshal(mustDecodeHex(t, "a163647565c6f6"), &row))
 	assert.Equal(t, models.PlainDate{}, row.Due)
+}
+
+// A text head that claims more bytes than the input holds is an error, not
+// a panic, even with a length near math.MaxInt64.
+func TestDecode_cbor2KindsHugeLength(t *testing.T) {
+	for _, in := range []string{"d8c07b7fffffffffffffff", "d8c17b7fffffffffffffff", "d8647b7fffffffffffffff"} {
+		var v any
+		assert.Error(t, NewV2().Unmarshal(mustDecodeHex(t, in), &v), in)
+		var s string
+		assert.Error(t, NewV2().Unmarshal(mustDecodeHex(t, in), &s), in)
+		var at time.Time
+		assert.Error(t, NewV2().Unmarshal(mustDecodeHex(t, in), &at), in)
+	}
+	var raw cbor.RawMessage
+	assert.Error(t, NewV2().Unmarshal(mustDecodeHex(t, "7b7fffffffffffffff"), &raw))
+
+	// A pattern past the limit on text is refused too.
+	defer func(old uint64) { MaxCBORStringLength = old }(MaxCBORStringLength)
+	MaxCBORStringLength = 4
+	var r models.Regex
+	require.NoError(t, NewV2().Unmarshal(mustDecodeHex(t, "d8c16461626364"), &r), "four bytes are fine")
+	var v any
+	long, err := models.Regex{Pattern: "abcdefghijklmnopqrst"}.MarshalCBOR()
+	require.NoError(t, err)
+	assert.ErrorContains(t, NewV2().Unmarshal(long, &v), "exceeds maximum allowed")
 }
