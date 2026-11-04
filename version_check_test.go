@@ -10,9 +10,10 @@ func TestIsVersionSupported(t *testing.T) {
 	supported := []string{
 		"4.0.0", "surrealdb-4.0.0", "v4.0.1", "4.0.0-alpha.1", "4.0.0-beta.1",
 		"4.1.0-nightly+20261014.abcdef0", "4.9.99", "4.1",
+		"3.3.0", "3.3.0-beta.1", "v3.3.4", "3.99.99", "3.4.0-nightly",
 	}
 	unsupported := []string{
-		"1.5.6", "2.1.0", "surrealdb-2.6.0", "v3.0.1", "3.3.5", "3.99.99", "3.4.0-nightly",
+		"1.5.6", "2.1.0", "surrealdb-2.6.0", "v3.0.1", "3.2.6", "3.2.99-nightly",
 		"5.0.0", "5.0.0-alpha.1", "6.1.0",
 		"", "nonsense", "4", "4.x.0", "-1.2.3",
 	}

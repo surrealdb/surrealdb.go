@@ -46,11 +46,26 @@ To use the SDK, please refer to the [documentation](https://pkg.go.dev/github.co
 
 ### Supported SurrealDB versions
 
-The SDK supports SurrealDB 4.0 and later 4.x versions, including pre-releases
-such as 4.0.0-beta.1. `surrealdb.MinimumServerVersion` and
+The SDK supports SurrealDB 3.3 and later 3.x versions, and 4.x versions,
+including pre-releases such as 4.0.0-beta.1. `surrealdb.MinimumServerVersion` and
 `surrealdb.MaximumServerVersion` give the range. To make connecting fail when
 the server is outside it, pass `surrealdb.WithVersionCheck(true)`. The check is
 off by default.
+
+SurrealDB 4.0 is recommended. With a 3.x server, these limits apply:
+
+- The kinds that SurrealDB 4.0 adds, such as the sized numbers (`i8` to `u64`,
+  `f16` and `f32`), need a 4.0 server. A 3.x server does not speak cbor.2, so
+  the SDK uses plain CBOR, and sized numbers are sent as `int` and `float`.
+- `QueryRaw` cannot always match results to statements when the query has a
+  transaction. SurrealDB 3.x does not return one result for each statement
+  when a transaction has a `RETURN` statement, or is canceled after a
+  statement in it failed. `QueryRaw` then returns an error, and gives no
+  statement a result. Use `Query` for these transactions.
+- Error kinds are less precise. For example, a value that does not match a
+  field's type is an `Internal` error with code -32000 on 3.x, but a
+  `Validation` error with code -32600 on 4.0. Do not depend on
+  `ServerError.Kind` or `ServerError.Details` to have the 4.0 values.
 
 ### SurrealDB 4.0 and cbor.2
 
