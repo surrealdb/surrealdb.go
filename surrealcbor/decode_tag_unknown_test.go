@@ -12,7 +12,7 @@ import (
 func TestDecode_unknownTag(t *testing.T) {
 	t.Run("decode unknown tag", func(t *testing.T) {
 		// Unknown tag number
-		data := []byte{0xD8, 0x64, 0x61, 0x61} // Tag 100 with "a"
+		data := []byte{0xD8, 0x63, 0x61, 0x61} // Tag 99, which nothing assigns, with "a"
 
 		var v any
 		err := Unmarshal(data, &v)
