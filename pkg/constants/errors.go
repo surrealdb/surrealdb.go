@@ -31,4 +31,8 @@ var (
 	// ErrForkUntracked is returned by Fork for a session this client did not
 	// attach, as the client does not know its state.
 	ErrForkUntracked = errors.New("cannot fork a session this client did not attach")
+	// ErrNeedsCBOR2 is wrapped by the error returned when a value with no
+	// plain CBOR form, such as a models.Regex, is encoded as plain CBOR.
+	// cbor.2 carries it.
+	ErrNeedsCBOR2 = errors.New("the value can only be sent over cbor.2")
 )

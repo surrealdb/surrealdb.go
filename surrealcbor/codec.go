@@ -106,6 +106,7 @@ func (c *Codec) Marshal(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	dialect := cborwire.Plain
 	if c.CBORVersion() >= cborV2 {
 		// Tag the sized numbers first: tagSizedNumbers walks data alongside v,
 		// so it needs the encoder's output as it was written. Normalize then
@@ -113,6 +114,7 @@ func (c *Codec) Marshal(v any) ([]byte, error) {
 		if data, err = tagSizedNumbers(data, v); err != nil {
 			return nil, err
 		}
+		dialect = cborwire.CBOR2
 	}
-	return cborwire.Normalize(data)
+	return cborwire.Normalize(data, dialect)
 }

@@ -18,6 +18,15 @@ func mustHex(t *testing.T, s string) []byte {
 	return b
 }
 
+// forEachDialect runs f under plain cbor and under cbor.2: the rewrites it
+// checks happen in either.
+func forEachDialect(t *testing.T, f func(t *testing.T, d Dialect)) {
+	t.Helper()
+	for _, d := range []Dialect{Plain, CBOR2} {
+		t.Run(d.String(), func(t *testing.T) { f(t, d) })
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := []struct {
 		name string
@@ -75,35 +84,39 @@ func TestNormalize(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			in, err := cbor.Marshal(tc.in)
-			require.NoError(t, err)
-			out, err := Normalize(in)
-			require.NoError(t, err)
+			forEachDialect(t, func(t *testing.T, d Dialect) {
+				in, err := cbor.Marshal(tc.in)
+				require.NoError(t, err)
+				out, err := Normalize(in, d)
+				require.NoError(t, err)
 
-			var got any
-			require.NoError(t, cbor.Unmarshal(out, &got))
-			want, err := cbor.Marshal(tc.want)
-			require.NoError(t, err)
-			var wantDecoded any
-			require.NoError(t, cbor.Unmarshal(want, &wantDecoded))
-			assert.Equal(t, wantDecoded, got)
+				var got any
+				require.NoError(t, cbor.Unmarshal(out, &got))
+				want, err := cbor.Marshal(tc.want)
+				require.NoError(t, err)
+				var wantDecoded any
+				require.NoError(t, cbor.Unmarshal(want, &wantDecoded))
+				assert.Equal(t, wantDecoded, got)
+			})
 		})
 	}
 }
 
 func TestNormalize_negativeBelowI64(t *testing.T) {
-	// -2^64, the most negative integer CBOR can hold.
-	out, err := Normalize(mustHex(t, "3bffffffffffffffff"))
-	require.NoError(t, err)
-	var got cbor.Tag
-	require.NoError(t, cbor.Unmarshal(out, &got))
-	assert.Equal(t, cbor.Tag{Number: 10, Content: "-18446744073709551616"}, got)
+	forEachDialect(t, func(t *testing.T, d Dialect) {
+		// -2^64, the most negative integer CBOR can hold.
+		out, err := Normalize(mustHex(t, "3bffffffffffffffff"), d)
+		require.NoError(t, err)
+		var got cbor.Tag
+		require.NoError(t, cbor.Unmarshal(out, &got))
+		assert.Equal(t, cbor.Tag{Number: 10, Content: "-18446744073709551616"}, got)
 
-	// math.MinInt64 is still an integer.
-	in := mustHex(t, "3b7fffffffffffffff")
-	out, err = Normalize(in)
-	require.NoError(t, err)
-	assert.Equal(t, in, out)
+		// math.MinInt64 is still an integer.
+		in := mustHex(t, "3b7fffffffffffffff")
+		out, err = Normalize(in, d)
+		require.NoError(t, err)
+		assert.Equal(t, in, out)
+	})
 }
 
 func TestNormalize_leavesOtherBytesAlone(t *testing.T) {
@@ -111,28 +124,34 @@ func TestNormalize_leavesOtherBytesAlone(t *testing.T) {
 		"s": "text", "b": []byte{1, 2}, "f": 1.5, "t": cbor.Tag{Number: 12, Content: []int64{1, 2}},
 	})
 	require.NoError(t, err)
-	out, err := Normalize(in)
-	require.NoError(t, err)
-	assert.Same(t, &in[0], &out[0], "nothing to rewrite returns the input")
+	forEachDialect(t, func(t *testing.T, d Dialect) {
+		out, err := Normalize(in, d)
+		require.NoError(t, err)
+		assert.Same(t, &in[0], &out[0], "nothing to rewrite returns the input")
+	})
 }
 
 func TestNormalize_indefiniteLength(t *testing.T) {
 	// [_ "a" "b" tag0("1970-01-01T00:00:01Z") ] with an indefinite text "a".
 	in := mustHex(t, "9f7f6161ff6162c074313937302d30312d30315430303a30303a30315aff")
-	out, err := Normalize(in)
-	require.NoError(t, err)
-	var got []any
-	require.NoError(t, cbor.Unmarshal(out, &got))
-	require.Len(t, got, 3)
-	assert.Equal(t, "a", got[0])
-	assert.Equal(t, cbor.Tag{Number: 12, Content: []any{uint64(1), uint64(0)}}, got[2])
+	forEachDialect(t, func(t *testing.T, d Dialect) {
+		out, err := Normalize(in, d)
+		require.NoError(t, err)
+		var got []any
+		require.NoError(t, cbor.Unmarshal(out, &got))
+		require.Len(t, got, 3)
+		assert.Equal(t, "a", got[0])
+		assert.Equal(t, cbor.Tag{Number: 12, Content: []any{uint64(1), uint64(0)}}, got[2])
+	})
 }
 
 func TestNormalize_stream(t *testing.T) {
 	in := append(mustHex(t, "01"), mustHex(t, "c974")...)
 	in = append(in, []byte("not-a-uuid-at-all-xx")...)
-	_, err := Normalize(in)
-	assert.ErrorContains(t, err, "invalid UUID")
+	forEachDialect(t, func(t *testing.T, d Dialect) {
+		_, err := Normalize(in, d)
+		assert.ErrorContains(t, err, "invalid UUID")
+	})
 }
 
 func TestNormalize_invalid(t *testing.T) {
@@ -142,26 +161,27 @@ func TestNormalize_invalid(t *testing.T) {
 		"text tag on int": "c001",
 		"stray break":     "ff",
 	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := Normalize(mustHex(t, in))
-			assert.Error(t, err)
+		forEachDialect(t, func(t *testing.T, d Dialect) {
+			_, err := Normalize(mustHex(t, in), d)
+			assert.Error(t, err, name)
 		})
 	}
 }
 
 func TestNormalize_sizedNumbersAreLeft(t *testing.T) {
+	// Only cbor.2 has the sized-number tags.
 	// 186(18446744073709551615), a u64 in cbor.2, must not become 186(10(...)).
 	in := mustHex(t, "d8ba1bffffffffffffffff")
-	out, err := Normalize(in)
+	out, err := Normalize(in, CBOR2)
 	require.NoError(t, err)
 	assert.Equal(t, in, out)
 
 	// Nor is a text tag inside one rewritten, but one after it is.
 	in = mustHex(t, "82d8bcc0636e6f77c96130")
-	_, err = Normalize(in)
+	_, err = Normalize(in, CBOR2)
 	require.ErrorContains(t, err, "invalid UUID", "the walk goes on after the sized number")
 	in = mustHex(t, "81d8bcc0636e6f77")
-	out, err = Normalize(in)
+	out, err = Normalize(in, CBOR2)
 	require.NoError(t, err)
 	assert.Equal(t, in, out)
 }
@@ -176,21 +196,25 @@ func TestNormalize_datetimeOutsideFourDigitYears(t *testing.T) {
 		time.Date(10001, 3, 1, 0, 0, 0, 0, time.UTC),
 	} {
 		t.Run(at.Format(time.RFC3339Nano), func(t *testing.T) {
-			text := at.Format(time.RFC3339Nano)
-			in, err := cbor.Marshal(cbor.Tag{Number: 0, Content: text})
-			require.NoError(t, err)
-			out, err := Normalize(in)
-			require.NoError(t, err)
-			var got cbor.Tag
-			require.NoError(t, cbor.Unmarshal(out, &got))
-			nanos := uint64(at.Nanosecond()) //nolint:gosec // 0 to 999999999
-			assert.Equal(t, cbor.Tag{Number: 12, Content: []any{toCBORInt(at.Unix()), nanos}}, got)
+			forEachDialect(t, func(t *testing.T, d Dialect) {
+				text := at.Format(time.RFC3339Nano)
+				in, err := cbor.Marshal(cbor.Tag{Number: 0, Content: text})
+				require.NoError(t, err)
+				out, err := Normalize(in, d)
+				require.NoError(t, err)
+				var got cbor.Tag
+				require.NoError(t, cbor.Unmarshal(out, &got))
+				nanos := uint64(at.Nanosecond()) //nolint:gosec // 0 to 999999999
+				assert.Equal(t, cbor.Tag{Number: 12, Content: []any{toCBORInt(at.Unix()), nanos}}, got)
+			})
 		})
 	}
 
-	_, err := Normalize(mustHex(t, "c0"+hex.EncodeToString(append([]byte{0x74}, "10000-13-01T00:00:00Z"[:20]...))))
-	require.Error(t, err)
-	assert.NotContains(t, err.Error(), "tag 0", "a caller who passed a time.Time never saw tag 0")
+	forEachDialect(t, func(t *testing.T, d Dialect) {
+		_, err := Normalize(mustHex(t, "c0"+hex.EncodeToString(append([]byte{0x74}, "10000-13-01T00:00:00Z"[:20]...))), d)
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "tag 0", "a caller who passed a time.Time never saw tag 0")
+	})
 }
 
 func toCBORInt(v int64) any {
@@ -212,22 +236,26 @@ func TestNormalize_longDurations(t *testing.T) {
 		"18446744073709551614s1000ms":      {uint64(math.MaxUint64), uint64(0)},
 	} {
 		t.Run(text, func(t *testing.T) {
-			in, err := cbor.Marshal(cbor.Tag{Number: 13, Content: text})
-			require.NoError(t, err)
-			out, err := Normalize(in)
-			require.NoError(t, err)
-			var got cbor.Tag
-			require.NoError(t, cbor.Unmarshal(out, &got))
-			assert.Equal(t, cbor.Tag{Number: 14, Content: want}, got)
+			forEachDialect(t, func(t *testing.T, d Dialect) {
+				in, err := cbor.Marshal(cbor.Tag{Number: 13, Content: text})
+				require.NoError(t, err)
+				out, err := Normalize(in, d)
+				require.NoError(t, err)
+				var got cbor.Tag
+				require.NoError(t, cbor.Unmarshal(out, &got))
+				assert.Equal(t, cbor.Tag{Number: 14, Content: want}, got)
+			})
 		})
 	}
 
 	for _, text := range []string{"584942417356y", "18446744073709551615s1000ms", "18446744073709551616ns"} {
 		t.Run(text, func(t *testing.T) {
-			in, err := cbor.Marshal(cbor.Tag{Number: 13, Content: text})
-			require.NoError(t, err)
-			_, err = Normalize(in)
-			assert.ErrorContains(t, err, "too long")
+			forEachDialect(t, func(t *testing.T, d Dialect) {
+				in, err := cbor.Marshal(cbor.Tag{Number: 13, Content: text})
+				require.NoError(t, err)
+				_, err = Normalize(in, d)
+				assert.ErrorContains(t, err, "too long")
+			})
 		})
 	}
 }

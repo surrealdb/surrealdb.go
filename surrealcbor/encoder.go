@@ -81,7 +81,7 @@ func (enc *Encoder) Encode(v any) error {
 	if err != nil {
 		return err
 	}
-	data, err = cborwire.Normalize(data)
+	data, err = cborwire.Normalize(data, cborwire.Plain)
 	if err != nil {
 		return err
 	}

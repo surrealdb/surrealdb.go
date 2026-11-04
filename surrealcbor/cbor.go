@@ -159,7 +159,7 @@ func Marshal(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cborwire.Normalize(data)
+	return cborwire.Normalize(data, cborwire.Plain)
 }
 
 // NewEncoder creates an encoder that writes to w
