@@ -353,14 +353,21 @@ func ReadInterval(content []byte) (months, days int32, micros int64, err error) 
 	if n != 3 {
 		return 0, 0, 0, fmt.Errorf("want an array of 3 integers, got %d", n)
 	}
-	if !fitsInt32(ints[0]) || !fitsInt32(ints[1]) {
+	months, okMonths := toInt32(ints[0])
+	days, okDays := toInt32(ints[1])
+	if !okMonths || !okDays {
 		return 0, 0, 0, errors.New("interval months and days must fit 32 bits")
 	}
-	return int32(ints[0]), int32(ints[1]), ints[2], nil //nolint:gosec // range-checked above
+	return months, days, ints[2], nil
 }
 
-func fitsInt32(v int64) bool {
-	return v >= math.MinInt32 && v <= math.MaxInt32
+// toInt32 converts v to an int32, reporting false when it does not fit. The
+// check sits beside the conversion so code scanning sees it is bounded.
+func toInt32(v int64) (int32, bool) {
+	if v < math.MinInt32 || v > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(v), true
 }
 
 // readInt reads one CBOR integer within the range of an int64.
@@ -472,10 +479,12 @@ func ParseInterval(s string) (months, days int32, micros int64, err error) {
 	if i != len(s) || parts == 0 {
 		return 0, 0, 0, fmt.Errorf("%w %q", errBadInterval, s)
 	}
-	if !fitsInt32(totalMonths) || !fitsInt32(totalDays) {
+	months, okMonths := toInt32(totalMonths)
+	days, okDays := toInt32(totalDays)
+	if !okMonths || !okDays {
 		return 0, 0, 0, fmt.Errorf("%w %q: months and days must fit 32 bits", errBadInterval, s)
 	}
-	return int32(totalMonths), int32(totalDays), micros, nil //nolint:gosec // range-checked above
+	return months, days, micros, nil
 }
 
 // parseIntervalTime parses the hours, minutes and seconds after the T of an
