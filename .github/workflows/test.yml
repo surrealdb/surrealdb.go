@@ -16,42 +16,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The oldest supported release, 4.0.0-beta.1. Move these to the docker
-          # `v4` tag once 4.0.0 is out.
-          - surrealdb-version: 'v4.0.0-beta.1'
+          # The latest 4.x release. 4.0.0 made files stable, so it refuses
+          # `--allow-experimental files`.
+          - surrealdb-version: 'v4'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-start-flags: '--allow-experimental files'
-          - surrealdb-version: 'v4.0.0-beta.1'
+          - surrealdb-version: 'v4'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-            surrealdb-start-flags: '--allow-experimental files'
           # gws
-          - surrealdb-version: 'v4.0.0-beta.1'
+          - surrealdb-version: 'v4'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-connection-impl: 'gws'
           # gorilla/websocket, fxamackercbor (legacy)
-          - surrealdb-version: 'v4.0.0-beta.1'
+          - surrealdb-version: 'v4'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-cbor-impl: 'fxamackercbor'
           # gorilla/websocket, reconnection
-          - surrealdb-version: 'v4.0.0-beta.1'
+          - surrealdb-version: 'v4'
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-start-flags: '--allow-experimental files'
             surrealdb-reconnection-check-interval: '1s'
           # The oldest supported Go
-          - surrealdb-version: 'v4.0.0-beta.1'
+          - surrealdb-version: 'v4'
             go-version: '1.24.6'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+          # The oldest supported release, 4.0.0-beta.1, which still needs the
+          # files capability turned on.
+          - surrealdb-version: 'v4.0.0-beta.1'
+            go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-start-flags: '--allow-experimental files'
@@ -60,13 +61,11 @@ jobs:
             go-version: '1.25.0'
             connection-type: 'ws'
             surrealdb-url: 'ws://localhost:8000/rpc'
-            surrealdb-start-flags: '--allow-experimental files'
             experimental: true
           - surrealdb-version: 'nightly'
             go-version: '1.25.0'
             connection-type: 'http'
             surrealdb-url: 'http://localhost:8000'
-            surrealdb-start-flags: '--allow-experimental files'
             experimental: true
     name: test (${{ matrix.surrealdb-version }}, ${{ matrix.connection-type }}${{ matrix.surrealdb-connection-impl && format(', {0}', matrix.surrealdb-connection-impl) || '' }}${{ matrix.surrealdb-cbor-impl && format(', {0}', matrix.surrealdb-cbor-impl) || '' }}${{ matrix.surrealdb-reconnection-check-interval && ', reconnect' || '' }}, go ${{ matrix.go-version }})
     continue-on-error: ${{ matrix.experimental == true }}
@@ -94,15 +93,21 @@ jobs:
         run: |
           docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:${{ matrix.surrealdb-version }} start --user root --pass root ${{ matrix.surrealdb-start-flags }}
           docker run --rm surrealdb/surrealdb:${{ matrix.surrealdb-version }} version
-          # Wait for SurrealDB to be ready
+          # Wait for SurrealDB to be ready, and fail here if it does not start
+          ready=false
           for i in {1..30}; do
             if curl -f http://localhost:8000/health 2>/dev/null; then
               echo "SurrealDB is ready"
+              ready=true
               break
             fi
             echo "Waiting for SurrealDB to start... ($i/30)"
             sleep 2
           done
+          if [ "$ready" != true ]; then
+            docker logs surrealdb
+            exit 1
+          fi
       - name: Test ${{ matrix.connection-type }} connection
         run: go test -v -cover -race $GO_TEST_FLAGS ./...
         env:
@@ -130,16 +135,22 @@ jobs:
       # Start SurrealDB
       - name: Start SurrealDB
         run: |
-          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v4.0.0-beta.1 start --user root --pass root
-          # Wait for SurrealDB to be ready
+          docker run -d --name surrealdb -p 8000:8000 surrealdb/surrealdb:v4 start --user root --pass root
+          # Wait for SurrealDB to be ready, and fail here if it does not start
+          ready=false
           for i in {1..30}; do
             if curl -f http://localhost:8000/health 2>/dev/null; then
               echo "SurrealDB is ready"
+              ready=true
               break
             fi
             echo "Waiting for SurrealDB to start... ($i/30)"
             sleep 2
           done
+          if [ "$ready" != true ]; then
+            docker logs surrealdb
+            exit 1
+          fi
 
       # Run E2E migration test using Makefile
       - name: Run SurrealNote E2E Migration Test
@@ -167,7 +178,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        timezone: [UTC, Asia/Jerusalem]
+        # A negative offset too, where midnight UTC falls on the day before.
+        timezone: [UTC, Asia/Jerusalem, America/Los_Angeles]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -177,7 +189,7 @@ jobs:
           cache-dependency-path: go.sum
       - name: Run datetime decode tests
         run: |
-          go test -v -race ./surrealcbor/... \
-            -run 'TestDecode_(array|map)_withAllSupportedTypes|TestDecode_map_structwithAllSupportedTypes'
+          go test -v -race ./surrealcbor/... ./pkg/models/... \
+            -run 'TestDecode_(array|map)_withAllSupportedTypes|TestDecode_map_structwithAllSupportedTypes|TestDecode_cbor2Kinds|TestPlainDate|TestPlainTime|TestTimestamp|TestKinds_|TestCustomDateTime_decodesDatesAndTimestamps'
         env:
           TZ: ${{ matrix.timezone }}
