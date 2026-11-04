@@ -681,6 +681,12 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 		s.Require().Error(surrealdb.QueryRaw(ctx, s.db, &queries))
 	})
 
+	// SurrealDB 3.x does not return one result per statement for a transaction
+	// canceled after a failure, or for one with a RETURN in it, so QueryRaw
+	// cannot match its results to the statements. It returns an error rather
+	// than give a statement another's result.
+	v4 := getVersion(s.T()).IsV4OrLater()
+
 	s.Run("a failed transaction", func() {
 		// Once THROW fails the transaction, the server runs neither the statements
 		// nor the markers after it, and returns an error in place of each.
@@ -692,6 +698,12 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 				{SQL: "RETURN 5"},
 				{SQL: end},
 				{SQL: "RETURN 6"},
+			}
+			if !v4 && end == "CANCEL" {
+				err := surrealdb.QueryRaw(ctx, s.db, &queries)
+				s.Require().Error(err, end)
+				s.Contains(err.Error(), "cannot be matched to the statements", end)
+				continue
 			}
 			s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries), end)
 			s.Equal("OK", queries[0].Result.Status, "BEGIN")
@@ -739,6 +751,12 @@ func (s *SurrealDBTestSuite) TestQueryRaw_alignment() {
 			{SQL: "UPSERT users:queryraw_after_return"},
 			{SQL: "COMMIT"},
 			{SQL: "RETURN 7"},
+		}
+		if !v4 {
+			err := surrealdb.QueryRaw(ctx, s.db, &queries)
+			s.Require().Error(err)
+			s.Contains(err.Error(), "did not yield exactly one result")
+			return
 		}
 		s.Require().NoError(surrealdb.QueryRaw(ctx, s.db, &queries))
 		var ok bool

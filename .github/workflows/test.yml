@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The oldest supported release, 4.0.0-beta.1. Move these to the docker
+          # SurrealDB 4.0, as 4.0.0-beta.1. Move these to the docker
           # `v4` tag once 4.0.0 is out.
           - surrealdb-version: 'v4.0.0-beta.1'
             go-version: '1.25.0'
@@ -49,6 +49,18 @@ jobs:
             surrealdb-url: 'ws://localhost:8000/rpc'
             surrealdb-start-flags: '--allow-experimental files'
             surrealdb-reconnection-check-interval: '1s'
+          # SurrealDB 3.x, which the SDK supports from 3.3.0 with some limits
+          # (see the README).
+          - surrealdb-version: 'v3.3.4'
+            go-version: '1.25.0'
+            connection-type: 'ws'
+            surrealdb-url: 'ws://localhost:8000/rpc'
+            surrealdb-start-flags: '--allow-experimental files'
+          - surrealdb-version: 'v3.3.4'
+            go-version: '1.25.0'
+            connection-type: 'http'
+            surrealdb-url: 'http://localhost:8000'
+            surrealdb-start-flags: '--allow-experimental files'
           # The oldest supported Go
           - surrealdb-version: 'v4.0.0-beta.1'
             go-version: '1.24.6'
