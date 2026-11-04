@@ -146,8 +146,7 @@ func (d *decoder) tryUnmarshaler(v reflect.Value) error {
 	return errNoUnmarshaler // Signal that no unmarshaler was found
 }
 
-// tryUnmarshalerPointer handles Unmarshaler for pointer types
-// We already filtered out models package types in canImplementUnmarshaler
+// tryUnmarshalerPointer handles Unmarshaler for pointer types.
 func (d *decoder) tryUnmarshalerPointer(v reflect.Value) error {
 	if v.IsNil() {
 		// Check if the pointed-to type implements Unmarshaler

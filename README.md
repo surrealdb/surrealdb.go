@@ -106,8 +106,10 @@ otherwise. A regex cannot be sent: encoding one fails with an error that wraps
 
 An HTTP connection sends plain CBOR until the server has answered it in
 cbor.2, and again after any answer that is not cbor.2, such as an error page.
-A value of these kinds in such a request is stored as its widened kind, and a
-regex fails before anything is sent. `Let` over HTTP keeps a plain CBOR copy
+A value of these kinds in such a request is stored as its widened kind. A
+regex fails before anything is sent, and as no answer comes back, it keeps
+failing until another request switches the connection to cbor.2. `Let` over
+HTTP keeps a plain CBOR copy
 of each variable, so it cannot hold a regex. To send cbor.2 from the first
 request, connect with `surrealdb.WithVersionCheck(true)`, which asks the
 server for its version on connect, or sign in first.

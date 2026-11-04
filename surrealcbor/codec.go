@@ -50,10 +50,11 @@ const (
 //     [models.Interval], [models.BigDecimal] and [models.Regex] are sent as
 //     SurrealDB's date, time, timestamp, interval, bigdecimal and regex (CBOR
 //     tags 100 and 189 to 193), wherever they are in a value. Decoding into
-//     an interface yields those types. Into any other Go type a value decodes
-//     as plain cbor carries it: a date into a time.Time is its midnight UTC,
-//     and an interval into a string is its ISO 8601 text. A regex decodes
-//     into a string as its pattern.
+//     an interface yields those types, and each of them keeps what cbor.2
+//     carries, such as the scale of a bigdecimal. Into any other Go type a
+//     value decodes as plain cbor carries it: a date into a time.Time is its
+//     midnight UTC, and an interval into a string is its ISO 8601 text. A
+//     regex decodes into a string as its pattern.
 //
 // Over plain cbor those kinds are widened as the server widens them: a date
 // or a timestamp to a datetime, a time to a duration, an interval to its ISO

@@ -94,11 +94,23 @@ func TestMarshal_cbor2KindsRoundTrip(t *testing.T) {
 	require.NoError(t, NewV2().Unmarshal(data, &out))
 	assert.Equal(t, in, out)
 
-	// Over plain cbor, all but the regex make the trip, each read back from
-	// its widened form.
+	// Plain cbor has no form for a regex, even the empty pattern.
 	in.Pattern = models.Regex{}
 	_, err = New().Marshal(in)
-	require.ErrorIs(t, err, constants.ErrNeedsCBOR2, "even the empty pattern is a regex")
+	require.ErrorIs(t, err, constants.ErrNeedsCBOR2)
+}
+
+// SurrealDB 4.0 gives tags 100 and 189 to 193 to its kinds, so a plain cbor
+// encoder reads them as those kinds, and refuses other content. A user type
+// that writes tag 100 for something else can still be sent over cbor.2,
+// which passes the tag through, though the server reads it as a date.
+func TestMarshal_cbor2KindTagsAreTheKinds(t *testing.T) {
+	custom := CustomTaggedType{Value: "hello", TagNum: 100, Wrapped: true}
+	_, err := New().Marshal(custom)
+	require.ErrorContains(t, err, "tag 100 must contain an integer within the range of a date")
+	data, err := NewV2().Marshal(custom)
+	require.NoError(t, err)
+	assert.Equal(t, "d8646568656c6c6f", hex.EncodeToString(data))
 }
 
 // The deprecated fxamacker-based codec widens the kinds too.

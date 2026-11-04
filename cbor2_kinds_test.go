@@ -2,6 +2,7 @@ package surrealdb_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,13 +19,19 @@ import (
 
 // requireKinds skips the test unless the server knows SurrealDB 4.0's date,
 // time, timestamp, interval, bigdecimal and regex kinds and their literals,
-// as 4.0.0 does. Over HTTP it also makes the connection speak cbor.2 if the
-// server does, as the first request is plain CBOR.
+// as 4.0.0 does: a server without them refuses to parse pd”. Its answer is a
+// string, so a failure to decode a kind cannot pass for a skip. Over HTTP it
+// also makes the connection speak cbor.2 if the server does, as the first
+// request is plain CBOR.
 func requireKinds(ctx context.Context, t *testing.T, db *surrealdb.DB) {
 	t.Helper()
-	if _, err := surrealdb.Query[any](ctx, db, "RETURN pd'2024-01-15'", nil); err != nil {
+	res, err := surrealdb.Query[string](ctx, db, "RETURN type::of(pd'2024-01-15')", nil)
+	var serverErr surrealdb.ServerError
+	if errors.As(err, &serverErr) {
 		t.Skipf("the server does not know the SurrealDB 4.0 kinds: %v", err)
 	}
+	require.NoError(t, err)
+	require.Equal(t, "date", (*res)[0].Result)
 }
 
 // kindValues has one value of each kind, and kindLiterals the same values as
@@ -149,6 +156,13 @@ func TestCBOR2Kinds(t *testing.T) {
 		}, (*res)[0].Result)
 	})
 
+	t.Run("a bigdecimal that fits a decimal stays a bigdecimal", func(t *testing.T) {
+		// SurrealDB 4.0.0 sends it as tag 192, where protocol v0.15.0 says tag 10.
+		res, err := surrealdb.Query[any](ctx, db, "RETURN 1.50bigdec", nil)
+		require.NoError(t, err)
+		assert.Equal(t, models.MustParseBigDecimal("1.50"), (*res)[0].Result)
+	})
+
 	t.Run("intervals compare as the server compares them", func(t *testing.T) {
 		month, days := models.Interval{Months: 1}, models.Interval{Days: 30}
 		res, err := surrealdb.Query[bool](ctx, db, "RETURN $a = $b", map[string]any{"a": month, "b": days})
@@ -201,6 +215,18 @@ func TestCBOR2Kinds_plainCBOR(t *testing.T) {
 			Every: values[3].(models.Interval),
 			Price: values[4].(models.BigDecimal),
 		}, (*res)[0].Result)
+	})
+
+	t.Run("the date infinity widened to the latest datetime", func(t *testing.T) {
+		// SurrealDB 4.0.0 widens it to its latest datetime, where protocol
+		// v0.15.0 says midnight of the last day.
+		res, err := surrealdb.Query[any](ctx, db, "RETURN pd'infinity'", nil)
+		require.NoError(t, err)
+		assert.Equal(t, models.CustomDateTime{Time: time.Unix(8210266876799, 999999999).UTC()}, (*res)[0].Result)
+
+		date, err := surrealdb.Query[models.PlainDate](ctx, db, "RETURN pd'infinity'", nil)
+		require.NoError(t, err)
+		assert.Equal(t, models.PlainDateInfinity, (*date)[0].Result)
 	})
 
 	t.Run("widened by the SDK", func(t *testing.T) {

@@ -23,20 +23,27 @@ var kindPairs = []struct {
 	{"date", "d864194d46", "cc821a65dfc90000"},
 	{"date before 1970", "d86420", "cc823a0001517f00"},
 	{"date infinity", "d8641a05a9fc3c", "cc821b000007779a0a6b7f1a3b9ac9ff"},
+	{"date -infinity", "d8643a05bff18b", "cc823b000007948cf211ff00"},
 	{"time", "d8bd1b000029327b048f40", "ce8219b0f01a2f072f40"},
 	{"time at the end of the day", "d8bd1b00004e94914f0000", "ce811a00015180"},
 	{"timestamp", "d8be821a6592a94001", "cc821a6592a94001"},
+	{"timestamp infinity", "d8be821b000007779a0a6b7f1a3b9ac9ff", "cc821b000007779a0a6b7f1a3b9ac9ff"},
+	{"timestamp -infinity", "d8be823b000007948cf211ff00", "cc823b000007948cf211ff00"},
 	{"interval", "d8bf830e031b000000036c9361a0", "70503159324d3344543448354d362e3553"},
+	{"negative interval", "d8bf8300003a0016e35f", "6750542d312e3553"},
 	{
 		"bigdecimal past a decimal",
 		"d8c0781d3739323238313632353134323634333337353933353433393530333336",
 		"781d3739323238313632353134323634333337353933353433393530333336",
 	},
 	{"bigdecimal that fits a decimal", "d8c063312e35", "ca63312e35"},
+	{"bigdecimal with trailing zeros", "d8c064312e3530", "ca63312e35"},
 }
 
 // A field decodes a 4.0 kind over cbor.2 exactly as it decodes the form plain
-// cbor carries that value in: the same value, or an error in both.
+// cbor carries that value in: the same value, or an error in both. The one
+// exception is a models.BigDecimal, which keeps the scale cbor.2 carries,
+// such as the 0 of 1.50, where plain cbor sends the decimal 1.5.
 func TestDecode_cbor2KindsLikePlainCBOR(t *testing.T) {
 	destinations := []func() any{
 		func() any { return new(time.Time) },
@@ -65,8 +72,13 @@ func TestDecode_cbor2KindsLikePlainCBOR(t *testing.T) {
 				errCBOR2 := NewV2().Unmarshal(mustDecodeHex(t, pair.cbor2), viaCBOR2)
 				errPlain := New().Unmarshal(mustDecodeHex(t, pair.plain), viaPlain)
 				require.Equal(t, errPlain == nil, errCBOR2 == nil, "cbor.2: %v; plain: %v", errCBOR2, errPlain)
-				if errPlain == nil {
-					assert.Equal(t, viaPlain, viaCBOR2)
+				switch b := viaCBOR2.(type) {
+				case *models.BigDecimal:
+					assert.True(t, b.Equal(*viaPlain.(*models.BigDecimal)), "%v equals %v", b, viaPlain)
+				default:
+					if errPlain == nil {
+						assert.Equal(t, viaPlain, viaCBOR2)
+					}
 				}
 			})
 		}
