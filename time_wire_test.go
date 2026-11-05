@@ -3,6 +3,7 @@ package surrealdb_test
 import (
 	"context"
 	"os"
+	"regexp"
 	"testing"
 	"time"
 
@@ -86,4 +87,46 @@ func TestQuery_longDurationsAndWideYearsTravel(t *testing.T) {
 			assert.True(t, at.Equal((*res)[0].Result.Time), "%v != %v", at, (*res)[0].Result.Time)
 		})
 	}
+}
+
+// TestQuery_durationsTravelAsDurations sends a time.Duration, alone and inside
+// a struct, and checks that the server reads it as a duration. The SDK used to
+// send it as an integer number of nanoseconds, which the server stored as an
+// int, though the SDK reads a duration back into a time.Duration.
+func TestQuery_durationsTravelAsDurations(t *testing.T) {
+	ctx := context.Background()
+	db := testenv.MustNew("wire_forms", "durations", "dummy")
+	t.Cleanup(func() { _ = db.Close(ctx) })
+
+	type job struct {
+		Every time.Duration `json:"every"`
+		Delay time.Duration `json:"delay,omitempty"`
+	}
+	res, err := surrealdb.Query[[]any](ctx, db, `RETURN [
+		type::of($d), $d == 1m30s,
+		type::of($job.every), $job.every == 2h,
+		type::of($job.delay)
+	]`, map[string]any{
+		"d":   90 * time.Second,
+		"job": job{Every: 2 * time.Hour},
+	})
+	require.NoError(t, err)
+	require.Nil(t, (*res)[0].Error, "%+v", (*res)[0].Error)
+	assert.Equal(t, []any{"duration", true, "duration", true, "none"}, (*res)[0].Result,
+		"a zero duration tagged omitempty is left out, as an integer one was")
+
+	back, err := surrealdb.Query[models.CustomDuration](ctx, db, "RETURN $d", map[string]any{"d": 90 * time.Second})
+	require.NoError(t, err)
+	assert.Equal(t, 90*time.Second, (*back)[0].Result.Duration)
+}
+
+// TestQuery_regexpIsRefused checks that a *regexp.Regexp, which the SDK used to
+// send as an empty object, is refused before anything is sent.
+func TestQuery_regexpIsRefused(t *testing.T) {
+	ctx := context.Background()
+	db := testenv.MustNew("wire_forms", "regexp", "dummy")
+	t.Cleanup(func() { _ = db.Close(ctx) })
+
+	_, err := surrealdb.Query[any](ctx, db, "RETURN $re", map[string]any{"re": regexp.MustCompile("a.b")})
+	assert.ErrorContains(t, err, "models.Regex")
 }

@@ -2,11 +2,14 @@ package models_test
 
 import (
 	"bytes"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	. "github.com/surrealdb/surrealdb.go/v2/pkg/models"
+	"github.com/surrealdb/surrealdb.go/v2/surrealcbor"
 )
 
 type convInner struct {
@@ -236,4 +239,109 @@ func TestPrepareForEncode_RecursiveTypeDoesNotPanic(t *testing.T) {
 	}
 	// The top-level time is converted; the recursive edge is documented as left alone.
 	tag12(t, decodeRaw(t, b)["at"], at.Unix(), 0)
+}
+
+type durHolder struct {
+	Every   time.Duration            `cbor:"every"`
+	Ptr     *time.Duration           `cbor:"ptr"`
+	List    []time.Duration          `cbor:"list"`
+	M       map[string]time.Duration `cbor:"m"`
+	Any     any                      `cbor:"any"`
+	Zero    time.Duration            `cbor:"zero"`
+	Omitted time.Duration            `cbor:"omitted,omitempty"`
+	JSONOpt time.Duration            `json:"jsonopt,omitempty"`
+	Kept    time.Duration            `cbor:"kept,omitempty"`
+}
+
+// tag14 asserts that raw decodes to a tag 14 holding [seconds, nanos].
+func tag14(t *testing.T, raw any, wantSec, wantNs uint64) {
+	t.Helper()
+	tag, ok := raw.(cbor.Tag)
+	if !ok || tag.Number != TagCustomDuration {
+		t.Fatalf("want tag 14, got %#v", raw)
+	}
+	arr, ok := tag.Content.([]any)
+	if !ok || len(arr) != 2 || arr[0] != wantSec || arr[1] != wantNs {
+		t.Fatalf("got %#v, want [%d, %d]", tag.Content, wantSec, wantNs)
+	}
+}
+
+// A time.Duration is sent as a duration, which SurrealDB reads as one, rather
+// than as an integer number of nanoseconds, which it stored as an int.
+func TestPrepareForEncode_DurationIsTag14(t *testing.T) {
+	d := 90*time.Second + 5
+	for name, m := range map[string]interface{ Marshal(any) ([]byte, error) }{
+		"surrealcbor": surrealcbor.New(),
+		"fxamacker":   &CborMarshaler{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, err := m.Marshal(durHolder{
+				Every: d, Ptr: &d, List: []time.Duration{d}, M: map[string]time.Duration{"k": d}, Any: d, Kept: d,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := decodeRaw(t, b)
+			tag14(t, got["every"], 90, 5)
+			tag14(t, got["ptr"], 90, 5)
+			tag14(t, got["list"].([]any)[0], 90, 5)
+			tag14(t, got["m"].(map[any]any)["k"], 90, 5)
+			tag14(t, got["any"], 90, 5)
+			tag14(t, got["zero"], 0, 0)
+			tag14(t, got["kept"], 90, 5)
+			for _, key := range []string{"omitted", "jsonopt"} {
+				if _, ok := got[key]; ok {
+					t.Fatalf("a zero duration tagged omitempty was encoded as %q", key)
+				}
+			}
+
+			b, err = m.Marshal(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var top any
+			if err := cbor.Unmarshal(b, &top); err != nil {
+				t.Fatal(err)
+			}
+			tag14(t, top, 90, 5)
+		})
+	}
+
+	var back durHolder
+	b, err := surrealcbor.New().Marshal(durHolder{Every: d})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := surrealcbor.New().Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Every != d {
+		t.Fatalf("decoded %v, want %v", back.Every, d)
+	}
+}
+
+// A *regexp.Regexp used to be sent as an empty object. It is refused, as Go's
+// regular expression syntax is not SurrealQL's.
+func TestPrepareForEncode_RegexpIsRefused(t *testing.T) {
+	re := regexp.MustCompile("a.b")
+	var none *regexp.Regexp
+	for name, m := range map[string]interface{ Marshal(any) ([]byte, error) }{
+		"surrealcbor": surrealcbor.New(),
+		"fxamacker":   &CborMarshaler{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, v := range []any{re, *re, map[string]any{"re": re}, []any{1, re}, struct{ Re *regexp.Regexp }{re}} {
+				if _, err := m.Marshal(v); err == nil || !strings.Contains(err.Error(), "models.Regex") {
+					t.Fatalf("%T: want an error naming models.Regex, got %v", v, err)
+				}
+			}
+			b, err := m.Marshal(map[string]any{"re": none})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := decodeRaw(t, b)["re"]; got != nil {
+				t.Fatalf("a nil *regexp.Regexp should stay null, got %#v", got)
+			}
+		})
+	}
 }

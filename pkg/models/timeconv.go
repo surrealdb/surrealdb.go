@@ -1,24 +1,36 @@
 package models
 
 import (
+	"errors"
 	"reflect"
+	"regexp"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 )
 
-// PrepareForEncode returns v with every bare time.Time and *time.Time replaced
-// by a CustomDateTime, so that the CBOR encoder emits tag 12 ([seconds, nanos])
-// instead of tag 0 (an RFC3339 string), which SurrealDB 4.0 rejects.
+// PrepareForEncode returns v with the standard library values SurrealDB reads
+// differently from how the CBOR encoder writes them replaced:
+//
+//   - every bare time.Time and *time.Time by a CustomDateTime, so that the
+//     CBOR encoder emits tag 12 ([seconds, nanos]) instead of tag 0 (an RFC3339
+//     string), which SurrealDB 4.0 rejects;
+//   - every time.Duration by a CustomDuration, so that it is sent as a
+//     duration (tag 14) rather than as an integer number of nanoseconds;
+//   - every regexp.Regexp by a value whose encoding fails, as it would be sent
+//     as an empty object, and Go's regular expression syntax is not
+//     SurrealQL's: use [Regex] for a SurrealQL regex.
 //
 // fxamacker/cbor hard-codes the encoding of time.Time ahead of any Marshaler
 // lookup and refuses to register it in a TagSet, so the substitution has to
 // happen before encoding. The walk covers structs, maps, slices, arrays,
 // pointers and interface values.
 //
-// Values are returned unchanged (same value, no copy) when they contain no
-// time.Time. Types that implement cbor.Marshaler, cbor.Tag, cbor.RawTag and
+// Values are returned unchanged (same value, no copy) when they contain none
+// of these. Types that implement cbor.Marshaler, cbor.Tag, cbor.RawTag and
 // all types declared in this package are left alone, so CustomDateTime is
 // never wrapped twice and its zero-time behavior (tag 6) is preserved.
 //
@@ -34,7 +46,7 @@ func PrepareForEncode(v any) any {
 		return nil
 	}
 	rv := reflect.ValueOf(v)
-	if !hasTime(rv) {
+	if !needsSwap(rv) {
 		return v
 	}
 	p := planFor(rv.Type(), nil)
@@ -49,13 +61,25 @@ type plan struct {
 	conv func(reflect.Value) reflect.Value
 }
 
+// refusedRegexp stands in for a regexp.Regexp, which has no SurrealDB form.
+type refusedRegexp struct{}
+
+// MarshalCBOR fails, so that a *regexp.Regexp is not sent as an empty object.
+func (refusedRegexp) MarshalCBOR() ([]byte, error) {
+	return nil, errors.New("cannot encode a *regexp.Regexp, as Go's regular expression syntax is not SurrealQL's: use models.Regex")
+}
+
 var (
-	timeType      = reflect.TypeOf(time.Time{})
-	customDTType  = reflect.TypeOf(CustomDateTime{})
-	marshalerType = reflect.TypeOf((*cbor.Marshaler)(nil)).Elem()
-	cborTagType   = reflect.TypeOf(cbor.Tag{})
-	cborRawTag    = reflect.TypeOf(cbor.RawTag{})
-	modelsPkgPath = reflect.TypeOf(CustomDateTime{}).PkgPath()
+	timeType           = reflect.TypeOf(time.Time{})
+	customDTType       = reflect.TypeOf(CustomDateTime{})
+	durationType       = reflect.TypeOf(time.Duration(0))
+	customDurationType = reflect.TypeOf(CustomDuration{})
+	regexpType         = reflect.TypeOf(regexp.Regexp{})
+	refusedRegexpType  = reflect.TypeOf(refusedRegexp{})
+	marshalerType      = reflect.TypeOf((*cbor.Marshaler)(nil)).Elem()
+	cborTagType        = reflect.TypeOf(cbor.Tag{})
+	cborRawTag         = reflect.TypeOf(cbor.RawTag{})
+	modelsPkgPath      = reflect.TypeOf(CustomDateTime{}).PkgPath()
 
 	planCache sync.Map // reflect.Type -> *plan (nil plan stored as noPlan)
 	mayCache  sync.Map // reflect.Type -> bool
@@ -76,19 +100,25 @@ func leaveAlone(t reflect.Type) bool {
 	return t.Implements(marshalerType) || reflect.PointerTo(t).Implements(marshalerType)
 }
 
-// mayContainTime is a static check: can a value of type t hold a time.Time?
-// Interfaces answer true, as their dynamic content is unknown.
-func mayContainTime(t reflect.Type) bool {
+// swapped reports whether PrepareForEncode replaces values of type t.
+func swapped(t reflect.Type) bool {
+	return t == timeType || t == durationType || t == regexpType
+}
+
+// mayNeedSwap is a static check: can a value of type t hold a value
+// PrepareForEncode replaces? Interfaces answer true, as their dynamic content
+// is unknown.
+func mayNeedSwap(t reflect.Type) bool {
 	if c, ok := mayCache.Load(t); ok {
 		return c.(bool)
 	}
-	r := mayContain(t, map[reflect.Type]bool{})
+	r := mayNeed(t, map[reflect.Type]bool{})
 	mayCache.Store(t, r)
 	return r
 }
 
-func mayContain(t reflect.Type, seen map[reflect.Type]bool) bool {
-	if t == timeType {
+func mayNeed(t reflect.Type, seen map[reflect.Type]bool) bool {
+	if swapped(t) {
 		return true
 	}
 	if leaveAlone(t) || seen[t] {
@@ -99,10 +129,10 @@ func mayContain(t reflect.Type, seen map[reflect.Type]bool) bool {
 		return true
 	case reflect.Pointer, reflect.Slice, reflect.Array:
 		seen[t] = true
-		return mayContain(t.Elem(), seen)
+		return mayNeed(t.Elem(), seen)
 	case reflect.Map:
 		seen[t] = true
-		return mayContain(t.Key(), seen) || mayContain(t.Elem(), seen)
+		return mayNeed(t.Key(), seen) || mayNeed(t.Elem(), seen)
 	case reflect.Struct:
 		seen[t] = true
 		for i := 0; i < t.NumField(); i++ {
@@ -110,7 +140,7 @@ func mayContain(t reflect.Type, seen map[reflect.Type]bool) bool {
 			if f.PkgPath != "" && !f.Anonymous {
 				continue
 			}
-			if mayContain(f.Type, seen) {
+			if mayNeed(f.Type, seen) {
 				return true
 			}
 		}
@@ -118,35 +148,35 @@ func mayContain(t reflect.Type, seen map[reflect.Type]bool) bool {
 	return false
 }
 
-// hasTime reports whether v actually holds a time.Time, looking through
-// interfaces. It never allocates, and skips whole subtrees whose static type
-// cannot hold a time.
+// needsSwap reports whether v actually holds a value PrepareForEncode
+// replaces, looking through interfaces. It never allocates, and skips whole
+// subtrees whose static type cannot hold one.
 //
 //nolint:gocyclo // one case per kind
-func hasTime(v reflect.Value) bool {
+func needsSwap(v reflect.Value) bool {
 	t := v.Type()
-	if t == timeType {
+	if swapped(t) {
 		return true
 	}
-	if !mayContainTime(t) {
+	if !mayNeedSwap(t) {
 		return false
 	}
 	switch v.Kind() {
 	case reflect.Interface, reflect.Pointer:
-		return !v.IsNil() && hasTime(v.Elem())
+		return !v.IsNil() && needsSwap(v.Elem())
 	case reflect.Slice, reflect.Array:
-		if !mayContainTime(t.Elem()) {
+		if !mayNeedSwap(t.Elem()) {
 			return false
 		}
 		for i := 0; i < v.Len(); i++ {
-			if hasTime(v.Index(i)) {
+			if needsSwap(v.Index(i)) {
 				return true
 			}
 		}
 	case reflect.Map:
 		it := v.MapRange()
 		for it.Next() {
-			if hasTime(it.Key()) || hasTime(it.Value()) {
+			if needsSwap(it.Key()) || needsSwap(it.Value()) {
 				return true
 			}
 		}
@@ -156,7 +186,7 @@ func hasTime(v reflect.Value) bool {
 			if f.PkgPath != "" && !f.Anonymous {
 				continue
 			}
-			if hasTime(v.Field(i)) {
+			if needsSwap(v.Field(i)) {
 				return true
 			}
 		}
@@ -204,13 +234,21 @@ func buildPlan(t reflect.Type, building map[reflect.Type]bool) *plan {
 		return &plan{out: customDTType, conv: func(v reflect.Value) reflect.Value {
 			return reflect.ValueOf(CustomDateTime{v.Interface().(time.Time)})
 		}}
+	case t == durationType:
+		return &plan{out: customDurationType, conv: func(v reflect.Value) reflect.Value {
+			return reflect.ValueOf(CustomDuration{time.Duration(v.Int())})
+		}}
+	case t == regexpType:
+		return &plan{out: refusedRegexpType, conv: func(reflect.Value) reflect.Value {
+			return reflect.ValueOf(refusedRegexp{})
+		}}
 	case t.Kind() == reflect.Interface:
 		return &plan{out: t, conv: func(v reflect.Value) reflect.Value {
 			if v.IsNil() {
 				return v
 			}
 			e := v.Elem()
-			if !hasTime(e) {
+			if !needsSwap(e) {
 				return v
 			}
 			ep := planFor(e.Type(), nil)
@@ -226,7 +264,7 @@ func buildPlan(t reflect.Type, building map[reflect.Type]bool) *plan {
 			return r
 		}}
 	}
-	if leaveAlone(t) || !mayContainTime(t) {
+	if leaveAlone(t) || !mayNeedSwap(t) {
 		return nil
 	}
 
@@ -368,6 +406,9 @@ func collectFields(t reflect.Type, prefix []int, building map[reflect.Type]bool,
 			continue // unexported: never encoded
 		}
 		fp := planFor(f.Type, building)
+		if f.Type == durationType && omitsEmpty(f.Tag) {
+			fp = omitEmptyDurationPlan
+		}
 		ft := f.Type
 		if fp != nil {
 			ft = fp.out
@@ -377,6 +418,30 @@ func collectFields(t reflect.Type, prefix []int, building map[reflect.Type]bool,
 		*srcs = append(*srcs, fieldPlan{index: idx, p: fp})
 	}
 	return changed
+}
+
+// omitEmptyDurationPlan replaces a time.Duration in a field tagged omitempty.
+// The encoder omits a zero integer, but never a CustomDuration, as it encodes
+// itself, so a zero duration becomes a nil pointer, which it omits too.
+var omitEmptyDurationPlan = &plan{
+	out: reflect.PointerTo(customDurationType),
+	conv: func(v reflect.Value) reflect.Value {
+		if v.Int() == 0 {
+			return reflect.Zero(reflect.PointerTo(customDurationType))
+		}
+		return reflect.ValueOf(&CustomDuration{time.Duration(v.Int())})
+	},
+}
+
+// omitsEmpty reports whether a struct field is tagged omitempty, as the
+// encoder reads its tag: the cbor key, or else the json key.
+func omitsEmpty(tag reflect.StructTag) bool {
+	opts, ok := tag.Lookup("cbor")
+	if !ok {
+		opts = tag.Get("json")
+	}
+	_, opts, _ = strings.Cut(opts, ",")
+	return slices.Contains(strings.Split(opts, ","), "omitempty")
 }
 
 func fieldByIndex(v reflect.Value, index []int) (reflect.Value, bool) {
