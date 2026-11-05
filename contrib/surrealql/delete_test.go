@@ -21,7 +21,7 @@ func TestDelete(t *testing.T) {
 		{
 			name:   "delete with where",
 			query:  Delete("users").Where("active = ?", false),
-			wantQL: "DELETE users WHERE active = $param_1",
+			wantQL: "DELETE users WHERE (active = $param_1)",
 		},
 		{
 			name:   "delete with return none",

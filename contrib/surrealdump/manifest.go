@@ -84,7 +84,8 @@ func (m *Manifest) Validate() error {
 	return nil
 }
 
-// WriteManifest writes a manifest file alongside the dump
+// WriteManifest writes a manifest file alongside the dump. It replaces the
+// manifest already there only once the new one is written in full.
 func WriteManifest(dumpPath string, manifest *Manifest) error {
 	manifestPath := dumpPath + ".manifest.json"
 
@@ -93,7 +94,7 @@ func WriteManifest(dumpPath string, manifest *Manifest) error {
 		return fmt.Errorf("failed to marshal manifest: %w", err)
 	}
 
-	return os.WriteFile(manifestPath, data, 0600)
+	return writeFileReplacing(manifestPath, data, 0600)
 }
 
 // ReadManifest reads a manifest file for a dump

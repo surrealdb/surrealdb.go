@@ -37,7 +37,7 @@ func ExampleSelect_edgecase_invalidAdvancedGraphTraversal() {
 
 	fmt.Println(sql)
 	fmt.Printf("vars count: %d\n", len(vars))
-	// Output: SELECT title, content, created_at FROM $from_param_1->$from_param_2->users->created->$from_param_3 WHERE published = $param_1 ORDER BY created_at DESC LIMIT 10
+	// Output: SELECT title, content, created_at FROM $from_param_1->$from_param_2->users->created->$from_param_3 WHERE (published = $param_1) ORDER BY created_at DESC LIMIT 10
 	// vars count: 4
 }
 
@@ -59,7 +59,7 @@ func ExampleSelect_dynamicTableSelection() {
 	// Table name is now a parameter
 	fmt.Printf("table param: %v\n", vars["from_param_1"])
 	fmt.Printf("timestamp params: %v, %v\n", vars["param_1"], vars["param_2"])
-	// Output: SELECT count() AS total_events, math::mean(duration) AS avg_duration FROM $from_param_1 WHERE timestamp > $param_1 AND timestamp < $param_2 GROUP BY event_type
+	// Output: SELECT count() AS total_events, math::mean(duration) AS avg_duration FROM $from_param_1 WHERE (timestamp > $param_1 AND timestamp < $param_2) GROUP BY event_type
 	// table param: events_acme_corp
 	// timestamp params: 2024-01-01, 2024-12-31
 }

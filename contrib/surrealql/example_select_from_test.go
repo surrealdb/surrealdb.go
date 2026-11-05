@@ -80,7 +80,7 @@ func ExampleSelect_subquery() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// SELECT * FROM (SELECT name FROM users WHERE age > $from_param_1)
+	// SELECT * FROM (SELECT name FROM users WHERE (age > $from_param_1))
 	// Vars:
 	//   from_param_1: 18
 }
@@ -119,7 +119,7 @@ func ExampleSelect_complexExpression() {
 		GroupBy("category").
 		Build()
 	fmt.Println(sql)
-	// Output: SELECT name, price * 1.1 AS price_with_tax, count() AS total FROM products WHERE category = $param_1 GROUP BY category
+	// Output: SELECT name, price * 1.1 AS price_with_tax, count() AS total FROM products WHERE (category = $param_1) GROUP BY category
 }
 
 // ExampleSelect_rawExpression demonstrates using a raw expression as the source
@@ -177,6 +177,6 @@ func ExampleSelect_placeholderWithTable() {
 		Build()
 	fmt.Println(sql)
 	fmt.Printf("vars: from_param_1: %v, param_1: %v\n", vars["from_param_1"], vars["param_1"])
-	// Output: SELECT * FROM $from_param_1 WHERE price > $param_1
+	// Output: SELECT * FROM $from_param_1 WHERE (price > $param_1)
 	// vars: from_param_1: products, param_1: 100
 }

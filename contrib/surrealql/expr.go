@@ -181,7 +181,7 @@ func (f *expr) build(c *queryBuildContext, b *strings.Builder) {
 
 	if f.alias != "" {
 		b.WriteString(" AS ")
-		b.WriteString(escapeIdent(f.alias))
+		b.WriteString(escapeFieldPath(f.alias))
 	}
 }
 

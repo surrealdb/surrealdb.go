@@ -53,7 +53,7 @@ func ExampleSelect_modelsRecordIDWithConditions() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// SELECT items, total FROM $from_id_1 WHERE status = $param_1
+	// SELECT items, total FROM $from_id_1 WHERE (status = $param_1)
 	// Vars:
 	//   from_id_1: {orders order_789}
 	//   param_1: completed

@@ -285,12 +285,8 @@ func tokenLifetime(token string) (time.Duration, bool) {
 // tokenTimes reads the exp claim, and the iat claim if there is one, of a JWT
 // without verifying it. iat is zero when the token has none.
 func tokenTimes(token string) (exp, iat time.Time, ok bool) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return time.Time{}, time.Time{}, false
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
-	if err != nil {
+	payload, ok := jwtPayload(token)
+	if !ok {
 		return time.Time{}, time.Time{}, false
 	}
 	var claims struct {
@@ -305,4 +301,44 @@ func tokenTimes(token string) (exp, iat time.Time, ok bool) {
 		iat = time.Unix(int64(*claims.Iat), 0)
 	}
 	return exp, iat, true
+}
+
+// jwtPayload returns the decoded payload of a JWT, without verifying it.
+func jwtPayload(token string) ([]byte, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return nil, false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return nil, false
+	}
+	return payload, true
+}
+
+// identity is who a session is signed in as: the NS, DB, AC and ID claims of
+// its token, which renewing the token keeps. The zero value is a session that
+// is not signed in.
+type identity struct {
+	signedIn       bool
+	ns, db, ac, id string
+}
+
+// identityOf returns who a token signs a session in as. Tokens whose claims
+// cannot be read all count as the same identity.
+func identityOf(token string) identity {
+	if token == "" {
+		return identity{}
+	}
+	who := identity{signedIn: true}
+	payload, ok := jwtPayload(token)
+	if !ok {
+		return who
+	}
+	var claims map[string]json.RawMessage
+	if json.Unmarshal(payload, &claims) != nil {
+		return who
+	}
+	who.ns, who.db, who.ac, who.id = string(claims["NS"]), string(claims["DB"]), string(claims["AC"]), string(claims["ID"])
+	return who
 }

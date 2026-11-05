@@ -21,7 +21,7 @@ func TestSelect_counts(t *testing.T) {
 		{
 			name:   "count with where",
 			query:  Select("users").Fields("count()").Where("active = ?", true).GroupAll(),
-			wantQL: "SELECT count() FROM users WHERE active = $param_1 GROUP ALL",
+			wantQL: "SELECT count() FROM users WHERE (active = $param_1) GROUP ALL",
 		},
 		{
 			name:   "count group by",

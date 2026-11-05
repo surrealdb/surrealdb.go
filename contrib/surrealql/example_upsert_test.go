@@ -181,7 +181,7 @@ func ExampleUpsert_withConditions() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// UPSERT product:speaker SET last_updated = $param_1, status = $param_2 WHERE price >= $param_3 RETURN DIFF
+	// UPSERT product:speaker SET last_updated = $param_1, status = $param_2 WHERE (price >= $param_3) RETURN DIFF
 	// Vars:
 	//   param_1: 2024-01-01T00:00:00Z
 	//   param_2: in_stock
@@ -437,7 +437,7 @@ func ExampleUpsert_set_mixed() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// UPSERT product:smartphone SET name = $param_1, price = $param_2, in_stock = $param_3, created_at = $param_4, tags += $param_5, features += $param_6, view_count += $param_7, discount_percentage = $param_8 WHERE stock > $param_9 RETURN AFTER
+	// UPSERT product:smartphone SET name = $param_1, price = $param_2, in_stock = $param_3, created_at = $param_4, tags += $param_5, features += $param_6, view_count += $param_7, discount_percentage = $param_8 WHERE (stock > $param_9) RETURN AFTER
 	// Vars:
 	//   param_1: Latest Phone
 	//   param_2: 899.99
