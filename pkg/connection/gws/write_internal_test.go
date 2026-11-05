@@ -1,8 +1,10 @@
-package gws_test
+package gws
 
 import (
 	"context"
 	"crypto/rand"
+	"net"
+	"net/url"
 	"testing"
 	"time"
 
@@ -10,25 +12,43 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/surrealdb/surrealdb.go/v2/internal/wstest"
+	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 )
 
 // stuckPayload does not compress, and is far larger than the socket buffers of
-// a stalling server's connection together with a client's send buffer, which
-// Linux caps at 4 MiB by default, so that writing it there blocks. It stays
-// below the 16 MiB gws allows a message.
+// a connection from connectStalled, so that writing it there blocks.
 func stuckPayload(t *testing.T) []byte {
 	t.Helper()
-	payload := make([]byte, 12<<20)
+	payload := make([]byte, 4<<20)
 	_, err := rand.Read(payload)
 	require.NoError(t, err)
 	return payload
+}
+
+// connectStalled connects to a server which reads nothing, with a small send
+// buffer, so that a large write blocks whatever the system's buffer sizes. The
+// send buffer is the connection's own, which only this package can reach.
+func connectStalled(t *testing.T) *Connection {
+	t.Helper()
+	srv := wstest.NewStallingServer(t)
+	u, err := url.ParseRequestURI(srv.WSURL())
+	require.NoError(t, err)
+	c := New(connection.NewConfig(u))
+	require.NoError(t, c.Connect(context.Background()))
+	srv.WaitAccepted(t, 1)
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+
+	tcp, ok := c.conn.NetConn().(*net.TCPConn)
+	require.True(t, ok)
+	require.NoError(t, tcp.SetWriteBuffer(16<<10))
+	return c
 }
 
 // A write which the server stops taking used to hold the write lock with no
 // deadline, so that every later request, and Close, waited for it past their
 // own deadlines.
 func TestWrite_stuckWriteHoldsUpNothingElse(t *testing.T) {
-	c := connect(t, wstest.NewStallingServer(t))
+	c := connectStalled(t)
 	c.Timeout = 0
 
 	payload := stuckPayload(t)
@@ -58,7 +78,7 @@ func TestWrite_stuckWriteHoldsUpNothingElse(t *testing.T) {
 // A write which the server stops taking ends once the connection's Timeout
 // has passed, and closes the connection, as the other end has stopped reading.
 func TestWrite_stuckWriteEndsAtTheTimeout(t *testing.T) {
-	c := connect(t, wstest.NewStallingServer(t))
+	c := connectStalled(t)
 	c.Timeout = 500 * time.Millisecond
 
 	payload := stuckPayload(t)
@@ -73,7 +93,7 @@ func TestWrite_stuckWriteEndsAtTheTimeout(t *testing.T) {
 // write: gws closes the connection, which every request shares, when a write
 // fails.
 func TestWrite_contextEndingMidWriteKeepsTheConnection(t *testing.T) {
-	c := connect(t, wstest.NewStallingServer(t))
+	c := connectStalled(t)
 	c.Timeout = 0
 
 	payload := stuckPayload(t)
