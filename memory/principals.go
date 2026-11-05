@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"iter"
 	"net/http"
 	"net/url"
 )
@@ -20,13 +21,34 @@ type Principal struct {
 	Grants      map[string][]string `json:"grants"`
 }
 
-// List returns the principals known to the context.
-func (p *Principals) List(ctx context.Context) ([]Principal, error) {
-	var out []Principal
-	if err := p.client.getJSON(ctx, p.client.base+"/principals", nil, &out); err != nil {
+// PrincipalPage is a page of principals from [Principals.List].
+type PrincipalPage struct {
+	Principals []Principal `json:"principals"`
+	Page       PageMeta    `json:"page"`
+}
+
+// List returns one page of the principals known to the context.
+func (p *Principals) List(ctx context.Context, opts PageOptions) (*PrincipalPage, error) {
+	q := url.Values{}
+	opts.apply(q)
+	var out PrincipalPage
+	if err := p.client.getJSON(ctx, p.client.base+"/principals", q, &out); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return &out, nil
+}
+
+// All walks every page of the principal listing.
+func (p *Principals) All(ctx context.Context, opts PageOptions) iter.Seq2[Principal, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]Principal, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := p.List(ctx, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Principals, page.Page, nil
+	})
 }
 
 // Get fetches a single principal by id.

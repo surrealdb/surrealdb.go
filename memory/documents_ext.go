@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,30 +21,45 @@ type Document struct {
 	Status                DocumentStatus `json:"status"`
 	SizeBytes             int            `json:"sizeBytes"`
 	Version               int            `json:"version"`
-	Language              string         `json:"language,omitempty"`
 	Error                 string         `json:"error,omitempty"`
-	ChunkCount            *int           `json:"chunkCount,omitempty"`
-	KeywordCount          *int           `json:"keywordCount,omitempty"`
 	ProcessingStartedAt   string         `json:"processingStartedAt,omitempty"`
 	ProcessingCompletedAt string         `json:"processingCompletedAt,omitempty"`
 	CreatedAt             string         `json:"createdAt"`
 	UpdatedAt             string         `json:"updatedAt"`
+	// ObservedAt is the assertion instant the document's facts are dated from.
+	ObservedAt string `json:"observedAt,omitempty"`
 }
 
 // DocumentPage is a page of documents from [Documents.List].
 type DocumentPage struct {
 	Documents []Document `json:"documents"`
-	Page      int        `json:"page"`
-	PageSize  int        `json:"pageSize"`
-	Total     int        `json:"total"`
+	Page      PageMeta   `json:"page"`
 }
 
-// ListDocumentsOptions filter a [Documents.List] call. All fields are optional.
+// ListDocumentsOptions filters and paginates a [Documents.List] call. All
+// fields are optional.
 type ListDocumentsOptions struct {
 	Status   DocumentStatus
 	MimeType string
+
+	// Limit, Cursor and Count are the cursor pagination inputs; see
+	// [PageOptions], whose fields these mirror.
+	Limit  int
+	Cursor string
+	Count  bool
+
+	// Page and PageSize select the deprecated offset mode; see
+	// [OffsetOptions]. Mixing them with Limit/Cursor/Count is an error.
 	Page     int
 	PageSize int
+}
+
+func (o ListDocumentsOptions) page() PageOptions {
+	return PageOptions{Limit: o.Limit, Cursor: o.Cursor, Count: o.Count}
+}
+
+func (o ListDocumentsOptions) offset() OffsetOptions {
+	return OffsetOptions{Page: o.Page, PageSize: o.PageSize}
 }
 
 func (o ListDocumentsOptions) values() url.Values {
@@ -52,24 +68,38 @@ func (o ListDocumentsOptions) values() url.Values {
 		q.Set("status", string(o.Status))
 	}
 	if o.MimeType != "" {
-		q.Set("mime_type", o.MimeType)
+		q.Set("mimeType", o.MimeType)
 	}
-	if o.Page > 0 {
-		q.Set("page", strconv.Itoa(o.Page))
-	}
-	if o.PageSize > 0 {
-		q.Set("page_size", strconv.Itoa(o.PageSize))
-	}
+	o.page().apply(q)
+	o.offset().apply(q)
 	return q
 }
 
-// List returns a page of documents in the context.
+// List returns one page of the documents in the context.
 func (d *Documents) List(ctx context.Context, opts ListDocumentsOptions) (*DocumentPage, error) {
+	if err := checkPageMode(opts.page(), opts.offset()); err != nil {
+		return nil, err
+	}
 	var out DocumentPage
 	if err := d.client.getJSON(ctx, d.client.base+"/documents", opts.values(), &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// All walks every page of the document listing. opts.Cursor seeds the walk and
+// opts.Limit sets the page size; opts.Count is ignored, since a walk visits
+// every row anyway.
+func (d *Documents) All(ctx context.Context, opts ListDocumentsOptions) iter.Seq2[Document, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]Document, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := d.List(ctx, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Documents, page.Page, nil
+	})
 }
 
 // Get fetches a single document by id.
@@ -109,27 +139,59 @@ type Chunk struct {
 
 // ChunkPage is a page of chunks from [Documents.Chunks].
 type ChunkPage struct {
-	Chunks   []Chunk `json:"chunks"`
-	Page     int     `json:"page"`
-	PageSize int     `json:"pageSize"`
-	Total    int     `json:"total"`
+	Chunks []Chunk  `json:"chunks"`
+	Page   PageMeta `json:"page"`
 }
 
-// Chunks returns a page of the chunks derived from a document.
-func (d *Documents) Chunks(ctx context.Context, id string, page, pageSize int) (*ChunkPage, error) {
+// ListChunksOptions paginates a [Documents.Chunks] call.
+type ListChunksOptions struct {
+	// Limit, Cursor and Count are the cursor pagination inputs; see
+	// [PageOptions].
+	Limit  int
+	Cursor string
+	Count  bool
+
+	// Page and PageSize select the deprecated offset mode; see
+	// [OffsetOptions].
+	Page     int
+	PageSize int
+}
+
+func (o ListChunksOptions) page() PageOptions {
+	return PageOptions{Limit: o.Limit, Cursor: o.Cursor, Count: o.Count}
+}
+
+func (o ListChunksOptions) offset() OffsetOptions {
+	return OffsetOptions{Page: o.Page, PageSize: o.PageSize}
+}
+
+// Chunks returns one page of the chunks derived from a document.
+func (d *Documents) Chunks(ctx context.Context, id string, opts ListChunksOptions) (*ChunkPage, error) {
+	if err := checkPageMode(opts.page(), opts.offset()); err != nil {
+		return nil, err
+	}
 	q := url.Values{}
-	if page > 0 {
-		q.Set("page", strconv.Itoa(page))
-	}
-	if pageSize > 0 {
-		q.Set("page_size", strconv.Itoa(pageSize))
-	}
+	opts.page().apply(q)
+	opts.offset().apply(q)
 	path := d.client.base + "/documents/" + url.PathEscape(id) + "/chunks"
 	var out ChunkPage
 	if err := d.client.getJSON(ctx, path, q, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// AllChunks walks every page of a document's chunks.
+func (d *Documents) AllChunks(ctx context.Context, id string, opts ListChunksOptions) iter.Seq2[Chunk, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]Chunk, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := d.Chunks(ctx, id, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Chunks, page.Page, nil
+	})
 }
 
 // FetchRaw returns the original stored bytes of a document. The caller owns the
@@ -172,6 +234,10 @@ type DocumentQueryRequest struct {
 	DecomposeQuery *bool           `json:"decomposeQuery,omitempty"`
 	UseHyde        *bool           `json:"useHyde,omitempty"`
 	UseReranker    *bool           `json:"useReranker,omitempty"`
+	// Lens narrows the read to a scope region. It can only narrow: the
+	// caller's grants still gate on top, so a lens outside the caller's
+	// region yields no results rather than a 403.
+	Lens ScopeSets `json:"lens,omitempty"`
 }
 
 // GraphEvidence explains why a graph-expanded hit was surfaced.
@@ -217,7 +283,7 @@ type DocumentQueryResponse struct {
 // Query runs passage retrieval over the context's documents.
 func (d *Documents) Query(ctx context.Context, req *DocumentQueryRequest) (*DocumentQueryResponse, error) {
 	var out DocumentQueryResponse
-	if err := d.client.doJSON(ctx, http.MethodPost, d.client.base+"/documents/query", req, &out, false); err != nil {
+	if err := d.client.doJSON(ctx, http.MethodPost, d.client.base+"/documents/query", req, &out, true); err != nil {
 		return nil, err
 	}
 	return &out, nil
@@ -248,21 +314,36 @@ type Keyword struct {
 // KeywordPage is a page of keywords from [Documents.ListKeywords].
 type KeywordPage struct {
 	Keywords []Keyword `json:"keywords"`
-	Page     int       `json:"page"`
-	PageSize int       `json:"pageSize"`
-	Total    int       `json:"total"`
+	Page     PageMeta  `json:"page"`
 }
 
-// ListKeywordsOptions filter a [Documents.ListKeywords] call.
+// ListKeywordsOptions filters and paginates a [Documents.ListKeywords] call.
 type ListKeywordsOptions struct {
 	// Q filters keywords by a text prefix.
 	Q string
 	// MinDocumentCount drops keywords appearing in fewer documents.
 	MinDocumentCount int
 	// Sort selects the ordering (server-defined values).
-	Sort     string
+	Sort string
+
+	// Limit, Cursor and Count are the cursor pagination inputs; see
+	// [PageOptions].
+	Limit  int
+	Cursor string
+	Count  bool
+
+	// Page and PageSize select the deprecated offset mode; see
+	// [OffsetOptions].
 	Page     int
 	PageSize int
+}
+
+func (o ListKeywordsOptions) page() PageOptions {
+	return PageOptions{Limit: o.Limit, Cursor: o.Cursor, Count: o.Count}
+}
+
+func (o ListKeywordsOptions) offset() OffsetOptions {
+	return OffsetOptions{Page: o.Page, PageSize: o.PageSize}
 }
 
 func (o ListKeywordsOptions) values() url.Values {
@@ -276,17 +357,16 @@ func (o ListKeywordsOptions) values() url.Values {
 	if o.Sort != "" {
 		q.Set("sort", o.Sort)
 	}
-	if o.Page > 0 {
-		q.Set("page", strconv.Itoa(o.Page))
-	}
-	if o.PageSize > 0 {
-		q.Set("pageSize", strconv.Itoa(o.PageSize))
-	}
+	o.page().apply(q)
+	o.offset().apply(q)
 	return q
 }
 
-// ListKeywords returns a page of corpus keywords.
+// ListKeywords returns one page of corpus keywords.
 func (d *Documents) ListKeywords(ctx context.Context, opts ListKeywordsOptions) (*KeywordPage, error) {
+	if err := checkPageMode(opts.page(), opts.offset()); err != nil {
+		return nil, err
+	}
 	var out KeywordPage
 	if err := d.client.getJSON(ctx, d.client.base+"/documents/keywords", opts.values(), &out); err != nil {
 		return nil, err
@@ -294,11 +374,27 @@ func (d *Documents) ListKeywords(ctx context.Context, opts ListKeywordsOptions) 
 	return &out, nil
 }
 
+// AllKeywords walks every page of the corpus keyword listing.
+func (d *Documents) AllKeywords(ctx context.Context, opts ListKeywordsOptions) iter.Seq2[Keyword, error] {
+	opts.Count = false
+	return walkPages(ctx, opts.Cursor, func(ctx context.Context, cursor string) ([]Keyword, PageMeta, error) {
+		opts.Cursor = cursor
+		page, err := d.ListKeywords(ctx, opts)
+		if err != nil {
+			return nil, PageMeta{}, err
+		}
+		return page.Keywords, page.Page, nil
+	})
+}
+
 // KeywordSearchRequest is the input to [Documents.SearchKeywords].
 type KeywordSearchRequest struct {
 	Query     string  `json:"query"`
 	K         int     `json:"k,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"`
+	// Lens narrows the search to a scope region, with the same
+	// narrow-only semantics as [DocumentQueryRequest.Lens].
+	Lens ScopeSets `json:"lens,omitempty"`
 }
 
 // KeywordSearchHit is a single fuzzy keyword match.
@@ -319,7 +415,7 @@ type KeywordSearchResponse struct {
 // SearchKeywords fuzzily matches keywords against a query string.
 func (d *Documents) SearchKeywords(ctx context.Context, req KeywordSearchRequest) (*KeywordSearchResponse, error) {
 	var out KeywordSearchResponse
-	if err := d.client.doJSON(ctx, http.MethodPost, d.client.base+"/documents/keywords/search", req, &out, false); err != nil {
+	if err := d.client.doJSON(ctx, http.MethodPost, d.client.base+"/documents/keywords/search", req, &out, true); err != nil {
 		return nil, err
 	}
 	return &out, nil

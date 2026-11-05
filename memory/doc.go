@@ -3,10 +3,15 @@
 //
 // An Agent Memory Client is pinned to a single context and talks to
 // /api/v1/{context}/... over HTTPS. Every request carries a bearer token;
-// writes that the SDK considers idempotent additionally carry an
+// calls the SDK considers idempotent additionally carry an
 // Idempotency-Key derived from sha256(METHOD | path | body | 30s-bucket),
 // so a retry inside the bucket collapses onto the previous attempt
 // server-side.
+//
+// That set is the idempotent writes ([Client.Remember], [Client.RememberMany])
+// plus the reads that are expressed as a POST because their query does not fit
+// in a URL: [Client.Recall], [Client.QueryContext], [Sessions.Context],
+// [Documents.Query] and [Documents.SearchKeywords].
 //
 // Example:
 //
