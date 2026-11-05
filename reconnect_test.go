@@ -293,6 +293,82 @@ func assertClosed(t *testing.T, ch <-chan connection.Notification, msg string) {
 	}
 }
 
+// A live query is started again in the database it was started in, though its
+// session has selected another database since.
+func TestReconnect_restartsLiveQueriesInTheirOwnDatabase(t *testing.T) {
+	ctx := context.Background()
+	first := mustNewWS("reconnect", "live_first", "item")
+	defer first.Close(ctx)
+	second := mustNewWS("reconnect", "live_second", "item")
+	defer second.Close(ctx)
+
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+	_, err := db.SignIn(ctx, surrealdb.Auth{Username: "root", Password: "root"})
+	require.NoError(t, err)
+	require.NoError(t, db.Use(ctx, "reconnect", "live_first"))
+	id, err := surrealdb.Live(ctx, db, "item", false)
+	require.NoError(t, err)
+	notifications, err := db.LiveNotifications(id.String())
+	require.NoError(t, err)
+
+	require.NoError(t, db.Use(ctx, "reconnect", "live_second"))
+	p.drop()
+	require.NoError(t, status.waitFor(t, surrealdb.StatusConnected).Err)
+
+	res, err := surrealdb.Query[string](ctx, db, "RETURN session::db()", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "live_second", (*res)[0].Result, "the session keeps the database it selected")
+
+	_, err = surrealdb.Query[any](ctx, second, "CREATE item:second", nil)
+	require.NoError(t, err)
+	_, err = surrealdb.Query[any](ctx, first, "CREATE item:first", nil)
+	require.NoError(t, err)
+	select {
+	case n := <-notifications:
+		record, ok := n.Result.(map[string]any)
+		require.True(t, ok, "%T", n.Result)
+		assert.Equal(t, models.RecordID{Table: "item", ID: "first"}, record["id"], "the query watches the database it was started in")
+	case <-time.After(10 * time.Second):
+		t.Fatal("no notification")
+	}
+}
+
+// A live query whose session has signed in as someone else since it started
+// is ended on reconnecting, rather than started again as them.
+func TestReconnect_endsLiveQueriesOfAnotherUser(t *testing.T) {
+	ctx := context.Background()
+	p := newDropProxy(t)
+	db := connectThrough(t, p)
+	status := watchStatus(db)
+	signInRoot(t, db, "live_user")
+	_, err := surrealdb.Query[any](ctx, db, `
+		REMOVE TABLE IF EXISTS item; DEFINE TABLE item SCHEMALESS;
+		DEFINE USER OVERWRITE viewer ON DATABASE PASSWORD 'viewer-secret' ROLES VIEWER;
+	`, nil)
+	require.NoError(t, err)
+	id, err := surrealdb.Live(ctx, db, "item", false)
+	require.NoError(t, err)
+	notifications, err := db.LiveNotifications(id.String())
+	require.NoError(t, err)
+
+	_, err = db.SignIn(ctx, surrealdb.Auth{Namespace: "reconnect", Database: "live_user", Username: "viewer", Password: "viewer-secret"})
+	require.NoError(t, err)
+	p.drop()
+	assert.ErrorIs(t, status.waitFor(t, surrealdb.StatusConnected).Err, surrealdb.ErrLiveQueryEnded)
+
+	select {
+	case n, open := <-notifications:
+		assert.False(t, open, "the channel closes, without a notification: %v", n)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the channel stays open")
+	}
+	_, err = db.LiveNotifications(id.String())
+	assert.ErrorIs(t, err, surrealdb.ErrLiveQueryEnded)
+	assert.NoError(t, surrealdb.Kill(ctx, db, id.String()), "an ended query is not running on the server")
+}
+
 func TestReconnect_failsRequestsInFlight(t *testing.T) {
 	ctx := context.Background()
 	p := newDropProxy(t)

@@ -786,20 +786,23 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 		db = v.db
 	}
 	var con connection.Connection
-	serverID := id
+	serverID, ended := id, false
 	if db != nil && db.rc != nil {
 		var err error
 		if con, err = db.rc.conn(ctx); err != nil {
 			return err
 		}
-		serverID = db.rc.lives.serverID(id)
+		serverID, ended = db.rc.lives.serverID(id)
 	}
-	var liveID any = serverID
-	if u, err := uuid.FromString(serverID); err == nil {
-		liveID = models.UUID{UUID: u}
-	}
-	if _, err := queryOneOn[any](ctx, s, con, "KILL $id", map[string]any{"id": liveID}); err != nil {
-		return err
+	// A query the client ended on reconnecting is not running on the server.
+	if !ended {
+		var liveID any = serverID
+		if u, err := uuid.FromString(serverID); err == nil {
+			liveID = models.UUID{UUID: u}
+		}
+		if _, err := queryOneOn[any](ctx, s, con, "KILL $id", map[string]any{"id": liveID}); err != nil {
+			return err
+		}
 	}
 
 	// Then close the notification channel to prevent leaks
@@ -819,8 +822,22 @@ func Kill[S liveQueryable](ctx context.Context, s S, id string) error {
 // record rather than the record.
 //
 // When the client reconnects, the live query is started again on the new
-// connection, and keeps the ID returned here.
+// connection, and keeps the ID returned here. It is started in the namespace
+// and database its session had selected when Live was called, even if the
+// session has selected others since. If the session is no longer signed in as
+// it was then, the query is ended instead, so that it does not run as someone
+// else: see [ErrLiveQueryEnded].
 func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bool) (*models.UUID, error) {
+	// What the session has selected and is signed in as, which the server
+	// binds the query to.
+	var started sessionSnapshot
+	switch v := any(s).(type) {
+	case *DB:
+		started = v.state.snapshot(v.renew)
+	case *Session:
+		started = v.state.snapshot(v.renew)
+	}
+
 	id, err := queryOne[models.UUID](ctx, s, liveStatement(diff), map[string]any{"what": table})
 	if err != nil || id == nil {
 		return id, err
@@ -828,11 +845,11 @@ func Live[S liveQueryable](ctx context.Context, s S, table models.Table, diff bo
 	switch v := any(s).(type) {
 	case *DB:
 		if v.rc != nil {
-			v.rc.lives.track(*id, nil, table, diff)
+			v.rc.lives.track(*id, nil, table, diff, started)
 		}
 	case *Session:
 		if v.db.rc != nil {
-			v.db.rc.lives.track(*id, v.id, table, diff)
+			v.db.rc.lives.track(*id, v.id, table, diff, started)
 		}
 	}
 	return id, nil

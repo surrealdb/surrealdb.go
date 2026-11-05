@@ -85,7 +85,11 @@ func WithTokenExpiryMargin(margin time.Duration) Option {
 // connection before any other request is sent: the namespace, database,
 // variables and authentication of the default session and of each attached
 // [Session], and the live queries started with [Live], under the IDs [Live]
-// returned. Requests made meanwhile wait for it, until their context ends.
+// returned, each in the namespace and database it was started in. A live query
+// whose session is no longer signed in as it was when the query started, or
+// which the server refuses to start again, is ended instead: see
+// [ErrLiveQueryEnded]. Requests made meanwhile wait for it, until their
+// context ends.
 // Requests in flight when the connection was lost fail with
 // [connection.ErrConnectionClosed]: they may or may not have run.
 //
