@@ -38,6 +38,13 @@ const (
 // ErrClientClosed is returned for requests made after [DB.Close].
 var ErrClientClosed = errors.New("client closed")
 
+// ErrLiveQueryEnded is the error for a live query which the client ended when
+// it reconnected, instead of starting it again: its session was no longer
+// signed in as it was when the query started, or the server refused to start
+// it again. The query's notification channel is closed, the reconnection's
+// [StatusEvent] reports this error, and [DB.LiveNotifications] returns it.
+var ErrLiveQueryEnded = errors.New("live query ended")
+
 // ConnectionStatus is the state of a client's connection.
 type ConnectionStatus int
 
