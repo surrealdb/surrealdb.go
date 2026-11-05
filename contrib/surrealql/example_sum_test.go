@@ -33,8 +33,8 @@ func ExampleSelect_aggregate() {
 	fmt.Println("Max:", maxQuery.String())
 
 	// Output:
-	// Sum: SELECT math::sum(amount) FROM orders WHERE status = $param_1
-	// Avg: SELECT math::mean(rating) FROM reviews WHERE product_id = $param_1
-	// Min: SELECT math::min(price) FROM products WHERE category = $param_1
+	// Sum: SELECT math::sum(amount) FROM orders WHERE (status = $param_1)
+	// Avg: SELECT math::mean(rating) FROM reviews WHERE (product_id = $param_1)
+	// Min: SELECT math::min(price) FROM products WHERE (category = $param_1)
 	// Max: SELECT math::max(price) FROM products
 }

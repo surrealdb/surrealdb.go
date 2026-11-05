@@ -178,7 +178,7 @@ func (q *InsertQuery) buildFieldsValues(c *queryBuildContext, builder *strings.B
 		if i > 0 {
 			builder.WriteString(", ")
 		}
-		builder.WriteString(escapeIdent(field))
+		builder.WriteString(escapeFieldPath(field))
 	}
 	builder.WriteString(") VALUES")
 
@@ -220,7 +220,7 @@ func (q *InsertQuery) buildOnDuplicate(c *queryBuildContext, builder *strings.Bu
 		value := q.onDuplicateSet[field]
 
 		builder.WriteString(" ")
-		builder.WriteString(escapeIdent(field))
+		builder.WriteString(escapeFieldPath(field))
 		builder.WriteString(" = ")
 
 		paramName := c.generateAndAddParam("dup_"+field, value)

@@ -20,7 +20,7 @@ func ExampleSelect_tableWithSpecialChars() {
 	fmt.Println(sql)
 	dumpVars(vars)
 	// Output:
-	// SELECT id, name FROM $from_table_1 WHERE active = $param_1
+	// SELECT id, name FROM $from_table_1 WHERE (active = $param_1)
 	// Vars:
 	//   from_table_1: user-data
 	//   param_1: true

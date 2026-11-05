@@ -169,7 +169,7 @@ func (q *DefineFieldQuery) Build() (query string, params map[string]any) {
 	var builder strings.Builder
 
 	builder.WriteString("DEFINE FIELD ")
-	builder.WriteString(escapeIdent(q.field))
+	builder.WriteString(escapeFieldPath(q.field))
 	builder.WriteString(" ON TABLE ")
 	builder.WriteString(escapeIdent(q.table))
 

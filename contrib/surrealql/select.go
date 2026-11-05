@@ -176,9 +176,13 @@ func fieldExpr(field any, args ...any) *expr {
 	}
 }
 
-// FieldName adds a field to the SELECT query.
+// FieldName adds a field, or a field path such as "address.city", to the
+// SELECT query. Each part of it which is not a plain identifier, or which is a
+// reserved word such as none, is quoted, so that it is read as the field it
+// names: use Field for an expression. OrderBy, GroupBy, Split, Fetch and Omit
+// take their fields the same way.
 func (q *SelectQuery) FieldName(field string) *SelectQuery {
-	escaped := escapeIdent(field)
+	escaped := escapeFieldPath(field)
 	ex := Expr(escaped)
 	q.fields = append(q.fields, ex)
 	return q
@@ -186,7 +190,7 @@ func (q *SelectQuery) FieldName(field string) *SelectQuery {
 
 // FieldNameAs adds a field with an alias to the SELECT query.
 func (q *SelectQuery) FieldNameAs(field, alias string) *SelectQuery {
-	escaped := escapeIdent(field)
+	escaped := escapeFieldPath(field)
 	ex := Expr(escaped)
 	aliased := ex.As(alias)
 	q.fields = append(q.fields, aliased)
@@ -198,7 +202,7 @@ func (q *SelectQuery) FieldNameAs(field, alias string) *SelectQuery {
 // Valid only when `SELECT *` is used.
 func (q *SelectQuery) Omit(field string) *SelectQuery {
 	// Omit a field from the SELECT query
-	q.omits = append(q.omits, escapeIdent(field))
+	q.omits = append(q.omits, escapeFieldPath(field))
 	return q
 }
 
@@ -212,13 +216,17 @@ func (q *SelectQuery) OmitRaw(field string) *SelectQuery {
 	return q
 }
 
-// Where adds a WHERE condition to the query.
+// Where adds a WHERE condition to the query. The conditions of several calls
+// must all hold.
 //
 // All values are automatically parameterized to prevent injection:
 //
 //	query := surrealql.Select("users").
 //	    Where("age > ? AND status = ?", 18, "active")
-//	// Generates: SELECT * FROM users WHERE age > $param_1 AND status = $param_2
+//	// Generates: SELECT * FROM users WHERE (age > $param_1 AND status = $param_2)
+//
+// Each condition is put in parentheses, so that an OR in one does not take in
+// the others, and a ";" or a comment in it cannot reach the clauses after it.
 func (q *SelectQuery) Where(condition string, args ...any) *SelectQuery {
 	if q.whereClause == nil {
 		q.whereClause = &whereBuilder{}
@@ -505,7 +513,7 @@ func (q *SelectQuery) buildGroupClause() string {
 
 	groupFields := make([]string, len(q.groupBy))
 	for i, field := range q.groupBy {
-		groupFields[i] = escapeIdent(field)
+		groupFields[i] = escapeFieldPath(field)
 	}
 	return "GROUP BY " + strings.Join(groupFields, ", ")
 }
@@ -518,7 +526,7 @@ func (q *SelectQuery) buildOrderClause() string {
 
 	orderClauses := make([]string, len(q.orderBy))
 	for i, order := range q.orderBy {
-		clause := escapeIdent(order.field)
+		clause := escapeFieldPath(order.field)
 		if order.desc {
 			clause += " DESC"
 		}
@@ -535,7 +543,7 @@ func (q *SelectQuery) buildSplitClause() string {
 
 	splitFields := make([]string, len(q.splitFields))
 	for i, field := range q.splitFields {
-		splitFields[i] = escapeIdent(field)
+		splitFields[i] = escapeFieldPath(field)
 	}
 	return "SPLIT AT " + strings.Join(splitFields, ", ")
 }
@@ -548,7 +556,7 @@ func (q *SelectQuery) buildFetchClause() string {
 
 	fetchFields := make([]string, len(q.fetchFields))
 	for i, field := range q.fetchFields {
-		fetchFields[i] = escapeIdent(field)
+		fetchFields[i] = escapeFieldPath(field)
 	}
 	return "FETCH " + strings.Join(fetchFields, ", ")
 }
@@ -589,24 +597,38 @@ func (w *whereBuilder) build(c *queryBuildContext, b *strings.Builder) {
 
 	b.WriteString("WHERE ")
 
+	// Each condition is kept to itself in parentheses: an OR in one does not
+	// take in the others, and a ";" in one is a syntax error rather than the
+	// start of another statement. After a condition which may hold a line
+	// comment, the closing parenthesis goes on a line of its own, so that the
+	// comment does not run over it and the clauses after it.
 	for i, cond := range w.conditions {
 		if i > 0 {
 			b.WriteString(" AND ")
 		}
-		// Replace ? placeholders with named parameters
-		var start int
-		for _, arg := range cond.args {
-			paramName := c.generateAndAddParam("param", arg)
-			placeholder := strings.Index(cond.condition[start:], "?")
-			if placeholder < 0 {
-				break
-			}
-			placeholder += start
-			b.WriteString(cond.condition[start:placeholder])
-			b.WriteString("$")
-			b.WriteString(paramName)
-			start = placeholder + 1
+		b.WriteString("(")
+		cond.build(c, b)
+		if hasLineComment(cond.condition) {
+			b.WriteString("\n")
 		}
-		b.WriteString(cond.condition[start:])
+		b.WriteString(")")
 	}
+}
+
+// build writes the condition, with its ? placeholders replaced by parameters.
+func (cond whereCondition) build(c *queryBuildContext, b *strings.Builder) {
+	var start int
+	for _, arg := range cond.args {
+		paramName := c.generateAndAddParam("param", arg)
+		placeholder := strings.Index(cond.condition[start:], "?")
+		if placeholder < 0 {
+			break
+		}
+		placeholder += start
+		b.WriteString(cond.condition[start:placeholder])
+		b.WriteString("$")
+		b.WriteString(paramName)
+		start = placeholder + 1
+	}
+	b.WriteString(cond.condition[start:])
 }
