@@ -12,8 +12,10 @@ import (
 	"github.com/surrealdb/surrealdb.go/v2/internal/wstest"
 )
 
-// stuckPayload is larger than the socket buffers can hold, and does not
-// compress, so that writing it to a server which reads nothing blocks.
+// stuckPayload does not compress, and is far larger than the socket buffers of
+// a stalling server's connection together with a client's send buffer, which
+// Linux caps at 4 MiB by default, so that writing it there blocks. It stays
+// below the 16 MiB gws allows a message.
 func stuckPayload(t *testing.T) []byte {
 	t.Helper()
 	payload := make([]byte, 12<<20)
@@ -23,18 +25,19 @@ func stuckPayload(t *testing.T) []byte {
 }
 
 // A write which the server stops taking used to hold the write lock with no
-// deadline, so every later request, and Close, waited for it past their own.
+// deadline, so that every later request, and Close, waited for it past their
+// own deadlines.
 func TestWrite_stuckWriteHoldsUpNothingElse(t *testing.T) {
-	srv := wstest.NewStallingServer(t)
-	c := connect(t, srv)
+	c := connect(t, wstest.NewStallingServer(t))
 	c.Timeout = 0
 
+	payload := stuckPayload(t)
 	stuck := make(chan error, 1)
 	go func() {
-		_, err := c.Send(context.Background(), "let", "big", stuckPayload(t))
+		_, err := c.Send(context.Background(), "let", "big", payload)
 		stuck <- err
 	}()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
@@ -49,34 +52,47 @@ func TestWrite_stuckWriteHoldsUpNothingElse(t *testing.T) {
 	_ = c.Close(closeCtx)
 	assert.Less(t, time.Since(start), 2*time.Second, "Close does not wait for the stuck write")
 
-	err = wstest.Recv(t, stuck, "the stuck write to end")
-	assert.Error(t, err, "closing ends the stuck write")
+	assert.Error(t, wstest.Recv(t, stuck, "the stuck write to end"), "closing ends the stuck write")
 }
 
-// A write which the server stops taking ends when its context does, and closes
-// the connection, as the message cut short leaves the stream broken.
-func TestWrite_stuckWriteEndsWithItsContext(t *testing.T) {
-	srv := wstest.NewStallingServer(t)
-	c := connect(t, srv)
+// A write which the server stops taking ends once the connection's Timeout
+// has passed, and closes the connection, as the other end has stopped reading.
+func TestWrite_stuckWriteEndsAtTheTimeout(t *testing.T) {
+	c := connect(t, wstest.NewStallingServer(t))
+	c.Timeout = 500 * time.Millisecond
 
+	payload := stuckPayload(t)
+	start := time.Now()
+	_, err := c.Send(context.Background(), "let", "big", payload)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), 3*time.Second)
+	wstest.Recv(t, c.Closed(), "the connection to close")
+}
+
+// A request whose context ends while its write is under way does not stop the
+// write: gws closes the connection, which every request shares, when a write
+// fails.
+func TestWrite_contextEndingMidWriteKeepsTheConnection(t *testing.T) {
+	c := connect(t, wstest.NewStallingServer(t))
+	c.Timeout = 0
+
+	payload := stuckPayload(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	start := time.Now()
-	_, err := c.Send(ctx, "let", "big", stuckPayload(t))
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(start), 2*time.Second)
-	wstest.Recv(t, c.Closed(), "the connection to close")
-
-	ctx, cancel = context.WithCancel(context.Background())
-	c = connect(t, srv)
-	c.Timeout = 0
-	stuck := make(chan error, 1)
+	done := make(chan error, 1)
 	go func() {
-		_, err := c.Send(ctx, "let", "big", stuckPayload(t))
-		stuck <- err
+		_, err := c.Send(ctx, "let", "big", payload)
+		done <- err
 	}()
-	time.Sleep(300 * time.Millisecond)
-	cancel()
-	assert.ErrorIs(t, wstest.Recv(t, stuck, "the canceled write to end"), context.Canceled)
-	wstest.Recv(t, c.Closed(), "the connection to close")
+
+	select {
+	case <-c.Closed():
+		t.Fatal("the connection closed as the request's context ended")
+	case err := <-done:
+		t.Fatalf("the write was stopped: %v", err)
+	case <-time.After(1500 * time.Millisecond):
+	}
+
+	require.NoError(t, c.Close(context.Background()))
+	assert.Error(t, wstest.Recv(t, done, "the write to end"), "closing ends the write")
 }

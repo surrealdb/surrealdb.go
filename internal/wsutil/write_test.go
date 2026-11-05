@@ -25,26 +25,3 @@ func TestWriteLock(t *testing.T) {
 	require.NoError(t, l.Lock(context.Background()), "the lock is free again")
 	l.Unlock()
 }
-
-func TestCutOnDone(t *testing.T) {
-	deadlines := make(chan time.Time, 1)
-	set := func(d time.Time) error {
-		deadlines <- d
-		return nil
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	stop := CutOnDone(ctx, set)
-	cancel()
-	stop()
-	select {
-	case d := <-deadlines:
-		assert.True(t, d.Before(time.Now()), "the cut sets a deadline in the past")
-	default:
-		t.Fatal("stop returned before the cut was made")
-	}
-
-	stop = CutOnDone(context.Background(), set)
-	stop()
-	assert.Empty(t, deadlines, "no cut without the context ending")
-}

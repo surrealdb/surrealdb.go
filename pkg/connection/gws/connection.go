@@ -133,11 +133,14 @@ func (h *websocketHandler) OnPing(socket *gws.Conn, payload []byte) {
 func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
 }
 
-// write sends v as one message. ctx bounds both the wait for the writes before
-// it and its own write, so that a write which the server or the network stops
-// taking holds up neither the requests after it nor Close. gws closes the
-// connection when a write fails, as one cut short part way leaves the
-// WebSocket stream broken.
+// write sends v as one message. It waits for the writes before it only as
+// long as ctx allows, so that a write which the server or the network stops
+// taking holds up neither the requests after it nor Close.
+//
+// The write itself is not stopped when ctx ends: gws closes the connection
+// when a write fails, so stopping it would close the connection for every
+// request on it. It is bounded by Timeout instead, as a write which takes
+// longer means the other end has stopped reading.
 func (c *Connection) write(ctx context.Context, v any) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
@@ -160,16 +163,17 @@ func (c *Connection) write(ctx context.Context, v any) error {
 		return errors.New("connection is closed")
 	}
 	netConn := conn.NetConn()
-	deadline, _ := ctx.Deadline()
+	var deadline time.Time
+	if c.Timeout > 0 {
+		deadline = time.Now().Add(c.Timeout)
+	}
 	err = netConn.SetWriteDeadline(deadline)
 	c.connLock.Unlock()
 	if err != nil {
 		return err
 	}
 
-	stop := wsutil.CutOnDone(ctx, netConn.SetWriteDeadline)
 	err = conn.WriteMessage(gws.OpcodeBinary, data)
-	stop()
 
 	c.connLock.Lock()
 	if c.conn == conn {
@@ -180,13 +184,12 @@ func (c *Connection) write(ctx context.Context, v any) error {
 	switch {
 	case err == nil:
 		return nil
-	case ctx.Err() != nil:
-		return ctx.Err()
-	case c.IsClosed() && !wsutil.IsTimeout(err):
+	case wsutil.IsTimeout(err) && !deadline.IsZero() && !time.Now().Before(deadline):
+		// gws closed the connection, as the write failed.
+		return fmt.Errorf("writing the request: %w", context.DeadlineExceeded)
+	case c.IsClosed():
 		// Closed meanwhile, as by Close, which stops a write under way.
 		return c.closedError()
-	case wsutil.IsTimeout(err):
-		return context.DeadlineExceeded
 	}
 	return err
 }

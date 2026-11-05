@@ -3,6 +3,7 @@
 package wstest
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -40,11 +41,26 @@ func NewServer(t *testing.T) *Server {
 
 // NewStallingServer starts a server which accepts WebSocket connections on
 // /rpc but reads nothing from them, as a server or a network which stops
-// taking data does: a write larger than the socket buffers then blocks. It is
+// taking data does. Its connections have a small receive buffer, so that a
+// write of a few megabytes blocks, whatever the system's buffer sizes. It is
 // stopped when the test ends.
 func NewStallingServer(t *testing.T) *Server {
 	t.Helper()
 	return newServer(t, true)
+}
+
+// stallReadBuffer is the receive buffer of a stalling server's connections.
+const stallReadBuffer = 16 << 10
+
+// smallReadBuffers accepts connections with a small receive buffer.
+type smallReadBuffers struct{ net.Listener }
+
+func (l smallReadBuffers) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if tcp, ok := c.(*net.TCPConn); ok {
+		_ = tcp.SetReadBuffer(stallReadBuffer)
+	}
+	return c, err
 }
 
 func newServer(t *testing.T, stall bool) *Server {
@@ -52,7 +68,7 @@ func newServer(t *testing.T, stall bool) *Server {
 	s := &Server{Requests: make(chan struct{}, 64), acceptedCh: make(chan struct{})}
 	stopped := make(chan struct{})
 	upgrader := gorilla.Upgrader{Subprotocols: []string{"cbor"}}
-	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.Server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -78,6 +94,10 @@ func newServer(t *testing.T, stall bool) *Server {
 			s.Requests <- struct{}{}
 		}
 	}))
+	if stall {
+		s.Listener = smallReadBuffers{s.Listener}
+	}
+	s.Start()
 	t.Cleanup(func() {
 		close(stopped)
 		s.Close()

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net"
 	"sync"
-	"time"
 )
 
 // WriteLock lets one write at a time onto a WebSocket, as the WebSocket
@@ -43,20 +42,4 @@ func (l *WriteLock) Unlock() {
 func IsTimeout(err error) bool {
 	var netErr net.Error
 	return errors.As(err, &netErr) && netErr.Timeout()
-}
-
-// CutOnDone stops a write under way as soon as ctx ends, by setting a write
-// deadline in the past with setDeadline, until stop is called. stop waits for
-// a cut under way to finish, so that a deadline set after it stays set.
-func CutOnDone(ctx context.Context, setDeadline func(time.Time) error) (stop func()) {
-	cut := make(chan struct{})
-	stopCut := context.AfterFunc(ctx, func() {
-		defer close(cut)
-		_ = setDeadline(time.Unix(1, 0))
-	})
-	return func() {
-		if !stopCut() {
-			<-cut
-		}
-	}
 }

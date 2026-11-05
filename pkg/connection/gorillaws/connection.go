@@ -546,10 +546,15 @@ func (c *Connection) closeErr() error {
 	return connection.ClosedError(c.connCloseError)
 }
 
-// write sends v as one message. ctx bounds both the wait for the writes before
-// it and its own write, so that a write which the server or the network stops
-// taking holds up neither the requests after it nor Close. A write cut short
-// part way leaves the WebSocket stream broken, so the connection is closed then.
+// write sends v as one message. It waits for the writes before it only as
+// long as ctx allows, so that a write which the server or the network stops
+// taking holds up neither the requests after it nor Close.
+//
+// The write itself is not stopped when ctx ends: gorilla cannot write to a
+// connection again after a write fails, so stopping it would close the
+// connection for every request on it. It is bounded by Timeout instead, as a
+// write which takes longer means the other end has stopped reading, and the
+// connection is closed then.
 func (c *Connection) write(ctx context.Context, v any) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
@@ -568,30 +573,26 @@ func (c *Connection) write(ctx context.Context, v any) error {
 		return errors.New("connection is closed")
 	}
 
-	// gorilla sets its write deadline on the network connection as it starts
-	// each frame; the cut stops the frame under way.
-	deadline, _ := ctx.Deadline()
+	var deadline time.Time
+	if c.Timeout > 0 {
+		deadline = time.Now().Add(c.Timeout)
+	}
 	if deadlineErr := conn.SetWriteDeadline(deadline); deadlineErr != nil {
 		return deadlineErr
 	}
-	stop := wsutil.CutOnDone(ctx, conn.NetConn().SetWriteDeadline)
 	err = conn.WriteMessage(gorilla.BinaryMessage, data)
-	stop()
 
 	switch {
 	case err == nil:
 		return nil
-	case c.IsClosed() && ctx.Err() == nil && !wsutil.IsTimeout(err):
-		// Closed meanwhile, as by Close, which stops a write under way.
-		return c.closedError()
-	case ctx.Err() != nil || wsutil.IsTimeout(err):
-		if c.closeWithError(fmt.Errorf("a request was cut short while it was being written: %w", err)) {
+	case wsutil.IsTimeout(err) && !deadline.IsZero() && !time.Now().Before(deadline):
+		if c.closeWithError(fmt.Errorf("a request could not be written within %v: %w", c.Timeout, err)) {
 			_ = conn.Close()
 		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		return context.DeadlineExceeded
+		return fmt.Errorf("writing the request: %w", context.DeadlineExceeded)
+	case c.IsClosed():
+		// Closed meanwhile, as by Close, which stops a write under way.
+		return c.closedError()
 	case errors.Is(err, gorilla.ErrCloseSent):
 		// Transition to disconnected state so IsClosed() returns true
 		// This allows rews to detect the closed connection and reconnect
