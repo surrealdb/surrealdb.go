@@ -69,9 +69,10 @@ package surrealcbor
 //	    return nil
 //	}
 //
-// Note: Types from the github.com/surrealdb/surrealdb.go/v2/pkg/models package
-// (RecordID, CustomDateTime, etc.) do NOT use this interface. They are handled
-// via CBOR tags for proper SurrealDB protocol compatibility.
+// Many types in the github.com/surrealdb/surrealdb.go/v2/pkg/models package
+// (RecordID, CustomDateTime, PlainDate and others) implement this interface,
+// and the decoder calls it for them as for any other type. It hands over the
+// whole item, tag included, even a tag only cbor.2 carries met in plain cbor.
 type Unmarshaler interface {
 	UnmarshalCBOR(data []byte) error
 }
@@ -136,9 +137,10 @@ type Unmarshaler interface {
 //	    return cbor.Marshal(compact)
 //	}
 //
-// Note: Types from the github.com/surrealdb/surrealdb.go/v2/pkg/models package
-// (RecordID, CustomDateTime, etc.) do NOT use this interface. They are handled
-// via CBOR tags for proper SurrealDB protocol compatibility.
+// Many types in the github.com/surrealdb/surrealdb.go/v2/pkg/models package
+// (RecordID, PlainDate and others) implement this interface. PlainDate,
+// PlainTime, Timestamp, Interval, BigDecimal and Regex write their cbor.2
+// tags, and the plain cbor codec widens them.
 type Marshaler interface {
 	MarshalCBOR() ([]byte, error)
 }

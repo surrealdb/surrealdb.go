@@ -57,7 +57,7 @@ type decoder struct {
 	fieldResolver  FieldResolver
 
 	// cborVersion is the CBOR protocol version being decoded: 1 (plain cbor,
-	// the default when zero) or 2 (cbor.2, with the sized-number tags 180 to 188).
+	// the default when zero) or 2 (cbor.2, with tags 100 and 180 to 193).
 	cborVersion int
 }
 
@@ -116,9 +116,10 @@ func (d *decoder) decodeValue(v reflect.Value) error {
 	return d.decodeByMajorType(v)
 }
 
-// tryUnmarshaler tries to use custom Unmarshaler if the type implements it
-// This is only called after canImplementUnmarshaler returns true,
-// so we already know it's not a primitive or models package type
+// tryUnmarshaler tries to use custom Unmarshaler if the type implements it.
+// This is only called after canImplementUnmarshaler returns true, so we
+// already know it's not a primitive. Many models types implement Unmarshaler
+// and are decoded here.
 func (d *decoder) tryUnmarshaler(v reflect.Value) error {
 	// Handle pointer types specially
 	if v.Kind() == reflect.Pointer {
@@ -145,8 +146,7 @@ func (d *decoder) tryUnmarshaler(v reflect.Value) error {
 	return errNoUnmarshaler // Signal that no unmarshaler was found
 }
 
-// tryUnmarshalerPointer handles Unmarshaler for pointer types
-// We already filtered out models package types in canImplementUnmarshaler
+// tryUnmarshalerPointer handles Unmarshaler for pointer types.
 func (d *decoder) tryUnmarshalerPointer(v reflect.Value) error {
 	if v.IsNil() {
 		// Check if the pointed-to type implements Unmarshaler

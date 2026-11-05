@@ -9,8 +9,10 @@ import (
 
 // CBORVersion is the CBOR protocol version a connection negotiated with the server.
 //
-// SurrealDB 4.0 adds cbor.2, which is plain CBOR plus tags for its sized
-// numbers (i8 to u64, f16 and f32). Connections offer cbor.2 when their codec
+// SurrealDB 4.0 adds cbor.2, which is plain CBOR plus tags for the kinds plain
+// CBOR cannot carry: its sized numbers (i8 to u64, f16 and f32), and its date,
+// time, timestamp, interval, bigdecimal and regex kinds. Over plain CBOR those
+// are widened, and a regex cannot be sent. Connections offer cbor.2 when their codec
 // speaks it, as surrealcbor's does, and fall back to plain CBOR when the
 // server does not: servers before 4.0 only speak plain CBOR.
 //
@@ -27,8 +29,8 @@ type CBORVersion int
 const (
 	// CBORv1 is plain CBOR: WebSocket subprotocol "cbor", HTTP "application/cbor".
 	CBORv1 CBORVersion = codec.CBORv1
-	// CBORv2 is cbor.2, SurrealDB 4.0's CBOR with sized numbers: WebSocket
-	// subprotocol "cbor.2", HTTP "application/cbor; v=2".
+	// CBORv2 is cbor.2, SurrealDB 4.0's CBOR: WebSocket subprotocol
+	// "cbor.2", HTTP "application/cbor; v=2".
 	CBORv2 CBORVersion = codec.CBORv2
 )
 

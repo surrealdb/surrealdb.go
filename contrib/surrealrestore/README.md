@@ -161,3 +161,7 @@ The restore tool includes automatic validation to prevent data corruption:
 - Ensures namespace/database consistency across dumps
 
 For detailed information about dump chain validation and safety mechanisms, see the [surrealdump design documentation](../surrealdump/docs/design.md).
+
+## Notes
+
+- Dumps are plain CBOR, so SurrealDB 4.0's date, time, timestamp, interval and bigdecimal values come back as the kinds the dump widened them to: a datetime, a duration, text or a decimal. See the notes of [surrealdump](../surrealdump/README.md#notes).

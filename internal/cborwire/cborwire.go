@@ -5,12 +5,28 @@
 // CustomDurationString types are registered as the text tags 9 and 13.
 // SurrealDB 4.0 refuses tags 0, 9 and 13, and refuses an integer outside the
 // range of an i64, which SurrealDB 3.x silently wrapped. Every SurrealDB
-// release since 1.5 accepts the compact forms, so Normalize rewrites:
+// release since 1.5 accepts the compact forms, so Normalize rewrites, in
+// either dialect:
 //
 //   - tag 0 (a datetime as text) to tag 12 [seconds, nanoseconds];
 //   - tag 9 (a UUID as text) to tag 37 (its 16 bytes);
 //   - tag 13 (a duration as text) to tag 14 [seconds, nanoseconds];
 //   - an integer outside the range of an i64 to tag 10 (a decimal as text).
+//
+// The SDK writes SurrealDB 4.0's date, time, timestamp, interval, bigdecimal
+// and regex kinds as their cbor.2 tags (100 and 189 to 193). For [Plain]
+// cbor, which has no form for them, Normalize widens them as the server does:
+//
+//   - a date (tag 100) to a datetime at its midnight UTC, and infinity to
+//     the latest datetime;
+//   - a time (tag 189) to a duration since midnight;
+//   - a timestamp (tag 190) to a datetime, reading the wall clock as UTC;
+//   - an interval (tag 191) to its ISO 8601 text;
+//   - a bigdecimal (tag 192) to a decimal when it fits one, and to text
+//     otherwise.
+//
+// A regex (tag 193) has no plain form, so Normalize fails with an error that
+// wraps constants.ErrNeedsCBOR2.
 //
 // The tag numbers are listed in spec/cbor-tags.yaml of surrealdb-protocol.
 package cborwire
@@ -59,11 +75,31 @@ const (
 
 var errTruncated = errors.New("cborwire: truncated CBOR")
 
-// Normalize returns b with the forms SurrealDB refuses rewritten as described
-// in the package documentation. It returns b itself when nothing needs
-// rewriting.
-func Normalize(b []byte) ([]byte, error) {
-	w := &walker{in: b}
+// Dialect is the CBOR dialect Normalize writes for.
+type Dialect int
+
+const (
+	// Plain is plain cbor, which every SurrealDB server speaks. It has no form
+	// for the kinds only cbor.2 carries, so Normalize widens them.
+	Plain Dialect = iota
+	// CBOR2 is cbor.2, SurrealDB 4.0's CBOR, which carries those kinds as
+	// tags 100 and 180 to 193.
+	CBOR2
+)
+
+// String returns the dialect's WebSocket subprotocol name: "cbor" or "cbor.2".
+func (d Dialect) String() string {
+	if d == CBOR2 {
+		return "cbor.2"
+	}
+	return "cbor"
+}
+
+// Normalize returns b with the forms SurrealDB refuses in dialect d rewritten
+// as described in the package documentation. It returns b itself when nothing
+// needs rewriting.
+func Normalize(b []byte, d Dialect) ([]byte, error) {
+	w := &walker{in: b, dialect: d}
 	if err := w.item(0); err != nil {
 		return nil, err
 	}
@@ -83,11 +119,12 @@ func Normalize(b []byte) ([]byte, error) {
 
 // walker reads in, copying it lazily to out from the first rewrite on.
 type walker struct {
-	in     []byte
-	pos    int
-	out    []byte
-	copied int // in[:copied] is already in out
-	leaf   int // above 0 inside a tag whose content must not be rewritten
+	in      []byte
+	pos     int
+	out     []byte
+	copied  int // in[:copied] is already in out
+	leaf    int // above 0 inside a tag whose content must not be rewritten
+	dialect Dialect
 }
 
 // begin copies in[copied:from] to out. A rewrite then appends its replacement
@@ -179,15 +216,39 @@ func (w *walker) tag(start int, tag uint64, depth int) error {
 	case w.leaf > 0:
 	case tag == tagDatetimeText, tag == tagUUIDText, tag == tagDurationText:
 		return w.textTag(start, tag)
-	case tag >= tagSizedNumberFirst && tag <= tagSizedNumberLast:
-		// The content of a sized number must stay as it is, such as the u64
-		// in tag 186. Walk it without rewriting anything.
-		w.leaf++
-		err := w.item(depth + 1)
-		w.leaf--
-		return err
+	case tag >= tagSizedNumberFirst && tag <= tagSizedNumberLast, isKindTag(tag) && w.dialect == CBOR2:
+		// The content of a sized number, or of a kind cbor.2 carries, must
+		// stay as it is, such as the u64 in tag 186.
+		return w.leafItem(depth)
+	case isKindTag(tag):
+		return w.widen(start, tag, depth)
 	}
 	return w.item(depth + 1)
+}
+
+// leafItem walks the item at pos without rewriting anything in it.
+func (w *walker) leafItem(depth int) error {
+	w.leaf++
+	err := w.item(depth + 1)
+	w.leaf--
+	return err
+}
+
+// widen rewrites a kind only cbor.2 carries, whose tag started at start, into
+// the form the server sends it in over plain cbor.
+func (w *walker) widen(start int, tag uint64, depth int) error {
+	from := w.pos
+	if err := w.leafItem(depth); err != nil {
+		return err
+	}
+	w.begin(start)
+	out, err := appendWidened(w.out, tag, w.in[from:w.pos])
+	if err != nil {
+		return err
+	}
+	w.out = out
+	w.end()
+	return nil
 }
 
 // items reads n items one level down.

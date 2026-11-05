@@ -134,5 +134,6 @@ Dumps use CBOR encoding with:
 - **Cannot continue incremental chains after restoration**: After restoring a database, you cannot continue taking incremental dumps based on the original database's versionstamps. To start a new incremental backup chain on a restored database:
   1. Take a new full dump of the restored database
   2. Use this new full dump as the base for future incremental dumps
+- **Dumps are plain CBOR**: SurrealDB 4.0's date, time, timestamp, interval and bigdecimal values are written widened, as a datetime, a duration, text or a decimal, and a restore writes them back as those kinds. A dump that meets a regex value fails, as plain CBOR has no form for one.
 
 For detailed design documentation including consistency guarantees and safety mechanisms, see [docs/design.md](docs/design.md).

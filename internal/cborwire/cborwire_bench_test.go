@@ -29,16 +29,18 @@ func benchRows(b *testing.B, rewrite bool) []byte {
 }
 
 func BenchmarkNormalize(b *testing.B) {
-	for _, rewrite := range []bool{false, true} {
-		b.Run(fmt.Sprintf("rewrite=%v", rewrite), func(b *testing.B) {
-			data := benchRows(b, rewrite)
-			b.SetBytes(int64(len(data)))
-			b.ReportAllocs()
-			for range b.N {
-				if _, err := Normalize(data); err != nil {
-					b.Fatal(err)
+	for _, d := range []Dialect{Plain, CBOR2} {
+		for _, rewrite := range []bool{false, true} {
+			b.Run(fmt.Sprintf("dialect=%v/rewrite=%v", d, rewrite), func(b *testing.B) {
+				data := benchRows(b, rewrite)
+				b.SetBytes(int64(len(data)))
+				b.ReportAllocs()
+				for range b.N {
+					if _, err := Normalize(data, d); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }

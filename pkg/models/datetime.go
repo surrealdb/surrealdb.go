@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+
+	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
 )
 
 // CustomDateTime embeds time.Time
@@ -26,6 +28,10 @@ func (d *CustomDateTime) MarshalCBOR() ([]byte, error) {
 	})
 }
 
+// UnmarshalCBOR decodes a datetime (tag 12) into d. A date (tag 100) or a
+// timestamp (tag 190) decodes as the datetime plain cbor carries it as: a
+// date's midnight UTC, or a timestamp's wall clock read as UTC. NONE leaves d
+// as it is.
 func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 	var tag cbor.Tag
 	if err := cbor.Unmarshal(data, &tag); err != nil {
@@ -36,8 +42,17 @@ func (d *CustomDateTime) UnmarshalCBOR(data []byte) error {
 		return nil
 	}
 
+	if tag.Number == TagPlainDate || tag.Number == TagTimestamp {
+		widened, err := cborwire.Normalize(data, cborwire.Plain)
+		if err != nil {
+			return err
+		}
+		return d.UnmarshalCBOR(widened)
+	}
+
 	if tag.Number != TagCustomDatetime {
-		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDatetime)
+		return fmt.Errorf("unexpected tag number: got %d, want %d, %d or %d",
+			tag.Number, TagCustomDatetime, TagPlainDate, TagTimestamp)
 	}
 
 	var temp [2]int64

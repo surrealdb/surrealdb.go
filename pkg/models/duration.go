@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/surrealdb/surrealdb.go/v2/internal/cborwire"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
 
 	"github.com/fxamacker/cbor/v2"
@@ -45,14 +46,24 @@ func (d *CustomDuration) MarshalCBOR() ([]byte, error) {
 	})
 }
 
+// UnmarshalCBOR decodes a duration (tag 14) into d. A time (tag 189) decodes
+// as the duration since midnight that plain cbor carries it as.
 func (d *CustomDuration) UnmarshalCBOR(data []byte) error {
 	var tag cbor.Tag
 	if err := cbor.Unmarshal(data, &tag); err != nil {
 		return err
 	}
 
+	if tag.Number == TagPlainTime {
+		widened, err := cborwire.Normalize(data, cborwire.Plain)
+		if err != nil {
+			return err
+		}
+		return d.UnmarshalCBOR(widened)
+	}
+
 	if tag.Number != TagCustomDuration {
-		return fmt.Errorf("unexpected tag number: got %d, want %d", tag.Number, TagCustomDuration)
+		return fmt.Errorf("unexpected tag number: got %d, want %d or %d", tag.Number, TagCustomDuration, TagPlainTime)
 	}
 
 	// Note that we intentionally use [2]int64 instead of []int64.

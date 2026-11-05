@@ -38,6 +38,7 @@
 //	| 92  | Geometry MultiLine  | Collection of geographic lines       |
 //	| 93  | Geometry MultiPolygon | Collection of geographic polygons  |
 //	| 94  | Geometry Collection | Mixed collection of geometries       |
+//	| 100 | date (cbor.2 only)  | Calendar date, models.PlainDate      |
 //	| 180 | i8 (cbor.2 only)    | 8-bit signed integer                 |
 //	| 181 | u8 (cbor.2 only)    | 8-bit unsigned integer               |
 //	| 182 | i16 (cbor.2 only)   | 16-bit signed integer                |
@@ -47,9 +48,18 @@
 //	| 186 | u64 (cbor.2 only)   | 64-bit unsigned integer              |
 //	| 187 | f16 (cbor.2 only)   | Half-precision float                 |
 //	| 188 | f32 (cbor.2 only)   | Single-precision float               |
+//	| 189 | time (cbor.2 only)  | Time of day, models.PlainTime        |
+//	| 190 | timestamp (cbor.2 only)  | Date and time, models.Timestamp |
+//	| 191 | interval (cbor.2 only)   | Interval, models.Interval       |
+//	| 192 | bigdecimal (cbor.2 only) | Big decimal, models.BigDecimal  |
+//	| 193 | regex (cbor.2 only) | Regular expression, models.Regex     |
 //
-// Tags 180 to 188 are SurrealDB 4.0's sized numbers, which only exist in the
-// cbor.2 version of the protocol. See [Codec] for how they map to Go types.
+// Tag 100 and tags 180 to 193 exist only in the cbor.2 version of the
+// protocol: 180 to 188 are SurrealDB 4.0's sized numbers, and 100 and 189 to
+// 193 its date, time, timestamp, interval, bigdecimal and regex kinds. See
+// [Codec] for how they map to Go types. Plain cbor decoders, such as [New],
+// [Unmarshal] and [NewDecoder], refuse those tags, except to a type with its
+// own UnmarshalCBOR, which gets the item as it is.
 //
 // # Why our own CBOR implementation?
 //
@@ -159,7 +169,7 @@ func Marshal(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cborwire.Normalize(data)
+	return cborwire.Normalize(data, cborwire.Plain)
 }
 
 // NewEncoder creates an encoder that writes to w

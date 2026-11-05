@@ -10,17 +10,29 @@ import (
 	"github.com/surrealdb/surrealdb.go/v2/pkg/models"
 )
 
-// sizedTagName names the SurrealDB kind each sized-number tag carries.
-var sizedTagName = map[uint64]string{
-	models.TagI8:  "i8",
-	models.TagU8:  "u8",
-	models.TagI16: "i16",
-	models.TagU16: "u16",
-	models.TagI32: "i32",
-	models.TagU32: "u32",
-	models.TagU64: "u64",
-	models.TagF16: "f16",
-	models.TagF32: "f32",
+// cbor2TagName names the SurrealDB kind each tag only cbor.2 carries holds.
+var cbor2TagName = map[uint64]string{
+	models.TagI8:         "i8",
+	models.TagU8:         "u8",
+	models.TagI16:        "i16",
+	models.TagU16:        "u16",
+	models.TagI32:        "i32",
+	models.TagU32:        "u32",
+	models.TagU64:        "u64",
+	models.TagF16:        "f16",
+	models.TagF32:        "f32",
+	models.TagPlainDate:  "date",
+	models.TagPlainTime:  "time",
+	models.TagTimestamp:  "timestamp",
+	models.TagInterval:   "interval",
+	models.TagBigDecimal: "bigdecimal",
+	models.TagRegex:      "regex",
+}
+
+// errOnlyInCBOR2 is the error for a tag that only cbor.2 carries, met in
+// plain cbor. The server refuses such a tag too.
+func errOnlyInCBOR2(tagNum uint64) error {
+	return fmt.Errorf("CBOR tag %d (%s) is only valid in cbor.2, not plain cbor", tagNum, cbor2TagName[tagNum])
 }
 
 // sizedIntRange is the inclusive range of each sized integer tag. u64 is
@@ -37,12 +49,10 @@ var sizedIntRange = map[uint64][2]int64{
 var float16Type = reflect.TypeOf(models.Float16{})
 
 // decodeSizedNumberTag decodes the content of tag 180 to 188 (the tag number
-// has been read). Plain cbor refuses these tags, as the server does.
+// has been read). Only cbor.2 has these tags: decodeTag refuses them in plain
+// cbor, as the server does.
 func (d *decoder) decodeSizedNumberTag(tagNum uint64, v reflect.Value) error {
-	name := sizedTagName[tagNum]
-	if !d.v2() {
-		return fmt.Errorf("CBOR tag %d (%s) is only valid in cbor.2, not plain cbor", tagNum, name)
-	}
+	name := cbor2TagName[tagNum]
 	if d.pos >= len(d.data) {
 		return io.ErrUnexpectedEOF
 	}
@@ -237,7 +247,9 @@ func (d *decoder) readPlainFloat() (float64, error) {
 // i64, so the server reads a sized integer key (cbor.2) as a plain int key;
 // this decodes it the way a plain CBOR integer decodes into an interface
 // (uint64 when non-negative, int64 when negative). Sized floats are not valid
-// keys. Keys inside an array or object key keep their width.
+// keys, and neither are dates, times, timestamps, intervals, bigdecimals and
+// regexes, as the server refuses them. Keys inside an array or object key
+// keep their kind.
 func recordIDKey(key any) (any, error) {
 	switch k := key.(type) {
 	case int8:
@@ -257,7 +269,8 @@ func recordIDKey(key any) (any, error) {
 			return nil, fmt.Errorf("record id key %d is outside the 64-bit signed range", k)
 		}
 		return k, nil
-	case float32, models.Float16:
+	case float32, models.Float16, models.PlainDate, models.PlainTime, models.Timestamp,
+		models.Interval, models.BigDecimal, models.Regex:
 		return nil, fmt.Errorf("a %T is not a valid record id key", key)
 	default:
 		return key, nil

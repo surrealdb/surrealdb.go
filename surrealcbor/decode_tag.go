@@ -13,6 +13,7 @@ import (
 )
 
 func (d *decoder) decodeTag(v reflect.Value) error {
+	start := d.pos
 	tagNum, err := d.readUint()
 	if err != nil {
 		return err
@@ -21,6 +22,19 @@ func (d *decoder) decodeTag(v reflect.Value) error {
 	// Special handling for Tag 6 (NONE)
 	if tagNum == models.TagNone {
 		return d.decodeNoneTag(v)
+	}
+
+	// The sized numbers and the date, time, timestamp, interval, bigdecimal
+	// and regex kinds exist only in cbor.2. Plain cbor refuses their tags, as
+	// the server does.
+	if models.IsCBOR2OnlyTag(tagNum) {
+		switch {
+		case !d.v2():
+			return errOnlyInCBOR2(tagNum)
+		case models.IsSizedNumberTag(tagNum):
+			return d.decodeSizedNumberTag(tagNum, v)
+		}
+		return d.decodeCBOR2KindTag(tagNum, start, v)
 	}
 
 	// Delegate to specific decoder based on tag
@@ -42,10 +56,6 @@ func (d *decoder) decodeSpecificTag(tagNum uint64, v reflect.Value) error {
 	}
 	if tagNum == models.TagSet {
 		return d.decodeSetTag(v)
-	}
-	// Sized numbers (cbor.2 only)
-	if models.IsSizedNumberTag(tagNum) {
-		return d.decodeSizedNumberTag(tagNum, v)
 	}
 	// Range/Bound types
 	if tagNum >= 49 && tagNum <= 51 {

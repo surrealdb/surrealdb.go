@@ -98,7 +98,7 @@ func (c *CborMarshaler) Marshal(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cborwire.Normalize(data)
+	return cborwire.Normalize(data, cborwire.Plain)
 }
 
 func (c *CborMarshaler) cborEncMode() cbor.EncMode {

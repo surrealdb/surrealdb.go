@@ -64,10 +64,12 @@ func (d *decoder) skipString(additionalInfo byte) error {
 	if length < 0 {
 		return d.skipIndefiniteItems()
 	}
-	d.pos += int(length)
-	if d.pos > len(d.data) {
-		return io.EOF
+	// Check the length against what is left before moving: a length near
+	// math.MaxInt64 would wrap the position around to a negative number.
+	if length > int64(len(d.data)-d.pos) {
+		return io.ErrUnexpectedEOF
 	}
+	d.pos += int(length)
 	return nil
 }
 

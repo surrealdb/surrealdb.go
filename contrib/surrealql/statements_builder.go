@@ -20,7 +20,12 @@ type StatementsBuilder[T any] struct {
 	self *T
 }
 
-// Let adds a LET statement to the transaction
+// Let adds a LET statement to the transaction.
+//
+// A string value is written quoted, and a Query in parentheses. A value with
+// a SurrealString method, such as a models.PlainDate or a *models.RecordID,
+// is written as the SurrealQL literal it returns. Any other value is written
+// with fmt's %v, which suits numbers and booleans.
 func (t *StatementsBuilder[T]) Let(variable string, value any) *T {
 	if !strings.HasPrefix(variable, "$") {
 		variable = "$" + variable
@@ -32,7 +37,8 @@ func (t *StatementsBuilder[T]) Let(variable string, value any) *T {
 	return t.self
 }
 
-// LetTyped adds a typed LET statement to the transaction
+// LetTyped adds a typed LET statement to the transaction. It writes value as
+// Let does.
 func (t *StatementsBuilder[T]) LetTyped(variable, dataType string, value any) *T {
 	if !strings.HasPrefix(variable, "$") {
 		variable = "$" + variable
@@ -58,7 +64,10 @@ func (t *StatementsBuilder[T]) If(condition string) *IfBuilder[T] {
 	return b
 }
 
-// Throw adds a THROW statement to the transaction
+// Throw adds a THROW statement to the transaction. A string is written
+// quoted, and a value with a SurrealString method, such as a models.PlainDate,
+// as the SurrealQL literal it returns. Any other value is written with fmt's
+// %v.
 func (t *StatementsBuilder[T]) Throw(err any) *T {
 	t.statements = append(t.statements, &ThrowStatement{
 		err: err,

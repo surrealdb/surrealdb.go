@@ -16,7 +16,9 @@ const (
 // Codec marshals and unmarshals SurrealDB CBOR.
 //
 // A Codec speaks one CBOR protocol version. [New] returns a plain cbor (v1)
-// codec, and [NewV2] a cbor.2 codec, SurrealDB 4.0's CBOR with sized numbers.
+// codec, and [NewV2] a cbor.2 codec: SurrealDB 4.0's CBOR, with tags for its
+// sized numbers and for its date, time, timestamp, interval, bigdecimal and
+// regex kinds.
 // Connections negotiate the version with the server and switch to the cbor.2
 // codec on their own (see [Codec.ForCBORVersion]), so configure a connection
 // with [New] whichever server it talks to.
@@ -44,8 +46,22 @@ const (
 //     tag's kind and the destination.
 //   - Sized numbers inside a value that encodes itself (a type implementing
 //     [Marshaler], time.Time, and the like) are not tagged.
+//   - [models.PlainDate], [models.PlainTime], [models.Timestamp],
+//     [models.Interval], [models.BigDecimal] and [models.Regex] are sent as
+//     SurrealDB's date, time, timestamp, interval, bigdecimal and regex (CBOR
+//     tags 100 and 189 to 193), wherever they are in a value. Decoding into
+//     an interface yields those types, and each of them keeps what cbor.2
+//     carries, such as the scale of a bigdecimal. Into any other Go type a
+//     value decodes as plain cbor carries it: a date into a time.Time is its
+//     midnight UTC, and an interval into a string is its ISO 8601 text. A
+//     regex decodes into a string as its pattern.
 //
-// Plain cbor refuses tags 180 to 188, as the server does.
+// Over plain cbor those kinds are widened as the server widens them: a date
+// or a timestamp to a datetime, a time to a duration, an interval to its ISO
+// 8601 text, and a bigdecimal to a decimal when it fits one and to text
+// otherwise. A regex has no plain form: Marshal fails with an error that
+// wraps constants.ErrNeedsCBOR2. Plain cbor refuses tags 100 and 180 to 193,
+// as the server does.
 type Codec struct {
 	encMode     cbor.EncMode
 	cborVersion int
@@ -53,7 +69,7 @@ type Codec struct {
 
 var _ codec.CBORVersioned = (*Codec)(nil)
 
-// NewV2 returns a codec for cbor.2, SurrealDB 4.0's CBOR with sized numbers.
+// NewV2 returns a codec for cbor.2, SurrealDB 4.0's CBOR.
 // Most code needs [New] instead: connections switch to cbor.2 themselves when
 // the server offers it.
 func NewV2() *Codec {
@@ -106,6 +122,7 @@ func (c *Codec) Marshal(v any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	dialect := cborwire.Plain
 	if c.CBORVersion() >= cborV2 {
 		// Tag the sized numbers first: tagSizedNumbers walks data alongside v,
 		// so it needs the encoder's output as it was written. Normalize then
@@ -113,6 +130,7 @@ func (c *Codec) Marshal(v any) ([]byte, error) {
 		if data, err = tagSizedNumbers(data, v); err != nil {
 			return nil, err
 		}
+		dialect = cborwire.CBOR2
 	}
-	return cborwire.Normalize(data)
+	return cborwire.Normalize(data, dialect)
 }

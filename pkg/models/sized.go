@@ -17,7 +17,7 @@ import (
 // Over plain "cbor" the server sends sized numbers widened, as plain integers
 // and floats, and refuses these tags.
 //
-// See https://github.com/surrealdb/surrealdb-protocol/blob/v0.14.0/spec/cbor-tags.yaml.
+// See https://github.com/surrealdb/surrealdb-protocol/blob/v0.15.0/spec/cbor-tags.yaml.
 const (
 	TagI8  uint64 = 180
 	TagU8  uint64 = 181
@@ -170,21 +170,25 @@ func Float32Exact(f float64) bool {
 	return math.IsNaN(f) || float64(float32(f)) == f
 }
 
-// sizedTagToGo converts a cbor.Tag holding a cbor.2 sized number, as
+// cbor2TagToGo converts a cbor.Tag holding a cbor.2 sized number, as
 // fxamacker/cbor decodes one into an interface, into its Go kind (int8, uint8,
 // int16, uint16, int32, uint32, uint64, Float16 or float32), checking that the
-// value fits. Other values are returned as they are, with arrays and maps
-// converted element by element.
-func sizedTagToGo(v any) (any, error) {
+// value fits, and one holding a date, time, timestamp, interval, bigdecimal or
+// regex into its models type. Other values are returned as they are, with
+// arrays and maps converted element by element.
+func cbor2TagToGo(v any) (any, error) {
 	switch t := v.(type) {
 	case cbor.Tag:
-		if !IsSizedNumberTag(t.Number) {
-			return v, nil
+		switch {
+		case IsSizedNumberTag(t.Number):
+			return sizedTagContentToGo(t.Number, t.Content)
+		case isKindTag(t.Number):
+			return kindTagToGo(t)
 		}
-		return sizedTagContentToGo(t.Number, t.Content)
+		return v, nil
 	case []any:
 		for i, e := range t {
-			c, err := sizedTagToGo(e)
+			c, err := cbor2TagToGo(e)
 			if err != nil {
 				return nil, err
 			}
@@ -193,7 +197,7 @@ func sizedTagToGo(v any) (any, error) {
 		return t, nil
 	case map[any]any:
 		for k, e := range t {
-			c, err := sizedTagToGo(e)
+			c, err := cbor2TagToGo(e)
 			if err != nil {
 				return nil, err
 			}
@@ -202,7 +206,7 @@ func sizedTagToGo(v any) (any, error) {
 		return t, nil
 	case map[string]any:
 		for k, e := range t {
-			c, err := sizedTagToGo(e)
+			c, err := cbor2TagToGo(e)
 			if err != nil {
 				return nil, err
 			}
@@ -212,6 +216,41 @@ func sizedTagToGo(v any) (any, error) {
 	default:
 		return v, nil
 	}
+}
+
+// kindTagToGo converts a cbor.Tag holding a date, time, timestamp, interval,
+// bigdecimal or regex into its models type.
+func kindTagToGo(t cbor.Tag) (any, error) {
+	data, err := cbor.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+	switch t.Number {
+	case TagPlainDate:
+		return unmarshalKind[PlainDate](data)
+	case TagPlainTime:
+		return unmarshalKind[PlainTime](data)
+	case TagTimestamp:
+		return unmarshalKind[Timestamp](data)
+	case TagInterval:
+		return unmarshalKind[Interval](data)
+	case TagBigDecimal:
+		return unmarshalKind[BigDecimal](data)
+	default:
+		return unmarshalKind[Regex](data)
+	}
+}
+
+// unmarshalKind decodes data into a new T through *T's UnmarshalCBOR.
+func unmarshalKind[T any, P interface {
+	*T
+	UnmarshalCBOR([]byte) error
+}](data []byte) (any, error) {
+	var v T
+	if err := P(&v).UnmarshalCBOR(data); err != nil {
+		return nil, err
+	}
+	return v, nil
 }
 
 func sizedTagContentToGo(tag uint64, content any) (any, error) {
@@ -297,13 +336,15 @@ func sizedIntBounds(tag uint64) (lo, hi *big.Int) {
 	}
 }
 
-// recordIDKeyFromTags converts the sized numbers in a record id key decoded by
+// recordIDKeyFromTags converts the cbor.2 tags in a record id key decoded by
 // fxamacker/cbor. The server reads a sized integer used as the key itself as
 // a plain int (so it decodes as fxamacker decodes a plain integer: uint64 when
 // non-negative, int64 when negative), and keeps the widths inside an array or
-// object key. A sized float is not a valid key.
+// object key. A sized float is not a valid key, and neither is a date, time,
+// timestamp, interval, bigdecimal or regex, though one may be inside an array
+// or object key.
 func recordIDKeyFromTags(key any) (any, error) {
-	v, err := sizedTagToGo(key)
+	v, err := cbor2TagToGo(key)
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +366,7 @@ func recordIDKeyFromTags(key any) (any, error) {
 			return nil, fmt.Errorf("record id key %d is outside the 64-bit signed range", k)
 		}
 		return k, nil
-	case float32, Float16:
+	case float32, Float16, PlainDate, PlainTime, Timestamp, Interval, BigDecimal, Regex:
 		return nil, fmt.Errorf("a %T is not a valid record id key", v)
 	default:
 		return v, nil
