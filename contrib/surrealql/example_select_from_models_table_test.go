@@ -36,7 +36,7 @@ func ExampleSelect_modelsTableWithConditions() {
 	dumpVars(vars)
 
 	// Output:
-	// SELECT name, price FROM $from_table_1 WHERE category = $param_1 AND price > $param_2 ORDER BY price LIMIT 10
+	// SELECT name, price FROM $from_table_1 WHERE (category = $param_1 AND price > $param_2) ORDER BY price LIMIT 10
 	// Vars:
 	//   from_table_1: products
 	//   param_1: electronics

@@ -17,7 +17,7 @@ func ExampleDelete() {
 	fmt.Printf("Vars: %v\n", vars)
 
 	// Output:
-	// SurrealQL: DELETE sessions WHERE expires_at < $param_1
+	// SurrealQL: DELETE sessions WHERE (expires_at < $param_1)
 	// Vars: map[param_1:2023-10-01 12:00:00 +0000 UTC]
 }
 
@@ -32,7 +32,7 @@ func ExampleDelete_withReturnNone() {
 	fmt.Printf("Vars: %v\n", vars)
 
 	// Output:
-	// SurrealQL: DELETE sessions WHERE expires_at < $param_1 RETURN NONE
+	// SurrealQL: DELETE sessions WHERE (expires_at < $param_1) RETURN NONE
 	// Vars: map[param_1:2023-10-01 12:00:00 +0000 UTC]
 }
 
@@ -75,6 +75,6 @@ func ExampleDelete_withWhereAndReturnDiff() {
 	fmt.Printf("Vars: %v\n", vars)
 
 	// Output:
-	// SurrealQL: DELETE users WHERE active = $param_1 RETURN DIFF
+	// SurrealQL: DELETE users WHERE (active = $param_1) RETURN DIFF
 	// Vars: map[param_1:false]
 }

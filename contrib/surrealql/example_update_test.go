@@ -27,7 +27,7 @@ func ExampleUpdate_allInTable() {
 	}
 
 	// Output:
-	// SurrealQL: UPDATE users SET active = $param_1 WHERE last_login < $param_2
+	// SurrealQL: UPDATE users SET active = $param_1 WHERE (last_login < $param_2)
 	// Var param_1: true
 	// Var param_2: 2022-10-01 00:00:00 +0000 UTC
 }
@@ -64,7 +64,7 @@ func ExampleUpdate_allInMultipleTables() {
 	}
 
 	// Output:
-	// SurrealQL: UPDATE users, products SET active = $param_1 WHERE last_updated < $param_2
+	// SurrealQL: UPDATE users, products SET active = $param_1 WHERE (last_updated < $param_2)
 	// Var param_1: true
 	// Var param_2: 2022-10-01 00:00:00 +0000 UTC
 }
@@ -103,7 +103,7 @@ func ExampleUpdate_specificRecordsAcrossMultipleTables() {
 	}
 
 	// Output:
-	// SurrealQL: UPDATE users:123, products:456 SET active = $param_1 WHERE last_login < $param_2
+	// SurrealQL: UPDATE users:123, products:456 SET active = $param_1 WHERE (last_login < $param_2)
 	// Var param_1: false
 	// Var param_2: 2022-10-01 00:00:00 +0000 UTC
 }
@@ -146,7 +146,7 @@ func ExampleUpdate_table() {
 	}
 
 	// Output:
-	// SurrealQL: UPDATE $table_1 SET active = $param_1 WHERE last_login < $param_2
+	// SurrealQL: UPDATE $table_1 SET active = $param_1 WHERE (last_login < $param_2)
 	// Var param_1: true
 	// Var param_2: 2022-10-01 00:00:00 +0000 UTC
 	// Var table_1: users
@@ -190,7 +190,7 @@ func ExampleUpdate_compoundOperations() {
 	fmt.Println(sql)
 	fmt.Printf("Variables: %v\n", vars)
 	// Output:
-	// UPDATE products SET stock -= $param_1, sales_count += $param_2, last_sold = $param_3 WHERE stock > $param_4
+	// UPDATE products SET stock -= $param_1, sales_count += $param_2, last_sold = $param_3 WHERE (stock > $param_4)
 	// Variables: map[param_1:5 param_2:1 param_3:2024-01-01T00:00:00Z param_4:0]
 }
 
@@ -227,8 +227,8 @@ func ExampleUpdate_returnNone() {
 	fmt.Println("Delete:", deleteQuery.String())
 
 	// Output:
-	// Update: UPDATE products SET on_sale = $param_1 WHERE sale_ends_at < $param_2 RETURN NONE
-	// Delete: DELETE logs WHERE created_at < $param_1 RETURN NONE
+	// Update: UPDATE products SET on_sale = $param_1 WHERE (sale_ends_at < $param_2) RETURN NONE
+	// Delete: DELETE logs WHERE (created_at < $param_1) RETURN NONE
 }
 
 func ExampleUpdate_withReturnDiff() {
