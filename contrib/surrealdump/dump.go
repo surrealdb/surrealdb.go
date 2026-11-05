@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -383,38 +382,51 @@ func ReadUint64(r io.Reader) (uint64, error) {
 //	db.Use(ctx, "myapp", "production")
 //	dumper := surrealdump.New(db, "myapp", "production")
 //	dumper.Full(ctx, "/path/to/dump.cbor")
+//
+// The dump replaces the file at filePath, and its manifest, only once it is
+// complete: a dump which fails leaves both as they were.
 func (d *Dumper) Full(ctx context.Context, filePath string) error {
+	// Full dumps start from 0
+	return d.writeDump(filePath, ManifestTypeFull, 0, func(w io.Writer) (*uint64, error) {
+		return d.full(ctx, w)
+	})
+}
+
+// writeDump writes a dump, and then its manifest, to filePath by way of a file
+// beside it, which replaces the file at filePath only once the whole dump is
+// written. A dump which fails so leaves the last good one in place.
+func (d *Dumper) writeDump(filePath string, kind ManifestType, startVs uint64, dump func(io.Writer) (*uint64, error)) error {
 	startTime := time.Now()
 
-	file, err := os.Create(filePath)
+	out, err := createReplacement(filePath, 0o666)
 	if err != nil {
 		return fmt.Errorf("failed to create dump file: %w", err)
 	}
-	defer file.Close()
+	defer out.discard()
 
 	hash := sha256.New()
-	writer := io.MultiWriter(file, hash)
-
-	// Perform the dump
-	maxVs, dumpErr := d.full(ctx, writer)
+	maxVs, dumpErr := dump(io.MultiWriter(out.file, hash))
 	if dumpErr != nil {
 		return fmt.Errorf("dump failed: %w", dumpErr)
 	}
 
-	fileInfo, err := file.Stat()
+	fileInfo, err := out.file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get file info: %w", err)
+	}
+	if err := out.commit(); err != nil {
+		return fmt.Errorf("failed to write dump file: %w", err)
 	}
 
 	manifest := &Manifest{
 		Filename:          filepath.Base(filePath),
-		Type:              ManifestTypeFull,
+		Type:              kind,
 		CreatedAt:         startTime,
 		Size:              fileInfo.Size(),
 		Namespace:         d.namespace,
 		Database:          d.database,
 		EndVersionstamp:   *maxVs,
-		StartVersionstamp: 0, // Full dumps start from 0
+		StartVersionstamp: startVs,
 		SHA256:            fmt.Sprintf("%x", hash.Sum(nil)),
 	}
 
@@ -436,44 +448,11 @@ func (d *Dumper) Full(ctx context.Context, filePath string) error {
 //	db.Use(ctx, "myapp", "production")
 //	dumper := surrealdump.New(db, "myapp", "production")
 //	dumper.Incremental(ctx, "/path/to/incremental.cbor", sinceVersionstamp)
+//
+// As with [Dumper.Full], a dump which fails leaves the file at filePath, and
+// its manifest, as they were.
 func (d *Dumper) Incremental(ctx context.Context, filePath string, sinceVersionstamp uint64) error {
-	startTime := time.Now()
-
-	file, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create dump file: %w", err)
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	writer := io.MultiWriter(file, hash)
-
-	// Perform the dump
-	maxVs, dumpErr := d.incremental(ctx, writer, sinceVersionstamp)
-	if dumpErr != nil {
-		return fmt.Errorf("dump failed: %w", dumpErr)
-	}
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get file info: %w", err)
-	}
-
-	manifest := &Manifest{
-		Filename:          filepath.Base(filePath),
-		Type:              ManifestTypeIncremental,
-		CreatedAt:         startTime,
-		Size:              fileInfo.Size(),
-		Namespace:         d.namespace,
-		Database:          d.database,
-		EndVersionstamp:   *maxVs,
-		StartVersionstamp: sinceVersionstamp,
-		SHA256:            fmt.Sprintf("%x", hash.Sum(nil)),
-	}
-
-	if err := WriteManifest(filePath, manifest); err != nil {
-		return fmt.Errorf("failed to write manifest: %w", err)
-	}
-
-	return nil
+	return d.writeDump(filePath, ManifestTypeIncremental, sinceVersionstamp, func(w io.Writer) (*uint64, error) {
+		return d.incremental(ctx, w, sinceVersionstamp)
+	})
 }
