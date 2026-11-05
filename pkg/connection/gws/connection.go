@@ -14,6 +14,7 @@ import (
 	"github.com/lxzan/gws"
 	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/internal/wsutil"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
@@ -22,8 +23,13 @@ import (
 type Connection struct {
 	connection.Toolkit
 
-	conn     *gws.Conn
+	conn *gws.Conn
+	// connLock guards conn, which Connect sets and Close clears. It is held
+	// only to read or change conn, never across a write.
 	connLock sync.Mutex
+	// writeLock lets one request at a time be written, for no longer than
+	// its context allows.
+	writeLock wsutil.WriteLock
 
 	Timeout time.Duration
 
@@ -127,21 +133,67 @@ func (h *websocketHandler) OnPing(socket *gws.Conn, payload []byte) {
 func (h *websocketHandler) OnPong(socket *gws.Conn, payload []byte) {
 }
 
-func (c *Connection) write(v any) error {
+// write sends v as one message. ctx bounds both the wait for the writes before
+// it and its own write, so that a write which the server or the network stops
+// taking holds up neither the requests after it nor Close. gws closes the
+// connection when a write fails, as one cut short part way leaves the
+// WebSocket stream broken.
+func (c *Connection) write(ctx context.Context, v any) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	c.connLock.Lock()
-	defer c.connLock.Unlock()
+	if lockErr := c.writeLock.Lock(ctx); lockErr != nil {
+		return lockErr
+	}
+	defer c.writeLock.Unlock()
 
-	if c.conn == nil {
+	// gws writes on the network connection as it is, so the deadline is set
+	// on it, and lifted after the write, as gws answers pings on it too. Both
+	// are done under connLock, so that the deadline Close sets to stop a stuck
+	// write stays set.
+	c.connLock.Lock()
+	conn := c.conn
+	if conn == nil {
+		c.connLock.Unlock()
 		return errors.New("connection is closed")
 	}
+	netConn := conn.NetConn()
+	deadline, _ := ctx.Deadline()
+	err = netConn.SetWriteDeadline(deadline)
+	c.connLock.Unlock()
+	if err != nil {
+		return err
+	}
 
-	return c.conn.WriteMessage(gws.OpcodeBinary, data)
+	stop := wsutil.CutOnDone(ctx, netConn.SetWriteDeadline)
+	err = conn.WriteMessage(gws.OpcodeBinary, data)
+	stop()
+
+	c.connLock.Lock()
+	if c.conn == conn {
+		_ = netConn.SetWriteDeadline(time.Time{})
+	}
+	c.connLock.Unlock()
+
+	switch {
+	case err == nil:
+		return nil
+	case ctx.Err() != nil:
+		return ctx.Err()
+	case c.IsClosed() && !wsutil.IsTimeout(err):
+		// Closed meanwhile, as by Close, which stops a write under way.
+		return c.closedError()
+	case wsutil.IsTimeout(err):
+		return context.DeadlineExceeded
+	}
+	return err
 }
+
+// closeMessageTimeout bounds the write of the close message when Close is
+// given a context without a deadline.
+const closeMessageTimeout = time.Second
 
 func (c *Connection) handleResponse(data []byte) {
 	var rpcRes connection.RPCResponse[cbor.RawMessage]
@@ -249,6 +301,13 @@ func (c *Connection) Close(ctx context.Context) error {
 	// Signal closing
 	c.markClosed(nil)
 
+	// The deadline bounds the close message, and a request whose write is
+	// stuck, which the close message would otherwise wait for.
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(closeMessageTimeout)
+	}
+	_ = c.conn.NetConn().SetWriteDeadline(deadline)
 	err := c.conn.WriteClose(constants.CloseMessageCode, []byte(""))
 	if err != nil {
 		c.logError("failed to close WebSocket connection", "error", err)
@@ -432,7 +491,7 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	}
 	defer c.RemoveResponseChannel(fmt.Sprintf("%v", id))
 
-	if err := c.write(req); err != nil {
+	if err := c.write(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -473,7 +532,7 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 		return nil, err
 	}
 	stream.FirstResponseTimeout = c.Timeout
-	if err := c.write(req); err != nil {
+	if err := c.write(ctx, req); err != nil {
 		stream.Close()
 		return nil, err
 	}

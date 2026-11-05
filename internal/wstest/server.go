@@ -35,7 +35,22 @@ type Server struct {
 // NewServer starts a server, which is stopped when the test ends.
 func NewServer(t *testing.T) *Server {
 	t.Helper()
+	return newServer(t, false)
+}
+
+// NewStallingServer starts a server which accepts WebSocket connections on
+// /rpc but reads nothing from them, as a server or a network which stops
+// taking data does: a write larger than the socket buffers then blocks. It is
+// stopped when the test ends.
+func NewStallingServer(t *testing.T) *Server {
+	t.Helper()
+	return newServer(t, true)
+}
+
+func newServer(t *testing.T, stall bool) *Server {
+	t.Helper()
 	s := &Server{Requests: make(chan struct{}, 64), acceptedCh: make(chan struct{})}
+	stopped := make(chan struct{})
 	upgrader := gorilla.Upgrader{Subprotocols: []string{"cbor"}}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -51,6 +66,11 @@ func NewServer(t *testing.T) *Server {
 		close(s.acceptedCh)
 		s.acceptedCh = make(chan struct{})
 		s.mu.Unlock()
+		if stall {
+			<-stopped
+			_ = conn.Close()
+			return
+		}
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
 				return
@@ -58,7 +78,10 @@ func NewServer(t *testing.T) *Server {
 			s.Requests <- struct{}{}
 		}
 	}))
-	t.Cleanup(s.Close)
+	t.Cleanup(func() {
+		close(stopped)
+		s.Close()
+	})
 	return s
 }
 

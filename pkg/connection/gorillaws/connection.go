@@ -16,6 +16,7 @@ import (
 	"github.com/surrealdb/surrealdb.go/v2/internal/codec"
 
 	"github.com/surrealdb/surrealdb.go/v2/internal/rand"
+	"github.com/surrealdb/surrealdb.go/v2/internal/wsutil"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/connection"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/connection/rpc"
 	"github.com/surrealdb/surrealdb.go/v2/pkg/constants"
@@ -23,6 +24,10 @@ import (
 
 	gorilla "github.com/gorilla/websocket"
 )
+
+// closeMessageTimeout bounds the write of the close message when Close is
+// given a context without a deadline.
+const closeMessageTimeout = time.Second
 
 // DefaultDialer is the default gorilla dialer used by the WebSocketConnection
 //
@@ -46,12 +51,12 @@ type Connection struct {
 	connection.Toolkit
 
 	Conn *gorilla.Conn
-	// connLock is used to ensure that the Conn is not-nil when we try to read or write to it.
-	//
-	// This lock is meant to not taken while the entire reconnection process is happening,
-	// but instead only when we try to read or write to the connection after a successful connection.
-	// This is to avoid non-cancellable blocking on the connection read/write operations, like Send.
+	// connLock guards Conn, which Connect sets and Close clears. It is held
+	// only to read or change Conn, never across a write.
 	connLock sync.Mutex
+	// writeLock lets one request at a time be written, for no longer than
+	// its context allows.
+	writeLock wsutil.WriteLock
 
 	// Timeout is the timeout for receiveing the RPC response after
 	// you've successfully sent the request.
@@ -278,23 +283,14 @@ func (c *Connection) Close(ctx context.Context) error {
 	writeErr := make(chan error, 1)
 
 	go func() {
-		// Set write deadline based on context to prevent indefinite blocking
-		if deadline, ok := ctx.Deadline(); ok {
-			err := conn.SetWriteDeadline(deadline)
-			if err != nil {
-				writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to set write deadline, although it must always succeed: %w", err)
-				return
-			}
-			defer func() {
-				err := conn.SetWriteDeadline(time.Time{})
-				if err != nil {
-					writeErr <- fmt.Errorf("BUG: WebSocketConnection.Close: failed to reset write deadline, although it must always succeed: %w", err)
-					return
-				}
-			}()
+		// WriteControl may run while a request is being written, and gives up
+		// at its deadline, as when that write is stuck: closing the network
+		// connection below then stops that write too.
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			deadline = time.Now().Add(closeMessageTimeout)
 		}
-
-		err := conn.WriteMessage(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""))
+		err := conn.WriteControl(gorilla.CloseMessage, gorilla.FormatCloseMessage(constants.CloseMessageCode, ""), deadline)
 
 		// Try to send the error, but also check if we should abandon the attempt
 		select {
@@ -494,7 +490,7 @@ func (c *Connection) Call(ctx context.Context, req *connection.RPCRequest) (*con
 	}
 	defer c.RemoveResponseChannel(fmt.Sprintf("%v", id))
 
-	if err := c.write(req); err != nil {
+	if err := c.write(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -535,7 +531,7 @@ func (c *Connection) CallStream(ctx context.Context, req *connection.RPCRequest)
 		return nil, err
 	}
 	stream.FirstResponseTimeout = c.Timeout
-	if err := c.write(req); err != nil {
+	if err := c.write(ctx, req); err != nil {
 		stream.Close()
 		return nil, err
 	}
@@ -550,28 +546,57 @@ func (c *Connection) closeErr() error {
 	return connection.ClosedError(c.connCloseError)
 }
 
-func (c *Connection) write(v any) error {
+// write sends v as one message. ctx bounds both the wait for the writes before
+// it and its own write, so that a write which the server or the network stops
+// taking holds up neither the requests after it nor Close. A write cut short
+// part way leaves the WebSocket stream broken, so the connection is closed then.
+func (c *Connection) write(ctx context.Context, v any) error {
 	data, err := c.Marshaler.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	c.connLock.Lock()
-	defer c.connLock.Unlock()
+	if lockErr := c.writeLock.Lock(ctx); lockErr != nil {
+		return lockErr
+	}
+	defer c.writeLock.Unlock()
 
-	if c.Conn == nil {
+	c.connLock.Lock()
+	conn := c.Conn
+	c.connLock.Unlock()
+	if conn == nil {
 		return errors.New("connection is closed")
 	}
 
-	err = c.Conn.WriteMessage(gorilla.BinaryMessage, data)
+	// gorilla sets its write deadline on the network connection as it starts
+	// each frame; the cut stops the frame under way.
+	deadline, _ := ctx.Deadline()
+	if deadlineErr := conn.SetWriteDeadline(deadline); deadlineErr != nil {
+		return deadlineErr
+	}
+	stop := wsutil.CutOnDone(ctx, conn.NetConn().SetWriteDeadline)
+	err = conn.WriteMessage(gorilla.BinaryMessage, data)
+	stop()
 
-	// Check if we got ErrCloseSent, which means the connection is closed
-	if errors.Is(err, gorilla.ErrCloseSent) {
+	switch {
+	case err == nil:
+		return nil
+	case c.IsClosed() && ctx.Err() == nil && !wsutil.IsTimeout(err):
+		// Closed meanwhile, as by Close, which stops a write under way.
+		return c.closedError()
+	case ctx.Err() != nil || wsutil.IsTimeout(err):
+		if c.closeWithError(fmt.Errorf("a request was cut short while it was being written: %w", err)) {
+			_ = conn.Close()
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return context.DeadlineExceeded
+	case errors.Is(err, gorilla.ErrCloseSent):
 		// Transition to disconnected state so IsClosed() returns true
 		// This allows rews to detect the closed connection and reconnect
 		c.closeWithError(err)
 	}
-
 	return err
 }
 
