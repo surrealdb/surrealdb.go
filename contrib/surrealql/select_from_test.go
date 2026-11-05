@@ -102,7 +102,7 @@ func TestSelect_variousFromTypes(t *testing.T) {
 			FieldName("name").
 			Where("age > ?", 18).
 			Build()
-		assert.Equal(t, "SELECT name FROM users WHERE age > $param_1", sql)
+		assert.Equal(t, "SELECT name FROM users WHERE (age > $param_1)", sql)
 		assert.Contains(t, vars, "param_1")
 		assert.Equal(t, 18, vars["param_1"])
 	})
@@ -146,7 +146,7 @@ func TestSelect_variousFromTypes(t *testing.T) {
 			FieldName("price").
 			Where("price > ?", 100).
 			Build()
-		assert.Equal(t, "SELECT name, price FROM $from_param_1 WHERE price > $param_1", sql)
+		assert.Equal(t, "SELECT name, price FROM $from_param_1 WHERE (price > $param_1)", sql)
 		assert.Contains(t, vars, "from_param_1")
 		assert.Equal(t, models.Table("products"), vars["from_param_1"])
 		assert.Contains(t, vars, "param_1")
@@ -226,7 +226,7 @@ func TestSelect_variousFromTypes(t *testing.T) {
 			Where("price > ?", 100).
 			OrderBy("price").
 			Build()
-		assert.Equal(t, "SELECT name, price FROM $from_table_1 WHERE price > $param_1 ORDER BY price", sql)
+		assert.Equal(t, "SELECT name, price FROM $from_table_1 WHERE (price > $param_1) ORDER BY price", sql)
 		assert.Contains(t, vars, "from_table_1")
 		assert.Equal(t, models.Table("products"), vars["from_table_1"])
 		assert.Contains(t, vars, "param_1")

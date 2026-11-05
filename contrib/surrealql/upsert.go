@@ -227,7 +227,7 @@ func (q *UpsertSetQuery) ReturnDiff() *UpsertSetQuery {
 // the RETURN clause with a full SELECT query instead.
 // For example, use `Return("VALUE (SELECT * FROM product WHERE parent = $parent.id)")`
 func (q *UpsertSetQuery) ReturnValue(field string) *UpsertSetQuery {
-	q.returnClause = "VALUE " + escapeIdent(field)
+	q.returnClause = "VALUE " + escapeFieldPath(field)
 	return q
 }
 
@@ -281,7 +281,7 @@ func (q *UpsertSetQuery) build(c *queryBuildContext, b *strings.Builder) {
 				if i > 0 {
 					b.WriteString(", ")
 				}
-				b.WriteString(escapeIdent(field))
+				b.WriteString(escapeFieldPath(field))
 			}
 		}
 	}
@@ -338,7 +338,7 @@ func (q *UpsertContentQuery) ReturnDiff() *UpsertContentQuery {
 
 // ReturnValue sets RETURN VALUE for a specific field
 func (q *UpsertContentQuery) ReturnValue(field string) *UpsertContentQuery {
-	q.returnClause = "VALUE " + escapeIdent(field)
+	q.returnClause = "VALUE " + escapeFieldPath(field)
 	return q
 }
 
@@ -435,7 +435,7 @@ func (q *UpsertMergeQuery) ReturnDiff() *UpsertMergeQuery {
 
 // ReturnValue sets RETURN VALUE for a specific field
 func (q *UpsertMergeQuery) ReturnValue(field string) *UpsertMergeQuery {
-	q.returnClause = "VALUE " + escapeIdent(field)
+	q.returnClause = "VALUE " + escapeFieldPath(field)
 	return q
 }
 
@@ -532,7 +532,7 @@ func (q *UpsertPatchQuery) ReturnDiff() *UpsertPatchQuery {
 
 // ReturnValue sets RETURN VALUE for a specific field
 func (q *UpsertPatchQuery) ReturnValue(field string) *UpsertPatchQuery {
-	q.returnClause = "VALUE " + escapeIdent(field)
+	q.returnClause = "VALUE " + escapeFieldPath(field)
 	return q
 }
 
@@ -629,7 +629,7 @@ func (q *UpsertReplaceQuery) ReturnDiff() *UpsertReplaceQuery {
 
 // ReturnValue sets RETURN VALUE for a specific field
 func (q *UpsertReplaceQuery) ReturnValue(field string) *UpsertReplaceQuery {
-	q.returnClause = "VALUE " + escapeIdent(field)
+	q.returnClause = "VALUE " + escapeFieldPath(field)
 	return q
 }
 

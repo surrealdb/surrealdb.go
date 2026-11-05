@@ -42,7 +42,7 @@ query := surrealql.Select("users").
 
 // Select with ordering and pagination
 query := surrealql.Select("posts").
-    OrderBy("created_at DESC").
+    OrderByDesc("created_at").
     Limit(10).
     Start(20)
 

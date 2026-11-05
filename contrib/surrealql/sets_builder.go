@@ -44,5 +44,10 @@ func (sb *setsBuilder) buildSetClause(base *queryBuildContext, b *strings.Builde
 			b.WriteString(", ")
 		}
 		setExpr.build(base, b)
+		// A line comment in the expression would otherwise run over the
+		// clauses after it: over a WHERE, so that every record is changed.
+		if raw, ok := setExpr.expr.(string); ok && hasLineComment(raw) {
+			b.WriteString("\n")
+		}
 	}
 }

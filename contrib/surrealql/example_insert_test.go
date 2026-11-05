@@ -57,7 +57,7 @@ func ExampleInsert_valueQuery() {
 	sql, _ := q.Build()
 	fmt.Println(sql)
 	// Output:
-	// INSERT INTO company (SELECT name, founded FROM companies WHERE active = $param_1)
+	// INSERT INTO company (SELECT name, founded FROM companies WHERE (active = $param_1))
 }
 
 func ExampleInsert_fields() {

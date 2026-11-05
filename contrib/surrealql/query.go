@@ -4,6 +4,7 @@ package surrealql
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -80,35 +81,64 @@ func (q *queryBuildContext) generateAndAddParam(prefix string, value any) string
 	return name
 }
 
-// escapeIdent escapes an identifier for use in SurrealQL
+// plainIdent matches an identifier which SurrealQL reads as the name it is,
+// without quoting it, unless it is a reserved word.
+var plainIdent = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// identEscaper escapes what a backtick-quoted identifier gives a meaning to:
+// a backslash, and the backtick that would end it.
+var identEscaper = strings.NewReplacer(`\`, `\\`, "`", "\\`")
+
+// escapeIdent writes a name, such as a table's, for use in SurrealQL. Unless it
+// is a plain identifier which is not a reserved word, it is quoted with
+// backticks, so that it is read as the name it is, whatever it holds: a ";", a
+// comment or a keyword in it cannot change the statement.
 func escapeIdent(ident string) string {
-	// If the identifier contains special characters, wrap it in backticks
-	if strings.ContainsAny(ident, " -:`") || isReservedWord(ident) {
-		// Escape any backticks in the identifier with backslash
-		return "`" + strings.ReplaceAll(ident, "`", "\\`") + "`"
+	if plainIdent.MatchString(ident) && !isReservedWord(ident) {
+		return ident
 	}
-	return ident
+	return "`" + identEscaper.Replace(ident) + "`"
+}
+
+// escapeFieldPath writes a field path, such as "address.city", for use in
+// SurrealQL: each segment as escapeIdent writes it, but for a "*" segment, as
+// in "tags.*".
+func escapeFieldPath(path string) string {
+	segments := strings.Split(path, ".")
+	for i, segment := range segments {
+		if segment != "*" {
+			segments[i] = escapeIdent(segment)
+		}
+	}
+	return strings.Join(segments, ".")
+}
+
+// reservedWords are quoted where they name something. SurrealQL reads NONE,
+// NULL, TRUE and FALSE as those values, so a field of that name would silently
+// be replaced by the value, and it refuses statement keywords such as LET.
+var reservedWords = map[string]bool{
+	"NONE": true, "NULL": true, "TRUE": true, "FALSE": true,
+	"SELECT": true, "FROM": true, "WHERE": true, "ORDER": true, "BY": true, "LIMIT": true, "START": true,
+	"FETCH": true, "GROUP": true, "SPLIT": true, "RETURN": true, "PARALLEL": true, "EXPLAIN": true,
+	"CREATE": true, "UPDATE": true, "UPSERT": true, "DELETE": true, "RELATE": true, "INSERT": true,
+	"DEFINE": true, "REMOVE": true, "ALTER": true, "INFO": true, "USE": true, "LET": true,
+	"BEGIN": true, "CANCEL": true, "COMMIT": true, "LIVE": true, "KILL": true, "SHOW": true,
+	"IF": true, "ELSE": true, "THEN": true, "END": true, "FOR": true, "BREAK": true, "CONTINUE": true,
+	"THROW": true, "SLEEP": true, "OPTION": true,
+	"AND": true, "OR": true, "NOT": true, "IS": true, "IN": true, "AS": true, "ONLY": true, "VALUE": true,
+	"BEFORE": true, "AFTER": true, "DIFF": true,
+	"FUNCTION": true, "PARAM": true, "FIELD": true, "TYPE": true, "DEFAULT": true,
+	"ASSERT": true, "PERMISSIONS": true, "DURATION": true, "FLEXIBLE": true,
 }
 
 // isReservedWord checks if a word is a SurrealQL reserved word
 func isReservedWord(word string) bool {
-	// This is a simplified check - in a real implementation,
-	// you'd have a complete list of reserved words
-	reserved := []string{
-		"SELECT", "FROM", "WHERE", "ORDER", "BY", "LIMIT", "START",
-		"FETCH", "GROUP", "SPLIT", "RETURN", "PARALLEL", "EXPLAIN",
-		"CREATE", "UPDATE", "DELETE", "RELATE", "INSERT", "DEFINE",
-		"REMOVE", "INFO", "USE", "BEGIN", "CANCEL", "COMMIT",
-		"IF", "ELSE", "THEN", "END", "BREAK", "CONTINUE",
-		"FUNCTION", "PARAM", "FIELD", "TYPE", "DEFAULT",
-		"ASSERT", "PERMISSIONS", "DURATION", "FLEXIBLE",
-	}
+	return reservedWords[strings.ToUpper(word)]
+}
 
-	upperWord := strings.ToUpper(word)
-	for _, r := range reserved {
-		if upperWord == r {
-			return true
-		}
-	}
-	return false
+// hasLineComment reports whether SurrealQL text may hold a comment which runs
+// to the end of the line. It may be in a string instead: then a line break
+// after the text is still only whitespace.
+func hasLineComment(sql string) bool {
+	return strings.Contains(sql, "--") || strings.Contains(sql, "//") || strings.Contains(sql, "#")
 }

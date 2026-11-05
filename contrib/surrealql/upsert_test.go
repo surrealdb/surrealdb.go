@@ -114,7 +114,7 @@ func TestUpsert_Basic(t *testing.T) {
 					Where("price > ?", 100).
 					Build()
 			},
-			wantSQL: "UPSERT product:monitor SET updated = $param_1 WHERE price > $param_2",
+			wantSQL: "UPSERT product:monitor SET updated = $param_1 WHERE (price > $param_2)",
 			wantVars: map[string]any{
 				"param_1": true,
 				"param_2": 100,
@@ -274,7 +274,7 @@ func TestUpsert_Basic(t *testing.T) {
 					Parallel().
 					Build()
 			},
-			wantSQL: "UPSERT product:premium SET name = $param_1, updated_at = $param_2 WHERE price >= $param_3 RETURN DIFF TIMEOUT 10s PARALLEL",
+			wantSQL: "UPSERT product:premium SET name = $param_1, updated_at = $param_2 WHERE (price >= $param_3) RETURN DIFF TIMEOUT 10s PARALLEL",
 			wantVars: map[string]any{
 				"param_1": "Premium Product",
 				"param_2": "2024-01-01T00:00:00Z",

@@ -44,7 +44,7 @@ func TestSelect_fromTable(t *testing.T) {
 		sql, vars := surrealql.Select(models.Table("users")).
 			Where("age > ?", 18).
 			Build()
-		assert.Equal(t, "SELECT * FROM $from_table_1 WHERE age > $param_1", sql)
+		assert.Equal(t, "SELECT * FROM $from_table_1 WHERE (age > $param_1)", sql)
 		assert.Contains(t, vars, "from_table_1")
 		assert.Equal(t, models.Table("users"), vars["from_table_1"])
 		assert.Contains(t, vars, "param_1")
@@ -73,7 +73,7 @@ func TestSelect_fromTable(t *testing.T) {
 			OrderBy("created_at").
 			Limit(10).
 			Build()
-		assert.Equal(t, "SELECT name, email FROM $from_table_1 WHERE active = $param_1 ORDER BY created_at LIMIT 10", sql)
+		assert.Equal(t, "SELECT name, email FROM $from_table_1 WHERE (active = $param_1) ORDER BY created_at LIMIT 10", sql)
 		assert.Contains(t, vars, "from_table_1")
 		assert.Equal(t, models.Table("user-profiles"), vars["from_table_1"])
 		assert.Contains(t, vars, "param_1")
