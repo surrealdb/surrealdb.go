@@ -94,7 +94,7 @@ func ExampleForStatement_subqueryAsIterable() {
 	}
 
 	// Output:
-	// FOR $person IN (SELECT VALUE id FROM person WHERE age >= $param_1) {
+	// FOR $person IN (SELECT VALUE id FROM person WHERE (age >= $param_1)) {
 	// UPDATE $person SET can_vote = true;
 	// }
 	// Var param_1: 18

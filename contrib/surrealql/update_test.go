@@ -21,7 +21,7 @@ func TestUpdate(t *testing.T) {
 		{
 			name:      "update with where",
 			query:     Update("users").Set("active", false).Where("last_login < ?", "2024-01-01"),
-			wantSurQL: "UPDATE users SET active = $param_1 WHERE last_login < $param_2",
+			wantSurQL: "UPDATE users SET active = $param_1 WHERE (last_login < $param_2)",
 		},
 		{
 			name:      "update with return diff",

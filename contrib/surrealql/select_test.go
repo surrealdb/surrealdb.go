@@ -28,13 +28,13 @@ func TestSelect(t *testing.T) {
 		{
 			name:      "select with where equals",
 			query:     Select("users").WhereEq("active", true),
-			wantSurQL: "SELECT * FROM users WHERE type::field($param_1) = $param_2",
+			wantSurQL: "SELECT * FROM users WHERE (type::field($param_1) = $param_2)",
 			wantArgs:  map[string]any{"param_1": "active", "param_2": true},
 		},
 		{
 			name:      "select with where in",
 			query:     Select("users").WhereIn("status", []string{"active", "pending"}),
-			wantSurQL: "SELECT * FROM users WHERE type::field($param_1) IN $param_2",
+			wantSurQL: "SELECT * FROM users WHERE (type::field($param_1) IN $param_2)",
 			wantArgs:  map[string]any{"param_1": "status", "param_2": []string{"active", "pending"}},
 		},
 		{
@@ -70,7 +70,7 @@ func TestSelect(t *testing.T) {
 		{
 			name:      "select with multiple where conditions",
 			query:     Select("users").WhereEq("active", true).WhereNotNull("email"),
-			wantSurQL: "SELECT * FROM users WHERE type::field($param_1) = $param_2 AND type::field($param_3) IS NOT NULL",
+			wantSurQL: "SELECT * FROM users WHERE (type::field($param_1) = $param_2) AND (type::field($param_3) IS NOT NULL)",
 			wantArgs:  map[string]any{"param_1": "active", "param_2": true, "param_3": "email"},
 		},
 		{
@@ -94,7 +94,7 @@ func TestSelect(t *testing.T) {
 		{
 			name:      "select with complex where",
 			query:     Select("orders").Where("total > ? AND status = ?", 100, "pending"),
-			wantSurQL: "SELECT * FROM orders WHERE total > $param_1 AND status = $param_2",
+			wantSurQL: "SELECT * FROM orders WHERE (total > $param_1 AND status = $param_2)",
 			wantArgs:  map[string]any{"param_1": 100, "param_2": "pending"},
 		},
 	}

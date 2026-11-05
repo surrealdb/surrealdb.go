@@ -135,7 +135,7 @@ func ExampleSelect_alias() {
 	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: SELECT *, $param_1 + $param_2 AS demodata, (SELECT VALUE count() FROM ONLY follows WHERE out = $parent.id GROUP ALL) AS followers_count FROM users
+	// SurrealQL: SELECT *, $param_1 + $param_2 AS demodata, (SELECT VALUE count() FROM ONLY follows WHERE (out = $parent.id) GROUP ALL) AS followers_count FROM users
 	// Vars:
 	//   param_1: 1
 	//   param_2: 2
@@ -182,7 +182,7 @@ func ExampleSelect_field_queryWithAlias() {
 	fmt.Printf("Vars: %v\n", vars)
 
 	// Output:
-	// SurrealQL: SELECT id, name, (SELECT id, total FROM orders WHERE user_id = $parent.id) AS orders FROM users
+	// SurrealQL: SELECT id, name, (SELECT id, total FROM orders WHERE (user_id = $parent.id)) AS orders FROM users
 	// Vars: map[]
 }
 
@@ -200,7 +200,7 @@ func ExampleSelect_withConditions() {
 	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: SELECT id, name, email FROM users WHERE type::field($param_1) = $param_2 AND type::field($param_3) IS NOT NULL ORDER BY created_at DESC LIMIT 10
+	// SurrealQL: SELECT id, name, email FROM users WHERE (type::field($param_1) = $param_2) AND (type::field($param_3) IS NOT NULL) ORDER BY created_at DESC LIMIT 10
 	// Vars:
 	//   param_1: active
 	//   param_2: true
@@ -220,7 +220,7 @@ func ExampleSelect_withF() {
 	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: SELECT id, name FROM users WHERE type::field($param_1) = $param_2 ORDER BY created_at LIMIT 5
+	// SurrealQL: SELECT id, name FROM users WHERE (type::field($param_1) = $param_2) ORDER BY created_at LIMIT 5
 	// Vars:
 	//   param_1: active
 	//   param_2: true
@@ -246,7 +246,7 @@ func ExampleSelect_withF_query() {
 	fmt.Println("SurrealQL:", sql)
 	dumpVars(vars)
 	// Output:
-	// SurrealQL: SELECT id, name, (SELECT id, total FROM orders WHERE user_id = $parent.id) AS orders FROM users WHERE type::field($param_1) = $param_2 ORDER BY created_at LIMIT 5
+	// SurrealQL: SELECT id, name, (SELECT id, total FROM orders WHERE (user_id = $parent.id)) AS orders FROM users WHERE (type::field($param_1) = $param_2) ORDER BY created_at LIMIT 5
 	// Vars:
 	//   param_1: active
 	//   param_2: true
@@ -332,7 +332,7 @@ func ExampleSelect_fromQuery() {
 	dumpVars(vars)
 
 	// Output:
-	// SurrealQL: SELECT * FROM (SELECT id, name FROM $from_from_table_1 WHERE type::field($from_param_1) = $from_param_2)
+	// SurrealQL: SELECT * FROM (SELECT id, name FROM $from_from_table_1 WHERE (type::field($from_param_1) = $from_param_2))
 	// Vars:
 	//   from_from_table_1: users
 	//   from_param_1: active
