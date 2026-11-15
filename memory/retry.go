@@ -30,7 +30,7 @@ func backoffFor(maxRetries int) []time.Duration {
 //
 // status == 0 means "no response received" (transport failure).
 func shouldRetry(method string, status, attempt, maxRetries int, idempotent bool) bool {
-	if attempt >= maxRetries {
+	if attempt >= len(backoffFor(maxRetries)) {
 		return false
 	}
 	if method != http.MethodGet && !idempotent {
